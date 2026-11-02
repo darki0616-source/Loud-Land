@@ -11,8 +11,17 @@ const chatHistory=[];
 const chatChoices=['안녕','뛰어','👍','❤️'];
 let music = {id:'', title:'', startedAt:0, paused:true, position:0, changedBy:'', token:0, duration:0};
 const queue=[]; let nextTrackToken=1;
+const DATA_DIR=process.env.DATA_DIR||path.join(__dirname,'data');
+const STATE_PATH=path.join(DATA_DIR,'festival-state.json');
+let saveTimeout=null;
+function saveNow(){try{fs.mkdirSync(DATA_DIR,{recursive:true});const tmp=STATE_PATH+'.tmp';fs.writeFileSync(tmp,JSON.stringify({version:1,music,queue,nextTrackToken,savedAt:Date.now()}));fs.renameSync(tmp,STATE_PATH)}catch(err){console.error('Saving playlist failed:',err.message)}}
+function scheduleSave(){clearTimeout(saveTimeout);saveTimeout=setTimeout(saveNow,150);saveTimeout.unref()}
+function restorePlaylist(){try{const d=JSON.parse(fs.readFileSync(STATE_PATH,'utf8'));if(Array.isArray(d.queue))queue.push(...d.queue.filter(x=>/^[\w-]{11}$/.test(x.id||'')).slice(0,50));if(d.music&&/^[\w-]{11}$/.test(d.music.id||'')){music={...music,...d.music};if(!music.paused){const duration=Number(music.duration)||0;if(duration>0&&((Date.now()-music.startedAt)/1000)>=duration){music={...music,id:'',paused:true};if(queue.length){const entry=queue.shift();music={id:entry.id,title:entry.title,startedAt:Date.now(),paused:false,position:0,changedBy:entry.addedBy,token:nextTrackToken++,duration:0}}}else{music.position=Math.max(0,(Date.now()-music.startedAt)/1000)}}}nextTrackToken=Math.max(1,Number(d.nextTrackToken)||1,music.token+1);console.log('Restored persisted music queue')}catch(err){if(err.code!=='ENOENT')console.warn('Playlist restore failed:',err.message)}}
+restorePlaylist();
+process.on('SIGTERM',()=>{saveNow();server.close(()=>process.exit(0));setTimeout(()=>process.exit(0),4000).unref()});
+
 const musicState=()=>({music,queue:queue.map(({id,title,addedBy})=>({id,title,addedBy})),serverNow:Date.now()});
-function nextTrack(){const entry=queue.shift();if(entry){music={id:entry.id,title:entry.title,startedAt:Date.now(),paused:false,position:0,changedBy:entry.addedBy,token:nextTrackToken++,duration:0}}else{music={id:'',title:'',startedAt:0,paused:true,position:0,changedBy:'',token:nextTrackToken++,duration:0}}broadcast({type:'music',...musicState()})}
+function nextTrack(){const entry=queue.shift();if(entry){music={id:entry.id,title:entry.title,startedAt:Date.now(),paused:false,position:0,changedBy:entry.addedBy,token:nextTrackToken++,duration:0}}else{music={id:'',title:'',startedAt:0,paused:true,position:0,changedBy:'',token:nextTrackToken++,duration:0}}broadcast({type:'music',...musicState()});scheduleSave()}
 // End-of-track fallback based on reported duration, independent of any one viewer.
 setInterval(()=>{if(music.id&&!music.paused&&music.duration>0&&(Date.now()-music.startedAt)/1000>music.duration+1)nextTrack()},1500).unref();
 const colors = ['#ff747d','#67d8d1','#f9c463','#a8a0ff','#90dd81','#ff9ce1','#72b5ff','#eeeeee'];
@@ -81,11 +90,11 @@ const server=http.createServer(async(req,res)=>{
           if(queue.length>=50)return json(res,400,{error:'대기열은 최대 50곡입니다.'});
           const entry={id:vid,title:await getVideoTitle(vid),addedBy:p.name};
           // Always append to the shared queue; automatically start when nothing is playing.
-          queue.push(entry);if(!music.id)nextTrack();else broadcast({type:'music',...musicState()});
-        } else if(d.command==='pause'&&!music.paused&&music.id){music.position=Math.max(0,(Date.now()-music.startedAt)/1000);music.paused=true;broadcast({type:'music',...musicState()})}
-        else if(d.command==='resume'&&music.paused&&music.id){music.startedAt=Date.now()-music.position*1000;music.paused=false;broadcast({type:'music',...musicState()})}
+          queue.push(entry);scheduleSave();if(!music.id)nextTrack();else broadcast({type:'music',...musicState()});
+        } else if(d.command==='pause'&&!music.paused&&music.id){music.position=Math.max(0,(Date.now()-music.startedAt)/1000);music.paused=true;scheduleSave();broadcast({type:'music',...musicState()})}
+        else if(d.command==='resume'&&music.paused&&music.id){music.startedAt=Date.now()-music.position*1000;music.paused=false;scheduleSave();broadcast({type:'music',...musicState()})}
         else if(d.command==='duration'&&music.id&&Number(d.token)===music.token){
-          const duration=Number(d.duration);if(Number.isFinite(duration)&&duration>=2&&duration<=86400){music.duration=duration;if(!music.paused&&(Date.now()-music.startedAt)/1000>duration+1)nextTrack()}
+          const duration=Number(d.duration);if(Number.isFinite(duration)&&duration>=2&&duration<=86400){music.duration=duration;scheduleSave();if(!music.paused&&(Date.now()-music.startedAt)/1000>duration+1)nextTrack()}
         }
         else if(d.command==='ended'&&music.id&&Number(d.token)===music.token){
           // A viewer may report ending a little early due to clock drift; don't skip prematurely.
