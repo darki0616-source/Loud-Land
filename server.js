@@ -7,6 +7,8 @@ const PORT = Number(process.env.PORT || 3000);
 const PUBLIC = path.join(__dirname, 'public');
 const clients = new Map();
 const players = new Map();
+const chatHistory=[];
+const chatChoices=['안녕','뛰어','👍','❤️'];
 let music = {id:'', title:'', startedAt:0, paused:true, position:0, changedBy:'', token:0, duration:0};
 const queue=[]; let nextTrackToken=1;
 const musicState=()=>({music,queue:queue.map(({id,title,addedBy})=>({id,title,addedBy})),serverNow:Date.now()});
@@ -18,7 +20,7 @@ const clean = (s,max=30)=>String(s||'').replace(/[\x00-\x1f<>]/g,'').trim().slic
 const send=(res,obj)=>{res.write('data: '+JSON.stringify(obj)+'\n\n');};
 const broadcast=obj=>{for(const res of clients.values()) {try {send(res,obj);}catch{}}};
 const json=(res,status,obj)=>{res.writeHead(status,{'content-type':'application/json; charset=utf-8','cache-control':'no-store','access-control-allow-origin':'*'});res.end(JSON.stringify(obj));};
-const snapshot=()=>({type:'snapshot',players:[...players.values()],...musicState(),count:players.size});
+const snapshot=()=>({type:'snapshot',players:[...players.values()],chat:chatHistory,...musicState(),count:players.size});
 const clamp=(n,min,max)=>Math.min(max,Math.max(min,Number(n)||0));
 function cleanup(){const now=Date.now();for(const [id,p] of players)if(now-p.seen>35000){players.delete(id);const r=clients.get(id);if(r){r.end();clients.delete(id)}broadcast({type:'leave',id,count:players.size})}}
 setInterval(cleanup,7000).unref();
@@ -39,14 +41,23 @@ const server=http.createServer(async(req,res)=>{
     try{
       const d=await receive(req);
       if(url.pathname==='/api/join'){
-        const id=crypto.randomUUID(),p={id,name:clean(d.name,18)||'ROCKER',color:colors.includes(d.color)?d.color:colors[0],x:clamp(200+Math.random()*800,35,1165),y:clamp(400+Math.random()*175,295,738),facing:0,action:'idle',seen:Date.now()};
+        const id=crypto.randomUUID(),p={id,name:clean(d.name,18)||'ROCKER',color:colors.includes(d.color)?d.color:colors[0],gender:d.gender==='female'?'female':'male',x:clamp(200+Math.random()*800,35,1165),y:clamp(400+Math.random()*175,295,738),facing:0,action:'idle',seen:Date.now()};
         players.set(id,p);broadcast({type:'join',player:p,count:players.size});return json(res,200,{id,...snapshot()});
       }
       const id=clean(d.id,80),p=players.get(id);if(!p)return json(res,401,{error:'Session expired. Please rejoin.'});p.seen=Date.now();
       if(url.pathname==='/api/move'){
         p.x=clamp(d.x,28,1172);p.y=clamp(d.y,285,747);p.facing=clamp(d.facing,-Math.PI,Math.PI);
-        p.action=['idle','walk','peace','jump','run','wave','bow','sit','lie'].includes(d.action)?d.action:'idle';
+        p.action=['idle','walk','peace','jump','run','wave','clap','sit','lie'].includes(d.action)?d.action:'idle';
         broadcast({type:'move',player:p});return json(res,200,{ok:true});
+      }
+      if(url.pathname==='/api/chat'){
+        const message=clean(d.message,20);
+        if(!chatChoices.includes(message))return json(res,400,{error:'선택된 채팅만 사용할 수 있어요.'});
+        if(p.lastChat&&Date.now()-p.lastChat<900)return json(res,429,{error:'잠시 후 다시 보내주세요.'});
+        p.lastChat=Date.now();
+        const entry={id:crypto.randomUUID(),playerId:p.id,name:p.name,message,at:Date.now()};
+        chatHistory.push(entry);if(chatHistory.length>35)chatHistory.shift();
+        broadcast({type:'chat',entry});return json(res,200,{ok:true});
       }
       if(url.pathname==='/api/music'){
         if(d.command==='enqueue'||d.command==='play'){
