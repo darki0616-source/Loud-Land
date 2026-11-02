@@ -34,13 +34,13 @@ const server=http.createServer(async(req,res)=>{
     try{
       const d=await receive(req);
       if(url.pathname==='/api/join'){
-        const id=crypto.randomUUID(),p={id,name:clean(d.name,18)||'ROCKER',color:colors.includes(d.color)?d.color:colors[0],x:clamp(200+Math.random()*800,35,1165),y:clamp(400+Math.random()*175,295,738),facing:1,action:'idle',seen:Date.now()};
+        const id=crypto.randomUUID(),p={id,name:clean(d.name,18)||'ROCKER',color:colors.includes(d.color)?d.color:colors[0],x:clamp(200+Math.random()*800,35,1165),y:clamp(400+Math.random()*175,295,738),facing:0,action:'idle',seen:Date.now()};
         players.set(id,p);broadcast({type:'join',player:p,count:players.size});return json(res,200,{id,...snapshot()});
       }
       const id=clean(d.id,80),p=players.get(id);if(!p)return json(res,401,{error:'Session expired. Please rejoin.'});p.seen=Date.now();
       if(url.pathname==='/api/move'){
-        p.x=clamp(d.x,28,1172);p.y=clamp(d.y,285,747);p.facing=d.facing===-1?-1:1;
-        p.action=['idle','peace','jump','run','wave','bow','sit','lie'].includes(d.action)?d.action:'idle';
+        p.x=clamp(d.x,28,1172);p.y=clamp(d.y,285,747);p.facing=clamp(d.facing,-Math.PI,Math.PI);
+        p.action=['idle','walk','peace','jump','run','wave','bow','sit','lie'].includes(d.action)?d.action:'idle';
         broadcast({type:'move',player:p});return json(res,200,{ok:true});
       }
       if(url.pathname==='/api/music'){
