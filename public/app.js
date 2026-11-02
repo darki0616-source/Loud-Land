@@ -4,7 +4,7 @@ import { CSS3DRenderer, CSS3DObject } from 'https://esm.sh/three@0.160.1/example
 const $=id=>document.getElementById(id), palette=['#ff747d','#67d8d1','#f9c463','#a8a0ff','#90dd81','#ff9ce1','#72b5ff','#eeeeee'];
 const mats=[{x:125,y:672,c:'#f5a5a3'},{x:355,y:690,c:'#a7def4'},{x:600,y:684,c:'#f5ce80'},{x:855,y:688,c:'#b3d9a0'},{x:1057,y:669,c:'#ceb8f1'}];
 const state={id:null,me:null,players:new Map(),keys:new Set(),action:'idle',actionUntil:0,lastSent:0,es:null,music:{id:'',paused:true,position:0,startedAt:0,token:0},queue:[],serverDelta:0,yt:null,ytReady:false,lastTrack:'',audioEnabled:false,walkTarget:null,moving:false};
-let chosenColor=palette[0],chosenGender='male',toastTimer;const avatars=new Map();
+let chosenColor=palette[0],chosenGender='male',toastTimer;const avatars=new Map();const activeBubbles=new Map();
 function toast(msg){$('toast').textContent=msg;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('show'),3000)}
 document.querySelectorAll('[data-gender]').forEach(b=>b.onclick=()=>{chosenGender=b.dataset.gender;document.querySelectorAll('[data-gender]').forEach(x=>x.classList.toggle('selected',x===b))});
 function colorPicker(){let r=$('colorPicker');r.innerHTML='';palette.forEach(c=>{let b=document.createElement('button');b.style.background=c;b.className=c===chosenColor?'selected':'';b.setAttribute('aria-label','티셔츠 '+c);b.onclick=()=>{chosenColor=c;colorPicker()};r.append(b)})}colorPicker();
@@ -18,7 +18,7 @@ function syncVideo(force=false){let m=state.music;if(!m.id||!state.ytReady)retur
 window.onYouTubeIframeAPIReady=()=>{state.yt=new YT.Player('youtubePlayer',{height:'100%',width:'100%',playerVars:{playsinline:1,controls:1,rel:0,origin:location.origin},events:{onReady:()=>{state.ytReady=true;syncVideo(true)},onStateChange:e=>{if(e.data===YT.PlayerState.PLAYING||e.data===YT.PlayerState.CUED)reportDuration();if(e.data===YT.PlayerState.ENDED&&state.id&&state.music.id)post('music',{id:state.id,command:'ended',token:state.music.token}).catch(()=>{})},onError:()=>toast('영상이 임베드 재생을 허용하지 않습니다')}})};
 async function musicCommand(command,extra={}){if(!state.id)return toast('먼저 입장해주세요');try{let d=await post('music',{id:state.id,command,...extra});applyMusic(d.music,d.serverNow,d.queue);toast('공유 음악이 업데이트되었습니다')}catch(e){toast(e.message)}}
 $('playLink').onclick=()=>musicCommand('enqueue',{url:$('videoUrl').value});$('pauseMusic').onclick=()=>musicCommand('pause');$('resumeMusic').onclick=()=>musicCommand('resume');$('skipMusic').onclick=()=>musicCommand('skip');$('enableAudio').onclick=()=>{state.audioEnabled=true;try{state.yt?.unMute()}catch(e){}syncVideo(true);toast('이 기기의 소리를 켰어요')};$('videoUrl').addEventListener('keydown',e=>{if(e.key==='Enter')$('playLink').click()});
-function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='snapshot'){state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;applyMusic(d.music,d.serverNow,d.queue);if(Array.isArray(d.chat)){$('chatMessages').replaceChildren();d.chat.forEach(appendChat)}}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){appendChat(d.entry)}else if(d.type==='move'){state.players.set(d.player.id,d.player)}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue)}}
+function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='snapshot'){state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;applyMusic(d.music,d.serverNow,d.queue);if(Array.isArray(d.chat)){$('chatMessages').replaceChildren();d.chat.forEach(appendChat)}}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){appendChat(d.entry);showBubble(d.entry)}else if(d.type==='move'){state.players.set(d.player.id,d.player)}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue)}}
 async function join(){try{let d=await post('join',{name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);state.players=new Map(d.players.map(p=>[p.id,p]));$('joinModal').classList.add('hidden');$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='페스티벌 참가 중';$('avatarPreview').querySelector('b').style.background=chosenColor;applyMusic(d.music,d.serverNow,d.queue);listen();$('audioModal').classList.remove('hidden');toast('ONEseason에 오신 것을 환영합니다!')}catch(e){$('joinError').textContent=e.message}}
 $('audioYes').onclick=()=>{state.audioEnabled=true;$('audioModal').classList.add('hidden');if(state.ytReady){try{state.yt.unMute();state.yt.setVolume(75)}catch(e){}}syncVideo(true);toast(state.music.id?'음악 재생을 허용했어요':'음악이 등록되면 바로 재생돼요')};$('audioNo').onclick=()=>{state.audioEnabled=false;$('audioModal').classList.add('hidden');try{state.yt?.pauseVideo()}catch(e){}toast('음악을 끈 상태로 입장했어요')};$('joinBtn').onclick=join;$('nick').onkeydown=e=>{if(e.key==='Enter')join()};$('editAvatar').onclick=()=>{if(state.id){post('leave',{id:state.id}).catch(()=>{});state.es?.close();state.id=null;state.me=null;state.players.clear()}$('joinModal').classList.remove('hidden')};$('helpBtn').onclick=()=>toast('WASD 이동 · 클릭/터치 이동 · 드래그 시점 회전 · 1~7 리액션');
 function react(a){if(!state.me)return;if(state.action===a&&['jump','run'].includes(a)){state.action='idle';state.actionUntil=0;state.me.action=state.moving?'walk':'idle';document.querySelectorAll('[data-action]').forEach(b=>b.classList.remove('active'));sendMove();return;}const near=mats.some(m=>Math.hypot(state.me.x-m.x,state.me.y-m.y)<105);if(['sit','lie'].includes(a)&&!near)return toast('뒤쪽 돗자리 가까이에서 앉거나 누울 수 있어요');if(['sit','lie'].includes(a)){let mat=mats.reduce((u,v)=>Math.hypot(state.me.x-u.x,state.me.y-u.y)<Math.hypot(state.me.x-v.x,state.me.y-v.y)?u:v);state.me.x=mat.x;state.me.y=mat.y}state.action=a;state.actionUntil=['sit','lie','jump','run'].includes(a)?Infinity:performance.now()+1350;state.me.action=a; if(['sit','lie'].includes(a))state.walkTarget=null; document.querySelectorAll('[data-action]').forEach(b=>b.classList.toggle('active',b.dataset.action===a));sendMove()}
@@ -79,6 +79,32 @@ for(const side of ['left','right']){let arm=parts[side+'Arm'];const pivot=new TH
 // Fingers point upward when the arm is lifted. Extended index and pinky.
 const horns=parts.horns;horns.rotation.z=Math.PI;horns.position.set(0,-.57,0);
 return {root,parts,color:p.color}}
+// Chat bubbles are true 3D sprites anchored in world coordinates, independent of avatar pose.
+function bubbleTexture(message){
+ const canvas=document.createElement('canvas');canvas.width=512;canvas.height=224;
+ const ctx=canvas.getContext('2d');ctx.clearRect(0,0,512,224);
+ ctx.fillStyle='rgba(255,255,255,.98)';ctx.strokeStyle='#283044';ctx.lineWidth=7;
+ ctx.beginPath();ctx.roundRect(15,15,482,165,32);ctx.fill();ctx.stroke();
+ ctx.beginPath();ctx.moveTo(238,180);ctx.lineTo(256,211);ctx.lineTo(278,180);ctx.closePath();ctx.fill();ctx.stroke();
+ ctx.fillStyle='#171d31';ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='bold 70px system-ui, sans-serif';ctx.fillText(message,256,99,445);
+ const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;return texture;
+}
+function showBubble(entry){
+ if(!entry||!entry.playerId||!state.players.has(entry.playerId))return;
+ const old=activeBubbles.get(entry.playerId);
+ if(old){scene.remove(old.sprite);old.sprite.material.map.dispose();old.sprite.material.dispose()}
+ const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:bubbleTexture(entry.message),transparent:true,depthTest:false,depthWrite:false}));
+ sprite.scale.set(3.4,1.49,1);sprite.renderOrder=150;scene.add(sprite);
+ activeBubbles.set(entry.playerId,{sprite,expires:performance.now()+3800});
+}
+function updateBubbles(now){
+ for(const [id,b] of activeBubbles){
+  const a=avatars.get(id);
+  if(!a||now>=b.expires){scene.remove(b.sprite);b.sprite.material.map.dispose();b.sprite.material.dispose();activeBubbles.delete(id);continue}
+  b.sprite.position.set(a.root.position.x,a.root.position.y+5.12,a.root.position.z);
+  b.sprite.material.opacity=Math.min(1,(b.expires-now)/350);
+ }
+}
 function toWorld(p){return {x:(p.x-600)*.058,z:(p.y-500)*.058+8}}
 function animateAvatar(a,p,t){
  const q=p.id===state.id&&state.me?state.me:p,wp=toWorld(q),P=a.parts;
@@ -104,11 +130,18 @@ function animateAvatar(a,p,t){
  }
  if(act==='clap'){
    // Both hands come together repeatedly in front of the chest.
-   const beat=(1+Math.cos(time*13))*.5;
-   P.leftShoulder.rotation.z=-.85-beat*.28;
-   P.rightShoulder.rotation.z=.85+beat*.28;
-   P.leftShoulder.rotation.x=-.7;
-   P.rightShoulder.rotation.x=-.7;
+   // Aim both arms at the front of the chest. Hands physically converge on each beat.
+   // Capsule arm geometry points down the local Y axis from the shoulder pivot.
+   const beat=(1+Math.cos(time*11))*.5;
+   const handGap=.06+.37*(1-beat);
+   const shoulderHeight=1.96;
+   const targetHeight=1.48;
+   const targetForward=.63;
+   const leftTarget=new THREE.Vector3(-handGap+.63,targetHeight-shoulderHeight,targetForward);
+   const rightTarget=new THREE.Vector3(handGap-.63,targetHeight-shoulderHeight,targetForward);
+   const down=new THREE.Vector3(0,-1,0);
+   P.leftShoulder.quaternion.setFromUnitVectors(down,leftTarget.normalize());
+   P.rightShoulder.quaternion.setFromUnitVectors(down,rightTarget.normalize());
  }
  if(act==='walk'||act==='run'){
    let pace=act==='run'?12:8;
@@ -148,7 +181,7 @@ function tick(t){
  }
  for(let [id,p] of state.players){if(!avatars.has(id)){let a=makeAvatar(p),pos=toWorld(p);a.root.position.set(pos.x,0,pos.z);avatars.set(id,a)}animateAvatar(avatars.get(id),p,t)}
  for(let [id,a] of avatars)if(!state.players.has(id)){scene.remove(a.root);a.root.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material?.map)o.material.map.dispose();if(o.material)o.material.dispose()});avatars.delete(id)}
- stageLights.forEach((l,i)=>{l.intensity=100+35*Math.sin(t*.0019+i*2);l.target.position.x=(-17+i*5.6)*.65+Math.sin(t*.001+i)*7});controls.update();renderer.render(scene,camera);cssRenderer.render(scene,camera);requestAnimationFrame(tick)
+ updateBubbles(t);stageLights.forEach((l,i)=>{l.intensity=100+35*Math.sin(t*.0019+i*2);l.target.position.x=(-17+i*5.6)*.65+Math.sin(t*.001+i)*7});controls.update();renderer.render(scene,camera);cssRenderer.render(scene,camera);requestAnimationFrame(tick)
 }
 function resize(){let w=host.clientWidth,h=host.clientHeight;if(!w||!h)return;camera.aspect=w/h;camera.updateProjectionMatrix();renderer.setSize(w,h,false);cssRenderer.setSize(w,h)}new ResizeObserver(resize).observe(host);resize();requestAnimationFrame(tick);
 setInterval(()=>{syncVideo();reportDuration();let m=state.music;if(!m.id)return;let sec=m.paused?m.position:(Date.now()+state.serverDelta-m.startedAt)/1000;let dur=state.ytReady?state.yt.getDuration():0;$('progressFill').style.width=dur?Math.min(100,sec/dur*100)+'%':'0%'},5000);
