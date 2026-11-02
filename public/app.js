@@ -192,12 +192,14 @@ function animateAvatar(a,p,t){
    P.leftShoulder.rotation.z=-.10;
  }
  if(act==='drink'){
-   // Raise the bottle-holding hand to mouth height, then tilt it briefly to sip.
-   const sip=(1+Math.sin(time*5))*.5;
-   P.rightShoulder.rotation.z=1.5+sip*.28;
-   P.rightShoulder.rotation.x=-.9-sip*.15;
-   P.bottle.rotation.z=-.4-sip*.45;
-   P.neck.rotation.x=sip*.09;
+   // Aim the bottle hand FORWARD, toward the mouth (avatar forward is local +Z),
+   // rather than rotating the arm sideways away from the body.
+   const sip=(1+Math.sin(time*4.2))*.5;
+   const down=new THREE.Vector3(0,-1,0);
+   const reach=new THREE.Vector3(-.36, .22+sip*.15, .62+sip*.12).normalize();
+   P.rightShoulder.quaternion.setFromUnitVectors(down,reach);
+   P.bottle.rotation.set(-.25-sip*.35,0,-.20);
+   P.neck.rotation.x=sip*.06;
  }
  if(act==='clap'){
    // Both hands come together repeatedly in front of the chest.
