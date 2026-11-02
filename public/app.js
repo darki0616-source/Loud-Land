@@ -196,3 +196,14 @@ function appendChat(entry){const el=document.createElement('div');el.className='
 $('chatToggle').onclick=()=>$('chatPanel').classList.toggle('hidden');
 $('chatClose').onclick=()=>$('chatPanel').classList.add('hidden');
 document.querySelectorAll('[data-chat]').forEach(b=>b.onclick=async()=>{if(!state.id)return toast('먼저 입장해 주세요');try{await post('chat',{id:state.id,message:b.dataset.chat})}catch(e){toast(e.message)}});
+
+// Keep the in-game HUD inside the actual visible iOS/Android viewport.
+function updateVisibleViewport(){
+ const viewport=window.visualViewport;
+ const height=viewport ? viewport.height : window.innerHeight;
+ document.documentElement.style.setProperty('--app-height',Math.round(height)+'px');
+}
+updateVisibleViewport();
+window.addEventListener('resize',updateVisibleViewport,{passive:true});
+window.addEventListener('orientationchange',updateVisibleViewport,{passive:true});
+if(window.visualViewport){window.visualViewport.addEventListener('resize',updateVisibleViewport,{passive:true});}
