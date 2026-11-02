@@ -7,13 +7,18 @@ const PORT = Number(process.env.PORT || 3000);
 const PUBLIC = path.join(__dirname, 'public');
 const clients = new Map();
 const players = new Map();
-let music = {id:'', title:'', startedAt:0, paused:true, position:0, changedBy:''};
+let music = {id:'', title:'', startedAt:0, paused:true, position:0, changedBy:'', token:0, duration:0};
+const queue=[]; let nextTrackToken=1;
+const musicState=()=>({music,queue:queue.map(({id,title,addedBy})=>({id,title,addedBy})),serverNow:Date.now()});
+function nextTrack(){const entry=queue.shift();if(entry){music={id:entry.id,title:entry.title,startedAt:Date.now(),paused:false,position:0,changedBy:entry.addedBy,token:nextTrackToken++,duration:0}}else{music={id:'',title:'',startedAt:0,paused:true,position:0,changedBy:'',token:nextTrackToken++,duration:0}}broadcast({type:'music',...musicState()})}
+// End-of-track fallback based on reported duration, independent of any one viewer.
+setInterval(()=>{if(music.id&&!music.paused&&music.duration>0&&(Date.now()-music.startedAt)/1000>music.duration+1)nextTrack()},1500).unref();
 const colors = ['#ff747d','#67d8d1','#f9c463','#a8a0ff','#90dd81','#ff9ce1','#72b5ff','#eeeeee'];
 const clean = (s,max=30)=>String(s||'').replace(/[\x00-\x1f<>]/g,'').trim().slice(0,max);
 const send=(res,obj)=>{res.write('data: '+JSON.stringify(obj)+'\n\n');};
 const broadcast=obj=>{for(const res of clients.values()) {try {send(res,obj);}catch{}}};
 const json=(res,status,obj)=>{res.writeHead(status,{'content-type':'application/json; charset=utf-8','cache-control':'no-store','access-control-allow-origin':'*'});res.end(JSON.stringify(obj));};
-const snapshot=()=>({type:'snapshot',players:[...players.values()],music,serverNow:Date.now(),count:players.size});
+const snapshot=()=>({type:'snapshot',players:[...players.values()],...musicState(),count:players.size});
 const clamp=(n,min,max)=>Math.min(max,Math.max(min,Number(n)||0));
 function cleanup(){const now=Date.now();for(const [id,p] of players)if(now-p.seen>35000){players.delete(id);const r=clients.get(id);if(r){r.end();clients.delete(id)}broadcast({type:'leave',id,count:players.size})}}
 setInterval(cleanup,7000).unref();
@@ -44,13 +49,25 @@ const server=http.createServer(async(req,res)=>{
         broadcast({type:'move',player:p});return json(res,200,{ok:true});
       }
       if(url.pathname==='/api/music'){
-        if(d.command==='play'){
+        if(d.command==='enqueue'||d.command==='play'){
           const vid=videoId(d.url||d.videoId);if(!vid)return json(res,400,{error:'유효한 유튜브 링크를 입력하세요.'});
-          music={id:vid,title:clean(d.title,90)||'LIVE TRACK',startedAt:Date.now(),paused:false,position:0,changedBy:p.name};
-        } else if(d.command==='pause'&&!music.paused){music.position=Math.max(0,(Date.now()-music.startedAt)/1000);music.paused=true}
-        else if(d.command==='resume'&&music.paused&&music.id){music.startedAt=Date.now()-music.position*1000;music.paused=false}
+          if(queue.length>=50)return json(res,400,{error:'대기열은 최대 50곡입니다.'});
+          const entry={id:vid,title:clean(d.title,90)||'YOUTUBE '+vid,addedBy:p.name};
+          // Always append to the shared queue; automatically start when nothing is playing.
+          queue.push(entry);if(!music.id)nextTrack();else broadcast({type:'music',...musicState()});
+        } else if(d.command==='pause'&&!music.paused&&music.id){music.position=Math.max(0,(Date.now()-music.startedAt)/1000);music.paused=true;broadcast({type:'music',...musicState()})}
+        else if(d.command==='resume'&&music.paused&&music.id){music.startedAt=Date.now()-music.position*1000;music.paused=false;broadcast({type:'music',...musicState()})}
+        else if(d.command==='duration'&&music.id&&Number(d.token)===music.token){
+          const duration=Number(d.duration);if(Number.isFinite(duration)&&duration>=2&&duration<=86400){music.duration=duration;if(!music.paused&&(Date.now()-music.startedAt)/1000>duration+1)nextTrack()}
+        }
+        else if(d.command==='ended'&&music.id&&Number(d.token)===music.token){
+          // A viewer may report ending a little early due to clock drift; don't skip prematurely.
+          const elapsed=music.paused?music.position:(Date.now()-music.startedAt)/1000;
+          if(!music.duration||elapsed>=music.duration-3)nextTrack();
+        }
+        else if(d.command==='skip'&&music.id){nextTrack()}
         else return json(res,400,{error:'Invalid command'});
-        broadcast({type:'music',music,serverNow:Date.now()});return json(res,200,{ok:true,music,serverNow:Date.now()});
+        return json(res,200,{ok:true,...musicState()});
       }
       if(url.pathname==='/api/leave'){players.delete(id);clients.get(id)?.end();clients.delete(id);broadcast({type:'leave',id,count:players.size});return json(res,200,{ok:true})}
       return json(res,404,{error:'Not found'});
