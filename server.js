@@ -14,11 +14,50 @@ const queue=[]; let nextTrackToken=1;
 const DATA_DIR=process.env.DATA_DIR||path.join(__dirname,'data');
 const STATE_PATH=path.join(DATA_DIR,'festival-state.json');
 let saveTimeout=null;
-function saveNow(){try{fs.mkdirSync(DATA_DIR,{recursive:true});const tmp=STATE_PATH+'.tmp';fs.writeFileSync(tmp,JSON.stringify({version:1,music,queue,nextTrackToken,savedAt:Date.now()}));fs.renameSync(tmp,STATE_PATH)}catch(err){console.error('Saving playlist failed:',err.message)}}
-function scheduleSave(){clearTimeout(saveTimeout);saveTimeout=setTimeout(saveNow,150);saveTimeout.unref()}
-function restorePlaylist(){try{const d=JSON.parse(fs.readFileSync(STATE_PATH,'utf8'));if(Array.isArray(d.queue))queue.push(...d.queue.filter(x=>/^[\w-]{11}$/.test(x.id||'')).slice(0,50));if(d.music&&/^[\w-]{11}$/.test(d.music.id||'')){music={...music,...d.music};if(!music.paused){const duration=Number(music.duration)||0;if(duration>0&&((Date.now()-music.startedAt)/1000)>=duration){music={...music,id:'',paused:true};if(queue.length){const entry=queue.shift();music={id:entry.id,title:entry.title,startedAt:Date.now(),paused:false,position:0,changedBy:entry.addedBy,token:nextTrackToken++,duration:0}}}else{music.position=Math.max(0,(Date.now()-music.startedAt)/1000)}}}nextTrackToken=Math.max(1,Number(d.nextTrackToken)||1,music.token+1);console.log('Restored persisted music queue')}catch(err){if(err.code!=='ENOENT')console.warn('Playlist restore failed:',err.message)}}
-restorePlaylist();
-process.on('SIGTERM',()=>{saveNow();server.close(()=>process.exit(0));setTimeout(()=>process.exit(0),4000).unref()});
+const SB_URL=(process.env.SUPABASE_URL||'').replace(/\/$/,'');
+const SB_KEY=process.env.SUPABASE_SECRET_KEY||'';
+const useSupabase=Boolean(SB_URL&&SB_KEY);
+let restored=false;
+let saveChain=Promise.resolve();
+function stateData(){return {version:2,music,queue:[...queue],nextTrackToken,savedAt:Date.now()}}
+function applySaved(d){
+ if(!d||typeof d!=='object')return;
+ queue.length=0;
+ if(Array.isArray(d.queue))queue.push(...d.queue.filter(x=>x&&/^[\w-]{11}$/.test(x.id||'')).slice(0,50));
+ if(d.music&&/^[\w-]{11}$/.test(d.music.id||'')){
+  music={...music,...d.music};
+  if(!music.paused)music.position=Math.max(0,(Date.now()-Number(music.startedAt||Date.now()))/1000);
+  music.paused=true; // Never consume the queue while nobody is present.
+ }
+ nextTrackToken=Math.max(1,Number(d.nextTrackToken)||1,Number(music.token||0)+1);
+}
+function localSave(d){try{fs.mkdirSync(DATA_DIR,{recursive:true});const tmp=STATE_PATH+'.tmp';fs.writeFileSync(tmp,JSON.stringify(d));fs.renameSync(tmp,STATE_PATH)}catch(err){console.warn('Local playlist backup failed:',err.message)}}
+async function supabaseRequest(method,body){
+ const url=SB_URL+'/rest/v1/music_state'+(method==='GET'?'?id=eq.1&select=state':'?id=eq.1');
+ const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),8500);
+ try{const res=await fetch(url,{method,headers:{apikey:SB_KEY,'Content-Type':'application/json',...(method==='PATCH'?{Prefer:'return=minimal'}:{})},...(body?{body:JSON.stringify(body)}:{}),signal:ctl.signal});if(!res.ok)throw Error('Supabase HTTP '+res.status+' '+(await res.text()).slice(0,150));return method==='GET'?await res.json():null}
+ finally{clearTimeout(timer)}
+}
+async function restorePlaylist(){
+ if(useSupabase){
+  try{const rows=await supabaseRequest('GET');if(rows?.[0]?.state){applySaved(rows[0].state);console.log('Supabase playlist restored')}else console.warn('Supabase music_state row id=1 missing');}
+  catch(err){console.error('Supabase restore failed:',err.message);throw err}
+ }else{
+  try{applySaved(JSON.parse(fs.readFileSync(STATE_PATH,'utf8')));console.log('Local playlist restored (non-durable)')}catch(err){if(err.code!=='ENOENT')console.warn('Local restore failed:',err.message)}
+ }
+ restored=true;
+}
+function saveNow(){
+ if(!restored)return Promise.resolve();
+ const data=stateData();localSave(data);
+ if(!useSupabase)return Promise.resolve();
+ saveChain=saveChain.catch(()=>{}).then(async()=>{try{await supabaseRequest('PATCH',{state:data,updated_at:new Date().toISOString()})}catch(err){console.error('Supabase save failed:',err.message)}});
+ return saveChain;
+}
+function scheduleSave(){clearTimeout(saveTimeout);saveTimeout=setTimeout(()=>{void saveNow()},120);saveTimeout.unref()}
+function pauseForEmpty(){if(players.size===0&&music.id&&!music.paused){music.position=Math.max(0,(Date.now()-music.startedAt)/1000);music.paused=true;scheduleSave()}}
+function resumeForFirst(){if(players.size===1&&music.id&&music.paused){music.startedAt=Date.now()-Math.max(0,music.position||0)*1000;music.paused=false;scheduleSave()}}
+process.on('SIGTERM',()=>{pauseForEmpty();clearTimeout(saveTimeout);Promise.race([saveNow(),new Promise(r=>setTimeout(r,2500))]).finally(()=>server.close(()=>process.exit(0)))});
 
 const musicState=()=>({music,queue:queue.map(({id,title,addedBy})=>({id,title,addedBy})),serverNow:Date.now()});
 function nextTrack(){const entry=queue.shift();if(entry){music={id:entry.id,title:entry.title,startedAt:Date.now(),paused:false,position:0,changedBy:entry.addedBy,token:nextTrackToken++,duration:0}}else{music={id:'',title:'',startedAt:0,paused:true,position:0,changedBy:'',token:nextTrackToken++,duration:0}}broadcast({type:'music',...musicState()});scheduleSave()}
@@ -31,7 +70,7 @@ const broadcast=obj=>{for(const res of clients.values()) {try {send(res,obj);}ca
 const json=(res,status,obj)=>{res.writeHead(status,{'content-type':'application/json; charset=utf-8','cache-control':'no-store','access-control-allow-origin':'*'});res.end(JSON.stringify(obj));};
 const snapshot=()=>({type:'snapshot',players:[...players.values()],chat:chatHistory,...musicState(),count:players.size});
 const clamp=(n,min,max)=>Math.min(max,Math.max(min,Number(n)||0));
-function cleanup(){const now=Date.now();for(const [id,p] of players)if(now-p.seen>35000){players.delete(id);const r=clients.get(id);if(r){r.end();clients.delete(id)}broadcast({type:'leave',id,count:players.size})}}
+function cleanup(){const now=Date.now();for(const [id,p] of players)if(now-p.seen>35000){players.delete(id);pauseForEmpty();const r=clients.get(id);if(r){r.end();clients.delete(id)}broadcast({type:'leave',id,count:players.size})}}
 setInterval(cleanup,7000).unref();
 function videoId(input){const v=String(input||'').trim();if(/^[\w-]{11}$/.test(v))return v;try{const u=new URL(v);const host=u.hostname.replace(/^www\./,'');if(host==='youtu.be')return /^[\w-]{11}$/.test(u.pathname.slice(1))?u.pathname.slice(1):null;if(['youtube.com','m.youtube.com','music.youtube.com','youtube-nocookie.com'].includes(host)){const id=u.searchParams.get('v')||u.pathname.match(/\/(?:embed|shorts|live)\/([\w-]{11})/)?.[1];return /^[\w-]{11}$/.test(id||'')?id:null}}catch{}return null}
 // Read the actual public YouTube title server-side; never trust a user-submitted title.
@@ -54,6 +93,7 @@ async function receive(req){let raw='';for await(const chunk of req){raw+=chunk;
 const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.ico':'image/x-icon'};
 const server=http.createServer(async(req,res)=>{
   const url=new URL(req.url,'http://localhost');
+  if(!restored&&url.pathname.startsWith('/api/'))return json(res,503,{error:'음악 저장소 연결 확인 중입니다. 잠시 뒤 다시 시도해주세요.'});
   if(url.pathname==='/api/events'&&req.method==='GET'){
     const id=clean(url.searchParams.get('id'),80);
     if(!players.has(id))return json(res,404,{error:'Join first'});
@@ -67,7 +107,7 @@ const server=http.createServer(async(req,res)=>{
       const d=await receive(req);
       if(url.pathname==='/api/join'){
         const id=crypto.randomUUID(),p={id,name:clean(d.name,18)||'ROCKER',color:colors.includes(d.color)?d.color:colors[0],gender:d.gender==='female'?'female':'male',x:clamp(200+Math.random()*800,35,1165),y:clamp(400+Math.random()*175,295,738),facing:0,action:'idle',seen:Date.now()};
-        players.set(id,p);broadcast({type:'join',player:p,count:players.size});return json(res,200,{id,...snapshot()});
+        players.set(id,p);resumeForFirst();broadcast({type:'join',player:p,count:players.size});return json(res,200,{id,...snapshot()});
       }
       const id=clean(d.id,80),p=players.get(id);if(!p)return json(res,401,{error:'Session expired. Please rejoin.'});p.seen=Date.now();
       if(url.pathname==='/api/move'){
@@ -105,7 +145,7 @@ const server=http.createServer(async(req,res)=>{
         else return json(res,400,{error:'Invalid command'});
         return json(res,200,{ok:true,...musicState()});
       }
-      if(url.pathname==='/api/leave'){players.delete(id);clients.get(id)?.end();clients.delete(id);broadcast({type:'leave',id,count:players.size});return json(res,200,{ok:true})}
+      if(url.pathname==='/api/leave'){players.delete(id);pauseForEmpty();clients.get(id)?.end();clients.delete(id);broadcast({type:'leave',id,count:players.size});return json(res,200,{ok:true})}
       return json(res,404,{error:'Not found'});
     }catch(e){return json(res,400,{error:e.message})}
   }
@@ -114,4 +154,4 @@ const server=http.createServer(async(req,res)=>{
   const f=path.resolve(PUBLIC,'.'+(pathname==='/'?'/index.html':pathname));if(!f.startsWith(PUBLIC+path.sep))return json(res,403,{error:'Forbidden'});
   fs.stat(f,(err,stat)=>{if(err||!stat.isFile()){res.writeHead(404);res.end('Not found');return}res.writeHead(200,{'content-type':types[path.extname(f)]||'application/octet-stream','cache-control':'no-cache'});fs.createReadStream(f).pipe(res)})
 });
-server.listen(PORT,'0.0.0.0',()=>console.log(`Rock festival running at http://localhost:${PORT}`));
+restorePlaylist().then(()=>server.listen(PORT,'0.0.0.0',()=>console.log(`ONEseason running at http://localhost:${PORT} | storage: ${useSupabase?'Supabase':'local only'}`))).catch(err=>{console.error('Startup stopped to prevent playlist data loss:',err.message);process.exitCode=1});
