@@ -1,86 +1,76 @@
-(()=>{'use strict';
-const $=id=>document.getElementById(id),canvas=$('world'),ctx=canvas.getContext('2d');
-const palette=['#ff747d','#67d8d1','#f9c463','#a8a0ff','#90dd81','#ff9ce1','#72b5ff','#eeeeee'];
+import * as THREE from 'https://esm.sh/three@0.160.1';
+import { OrbitControls } from 'https://esm.sh/three@0.160.1/examples/jsm/controls/OrbitControls.js';
+const $=id=>document.getElementById(id), palette=['#ff747d','#67d8d1','#f9c463','#a8a0ff','#90dd81','#ff9ce1','#72b5ff','#eeeeee'];
 const mats=[{x:125,y:672,c:'#f5a5a3'},{x:355,y:690,c:'#a7def4'},{x:600,y:684,c:'#f5ce80'},{x:855,y:688,c:'#b3d9a0'},{x:1057,y:669,c:'#ceb8f1'}];
-const state={id:null,me:null,players:new Map(),keys:new Set(),action:'idle',actionUntil:0,lastSent:0,es:null,music:{id:'',paused:true,position:0,startedAt:0},serverDelta:0,yt:null,ytReady:false,lastTrack:'',audioEnabled:false,needsAudio:false};
-let chosenColor=palette[0],toastTimer;
-function toast(msg){$('toast').textContent=msg;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('show'),2900)}
-function colorPicker(){const root=$('colorPicker');root.innerHTML='';palette.forEach(color=>{const b=document.createElement('button');b.style.background=color;b.className=color===chosenColor?'selected':'';b.setAttribute('aria-label','티셔츠 색상 '+color);b.onclick=()=>{chosenColor=color;colorPicker()};root.append(b)})}
-colorPicker();
-async function post(endpoint,data){const res=await fetch('/api/'+endpoint,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(data)});const j=await res.json();if(!res.ok)throw Error(j.error||'서버 오류');return j}
-function applyMusic(m,serverNow){state.music=m;if(serverNow)state.serverDelta=serverNow-Date.now();$('songTitle').textContent=m.id?(m.title||'YOUTUBE LIVE TRACK'):'NO TRACK SELECTED';$('songCredit').textContent=m.id?`DJ ${m.changedBy||'UNKNOWN'} · ${m.paused?'일시정지':'재생 중'}`:'첫 번째 DJ가 되어보세요';$('screenPlaceholder').style.display=m.id?'none':'flex';syncVideo(true)}
-function syncVideo(force=false){const m=state.music;if(!m.id||!state.ytReady)return;const desired=m.paused?m.position:Math.max(0,(Date.now()+state.serverDelta-m.startedAt)/1000);
- try{if(state.lastTrack!==m.id){state.lastTrack=m.id;state.yt.cueVideoById({videoId:m.id,startSeconds:desired});if(state.audioEnabled&&!m.paused)state.yt.playVideo();return}
- const actual=state.yt.getCurrentTime();if(force||Math.abs(actual-desired)>2.8)state.yt.seekTo(desired,true);
- if(state.audioEnabled){if(m.paused)state.yt.pauseVideo();else if(state.yt.getPlayerState()!==1)state.yt.playVideo()}else state.yt.pauseVideo();
- }catch(e){console.warn('YouTube sync:',e)}}
-window.onYouTubeIframeAPIReady=()=>{state.yt=new YT.Player('youtubePlayer',{height:'100%',width:'100%',videoId:'',playerVars:{playsinline:1,controls:1,rel:0,origin:location.origin},events:{onReady:()=>{state.ytReady=true;syncVideo(true)},onError:e=>toast('유튜브 영상을 재생할 수 없습니다. 공개된 영상인지 확인하세요.')}})};
-async function musicCommand(command,extra={}){if(!state.id)return toast('페스티벌에 먼저 입장해주세요');try{const r=await post('music',{id:state.id,command,...extra});applyMusic(r.music,r.serverNow);if(command==='play'||command==='resume'){state.audioEnabled=true;syncVideo(true);toast('모든 방문자의 무대 음악이 업데이트되었습니다')} }catch(e){toast(e.message)}}
-$('playLink').onclick=()=>musicCommand('play',{url:$('videoUrl').value});$('pauseMusic').onclick=()=>musicCommand('pause');$('resumeMusic').onclick=()=>musicCommand('resume');
-$('enableAudio').onclick=()=>{state.audioEnabled=true;if(!state.music.id)return toast('먼저 유튜브 노래를 선택해주세요');syncVideo(true);toast('이 기기에서 무대 음악을 재생합니다')};
-$('videoUrl').addEventListener('keydown',e=>{if(e.key==='Enter')$('playLink').click()});
-function joinEvents(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='snapshot'){state.players=new Map(d.players.map(p=>[p.id,p]));state.me=state.players.get(state.id)||state.me;$('online').textContent=d.count;applyMusic(d.music,d.serverNow)}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count}else if(d.type==='move'){const p=state.players.get(d.player.id);state.players.set(d.player.id,{...p,...d.player});if(d.player.id===state.id&&state.me){/* local prediction stays smooth */}}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count}else if(d.type==='music')applyMusic(d.music,d.serverNow)};state.es.onerror=()=>{};}
-async function join(){try{const nick=$('nick').value.trim()||'ROCKER';const d=await post('join',{name:nick,color:chosenColor});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;$('joinModal').classList.add('hidden');$('profileName').textContent=state.me.name;$('profileStatus').textContent='IN THE FESTIVAL ✦';$('avatarPreview').querySelector('b').style.background=chosenColor;applyMusic(d.music,d.serverNow);joinEvents();toast('WELCOME TO LOUD LAND! 🤘')}catch(e){$('joinError').textContent=e.message}}
-$('joinBtn').onclick=join;$('nick').addEventListener('keydown',e=>{if(e.key==='Enter')join()});$('editAvatar').onclick=()=>{if(state.id){post('leave',{id:state.id}).catch(()=>{});state.es?.close();state.id=null;state.players.clear()}$('joinModal').classList.remove('hidden')};$('helpBtn').onclick=()=>toast('WASD·방향키 이동 / 1~7 리액션 / 돗자리 가까이에서 앉기·눕기');
-function react(action){if(!state.me)return;const near=mats.some(m=>Math.hypot(state.me.x-m.x,state.me.y-m.y)<100);if(['sit','lie'].includes(action)&&!near)return toast('뒤쪽 돗자리 가까이 이동해야 쉴 수 있습니다');if(['sit','lie'].includes(action)){const m=mats.reduce((a,b)=>Math.hypot(state.me.x-a.x,state.me.y-a.y)<Math.hypot(state.me.x-b.x,state.me.y-b.y)?a:b);state.me.x=m.x;state.me.y=m.y-4}
-state.action=action;state.actionUntil=['sit','lie'].includes(action)?Infinity:performance.now()+1300;state.me.action=action;$documentActive(action);sendMove();}
-function $documentActive(action){document.querySelectorAll('[data-action]').forEach(b=>b.classList.toggle('active',b.dataset.action===action))}
+const state={id:null,me:null,players:new Map(),keys:new Set(),action:'idle',actionUntil:0,lastSent:0,es:null,music:{id:'',paused:true,position:0,startedAt:0},serverDelta:0,yt:null,ytReady:false,lastTrack:'',audioEnabled:false};
+let chosenColor=palette[0],toastTimer;const avatars=new Map();
+function toast(msg){$('toast').textContent=msg;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('show'),3000)}
+function colorPicker(){let r=$('colorPicker');r.innerHTML='';palette.forEach(c=>{let b=document.createElement('button');b.style.background=c;b.className=c===chosenColor?'selected':'';b.setAttribute('aria-label','티셔츠 '+c);b.onclick=()=>{chosenColor=c;colorPicker()};r.append(b)})}colorPicker();
+async function post(ep,data){let r=await fetch('/api/'+ep,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(data)});let d=await r.json();if(!r.ok)throw Error(d.error||'서버 오류');return d}
+function applyMusic(m,serverNow){state.music=m;if(serverNow)state.serverDelta=serverNow-Date.now();$('songTitle').textContent=m.id?m.title||'YOUTUBE LIVE TRACK':'NO TRACK SELECTED';$('songCredit').textContent=m.id?`DJ ${m.changedBy||'UNKNOWN'} · ${m.paused?'일시정지':'재생 중'}`:'첫 번째 DJ가 되어보세요';$('screenPlaceholder').style.display=m.id?'none':'flex';syncVideo(true)}
+function syncVideo(force=false){let m=state.music;if(!m.id||!state.ytReady)return;let sec=m.paused?m.position:Math.max(0,(Date.now()+state.serverDelta-m.startedAt)/1000);try{if(state.lastTrack!==m.id){state.lastTrack=m.id;state.yt.cueVideoById({videoId:m.id,startSeconds:sec});if(state.audioEnabled&&!m.paused)state.yt.playVideo();return}if(force||Math.abs(state.yt.getCurrentTime()-sec)>3)state.yt.seekTo(sec,true);if(state.audioEnabled){if(m.paused)state.yt.pauseVideo();else if(state.yt.getPlayerState()!==1)state.yt.playVideo()}else state.yt.pauseVideo()}catch(e){console.warn(e)}}
+window.onYouTubeIframeAPIReady=()=>{state.yt=new YT.Player('youtubePlayer',{height:'100%',width:'100%',playerVars:{playsinline:1,controls:1,rel:0,origin:location.origin},events:{onReady:()=>{state.ytReady=true;syncVideo(true)},onError:()=>toast('영상이 임베드 재생을 허용하지 않습니다')}})};
+async function musicCommand(command,extra={}){if(!state.id)return toast('먼저 입장해주세요');try{let d=await post('music',{id:state.id,command,...extra});if(command!=='pause')state.audioEnabled=true;applyMusic(d.music,d.serverNow);toast('공유 음악이 업데이트되었습니다')}catch(e){toast(e.message)}}
+$('playLink').onclick=()=>musicCommand('play',{url:$('videoUrl').value});$('pauseMusic').onclick=()=>musicCommand('pause');$('resumeMusic').onclick=()=>musicCommand('resume');$('enableAudio').onclick=()=>{state.audioEnabled=true;syncVideo(true);toast('이 기기의 소리 재생을 허용했습니다')};$('videoUrl').addEventListener('keydown',e=>{if(e.key==='Enter')$('playLink').click()});
+function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='snapshot'){state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;applyMusic(d.music,d.serverNow)}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count}else if(d.type==='move'){state.players.set(d.player.id,d.player)}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count}else if(d.type==='music')applyMusic(d.music,d.serverNow)}}
+async function join(){try{let d=await post('join',{name:$('nick').value.trim()||'ROCKER',color:chosenColor});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);state.players=new Map(d.players.map(p=>[p.id,p]));$('joinModal').classList.add('hidden');$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='3D FESTIVAL GOER';$('avatarPreview').querySelector('b').style.background=chosenColor;applyMusic(d.music,d.serverNow);listen();toast('WELCOME TO LOUD LAND 3D!')}catch(e){$('joinError').textContent=e.message}}
+$('joinBtn').onclick=join;$('nick').onkeydown=e=>{if(e.key==='Enter')join()};$('editAvatar').onclick=()=>{if(state.id){post('leave',{id:state.id}).catch(()=>{});state.es?.close();state.id=null;state.me=null;state.players.clear()}$('joinModal').classList.remove('hidden')};$('helpBtn').onclick=()=>toast('WASD 이동 · 마우스 드래그로 카메라 회전 · 휠 줌 · 숫자 1~7 리액션');
+function react(a){if(!state.me)return;const near=mats.some(m=>Math.hypot(state.me.x-m.x,state.me.y-m.y)<105);if(['sit','lie'].includes(a)&&!near)return toast('뒤쪽 돗자리 가까이에서 앉거나 누울 수 있어요');if(['sit','lie'].includes(a)){let mat=mats.reduce((u,v)=>Math.hypot(state.me.x-u.x,state.me.y-u.y)<Math.hypot(state.me.x-v.x,state.me.y-v.y)?u:v);state.me.x=mat.x;state.me.y=mat.y}state.action=a;state.actionUntil=['sit','lie'].includes(a)?Infinity:performance.now()+1350;state.me.action=a;document.querySelectorAll('[data-action]').forEach(b=>b.classList.toggle('active',b.dataset.action===a));sendMove()}
 document.querySelectorAll('[data-action]').forEach(b=>b.onclick=()=>react(b.dataset.action));
-document.addEventListener('keydown',e=>{if(e.target instanceof HTMLInputElement)return;const k=e.key.toLowerCase();if(['arrowup','arrowdown','arrowleft','arrowright',' '].includes(k))e.preventDefault();state.keys.add(k);const acts={'1':'peace','2':'jump','3':'run','4':'wave','5':'bow','6':'sit','7':'lie'};if(acts[k]&&!e.repeat)react(acts[k])});document.addEventListener('keyup',e=>state.keys.delete(e.key.toLowerCase()));window.addEventListener('blur',()=>state.keys.clear());
-document.querySelectorAll('[data-dir]').forEach(b=>{const k={up:'arrowup',down:'arrowdown',left:'arrowleft',right:'arrowright'}[b.dataset.dir];const down=e=>{e.preventDefault();state.keys.add(k);b.setPointerCapture?.(e.pointerId)},up=e=>{e.preventDefault();state.keys.delete(k)};b.addEventListener('pointerdown',down);for(const evt of ['pointerup','pointercancel','lostpointercapture'])b.addEventListener(evt,up)});
-function sendMove(){if(!state.id||!state.me)return;const p=state.me;post('move',{id:state.id,x:Math.round(p.x),y:Math.round(p.y),facing:p.facing,action:p.action}).catch(()=>{})}
-const rand=n=>{let v=Math.sin(n*127.1+42)*43758.5453;return v-Math.floor(v)};
-function roundRect(x,y,w,h,r,fill,stroke=null){ctx.beginPath();ctx.roundRect(x,y,w,h,r);if(fill){ctx.fillStyle=fill;ctx.fill()}if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=2;ctx.stroke()}}
-function line(x1,y1,x2,y2,color,width=2){ctx.strokeStyle=color;ctx.lineWidth=width;ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke()}
-function txt(s,x,y,font,color,align='center'){ctx.fillStyle=color;ctx.font=font;ctx.textAlign=align;ctx.fillText(s,x,y)}
-function drawWorld(t){const w=1200,h=800;const g=ctx.createLinearGradient(0,0,0,h);g.addColorStop(0,'#263050');g.addColorStop(.48,'#314a58');g.addColorStop(1,'#3b615b');ctx.fillStyle=g;ctx.fillRect(0,0,w,h);
- // Ambient confetti dots and grass
- for(let i=0;i<150;i++){const x=rand(i+3)*w,y=315+rand(i+900)*480;ctx.fillStyle=i%4===0?'#6b9970':'#54766a';ctx.fillRect(x,y,3,2)}
- // Overhead lights / atmospheric spotlight cones
- for(let i=0;i<5;i++){const sx=230+i*185,angle=Math.sin(t*.0006+i)*38;ctx.beginPath();ctx.moveTo(sx,210);ctx.lineTo(sx-105+angle,500);ctx.lineTo(sx+105+angle,500);ctx.closePath();ctx.fillStyle=['#a18bfe10','#fa83bd0e','#a2fbfd11','#f0f9900d','#b29afa12'][i];ctx.fill()}
- // STAGE outline
- roundRect(125,20,950,269,15,'#11172a','#647185');roundRect(147,37,906,238,7,'#22253d');roundRect(199,68,802,187,8,'#101329');
- for(let i=0;i<16;i++){const x=194+i*55;line(x,45,x+15,66,'#46566d',3)}
- for(let i=0;i<19;i++){const x=174+i*46;ctx.fillStyle=i%3===0?'#d8ff76':'#e76bb5';ctx.globalAlpha=.6+.4*Math.sin(t*.004+i);ctx.fillRect(x,49,13,6)}ctx.globalAlpha=1;
- // Amplifiers
- for(const x of [164,947]){roundRect(x,102,84,133,6,'#282d40','#788193');for(let j=0;j<2;j++){ctx.fillStyle='#121624';ctx.beginPath();ctx.arc(x+42,138+j*48,25,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#515b70';ctx.lineWidth=3;ctx.stroke()}}
- // Stage drums
- ctx.fillStyle='#a65797';ctx.beginPath();ctx.arc(600,186,44,0,7);ctx.fill();ctx.strokeStyle='#d6d5ec';ctx.lineWidth=5;ctx.stroke();txt('✳',600,200,'41px sans-serif','#f4dca4');for(let x of [546,653]){roundRect(x-20,140,41,37,6,'#b46da5','#e6d0d9')}
- line(600,113,600,141,'#d0d2dd',4);ctx.fillStyle='#efe2b4';ctx.fillRect(530,126,27,4);ctx.fillRect(658,126,31,4);
- // Central stage lettering
- txt('LOUD',602,106,'bold 46px Archivo Black, sans-serif','#e8fdb5');txt('LAND',602,138,'bold 29px Archivo Black, sans-serif','#f7aed0');
- // Front stage
- roundRect(95,261,1010,52,5,'#202536','#6e738c');for(let x=107;x<1095;x+=22){ctx.fillStyle=x%3?'#2e3850':'#454c67';ctx.fillRect(x,277,12,18)}
- // Barrier
- line(30,332,1170,332,'#b6ab8c',6);for(let i=0;i<24;i++){const x=36+i*49;line(x,329,x,348,'#aaa3a2',4)}
- // Festival dance field
- roundRect(38,365,1124,228,24,'#39595a60');
- for(let i=0;i<45;i++){const x=65+rand(i+400)*1080,y=385+rand(i+600)*160;ctx.fillStyle=['#ddf49a','#a3d7df','#fa9fa8'][i%3];ctx.globalAlpha=.32;ctx.beginPath();ctx.arc(x,y,rand(i+12)*3+1,0,7);ctx.fill()}ctx.globalAlpha=1;
- // Rest area
- roundRect(22,603,1156,184,22,'#446a59','#628473');txt('CHILL OUT • PICNIC GARDEN',600,627,'bold 13px DM Sans, sans-serif','#ccebc2');
- mats.forEach((m,i)=>{ctx.save();ctx.translate(m.x,m.y);ctx.rotate([-.08,.08,.02,-.04,.09][i]);roundRect(-89,-42,178,91,8,m.c,'#e9e3d1');for(let q=-60;q<90;q+=32){ctx.fillStyle='#ffffff52';ctx.fillRect(q,-38,9,80)}ctx.strokeStyle='#ffffff80';ctx.strokeRect(-77,-32,154,64);ctx.restore()});
- // decorations string lights
- for(let i=0;i<13;i++){const x=22+i*96,y=593+Math.sin(i*.6)*8;line(x,y,x+96,593+Math.sin((i+1)*.6)*8,'#657c62',2);ctx.fillStyle=['#ffb0bb','#dbf88e','#a4dcfa'][i%3];ctx.beginPath();ctx.arc(x,y,5,0,7);ctx.fill()}
- // Firefly particles
- for(let i=0;i<25;i++){const x=rand(i+82)*1200,y=356+rand(i+120)*400;ctx.fillStyle='#efffb8';ctx.globalAlpha=.15+.25*(1+Math.sin(t*.003+i))/2;ctx.fillRect(x+Math.sin(t*.001+i)*7,y,3,3)}ctx.globalAlpha=1;
- // decorative crowd at front
- for(let i=0;i<26;i++){const x=45+i*44,y=353+rand(i+33)*34;ctx.fillStyle='#172a38';ctx.beginPath();ctx.arc(x,y,8,0,7);ctx.fill();roundRect(x-9,y+7,18,16,3,['#7e678a','#4b7a83','#9d786f'][i%3])}
- // users, bottom sorted
- [...state.players.values()].sort((a,b)=>a.y-b.y).forEach(p=>drawPerson(p,t));
- // visible entry points
- for(let i=0;i<2;i++){const x=i?1145:55;roundRect(x-37,491,74,40,6,'#1f343a','#9bb69c');txt(i?'EXIT':'ENTRY',x,516,'bold 12px DM Sans','#d8ffab')}
+document.addEventListener('keydown',e=>{if(e.target instanceof HTMLInputElement)return;let k=e.key.toLowerCase();if(k.startsWith('arrow')||k===' ')e.preventDefault();state.keys.add(k);let acts={'1':'peace','2':'jump','3':'run','4':'wave','5':'bow','6':'sit','7':'lie'};if(acts[k]&&!e.repeat)react(acts[k])});document.addEventListener('keyup',e=>state.keys.delete(e.key.toLowerCase()));window.addEventListener('blur',()=>state.keys.clear());
+document.querySelectorAll('[data-dir]').forEach(b=>{let k={up:'arrowup',down:'arrowdown',left:'arrowleft',right:'arrowright'}[b.dataset.dir];b.addEventListener('pointerdown',e=>{e.preventDefault();state.keys.add(k);b.setPointerCapture(e.pointerId)});for(let ev of ['pointerup','pointercancel','lostpointercapture'])b.addEventListener(ev,()=>state.keys.delete(k))});
+function sendMove(){if(!state.id||!state.me)return;let p=state.me;post('move',{id:state.id,x:Math.round(p.x),y:Math.round(p.y),facing:p.facing,action:p.action}).catch(()=>{})}
+// ===== 3D SPACE =====
+const host=$('world');const scene=new THREE.Scene();scene.background=new THREE.Color('#10172a');scene.fog=new THREE.FogExp2('#10172a',.010);
+const camera=new THREE.PerspectiveCamera(56,1,.1,350);camera.position.set(0,27,39);
+const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});renderer.setPixelRatio(Math.min(devicePixelRatio,1.7));renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.outputColorSpace=THREE.SRGBColorSpace;host.appendChild(renderer.domElement);
+const controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.dampingFactor=.07;controls.minDistance=11;controls.maxDistance=75;controls.maxPolarAngle=Math.PI/2.12;controls.target.set(0,1,4);controls.enablePan=false;
+const hemi=new THREE.HemisphereLight('#a4bcff','#2e442e',2.2);scene.add(hemi);const moon=new THREE.DirectionalLight('#e1ecff',2.6);moon.position.set(-20,35,25);moon.castShadow=true;moon.shadow.mapSize.set(1024,1024);moon.shadow.camera.left=-55;moon.shadow.camera.right=55;moon.shadow.camera.top=55;moon.shadow.camera.bottom=-55;scene.add(moon);
+const mat=(c,roughness=.83,emissive=null)=>new THREE.MeshStandardMaterial({color:c,roughness,metalness:roughness<.5?.22:0,emissive:emissive||'#000000',emissiveIntensity:emissive?.8:0});
+const dark=mat('#17192b'),metal=mat('#525875',.35),grass=mat('#34554b'),wood=mat('#293344'),skin=mat('#edbd9e');
+function cube(w,h,d,m,x,y,z,cast=true){let o=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);o.position.set(x,y,z);o.castShadow=cast;o.receiveShadow=true;scene.add(o);return o}
+function sphere(r,m,x,y,z){let o=new THREE.Mesh(new THREE.SphereGeometry(r,12,10),m);o.position.set(x,y,z);o.castShadow=true;scene.add(o);return o}
+function cylinder(rt,rb,h,m,x,y,z){let o=new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,h,14),m);o.position.set(x,y,z);o.castShadow=true;scene.add(o);return o}
+function label(str,size=100,color='#ffffff',bg='#22283b'){let cv=document.createElement('canvas');cv.width=512;cv.height=128;let c=cv.getContext('2d');c.fillStyle=bg;c.fillRect(0,0,512,128);c.fillStyle=color;c.font=`900 ${size}px Arial`;c.textAlign='center';c.textBaseline='middle';c.fillText(str,256,67);let tex=new THREE.CanvasTexture(cv);tex.colorSpace=THREE.SRGBColorSpace;return new THREE.MeshBasicMaterial({map:tex,transparent:true,side:THREE.DoubleSide})}
+const floor=cube(76,.4,62,grass,0,-.24,6);floor.receiveShadow=true;
+// Main stage faces the audience: far north = negative z.
+cube(39,1.6,13,dark,0,1,-24);cube(41,1.1,1,metal,0,2,-17.2);cube(40,1.5,1,dark,0,10,-30);cube(1,10,1,metal,-19,6,-30);cube(1,10,1,metal,19,6,-30);cube(40,9,.6,dark,0,6,-30);
+const sign=new THREE.Mesh(new THREE.PlaneGeometry(21,5),label('LOUD LAND',74,'#dcfd8b','#18172e'));sign.position.set(0,8.3,-29.55);scene.add(sign);
+for(let x=-19;x<=19;x+=2.2){cube(.13,8,.13,metal,x,6,-29.2,false);let bulb=sphere(.19,mat(['#ff5b98','#bc9dff','#deff8c','#68e6f3'][Math.round((x+19)/2.2)%4],.2,'#ffffff'),x,10.2,-28);bulb.material.emissiveIntensity=1.2}
+for(let s of [-1,1]){for(let j=0;j<2;j++){let x=s*16,z=-24+j*3;cube(3.5,4,2.4,dark,x,4.25,z);for(let dy of [3.1,5.2]){let o=cylinder(1,1,.16,metal,x,dy,z+1.26);o.rotation.x=Math.PI/2;let p=cylinder(.72,.72,.17,mat('#0d0e1b'),x,dy,z+1.4);p.rotation.x=Math.PI/2}}}
+// drum kit + guitars on stage
+cylinder(1.45,1.45,1.2,mat('#d671c0',.5),0,3.2,-24);for(let x of [-2,2]){cylinder(.8,.8,.7,mat('#94bbfe'),x,3.6,-25);cylinder(.07,.07,3,metal,x*1.3,3.8,-25)}
+for(let x of [-7,7]){cylinder(.12,.12,3.2,metal,x,4,-23.2);sphere(.18,mat('#fcf6d5'),x,5.65,-23.2)}
+// Crowd barrier
+for(let x=-26;x<=26;x+=3){cube(.11,1.45,.11,metal,x,.9,-13);if(x<26)cube(3,.13,.13,metal,x+1.5,1.48,-13)}
+// Walkway and picnic area
+cube(69,.05,1.5,mat('#566c58'),0,.04,10,false);cube(70,.06,22,mat('#466858'),0,.03,23,false);
+const matPositions=mats.map(m=>({x:(m.x-600)*.058,z:((m.y-500)*.058)+8,c:m.c}));matPositions.forEach((m,i)=>{let blanket=cube(8,.10,5.6,mat(m.c),m.x,.13,m.z);blanket.rotation.y=[-.12,.10,0,-.08,.12][i];for(let s of [-1,1])cube(7.8,.025,.12,mat('#ffffff'),m.x,.2,m.z+s*2.2,false)});
+// trees, lanterns, food stalls
+for(let x of [-34,34])for(let z of [-9,9,23]){cylinder(.45,.65,5,wood,x,2.5,z);sphere(2.7,mat('#477f63'),x,6,z);sphere(1.7,mat('#5a9a70'),x+1.7,5.7,z-1)}
+for(let x of [-27,27]){cube(5,2.8,3,mat('#bc7097'),x,1.6,15);cube(5.8,.35,4.1,mat('#f4c783'),x,3.2,15);let banner=new THREE.Mesh(new THREE.PlaneGeometry(4,1.1),label(x<0?'SNACKS':'MERCH',70,'#fbe9dc','#9e446f'));banner.position.set(x,2.2,16.56);scene.add(banner)}
+const stageLights=[];for(let i=0;i<7;i++){let x=-17+i*5.6;let l=new THREE.SpotLight(['#ff64a5','#8c84ff','#c4fb79','#68e8f3'][i%4],110,65,.50,.65);l.position.set(x,9,-19);l.target.position.set(x*.65,0,0);scene.add(l,l.target);stageLights.push(l)}
+for(let i=0;i<55;i++){let x=(Math.sin(i*44.7)*.5+.5)*66-33,z=(Math.sin(i*21.8)*.5+.5)*40-10;if(z<12&&z>-8){let c=sphere(.10,mat(['#d9ee98','#d78bae','#8cc5eb'][i%3]),x,.1,z);c.castShadow=false}}
+// Low-poly avatars: all parts genuinely 3D objects
+function makeAvatar(p){let root=new THREE.Group();scene.add(root);const shirt=mat(p.color),pants=mat('#232638'),hair=mat('#302637');const parts={};
+function part(name,geo,m,x,y,z,parent=root){let o=new THREE.Mesh(geo,m);o.position.set(x,y,z);o.castShadow=true;parent.add(o);parts[name]=o;return o}
+part('torso',new THREE.BoxGeometry(1.05,1.1,.54),shirt,0,1.55,0);part('head',new THREE.SphereGeometry(.43,12,10),skin,0,2.48,0);part('hair',new THREE.SphereGeometry(.44,12,8,0,Math.PI*2,0,Math.PI*.43),hair,0,2.64,0);part('leftArm',new THREE.BoxGeometry(.31,.98,.35),skin,-.74,1.50,0);part('rightArm',new THREE.BoxGeometry(.31,.98,.35),skin,.74,1.5,0);part('leftLeg',new THREE.BoxGeometry(.36,.95,.42),pants,-.28,.49,0);part('rightLeg',new THREE.BoxGeometry(.36,.95,.42),pants,.28,.49,0);part('shoeL',new THREE.BoxGeometry(.42,.19,.65),dark,-.28,.12,-.13);part('shoeR',new THREE.BoxGeometry(.42,.19,.65),dark,.28,.12,-.13);
+let labelText=p.name||'ROCKER';let tag=new THREE.Sprite(new THREE.SpriteMaterial({map:(()=>{let c=document.createElement('canvas');c.width=256;c.height=64;let g=c.getContext('2d');g.fillStyle=p.id===state.id?'#ddff89':'#202c44';g.fillRect(0,0,256,64);g.fillStyle=p.id===state.id?'#162323':'#ffffff';g.font='bold 29px Arial';g.textAlign='center';g.fillText(labelText.slice(0,16),128,44);return new THREE.CanvasTexture(c)})(),transparent:true,depthTest:false}));tag.scale.set(3.6,.9,1);tag.position.y=3.4;root.add(tag);return {root,parts,color:p.color}}
+function toWorld(p){return {x:(p.x-600)*.058,z:(p.y-500)*.058+8}}
+function animateAvatar(a,p,t){const isMe=p.id===state.id&&state.me;const q=isMe?state.me:p,wp=toWorld(q);a.root.position.x+=(wp.x-a.root.position.x)*.38;a.root.position.z+=(wp.z-a.root.position.z)*.38;let act=q.action||'idle',time=t*.001;let bob=act==='jump'?Math.abs(Math.sin(time*8))*1.4:act==='run'?Math.abs(Math.sin(time*12))*.16:0;
+a.root.position.y=bob;let P=a.parts;for(let k of ['leftArm','rightArm','leftLeg','rightLeg'])P[k].rotation.set(0,0,0);a.root.rotation.x=0;
+if(act==='wave'||act==='peace'){P.rightArm.rotation.z=-2.5;P.rightArm.rotation.x=Math.sin(time*7)*.4}
+if(act==='run'){P.leftArm.rotation.x=Math.sin(time*12)*.85;P.rightArm.rotation.x=-Math.sin(time*12)*.85;P.leftLeg.rotation.x=-Math.sin(time*12)*.65;P.rightLeg.rotation.x=Math.sin(time*12)*.65}
+if(act==='bow')a.root.rotation.x=.42;
+if(act==='sit'){a.root.position.y=-.38;P.leftLeg.rotation.x=-1.35;P.rightLeg.rotation.x=-1.35}
+if(act==='lie'){a.root.position.y=-.7;a.root.rotation.x=-Math.PI/2}
+if(act!=='sit'&&act!=='lie'&&act!=='bow')a.root.rotation.y=q.facing===-1?-Math.PI/2:Math.PI/2;
 }
-function drawPerson(p,t){const x=p.id===state.id?state.me.x:p.x,y=p.id===state.id?state.me.y:p.y;const action=p.id===state.id?state.me.action:p.action;let jump=action==='jump'?Math.abs(Math.sin(t*.013))*34:0;let bob=action==='run'?Math.sin(t*.032)*5:Math.sin(t*.004+(x%10))*.8;const lie=action==='lie',sit=action==='sit',bow=action==='bow';ctx.save();ctx.translate(x,y-jump+bob);
-ctx.fillStyle='#15242a55';ctx.beginPath();ctx.ellipse(0,4,18,6,0,0,7);ctx.fill();if(lie){ctx.rotate(-Math.PI/2);ctx.translate(0,-12)}
-if(!lie){line(-7,-20,-9+(action==='run'?-6*Math.sin(t*.03):0),-2,'#202333',6);line(7,-20,9+(action==='run'?6*Math.sin(t*.03):0),-2,'#202333',6)}
-ctx.fillStyle=p.color;roundRect(-14,-46,28,sit?20:30,7,p.color,'#34404c');
-const wave=action==='wave'||action==='peace',spread=wave?14:0;line(-13,-38,-22,-23,'#f0bf9e',6);line(13,-38,23+spread,-(wave?61:23),'#f0bf9e',6);
-if(wave){txt(action==='peace'?'✌':'✋',28+spread,-58,'19px sans-serif','#fff')}
-ctx.fillStyle='#f2c39e';ctx.beginPath();ctx.ellipse(0,bow?-56:-56,12,13,bow?.65:0,0,7);ctx.fill();ctx.fillStyle='#332839';ctx.beginPath();ctx.ellipse(0,-62,12,8,0,Math.PI,Math.PI*2);ctx.fill();ctx.fillStyle='#23222a';ctx.fillRect(-5,-57,2,2);ctx.fillRect(5,-57,2,2);
-if(sit){line(-9,-23,-19,-11,'#202333',5);line(9,-23,19,-11,'#202333',5)}
-ctx.restore();roundRect(x-44,y-jump-(lie?75:91),88,19,5,p.id===state.id?'#d8fc79':'#151c31cc');txt(p.name||'ROCKER',x,y-jump-(lie?62:78),'bold 11px DM Sans, sans-serif',p.id===state.id?'#1d2730':'#f6f7fb');if(p.id===state.id){ctx.strokeStyle='#d8ff77';ctx.lineWidth=2;ctx.beginPath();ctx.arc(x,y+3,23,0,Math.PI*2);ctx.stroke()}}
-function tick(t){if(state.me){let dx=0,dy=0;const k=state.keys;dx+=(k.has('d')||k.has('arrowright'))?1:0;dx-=(k.has('a')||k.has('arrowleft'))?1:0;dy+=(k.has('s')||k.has('arrowdown'))?1:0;dy-=(k.has('w')||k.has('arrowup'))?1:0;if(dx||dy){const n=Math.hypot(dx,dy),speed=state.action==='run'?5.1:3.1;state.me.x=Math.max(30,Math.min(1170,state.me.x+dx/n*speed));state.me.y=Math.max(345,Math.min(745,state.me.y+dy/n*speed));if(dx)state.me.facing=dx>0?1:-1;if(['sit','lie'].includes(state.action)){state.action='idle';state.me.action='idle';$documentActive('')}}if(t>state.actionUntil&&state.action!=='idle'){state.action='idle';state.me.action='idle';$documentActive('')}if(t-state.lastSent>100){state.lastSent=t;sendMove()}}
- drawWorld(t);requestAnimationFrame(tick)}requestAnimationFrame(tick);
-setInterval(()=>{syncVideo();const m=state.music;if(!m.id)return;const seconds=m.paused?m.position:(Date.now()+state.serverDelta-m.startedAt)/1000;const length=state.ytReady?state.yt.getDuration():0;$('progressFill').style.width=length?Math.min(100,seconds/length*100)+'%':'0%'},5000);
-window.addEventListener('pagehide',()=>{if(state.id&&navigator.sendBeacon){navigator.sendBeacon('/api/leave',new Blob([JSON.stringify({id:state.id})],{type:'application/json'}))}});
-})();
+function tick(t){if(state.me){let dx=0,dy=0,k=state.keys;dx+=+(k.has('d')||k.has('arrowright'))-+(k.has('a')||k.has('arrowleft'));dy+=+(k.has('s')||k.has('arrowdown'))-+(k.has('w')||k.has('arrowup'));if(dx||dy){let n=Math.hypot(dx,dy),speed=state.action==='run'?5:3.2;state.me.x=Math.max(30,Math.min(1170,state.me.x+dx/n*speed));state.me.y=Math.max(345,Math.min(745,state.me.y+dy/n*speed));if(dx)state.me.facing=dx>0?1:-1;if(['sit','lie'].includes(state.action)){state.action='idle';state.me.action='idle'}}if(t>state.actionUntil&&state.action!=='idle'){state.action='idle';state.me.action='idle';document.querySelectorAll('[data-action]').forEach(b=>b.classList.remove('active'))}if(t-state.lastSent>110){state.lastSent=t;sendMove()}}
+for(let [id,p] of state.players){if(!avatars.has(id)){let a=makeAvatar(p),pos=toWorld(p);a.root.position.set(pos.x,0,pos.z);avatars.set(id,a)}animateAvatar(avatars.get(id),p,t)}for(let [id,a] of avatars)if(!state.players.has(id)){scene.remove(a.root);a.root.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material?.map)o.material.map.dispose();if(o.material)o.material.dispose()});avatars.delete(id)}
+stageLights.forEach((l,i)=>{l.intensity=100+35*Math.sin(t*.0019+i*2);l.target.position.x=(-17+i*5.6)*.65+Math.sin(t*.001+i)*7});controls.update();renderer.render(scene,camera);requestAnimationFrame(tick)}
+function resize(){let w=host.clientWidth,h=host.clientHeight;if(!w||!h)return;camera.aspect=w/h;camera.updateProjectionMatrix();renderer.setSize(w,h,false)}new ResizeObserver(resize).observe(host);resize();requestAnimationFrame(tick);
+setInterval(()=>{syncVideo();let m=state.music;if(!m.id)return;let sec=m.paused?m.position:(Date.now()+state.serverDelta-m.startedAt)/1000;let dur=state.ytReady?state.yt.getDuration():0;$('progressFill').style.width=dur?Math.min(100,sec/dur*100)+'%':'0%'},5000);
+window.addEventListener('pagehide',()=>{if(state.id)navigator.sendBeacon('/api/leave',new Blob([JSON.stringify({id:state.id})],{type:'application/json'}))});
+
+const ytScript=document.createElement('script');ytScript.src='https://www.youtube.com/iframe_api';document.head.appendChild(ytScript);
