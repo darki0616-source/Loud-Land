@@ -8,18 +8,18 @@ let chosenColor=palette[0],toastTimer;const avatars=new Map();
 function toast(msg){$('toast').textContent=msg;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('show'),3000)}
 function colorPicker(){let r=$('colorPicker');r.innerHTML='';palette.forEach(c=>{let b=document.createElement('button');b.style.background=c;b.className=c===chosenColor?'selected':'';b.setAttribute('aria-label','티셔츠 '+c);b.onclick=()=>{chosenColor=c;colorPicker()};r.append(b)})}colorPicker();
 async function post(ep,data){let r=await fetch('/api/'+ep,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(data)});let d=await r.json();if(!r.ok)throw Error(d.error||'서버 오류');return d}
-function applyMusic(m,serverNow,queue){state.music=m;if(Array.isArray(queue))state.queue=queue;renderQueue();if(serverNow)state.serverDelta=serverNow-Date.now();$('songTitle').textContent=m.id?m.title||'YOUTUBE LIVE TRACK':'NO TRACK SELECTED';$('songCredit').textContent=m.id?`DJ ${m.changedBy||'UNKNOWN'} · ${m.paused?'일시정지':'재생 중'}`:'첫 번째 DJ가 되어보세요';$('screenPlaceholder').style.display=m.id?'none':'flex';syncVideo(true)}
+function applyMusic(m,serverNow,queue){state.music=m;if(Array.isArray(queue))state.queue=queue;renderQueue();if(serverNow)state.serverDelta=serverNow-Date.now();$('songTitle').textContent=m.id?m.title||'유튜브 영상':'등록된 음악 없음';$('songCredit').textContent=m.id?`DJ ${m.changedBy||'알 수 없음'} · ${m.paused?'일시정지':'재생 중'}`:'첫 번째 DJ가 되어보세요';$('screenPlaceholder').style.display=m.id?'none':'flex';syncVideo(true)}
 
 function renderQueue(){let el=$('queueList');if(!el)return;el.replaceChildren();if(!state.queue.length){let item=document.createElement('li');item.textContent='대기 중인 곡이 없습니다';el.append(item);return}state.queue.forEach((track,index)=>{let li=document.createElement('li');li.textContent=`${index+1}. ${track.title} · ${track.addedBy}`;el.append(li)})}
 let reportedToken=0;
 function reportDuration(){if(!state.id||!state.ytReady||!state.music.id)return;const duration=state.yt.getDuration();if(duration>1&&reportedToken!==state.music.token){reportedToken=state.music.token;post('music',{id:state.id,command:'duration',token:state.music.token,duration}).catch(()=>{})}}
-function syncVideo(force=false){let m=state.music;if(!m.id||!state.ytReady)return;let sec=m.paused?m.position:Math.max(0,(Date.now()+state.serverDelta-m.startedAt)/1000);try{if(state.lastTrack!==String(m.token)+':'+m.id){state.lastTrack=String(m.token)+':'+m.id;reportedToken=0;state.yt.cueVideoById({videoId:m.id,startSeconds:sec});if(state.audioEnabled&&!m.paused)state.yt.playVideo();return}if(force||Math.abs(state.yt.getCurrentTime()-sec)>3)state.yt.seekTo(sec,true);if(state.audioEnabled){if(m.paused)state.yt.pauseVideo();else if(state.yt.getPlayerState()!==1)state.yt.playVideo()}else state.yt.pauseVideo()}catch(e){console.warn(e)}}
+function syncVideo(force=false){let m=state.music;if(!m.id||!state.ytReady)return;let sec=m.paused?m.position:Math.max(0,(Date.now()+state.serverDelta-m.startedAt)/1000);try{if(state.lastTrack!==String(m.token)+':'+m.id){state.lastTrack=String(m.token)+':'+m.id;reportedToken=0;if(state.audioEnabled&&!m.paused){state.yt.loadVideoById({videoId:m.id,startSeconds:sec});state.yt.unMute()}else state.yt.cueVideoById({videoId:m.id,startSeconds:sec});return}if(force||Math.abs(state.yt.getCurrentTime()-sec)>3)state.yt.seekTo(sec,true);if(state.audioEnabled){if(m.paused)state.yt.pauseVideo();else if(state.yt.getPlayerState()!==1)state.yt.playVideo()}else state.yt.pauseVideo()}catch(e){console.warn(e)}}
 window.onYouTubeIframeAPIReady=()=>{state.yt=new YT.Player('youtubePlayer',{height:'100%',width:'100%',playerVars:{playsinline:1,controls:1,rel:0,origin:location.origin},events:{onReady:()=>{state.ytReady=true;syncVideo(true)},onStateChange:e=>{if(e.data===YT.PlayerState.PLAYING||e.data===YT.PlayerState.CUED)reportDuration();if(e.data===YT.PlayerState.ENDED&&state.id&&state.music.id)post('music',{id:state.id,command:'ended',token:state.music.token}).catch(()=>{})},onError:()=>toast('영상이 임베드 재생을 허용하지 않습니다')}})};
-async function musicCommand(command,extra={}){if(!state.id)return toast('먼저 입장해주세요');try{let d=await post('music',{id:state.id,command,...extra});if(command!=='pause')state.audioEnabled=true;applyMusic(d.music,d.serverNow,d.queue);toast('공유 음악이 업데이트되었습니다')}catch(e){toast(e.message)}}
-$('playLink').onclick=()=>musicCommand('enqueue',{url:$('videoUrl').value});$('pauseMusic').onclick=()=>musicCommand('pause');$('resumeMusic').onclick=()=>musicCommand('resume');$('skipMusic').onclick=()=>musicCommand('skip');$('enableAudio').onclick=()=>{state.audioEnabled=true;syncVideo(true);toast('이 기기의 소리 재생을 허용했습니다')};$('videoUrl').addEventListener('keydown',e=>{if(e.key==='Enter')$('playLink').click()});
+async function musicCommand(command,extra={}){if(!state.id)return toast('먼저 입장해주세요');try{let d=await post('music',{id:state.id,command,...extra});applyMusic(d.music,d.serverNow,d.queue);toast('공유 음악이 업데이트되었습니다')}catch(e){toast(e.message)}}
+$('playLink').onclick=()=>musicCommand('enqueue',{url:$('videoUrl').value});$('pauseMusic').onclick=()=>musicCommand('pause');$('resumeMusic').onclick=()=>musicCommand('resume');$('skipMusic').onclick=()=>musicCommand('skip');$('enableAudio').onclick=()=>{state.audioEnabled=true;try{state.yt?.unMute()}catch(e){}syncVideo(true);toast('이 기기의 소리를 켰어요')};$('videoUrl').addEventListener('keydown',e=>{if(e.key==='Enter')$('playLink').click()});
 function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='snapshot'){state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;applyMusic(d.music,d.serverNow,d.queue)}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count}else if(d.type==='move'){state.players.set(d.player.id,d.player)}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue)}}
-async function join(){try{let d=await post('join',{name:$('nick').value.trim()||'ROCKER',color:chosenColor});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);state.players=new Map(d.players.map(p=>[p.id,p]));$('joinModal').classList.add('hidden');$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='3D FESTIVAL GOER';$('avatarPreview').querySelector('b').style.background=chosenColor;applyMusic(d.music,d.serverNow,d.queue);listen();toast('WELCOME TO LOUD LAND 3D!')}catch(e){$('joinError').textContent=e.message}}
-$('joinBtn').onclick=join;$('nick').onkeydown=e=>{if(e.key==='Enter')join()};$('editAvatar').onclick=()=>{if(state.id){post('leave',{id:state.id}).catch(()=>{});state.es?.close();state.id=null;state.me=null;state.players.clear()}$('joinModal').classList.remove('hidden')};$('helpBtn').onclick=()=>toast('WASD 이동 · 마우스 드래그로 카메라 회전 · 휠 줌 · 숫자 1~7 리액션');
+async function join(){try{let d=await post('join',{name:$('nick').value.trim()||'ROCKER',color:chosenColor});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);state.players=new Map(d.players.map(p=>[p.id,p]));$('joinModal').classList.add('hidden');$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='페스티벌 참가 중';$('avatarPreview').querySelector('b').style.background=chosenColor;applyMusic(d.music,d.serverNow,d.queue);listen();$('audioModal').classList.remove('hidden');toast('LOUD LAND에 오신 것을 환영합니다!')}catch(e){$('joinError').textContent=e.message}}
+$('audioYes').onclick=()=>{state.audioEnabled=true;$('audioModal').classList.add('hidden');if(state.ytReady){try{state.yt.unMute();state.yt.setVolume(75)}catch(e){}}syncVideo(true);toast(state.music.id?'음악 재생을 허용했어요':'음악이 등록되면 바로 재생돼요')};$('audioNo').onclick=()=>{state.audioEnabled=false;$('audioModal').classList.add('hidden');try{state.yt?.pauseVideo()}catch(e){}toast('음악을 끈 상태로 입장했어요')};$('joinBtn').onclick=join;$('nick').onkeydown=e=>{if(e.key==='Enter')join()};$('editAvatar').onclick=()=>{if(state.id){post('leave',{id:state.id}).catch(()=>{});state.es?.close();state.id=null;state.me=null;state.players.clear()}$('joinModal').classList.remove('hidden')};$('helpBtn').onclick=()=>toast('WASD 이동 · 클릭/터치 이동 · 드래그 시점 회전 · 1~7 리액션');
 function react(a){if(!state.me)return;if(state.action===a&&a==='jump'){state.action='idle';state.actionUntil=0;state.me.action='idle';document.querySelectorAll('[data-action]').forEach(b=>b.classList.remove('active'));sendMove();return;}const near=mats.some(m=>Math.hypot(state.me.x-m.x,state.me.y-m.y)<105);if(['sit','lie'].includes(a)&&!near)return toast('뒤쪽 돗자리 가까이에서 앉거나 누울 수 있어요');if(['sit','lie'].includes(a)){let mat=mats.reduce((u,v)=>Math.hypot(state.me.x-u.x,state.me.y-u.y)<Math.hypot(state.me.x-v.x,state.me.y-v.y)?u:v);state.me.x=mat.x;state.me.y=mat.y}state.action=a;state.actionUntil=['sit','lie','jump'].includes(a)?Infinity:performance.now()+1350;state.me.action=a; if(['sit','lie'].includes(a))state.walkTarget=null; document.querySelectorAll('[data-action]').forEach(b=>b.classList.toggle('active',b.dataset.action===a));sendMove()}
 document.querySelectorAll('[data-action]').forEach(b=>b.onclick=()=>react(b.dataset.action));
 document.addEventListener('keydown',e=>{if(e.target instanceof HTMLInputElement)return;let k=e.key.toLowerCase();if(k.startsWith('arrow')||k===' ')e.preventDefault();state.keys.add(k);let acts={'1':'peace','2':'jump','3':'run','4':'wave','5':'bow','6':'sit','7':'lie'};if(acts[k]&&!e.repeat)react(acts[k])});document.addEventListener('keyup',e=>state.keys.delete(e.key.toLowerCase()));window.addEventListener('blur',()=>state.keys.clear());
@@ -68,16 +68,54 @@ let hand=new THREE.Group();hand.position.set(0,-.56,0);parts.rightArm.add(hand);
 let fingerMat=skin;let palm=new THREE.Mesh(new THREE.SphereGeometry(.19,12,10),fingerMat);palm.scale.set(1,.7,.7);hand.add(palm);
 for(const x of [-.13,.13]){let finger=new THREE.Mesh(new THREE.CapsuleGeometry(.055,.29,5,8),fingerMat);finger.position.set(x,-.29,0);hand.add(finger)}
 let thumb=new THREE.Mesh(new THREE.CapsuleGeometry(.06,.13,5,8),fingerMat);thumb.position.set(.13,.04,.12);thumb.rotation.z=.95;hand.add(thumb);hand.visible=false;
-part('eyeL',new THREE.SphereGeometry(.055,10,8),dark,-.16,2.49,.38);part('eyeR',new THREE.SphereGeometry(.055,10,8),dark,.16,2.49,.38);let labelText=p.name||'ROCKER';let tag=new THREE.Sprite(new THREE.SpriteMaterial({map:(()=>{let c=document.createElement('canvas');c.width=256;c.height=64;let g=c.getContext('2d');g.fillStyle=p.id===state.id?'#ddff89':'#202c44';g.fillRect(0,0,256,64);g.fillStyle=p.id===state.id?'#162323':'#ffffff';g.font='bold 29px Arial';g.textAlign='center';g.fillText(labelText.slice(0,16),128,44);return new THREE.CanvasTexture(c)})(),transparent:true,depthTest:false}));tag.scale.set(3.6,.9,1);tag.position.y=3.4;root.add(tag);return {root,parts,color:p.color}}
+part('eyeL',new THREE.SphereGeometry(.055,10,8),dark,-.16,2.49,.38);part('eyeR',new THREE.SphereGeometry(.055,10,8),dark,.16,2.49,.38);let labelText=p.name||'ROCKER';let tag=new THREE.Sprite(new THREE.SpriteMaterial({map:(()=>{let c=document.createElement('canvas');c.width=256;c.height=64;let g=c.getContext('2d');g.fillStyle=p.id===state.id?'#ddff89':'#202c44';g.fillRect(0,0,256,64);g.fillStyle=p.id===state.id?'#162323':'#ffffff';g.font='bold 29px Arial';g.textAlign='center';g.fillText(labelText.slice(0,16),128,44);return new THREE.CanvasTexture(c)})(),transparent:true,depthTest:false}));tag.scale.set(3.6,.9,1);tag.position.y=3.4;root.add(tag);
+// Torso rotates from waist, arms from shoulders, head from neck.
+const upper=new THREE.Group();upper.position.y=1.02;root.add(upper);parts.upper=upper;
+for(const k of ['torso','head','hair','eyeL','eyeR','leftArm','rightArm']){const o=parts[k];root.remove(o);upper.add(o);o.position.y-=1.02}
+const neck=new THREE.Group();neck.position.set(0,2.10-1.02,0);upper.add(neck);parts.neck=neck;
+for(const k of ['head','hair','eyeL','eyeR']){const o=parts[k];upper.remove(o);neck.add(o);o.position.y-=(2.10-1.02)}
+for(const side of ['left','right']){let arm=parts[side+'Arm'];const pivot=new THREE.Group();pivot.position.set(side==='left'?-.63:.63,1.96-1.02,0);upper.add(pivot);upper.remove(arm);pivot.add(arm);arm.position.set(side==='left'?-.11:.11,1.5-1.96,0);parts[side+'Shoulder']=pivot}
+// Fingers point upward when the arm is lifted. Extended index and pinky.
+const horns=parts.horns;horns.rotation.z=Math.PI;horns.position.set(0,-.57,0);
+return {root,parts,color:p.color}}
 function toWorld(p){return {x:(p.x-600)*.058,z:(p.y-500)*.058+8}}
-function animateAvatar(a,p,t){const isMe=p.id===state.id&&state.me;const q=isMe?state.me:p,wp=toWorld(q);a.root.position.x+=(wp.x-a.root.position.x)*.38;a.root.position.z+=(wp.z-a.root.position.z)*.38;let act=q.action||'idle',time=t*.001;let bob=act==='jump'?Math.abs(Math.sin(time*8))*1.4:act==='run'?Math.abs(Math.sin(time*12))*.16:0;
-a.root.position.y=bob;let P=a.parts;for(let k of ['leftArm','rightArm','leftLeg','rightLeg'])P[k].rotation.set(0,0,0);a.root.rotation.x=0;
-if(act==='wave'||act==='peace'){P.rightArm.rotation.z=-2.5;P.rightArm.rotation.x=act==='wave'?Math.sin(time*7)*.4:0}if(P.horns)P.horns.visible=act==='peace';
-if(act==='walk'||act==='run'){let pace=act==='run'?12:8;P.leftArm.rotation.x=Math.sin(time*pace)*.85;P.rightArm.rotation.x=-Math.sin(time*pace)*.85;P.leftLeg.rotation.x=-Math.sin(time*pace)*.65;P.rightLeg.rotation.x=Math.sin(time*pace)*.65}
-if(act==='bow')a.root.rotation.x=.42;
-if(act==='sit'){a.root.position.y=-.38;P.leftLeg.rotation.x=-1.35;P.rightLeg.rotation.x=-1.35}
-if(act==='lie'){a.root.position.y=.63;a.root.rotation.x=-Math.PI/2}
-if(act!=='lie') { const yaw=Number(q.facing)||0;let delta=((yaw-a.root.rotation.y+Math.PI*3)%(Math.PI*2))-Math.PI;a.root.rotation.y+=delta*.24; }
+function animateAvatar(a,p,t){
+ const q=p.id===state.id&&state.me?state.me:p,wp=toWorld(q),P=a.parts;
+ a.root.position.x+=(wp.x-a.root.position.x)*.38;
+ a.root.position.z+=(wp.z-a.root.position.z)*.38;
+ const act=q.action||'idle',time=t*.001;
+ a.root.position.y=act==='jump'?Math.abs(Math.sin(time*8))*1.35:act==='run'?Math.abs(Math.sin(time*12))*.14:0;
+ a.root.rotation.x=0;P.upper.rotation.set(0,0,0);P.neck.rotation.set(0,0,0);
+ P.leftShoulder.rotation.set(0,0,0);P.rightShoulder.rotation.set(0,0,0);
+ P.leftLeg.rotation.set(0,0,0);P.rightLeg.rotation.set(0,0,0);
+ P.horns.visible=act==='peace';
+ if(act==='peace'){
+   // Right arm raised clearly above the head, showing the rock-horns hand.
+   P.rightShoulder.rotation.z=2.88;
+   P.rightShoulder.rotation.x=-.16;
+   P.leftShoulder.rotation.z=-.22;
+ }
+ if(act==='wave'){
+   // Right hand high and moving side-to-side from the shoulder.
+   P.rightShoulder.rotation.z=2.35+Math.sin(time*6.5)*.24;
+   P.rightShoulder.rotation.x=Math.sin(time*6.5)*.20;
+   P.leftShoulder.rotation.z=-.10;
+ }
+ if(act==='bow'){
+   // Bow with the upper body and a distinct gentle head nod.
+   const nod=.28+.15*Math.sin(time*5);
+   P.upper.rotation.x=nod;P.neck.rotation.x=.17+.12*Math.sin(time*5);
+ }
+ if(act==='walk'||act==='run'){
+   let pace=act==='run'?12:8;
+   P.leftShoulder.rotation.x=Math.sin(time*pace)*.65;
+   P.rightShoulder.rotation.x=-Math.sin(time*pace)*.65;
+   P.leftLeg.rotation.x=-Math.sin(time*pace)*.58;
+   P.rightLeg.rotation.x=Math.sin(time*pace)*.58;
+ }
+ if(act==='sit'){a.root.position.y=-.38;P.leftLeg.rotation.x=-1.35;P.rightLeg.rotation.x=-1.35}
+ if(act==='lie'){a.root.position.y=.63;a.root.rotation.x=-Math.PI/2}
+ if(act!=='lie'){const yaw=Number(q.facing)||0;let delta=((yaw-a.root.rotation.y+Math.PI*3)%(Math.PI*2))-Math.PI;a.root.rotation.y+=delta*.24}
 }
 // Click or tap the ground to walk; dragging continues to orbit the camera.
 const groundRay=new THREE.Raycaster(), pointer=new THREE.Vector2(), groundPlane=new THREE.Plane(new THREE.Vector3(0,1,0),0), hit=new THREE.Vector3();
