@@ -25,6 +25,22 @@ const clamp=(n,min,max)=>Math.min(max,Math.max(min,Number(n)||0));
 function cleanup(){const now=Date.now();for(const [id,p] of players)if(now-p.seen>35000){players.delete(id);const r=clients.get(id);if(r){r.end();clients.delete(id)}broadcast({type:'leave',id,count:players.size})}}
 setInterval(cleanup,7000).unref();
 function videoId(input){const v=String(input||'').trim();if(/^[\w-]{11}$/.test(v))return v;try{const u=new URL(v);const host=u.hostname.replace(/^www\./,'');if(host==='youtu.be')return /^[\w-]{11}$/.test(u.pathname.slice(1))?u.pathname.slice(1):null;if(['youtube.com','m.youtube.com','music.youtube.com','youtube-nocookie.com'].includes(host)){const id=u.searchParams.get('v')||u.pathname.match(/\/(?:embed|shorts|live)\/([\w-]{11})/)?.[1];return /^[\w-]{11}$/.test(id||'')?id:null}}catch{}return null}
+// Read the actual public YouTube title server-side; never trust a user-submitted title.
+const videoTitleCache = new Map();
+async function getVideoTitle(id){
+  if(videoTitleCache.has(id))return videoTitleCache.get(id);
+  const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),4500);
+  try{
+    const response=await fetch('https://www.youtube.com/oembed?url='+encodeURIComponent('https://www.youtube.com/watch?v='+id)+'&format=json', {signal:controller.signal,headers:{'user-agent':'ONEseason/1.0'}});
+    if(!response.ok)throw Error('metadata unavailable');
+    const data=await response.json();
+    const title=clean(data.title,120);
+    if(!title)throw Error('empty title');
+    videoTitleCache.set(id,title);if(videoTitleCache.size>300)videoTitleCache.delete(videoTitleCache.keys().next().value);
+    return title;
+  }catch{return '제목을 불러올 수 없는 영상';}
+  finally{clearTimeout(timer)}
+}
 async function receive(req){let raw='';for await(const chunk of req){raw+=chunk;if(raw.length>4000)throw new Error('too large')}return JSON.parse(raw||'{}')}
 const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.ico':'image/x-icon'};
 const server=http.createServer(async(req,res)=>{
@@ -63,7 +79,7 @@ const server=http.createServer(async(req,res)=>{
         if(d.command==='enqueue'||d.command==='play'){
           const vid=videoId(d.url||d.videoId);if(!vid)return json(res,400,{error:'유효한 유튜브 링크를 입력하세요.'});
           if(queue.length>=50)return json(res,400,{error:'대기열은 최대 50곡입니다.'});
-          const entry={id:vid,title:clean(d.title,90)||'YOUTUBE '+vid,addedBy:p.name};
+          const entry={id:vid,title:await getVideoTitle(vid),addedBy:p.name};
           // Always append to the shared queue; automatically start when nothing is playing.
           queue.push(entry);if(!music.id)nextTrack();else broadcast({type:'music',...musicState()});
         } else if(d.command==='pause'&&!music.paused&&music.id){music.position=Math.max(0,(Date.now()-music.startedAt)/1000);music.paused=true;broadcast({type:'music',...musicState()})}
