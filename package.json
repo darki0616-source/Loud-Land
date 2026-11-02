@@ -1,0 +1,3 @@
+{
+  "name":"rock-festival-online","version":"1.0.0","private":true,"description":"Multiplayer browser rock festival with YouTube stage and picnic area","scripts":{"start":"node server.js"},"engines":{"node":">=18"}
+}
