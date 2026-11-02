@@ -1,6 +1,8 @@
 import * as THREE from 'https://esm.sh/three@0.160.1';
 import { OrbitControls } from 'https://esm.sh/three@0.160.1/examples/jsm/controls/OrbitControls.js';
 import { CSS3DRenderer, CSS3DObject } from 'https://esm.sh/three@0.160.1/examples/jsm/renderers/CSS3DRenderer.js';
+import { GLTFLoader } from 'https://esm.sh/three@0.160.1/examples/jsm/loaders/GLTFLoader.js';
+import { clone as cloneSkeleton } from 'https://esm.sh/three@0.160.1/examples/jsm/utils/SkeletonUtils.js';
 const $=id=>document.getElementById(id), palette=['#ff747d','#67d8d1','#f9c463','#a8a0ff','#90dd81','#ff9ce1','#72b5ff','#eeeeee'];
 const mats=[{x:125,y:672,c:'#f5a5a3'},{x:355,y:690,c:'#a7def4'},{x:600,y:684,c:'#f5ce80'},{x:855,y:688,c:'#b3d9a0'},{x:1057,y:669,c:'#ceb8f1'}];
 const state={id:null,me:null,players:new Map(),keys:new Set(),action:'idle',actionUntil:0,lastSent:0,es:null,music:{id:'',paused:true,position:0,startedAt:0,token:0},queue:[],serverDelta:0,yt:null,ytReady:false,lastTrack:'',audioEnabled:false,walkTarget:null,moving:false};
@@ -29,12 +31,18 @@ function sendMove(){if(!state.id||!state.me)return;let p=state.me;post('move',{i
 // ===== 3D SPACE =====
 const host=$('world');const scene=new THREE.Scene();scene.background=new THREE.Color('#10172a');scene.fog=new THREE.FogExp2('#10172a',.010);
 const camera=new THREE.PerspectiveCamera(56,1,.1,350);camera.position.set(0,27,39);
-const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});renderer.setPixelRatio(Math.min(devicePixelRatio,1.7));renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.outputColorSpace=THREE.SRGBColorSpace;host.appendChild(renderer.domElement);
+const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});renderer.setPixelRatio(Math.min(devicePixelRatio,1.7));renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.1;host.appendChild(renderer.domElement);
 const cssRenderer=new CSS3DRenderer();cssRenderer.domElement.className='css-world';host.appendChild(cssRenderer.domElement);
 const stageVideo=document.querySelector('#youtubeScreen');stageVideo.classList.add('onstage');
 const stageWebObject=new CSS3DObject(stageVideo);stageWebObject.position.set(0,6.3,-29.12);stageWebObject.scale.set(.015,.015,.015);scene.add(stageWebObject);
 const controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.dampingFactor=.07;controls.minDistance=11;controls.maxDistance=75;controls.maxPolarAngle=Math.PI/2.12;controls.target.set(0,1,4);controls.enablePan=false;
-const hemi=new THREE.HemisphereLight('#a4bcff','#2e442e',2.2);scene.add(hemi);const moon=new THREE.DirectionalLight('#e1ecff',2.6);moon.position.set(-20,35,25);moon.castShadow=true;moon.shadow.mapSize.set(1024,1024);moon.shadow.camera.left=-55;moon.shadow.camera.right=55;moon.shadow.camera.top=55;moon.shadow.camera.bottom=-55;scene.add(moon);
+const hemi=new THREE.HemisphereLight('#a4bcff','#2e442e',1.65);scene.add(hemi);const moon=new THREE.DirectionalLight('#e1ecff',2.6);moon.position.set(-20,35,25);moon.castShadow=true;moon.shadow.mapSize.set(1024,1024);moon.shadow.camera.left=-55;moon.shadow.camera.right=55;moon.shadow.camera.top=55;moon.shadow.camera.bottom=-55;scene.add(moon);
+const MODEL_URL='/models/character.glb';
+let characterAsset=null;let characterLoadFailed=false;
+const loader=new GLTFLoader();
+loader.load(MODEL_URL,g=>{characterAsset=g;for(const a of avatars.values())attachRig(a);},()=>{},()=>{
+  loader.load('https://threejs.org/examples/models/gltf/Soldier.glb',g=>{characterAsset=g;for(const a of avatars.values())attachRig(a);},()=>{},()=>{characterLoadFailed=true;console.info('모델을 불러올 수 없어 기본 3D 캐릭터를 사용합니다.');});
+});
 const mat=(c,roughness=.83,emissive=null)=>new THREE.MeshStandardMaterial({color:c,roughness,metalness:roughness<.5?.22:0,emissive:emissive||'#000000',emissiveIntensity:emissive?.8:0});
 const dark=mat('#17192b'),metal=mat('#525875',.35),grass=mat('#34554b'),wood=mat('#293344'),skin=mat('#edbd9e');
 function cube(w,h,d,m,x,y,z,cast=true){let o=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);o.position.set(x,y,z);o.castShadow=cast;o.receiveShadow=true;scene.add(o);return o}
@@ -214,8 +222,88 @@ function makeAvatar(p){
   const tag=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(tagCanvas),transparent:true,depthTest:false}));
   tag.scale.set(4.8,1.2,1);tag.position.y=4.1;root.add(tag);
 
-  return {root,parts,color:p.color};
+  const avatar={root,parts,color:p.color,gender:p.gender,model:null,mixer:null,rigActions:null,rigBones:null,rigCurrent:null,rigLastTime:0};
+  attachRig(avatar);return avatar;
 }
+
+// Model-based avatar: an animated glTF human, with our rounded avatar as fallback.
+// Optional: add your own rigged character to public/models/character.glb.
+// The bundled visual remains accessible when the public model CDN is offline.
+function attachRig(avatar){
+ if(!characterAsset||avatar.model)return;
+ const model=cloneSkeleton(characterAsset.scene);
+ // Normalize the 3D asset to roughly three meters and put its feet on the floor.
+ const bounds=new THREE.Box3().setFromObject(model);
+ const size=new THREE.Vector3();bounds.getSize(size);
+ const scale=2.8/Math.max(size.y,.01);
+ model.scale.setScalar(scale);
+ model.updateMatrixWorld(true);
+ const resized=new THREE.Box3().setFromObject(model);
+ model.position.y=-resized.min.y;
+ model.traverse(obj=>{
+   if(obj.isMesh){obj.castShadow=true;obj.receiveShadow=true;
+     // Clone materials before tinting so avatars never change one another.
+     if(obj.material)obj.material=Array.isArray(obj.material)?obj.material.map(m=>m.clone()):obj.material.clone();
+     const name=(obj.name||'').toLowerCase();
+     if(obj.material&&!Array.isArray(obj.material)&&obj.material.color&&/shirt|shirt_body|top|jacket|body/.test(name)){
+       obj.material.color.set(avatar.color);
+     }
+   }
+ });
+ // Standalone hair silhouette for model avatars; long/short selectable.
+ const hairMaterial=new THREE.MeshStandardMaterial({color:avatar.gender==='female'?'#33272b':'#27252b',roughness:.88});
+ const hairRoot=new THREE.Group();hairRoot.name='FestivalHair';
+ // Head location estimated from model bounding box; can be replaced with custom hair in artist-authored GLB.
+ const crown=new THREE.Mesh(new THREE.SphereGeometry(.30,16,12),hairMaterial);
+ crown.scale.set(1,.57,.85);crown.position.set(0,2.74,0);hairRoot.add(crown);
+ if(avatar.gender==='female'){
+   const back=new THREE.Mesh(new THREE.CapsuleGeometry(.24,.65,8,12),hairMaterial);
+   back.position.set(0,2.25,-.14);hairRoot.add(back);
+ }
+ // Hair is only shown for custom 3D models that explicitly mark a head attachment.
+ hairRoot.visible=!!model.getObjectByName('FestivalHeadAnchor');
+ model.add(hairRoot);
+ avatar.model=model;avatar.root.add(model);
+ for(const [name,obj] of Object.entries(avatar.parts)){
+   if(name==='neck'||name==='upper'||name==='leftShoulder'||name==='rightShoulder'||name.endsWith('Pivot'))continue;
+   if(obj?.isMesh)obj.visible=false;
+ }
+ // Real glTF animation clips take priority over procedural limb movements.
+ const mixer=new THREE.AnimationMixer(model);
+ const actions={};for(const clip of characterAsset.animations){actions[clip.name.toLowerCase()]=mixer.clipAction(clip)}
+ avatar.mixer=mixer;avatar.rigActions=actions;
+ const bones={};model.traverse(obj=>{if(obj.isBone){const n=obj.name.toLowerCase();
+   for(const [key,re] of Object.entries({leftArm:/leftarm$|leftupperarm$/,rightArm:/rightarm$|rightupperarm$/,leftFore:/leftforearm$/,rightFore:/rightforearm$/,head:/head$/,spine:/spine1$|spine2$|spine$/})){
+    if(re.test(n))bones[key]=obj;
+   }
+ }});avatar.rigBones=bones;
+ setRigAnimation(avatar,'idle');
+}
+function setRigAnimation(a,name){
+ const actions=a.rigActions;if(!actions)return;
+ const nextName=name==='run'?'run':name==='walk'?'walk':'idle';
+ if(nextName===a.rigCurrent)return;
+ const next=actions[nextName]||actions.idle||Object.values(actions)[0];if(!next)return;
+ const old=actions[a.rigCurrent];next.reset().fadeIn(.23).play();if(old&&old!==next)old.fadeOut(.23);
+ a.rigCurrent=nextName;
+}
+function animateRig(a,act,t){
+ if(!a.model||!a.mixer)return;
+ setRigAnimation(a,act);
+ const dt=a.rigLastTime?Math.min(.06,Math.max(0,(t-a.rigLastTime)/1000)):0;a.rigLastTime=t;
+ a.mixer.update(dt);
+ if(act==='peace'||act==='wave'||act==='clap'){
+   // Mixamo-type shoulder and forearm bones support a more anatomically based pose.
+   const b=a.rigBones||{};
+   if(act==='peace'&&b.rightArm){b.rightArm.rotation.z+=-1.45;b.rightArm.rotation.x+=-.35;if(b.rightFore)b.rightFore.rotation.z-=.42}
+   if(act==='wave'&&b.rightArm){b.rightArm.rotation.z+=-1.4+Math.sin(t*.008)*.2;b.rightArm.rotation.x+=.2;if(b.rightFore)b.rightFore.rotation.z+=Math.sin(t*.01)*.25}
+   if(act==='clap'){
+     const beat=Math.cos(t*.012);if(b.leftArm)b.leftArm.rotation.z+=-.65+beat*.24;if(b.rightArm)b.rightArm.rotation.z+=.65-beat*.24;
+     if(b.leftFore)b.leftFore.rotation.y+=-.35;if(b.rightFore)b.rightFore.rotation.y+=.35;
+   }
+ }
+}
+
 // Chat bubbles are true 3D sprites anchored in world coordinates, independent of avatar pose.
 function bubbleTexture(message){
  const canvas=document.createElement('canvas');canvas.width=512;canvas.height=224;
@@ -249,6 +337,7 @@ function animateAvatar(a,p,t){
  a.root.position.x+=(wp.x-a.root.position.x)*.32;
  a.root.position.z+=(wp.z-a.root.position.z)*.32;
  const act=q.action||'idle',time=t*.001;
+ animateRig(a,act,t);
  const moveCycle=(act==='run'?time*11.5:time*7.6);
  const moving=(act==='walk'||act==='run');
  const idleBob=!moving&&act==='idle'?Math.sin(time*2.6)*.04:0;
