@@ -23,9 +23,9 @@ function updateCrowdCount(n){const el=document.getElementById('boardVisitors');i
 function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='snapshot'){state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;updateCrowdCount(d.count);applyMusic(d.music,d.serverNow,d.queue);if(Array.isArray(d.chat)){$('chatMessages').replaceChildren();d.chat.forEach(appendChat)}}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;updateCrowdCount(d.count);if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){appendChat(d.entry);showBubble(d.entry)}else if(d.type==='move'){state.players.set(d.player.id,d.player)}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count;updateCrowdCount(d.count)}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue)}}
 async function join(){try{let d=await post('join',{name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);cameraFollowInitialized=false;state.players=new Map(d.players.map(p=>[p.id,p]));$('joinModal').classList.add('hidden');$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='페스티벌 참가 중';$('avatarPreview').querySelector('b').style.background=chosenColor;applyMusic(d.music,d.serverNow,d.queue);listen();$('audioModal').classList.remove('hidden');showMovementGuide();toast('ONEseason에 오신 것을 환영합니다!')}catch(e){$('joinError').textContent=e.message}}
 $('audioYes').onclick=()=>{state.audioEnabled=true;$('audioModal').classList.add('hidden');if(state.ytReady){try{state.yt.unMute();state.yt.setVolume(75)}catch(e){}}syncVideo(true);toast(state.music.id?'음악 재생을 허용했어요':'음악이 등록되면 바로 재생돼요')};$('audioNo').onclick=()=>{state.audioEnabled=false;$('audioModal').classList.add('hidden');try{state.yt?.pauseVideo()}catch(e){}toast('음악을 끈 상태로 입장했어요')};$('joinBtn').onclick=join;$('nick').onkeydown=e=>{if(e.key==='Enter')join()};$('editAvatar').onclick=()=>{if(state.id){post('leave',{id:state.id}).catch(()=>{});state.es?.close();state.id=null;state.me=null;cameraFollowInitialized=false;state.players.clear()}$('joinModal').classList.remove('hidden')};$('helpBtn').onclick=()=>toast('WASD 이동 · 클릭/터치 이동 · 드래그 시점 회전 · 1~7 리액션');
-function react(a){if(!state.me)return;if(state.action===a&&['jump','run'].includes(a)){state.action='idle';state.actionUntil=0;state.me.action=state.moving?'walk':'idle';document.querySelectorAll('[data-action]').forEach(b=>b.classList.remove('active'));sendMove();return;}const near=mats.some(m=>Math.hypot(state.me.x-m.x,state.me.y-m.y)<105);if(['sit','lie'].includes(a)&&!near)return toast('뒤쪽 돗자리 가까이에서 앉거나 누울 수 있어요');if(['sit','lie'].includes(a)){let mat=mats.reduce((u,v)=>Math.hypot(state.me.x-u.x,state.me.y-u.y)<Math.hypot(state.me.x-v.x,state.me.y-v.y)?u:v);state.me.x=mat.x;state.me.y=mat.y}state.action=a;state.actionUntil=['sit','lie','jump','run'].includes(a)?Infinity:performance.now()+1350;state.me.action=a; if(['sit','lie'].includes(a))state.walkTarget=null; document.querySelectorAll('[data-action]').forEach(b=>b.classList.toggle('active',b.dataset.action===a));sendMove()}
+function react(a){if(!state.me)return;if(state.action===a&&['jump','run'].includes(a)){state.action='idle';state.actionUntil=0;state.me.action=state.moving?'walk':'idle';document.querySelectorAll('[data-action]').forEach(b=>b.classList.remove('active'));sendMove();return;}const near=mats.some(m=>Math.hypot(state.me.x-m.x,state.me.y-m.y)<105);if(['sit','lie'].includes(a)&&!near)return toast('뒤쪽 돗자리 가까이에서 앉거나 누울 수 있어요');// Keep the avatar at its current position when sitting or lying down.state.action=a;state.actionUntil=['sit','lie','jump','run'].includes(a)?Infinity:performance.now()+1350;state.me.action=a; if(['sit','lie'].includes(a))state.walkTarget=null; document.querySelectorAll('[data-action]').forEach(b=>b.classList.toggle('active',b.dataset.action===a));sendMove()}
 document.querySelectorAll('[data-action]').forEach(b=>b.onclick=()=>react(b.dataset.action));
-document.addEventListener('keydown',e=>{if(e.target instanceof HTMLInputElement)return;let k=e.key.toLowerCase();if(k.startsWith('arrow')||k===' ')e.preventDefault();state.keys.add(k);let acts={'1':'peace','2':'jump','3':'run','4':'wave','5':'bow','6':'sit','7':'lie'};if(acts[k]&&!e.repeat)react(acts[k])});document.addEventListener('keyup',e=>state.keys.delete(e.key.toLowerCase()));window.addEventListener('blur',()=>state.keys.clear());
+document.addEventListener('keydown',e=>{if(e.target instanceof HTMLInputElement)return;let k=e.key.toLowerCase();if(k.startsWith('arrow')||k===' ')e.preventDefault();state.keys.add(k);let acts={'1':'peace','2':'jump','3':'run','4':'wave','5':'bow','6':'sit','7':'lie','8':'drink'};if(acts[k]&&!e.repeat)react(acts[k])});document.addEventListener('keyup',e=>state.keys.delete(e.key.toLowerCase()));window.addEventListener('blur',()=>state.keys.clear());
 document.querySelectorAll('[data-dir]').forEach(b=>{let k={up:'arrowup',down:'arrowdown',left:'arrowleft',right:'arrowright'}[b.dataset.dir];b.addEventListener('pointerdown',e=>{e.preventDefault();state.keys.add(k);b.setPointerCapture(e.pointerId)});for(let ev of ['pointerup','pointercancel','lostpointercapture'])b.addEventListener(ev,()=>state.keys.delete(k))});
 function sendMove(){if(!state.id||!state.me)return;let p=state.me;post('move',{id:state.id,x:Math.round(p.x),y:Math.round(p.y),facing:p.facing,action:p.action}).catch(()=>{})}
 // ===== 3D SPACE =====
@@ -116,6 +116,15 @@ for(const k of ['head','hair','hairBack','eyeL','eyeR'].filter(k=>parts[k])){con
 for(const side of ['left','right']){let arm=parts[side+'Arm'];const pivot=new THREE.Group();pivot.position.set(side==='left'?-.63:.63,1.96-1.02,0);upper.add(pivot);upper.remove(arm);pivot.add(arm);arm.position.set(side==='left'?-.11:.11,1.5-1.96,0);parts[side+'Shoulder']=pivot}
 // Fingers point upward when the arm is lifted. Extended index and pinky.
 const horns=parts.horns;horns.rotation.z=Math.PI;horns.position.set(0,-.57,0);
+// A small stylized bottle is attached to the right hand and only visible while drinking.
+const bottle=new THREE.Group();bottle.position.set(0,-.72,.02);parts.rightArm.add(bottle);
+const glass=new THREE.MeshStandardMaterial({color:'#4b8b70',roughness:.27,metalness:.15});
+const body=new THREE.Mesh(new THREE.CylinderGeometry(.105,.13,.4,12),glass);body.position.y=-.16;bottle.add(body);
+const neckBottle=new THREE.Mesh(new THREE.CylinderGeometry(.048,.065,.2,10),glass);neckBottle.position.y=.13;bottle.add(neckBottle);
+const cap=new THREE.Mesh(new THREE.CylinderGeometry(.06,.06,.06,10),mat('#f2c679'));cap.position.y=.25;bottle.add(cap);
+const paper=new THREE.Mesh(new THREE.CylinderGeometry(.135,.135,.15,12),mat('#f4e8c4'));paper.position.y=-.13;bottle.add(paper);
+parts.bottle=bottle;bottle.visible=false;
+
 return {root,parts,color:p.color}}
 // Chat bubbles are true 3D sprites anchored in world coordinates, independent of avatar pose.
 function bubbleTexture(message){
@@ -153,7 +162,7 @@ function animateAvatar(a,p,t){
  a.root.rotation.x=0;P.upper.rotation.set(0,0,0);P.neck.rotation.set(0,0,0);
  P.leftShoulder.rotation.set(0,0,0);P.rightShoulder.rotation.set(0,0,0);
  P.leftLeg.rotation.set(0,0,0);P.rightLeg.rotation.set(0,0,0);
- P.horns.visible=act==='peace';
+ P.horns.visible=act==='peace';P.bottle.visible=act==='drink';
  if(act==='peace'){
    // Right arm raised clearly above the head, showing the rock-horns hand.
    P.rightShoulder.rotation.z=2.88;
@@ -165,6 +174,14 @@ function animateAvatar(a,p,t){
    P.rightShoulder.rotation.z=2.35+Math.sin(time*6.5)*.24;
    P.rightShoulder.rotation.x=Math.sin(time*6.5)*.20;
    P.leftShoulder.rotation.z=-.10;
+ }
+ if(act==='drink'){
+   // Raise the bottle-holding hand to mouth height, then tilt it briefly to sip.
+   const sip=(1+Math.sin(time*5))*.5;
+   P.rightShoulder.rotation.z=1.5+sip*.28;
+   P.rightShoulder.rotation.x=-.9-sip*.15;
+   P.bottle.rotation.z=-.4-sip*.45;
+   P.neck.rotation.x=sip*.09;
  }
  if(act==='clap'){
    // Both hands come together repeatedly in front of the chest.
