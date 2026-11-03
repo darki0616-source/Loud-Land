@@ -737,7 +737,7 @@ function tick(t){
    if(m.phase==='celebrate'){
     // Keep the hop + rock-horns bubble until the user moves, taps, or reacts.
     state.action='slam-celebrate';state.me.action='slam-celebrate';
-   }else if(t-m.started>16500){
+   }else if(t-m.started>35000){
     // Safety timeout for an unreachable approach/retreat; still keep celebrating.
     m.phase='celebrate';m.phaseStarted=t;
     state.action='slam-celebrate';state.me.action='slam-celebrate';sendMove();
@@ -757,8 +757,9 @@ function tick(t){
      }
     }else{
      dx=tx/n;dy=ty/n;
-     // Frame-rate-independent slow retreat, about 2–3 s instead of a sudden dash.
-     speed=m.phase==='charge'?8:Math.min(1.1,Math.max(.1,frameDelta*0.024));
+     // Frame-time-based slam approach: about half the original 8-units/frame speed
+     // at 60 fps, consistent on 30/60/120 Hz screens. Retreat stays unchanged.
+     speed=m.phase==='charge'?Math.min(3.3,frameDelta*0.065):Math.min(1.1,Math.max(.1,frameDelta*0.024));
      state.action=m.phase==='charge'?'slam-charge':'slam-retreat';
      state.me.action=state.action;
     }
