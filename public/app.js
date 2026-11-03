@@ -192,12 +192,12 @@ for(const [button,kind] of [[circleButton,'circle'],[trainButton,'train']]){
 function rockPathAt(m,elapsed){
  const elapsedFraction=Math.min(1,Math.max(0,elapsed/m.duration));
  if(m.kind==='circle'){
-   const angle=elapsedFraction*Math.PI*5 + m.index*2*Math.PI/Math.max(1,m.count);
+   const angle=elapsedFraction*Math.PI*10 + m.index*2*Math.PI/Math.max(1,m.count);
    return {x:m.x+Math.cos(angle)*115,y:m.y+Math.sin(angle)*115,dx:-Math.sin(angle),dy:Math.cos(angle)};
  }
- // Horizontal figure-eight, exactly two complete circuits of the entire path.
+ // Horizontal figure-eight, exactly four complete circuits of the entire path.
  // Small phase offsets make a single-file train rather than spreading participants around it.
- const phase=elapsedFraction*Math.PI*4 - m.index*.115;
+ const phase=elapsedFraction*Math.PI*8 - m.index*.115;
  return {x:m.x+Math.sin(phase)*180,y:m.y+Math.sin(phase*2)*90,dx:180*Math.cos(phase),dy:180*Math.cos(phase*2)};
 }
 function finishRockMotion(){
