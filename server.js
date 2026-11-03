@@ -13,7 +13,7 @@ let pendingSlamImpact=null; // Last launch roster; exactly one shared first-arri
 const SLAM_COUNTDOWN_MS=5000,SLAM_COOLDOWN_MS=15000;
 // Circle pit and shoulder-to-shoulder figure-eight train: server-authoritative join roster.
 const ROCK_COUNTDOWN_MS=5000,ROCK_COOLDOWN_MS=15000;
-const ROCK_DURATIONS={circle:10000,train:18000};
+const ROCK_DURATIONS={circle:20000,train:36000};
 let activeRock=null,rockRunningUntil=0,rockCooldownUntil=0;
 function publicRock(){return activeRock?{id:activeRock.id,kind:activeRock.kind,x:activeRock.x,y:activeRock.y,endAt:activeRock.endAt,participants:[...activeRock.participants]}:null}
 function rockUpdate(){broadcast({type:'rockplay',event:publicRock(),cooldownUntil:rockCooldownUntil,serverNow:Date.now()})}
