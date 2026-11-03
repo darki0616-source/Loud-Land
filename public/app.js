@@ -208,62 +208,91 @@ function updateEnvironment(force=false){
 updateEnvironment(true);
 
 
-// Upgraded stylized 3D characters with visible joints, inspired by the provided rounded doll reference.
+// Rounded chibi avatar: larger soft head, painted-on face, short unified hairstyle,
+// surface-colored clothing, and inexpensive shoulder/elbow/hip/knee rig.
 function makeAvatar(p){
- let root=new THREE.Group();scene.add(root);
- const shirt=mat(p.color,.86),skirtMat=mat('#9c7450',.92),pantsMat=mat('#8b6a49',.92),stocking=mat('#f7f3eb',.96),shoe=mat('#ece8df',.96);
- const hairTone=p.gender==='female'?'#6b4b39':'#4e392d',hair=mat(hairTone,.95),blush=mat('#f7cbbf',.96),eyeMat=new THREE.MeshBasicMaterial({color:'#111111'});
- const parts={};
- const upper=new THREE.Group();upper.position.y=1.08;root.add(upper);parts.upper=upper;
- const torso=new THREE.Mesh(new THREE.CapsuleGeometry(.46,.56,7,14),shirt);torso.scale.set(1.0,1.14,.88);torso.position.y=.28;torso.castShadow=true;upper.add(torso);parts.torso=torso;
- const hemColor=p.gender==='female'?skirtMat:pantsMat;
- let hem=new THREE.Mesh(new THREE.CylinderGeometry(.52,.58,.16,18),hemColor);hem.position.y=-.24;hem.castShadow=true;upper.add(hem);
- parts.hem=hem;
- const neck=new THREE.Group();neck.position.set(0,1.64,0);upper.add(neck);parts.neck=neck;
- const head=new THREE.Mesh(new THREE.SphereGeometry(.66,20,18),new THREE.MeshStandardMaterial({color:'#efd4bf',roughness:.95}));head.scale.y=.95;head.castShadow=true;neck.add(head);parts.head=head;
- const hairCap=new THREE.Mesh(new THREE.SphereGeometry(.69,20,18,0,Math.PI*2,0,Math.PI*.72),hair);hairCap.position.y=.12;hairCap.castShadow=true;neck.add(hairCap);
- const fringe=new THREE.Mesh(new THREE.CapsuleGeometry(.08,.72,4,10),hair);fringe.position.set(0,.18,.47);fringe.rotation.z=Math.PI/2;fringe.castShadow=true;neck.add(fringe);
- const sideL=new THREE.Mesh(new THREE.CapsuleGeometry(.11,.36,4,8),hair);sideL.position.set(-.42,.02,.28);sideL.rotation.z=.2;sideL.castShadow=true;neck.add(sideL);
- const sideR=sideL.clone();sideR.position.x=.42;sideR.rotation.z=-.2;neck.add(sideR);
- if(p.gender==='female'){
-   const backHair=new THREE.Mesh(new THREE.CapsuleGeometry(.33,.78,6,12),hair);backHair.position.set(0,-.08,-.15);backHair.castShadow=true;neck.add(backHair);
-   const sideTailL=new THREE.Mesh(new THREE.CapsuleGeometry(.12,.52,4,8),hair);sideTailL.position.set(-.46,-.12,-.05);sideTailL.rotation.z=.15;sideTailL.castShadow=true;neck.add(sideTailL);
-   const sideTailR=sideTailL.clone();sideTailR.position.x=.46;sideTailR.rotation.z=-.15;neck.add(sideTailR);
+ const root=new THREE.Group();scene.add(root);
+ const parts={}, female=p.gender==='female';
+ const skinMat=mat('#f3d6c2',.96),hair=mat(female?'#685046':'#4b3932',.97);
+ const shirtMat=mat(p.color,.88),bottomColor=female?'#ad816c':'#6c7891';
+ const pantsMat=mat(bottomColor,.9),shoeMat=mat('#f6f3e9',.9);
+ function child(g,geo,m,pos,sc){let o=new THREE.Mesh(geo,m);o.position.set(...pos);if(sc)o.scale.set(...sc);o.castShadow=true;g.add(o);return o}
+ // The torso is one continuous capsule: color on the lower vertices suggests clothes,
+ // without bolted-on pants or skirt geometry.
+ const upper=new THREE.Group();upper.position.y=1.03;root.add(upper);parts.upper=upper;
+ const bodyGeo=new THREE.CapsuleGeometry(.45,.46,8,16);
+ const pa=bodyGeo.attributes.position,colors=[];
+ const topColor=new THREE.Color(p.color),bottom=new THREE.Color(bottomColor);
+ for(let i=0;i<pa.count;i++){const y=pa.getY(i),blend=THREE.MathUtils.smoothstep(y,-.29,-.21);let c=bottom.clone().lerp(topColor,blend);colors.push(c.r,c.g,c.b)}
+ bodyGeo.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
+ const bodyMat=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.88});
+ parts.torso=child(upper,bodyGeo,bodyMat,[0,.33,0],[.94,1.12,.88]);
+ // Head is about as wide as the torso is tall; neck can nod separately.
+ const neck=new THREE.Group();neck.position.set(0,1.12,0);upper.add(neck);parts.neck=neck;
+ const head=child(neck,new THREE.SphereGeometry(.81,26,20),skinMat,[0,.12,0],[1,.96,.93]);parts.head=head;
+ // Flat black eyes and painted-on blush/curved mouth, laid on spherical face surface.
+ const eyeMat=new THREE.MeshBasicMaterial({color:'#101010',side:THREE.DoubleSide});
+ const cheekMat=new THREE.MeshBasicMaterial({color:'#efaaa2',transparent:true,opacity:.44,depthWrite:false,side:THREE.DoubleSide});
+ for(const x of [-.235,.235]){
+   child(neck,new THREE.CircleGeometry(.050,22),eyeMat,[x,.13,.738]);
+   child(neck,new THREE.CircleGeometry(.115,24),cheekMat,[x<0?-.43:.43,-.11,.630],[1,.49,1]);
+ }
+ const smile=new THREE.EllipseCurve(0,0,.084,.046,Math.PI*.08,Math.PI*.92,false,0);
+ const points=smile.getPoints(15);const smileGeo=new THREE.BufferGeometry().setFromPoints(points.map(v=>new THREE.Vector3(v.x,-v.y,0)));
+ const smileLine=new THREE.Line(smileGeo,new THREE.LineBasicMaterial({color:'#533f39'}));smileLine.position.set(0,-.17,.746);neck.add(smileLine);
+ // Smooth hair cap with a few surface-shaped bangs (not a hat).
+ child(neck,new THREE.SphereGeometry(.833,24,18,0,Math.PI*2,0,Math.PI*.46),hair,[0,.16,-.01],[1,1.0,1]);
+ for(const x of [-.39,-.12,.16,.39]){
+   const bang=child(neck,new THREE.SphereGeometry(.20,12,9),hair,[x,.615,.33],[1,.40,.70]);
+ }
+ if(female){
+   // Simple rounded bob, only two full locks and a short back layer.
+   child(neck,new THREE.SphereGeometry(.74,20,14),hair,[0,.005,-.22],[.97,.91,.72]);
+   for(const side of [-1,1])child(neck,new THREE.CapsuleGeometry(.18,.40,5,11),hair,[side*.645,-.27,-.04],[1.02,1.03,.82]);
  }else{
-   const backHair=new THREE.Mesh(new THREE.CapsuleGeometry(.22,.36,5,10),hair);backHair.position.set(0,.03,-.18);backHair.castShadow=true;neck.add(backHair);
+   // Close-fitting side hair visible near ears.
+   for(const side of [-1,1])child(neck,new THREE.SphereGeometry(.22,12,10),hair,[side*.66,.22,-.10],[.72,1.03,.78]);
  }
- for(const x of [-.18,.18]){const eye=new THREE.Mesh(new THREE.CircleGeometry(.055,18),eyeMat);eye.position.set(x,.02,.605);neck.add(eye)}
- for(const x of [-.34,.34]){const cheek=new THREE.Mesh(new THREE.SphereGeometry(.09,10,8),blush);cheek.position.set(x,-.18,.54);neck.add(cheek)}
- const mouth=new THREE.Mesh(new THREE.SphereGeometry(.03,8,6),eyeMat);mouth.scale.set(1,.45,.8);mouth.position.set(0,-.2,.58);neck.add(mouth);
- function makeArm(side){
-   const shoulder=new THREE.Group();shoulder.position.set(side==='left' ? -.6 : .6,1.0,0);upper.add(shoulder);parts[side+'Shoulder']=shoulder;
-   const jointS=new THREE.Mesh(new THREE.SphereGeometry(.12,10,8),shirt);shoulder.add(jointS);
-   const upperArm=new THREE.Mesh(new THREE.CapsuleGeometry(.11,.34,5,10),new THREE.MeshStandardMaterial({color:'#efd4bf',roughness:.95}));upperArm.position.y=-.25;upperArm.castShadow=true;shoulder.add(upperArm);
-   const elbow=new THREE.Group();elbow.position.y=-.52;shoulder.add(elbow);parts[side+'Elbow']=elbow;
-   const jointE=new THREE.Mesh(new THREE.SphereGeometry(.11,10,8),new THREE.MeshStandardMaterial({color:'#efd4bf',roughness:.95}));elbow.add(jointE);
-   const foreArm=new THREE.Mesh(new THREE.CapsuleGeometry(.10,.28,5,10),new THREE.MeshStandardMaterial({color:'#efd4bf',roughness:.95}));foreArm.position.y=-.23;foreArm.castShadow=true;elbow.add(foreArm);
-   const hand=new THREE.Mesh(new THREE.SphereGeometry(.14,12,10),new THREE.MeshStandardMaterial({color:'#efd4bf',roughness:.95}));hand.scale.set(1,.92,.88);hand.position.set(0,-.46,.02);hand.castShadow=true;elbow.add(hand);parts[side+'Hand']=hand;
+ // Minimal articulated limbs: smooth joints tucked inside sleeve/leg, not exposed balls.
+ function arm(side){
+   const direction=side==='left'?-1:1;
+   const shoulder=new THREE.Group();shoulder.position.set(direction*.53,.79,0);upper.add(shoulder);parts[side+'Shoulder']=shoulder;
+   child(shoulder,new THREE.CapsuleGeometry(.137,.22,5,10),shirtMat,[0,-.19,0]);
+   const elbow=new THREE.Group();elbow.position.y=-.40;shoulder.add(elbow);parts[side+'Elbow']=elbow;
+   child(elbow,new THREE.CapsuleGeometry(.106,.18,5,10),skinMat,[0,-.18,0]);
+   const hand=child(elbow,new THREE.SphereGeometry(.133,12,10),skinMat,[0,-.39,.018],[.97,.96,.88]);parts[side+'Hand']=hand;
  }
- function makeLeg(side){
-   const hip=new THREE.Group();hip.position.set(side==='left' ? -.22 : .22,1.18,0);root.add(hip);parts[side+'Hip']=hip;
-   const thigh=new THREE.Mesh(new THREE.CapsuleGeometry(.14,.38,5,10),stocking);thigh.position.y=-.28;thigh.castShadow=true;hip.add(thigh);
-   const knee=new THREE.Group();knee.position.y=-.58;hip.add(knee);parts[side+'Knee']=knee;
-   const calf=new THREE.Mesh(new THREE.CapsuleGeometry(.13,.34,5,10),stocking);calf.position.y=-.25;calf.castShadow=true;knee.add(calf);
-   const foot=new THREE.Mesh(new THREE.CapsuleGeometry(.12,.18,4,8),shoe);foot.position.set(0,-.47,.09);foot.rotation.z=Math.PI/2;foot.scale.y=.72;foot.castShadow=true;knee.add(foot);
+ function leg(side){
+   const direction=side==='left'?-1:1;
+   const hip=new THREE.Group();hip.position.set(direction*.21,1.07,0);root.add(hip);parts[side+'Hip']=hip;
+   child(hip,new THREE.CapsuleGeometry(.16,.27,6,11),pantsMat,[0,-.23,0]);
+   const knee=new THREE.Group();knee.position.y=-.47;hip.add(knee);parts[side+'Knee']=knee;
+   child(knee,new THREE.CapsuleGeometry(.13,.26,5,10),skinMat,[0,-.21,0]);
+   child(knee,new THREE.SphereGeometry(.20,13,10),shoeMat,[0,-.43,.13],[1.02,.62,1.5]);
  }
- makeArm('left');makeArm('right');makeLeg('left');makeLeg('right');
- let labelText=p.name||'ROCKER';let tag=new THREE.Sprite(new THREE.SpriteMaterial({map:(()=>{let c=document.createElement('canvas');c.width=512;c.height=128;let g=c.getContext('2d');g.clearRect(0,0,512,128);g.fillStyle='#ffffff';g.font='900 52px Arial, sans-serif';g.textAlign='center';g.textBaseline='middle';g.fillText(labelText.slice(0,18),256,64,490);return new THREE.CanvasTexture(c)})(),transparent:true,depthTest:false}));tag.scale.set(4.9,1.2,1);tag.position.y=4.55;root.add(tag);parts.tag=tag;
- const horns=new THREE.Group();parts.rightHand.add(horns);parts.horns=horns;horns.position.set(0,.02,.11);horns.rotation.x=.35;horns.visible=false;
- const palm=new THREE.Mesh(new THREE.SphereGeometry(.08,8,6),new THREE.MeshStandardMaterial({color:'#efd4bf',roughness:.95}));palm.scale.set(1,.7,.85);horns.add(palm);
- for(const x of [-.07,.07]){const finger=new THREE.Mesh(new THREE.CapsuleGeometry(.028,.16,4,6),new THREE.MeshStandardMaterial({color:'#efd4bf',roughness:.95}));finger.position.set(x,.12,0);horns.add(finger)}
- const thumb=new THREE.Mesh(new THREE.CapsuleGeometry(.03,.08,4,6),new THREE.MeshStandardMaterial({color:'#efd4bf',roughness:.95}));thumb.position.set(.07,-.02,.04);thumb.rotation.z=.9;horns.add(thumb);
- const bottle=new THREE.Group();parts.rightHand.add(bottle);bottle.position.set(0,-.01,.16);bottle.visible=false;
- const glass=new THREE.MeshStandardMaterial({color:'#4b8b70',roughness:.27,metalness:.15});
- const body=new THREE.Mesh(new THREE.CylinderGeometry(.10,.13,.38,12),glass);body.position.y=-.12;bottle.add(body);
- const neckBottle=new THREE.Mesh(new THREE.CylinderGeometry(.048,.064,.18,10),glass);neckBottle.position.y=.16;bottle.add(neckBottle);
- const cap=new THREE.Mesh(new THREE.CylinderGeometry(.06,.06,.05,10),mat('#f2c679'));cap.position.y=.27;bottle.add(cap);
- const paper=new THREE.Mesh(new THREE.CylinderGeometry(.135,.135,.14,12),mat('#f4e8c4'));paper.position.y=-.08;bottle.add(paper);parts.bottle=bottle;
- return {root,parts,color:p.color}
+ arm('left');arm('right');leg('left');leg('right');
+ // Festival wristband attached to the left wrist, follows joint animations.
+ const band=child(parts.leftElbow,new THREE.TorusGeometry(.119,.026,5,12),mat('#d5ff79',.65),[0,-.29,.006]);band.rotation.x=Math.PI/2;
+ // Mini crossbody bag and its flexible strap: attached to upper body, not screen space.
+ const strapMat=mat('#504a5f',.82);
+ const strap=child(upper,new THREE.TorusGeometry(.60,.034,6,28,Math.PI*.82),strapMat,[-.035,.36,.365]);strap.rotation.z=.75;strap.scale.set(1.05,1.22,.9);
+ child(upper,new THREE.SphereGeometry(.24,14,10),mat('#d0b286',.92),[-.29,-.05,.47],[1.16,.68,.53]);
+ child(upper,new THREE.SphereGeometry(.07,10,8),mat('#f5e5b2'),[-.21,-.05,.61],[1,.45,.35]);
+ // Existing rock horns and bottle stay parented to right hand as the arm animates.
+ const horns=new THREE.Group();parts.rightHand.add(horns);horns.position.set(0,.025,.09);horns.visible=false;parts.horns=horns;
+ child(horns,new THREE.SphereGeometry(.067,10,8),skinMat,[0,0,0],[1,.7,.8]);
+ for(const x of [-.064,.064])child(horns,new THREE.CapsuleGeometry(.024,.145,3,6),skinMat,[x,.10,.01]);
+ const bottle=new THREE.Group();parts.rightHand.add(bottle);bottle.position.set(0,-.005,.14);bottle.visible=false;parts.bottle=bottle;
+ const glass=mat('#498c75',.3);child(bottle,new THREE.CylinderGeometry(.10,.12,.39,12),glass,[0,-.16,0]);
+ child(bottle,new THREE.CylinderGeometry(.045,.065,.19,10),glass,[0,.13,0]);
+ child(bottle,new THREE.CylinderGeometry(.06,.06,.055,10),mat('#f3ca82'),[0,.25,0]);
+ child(bottle,new THREE.CylinderGeometry(.127,.127,.12,12),mat('#f2e1bd'),[0,-.14,0]);
+ // Always-white bold nickname with no background.
+ const cv=document.createElement('canvas');cv.width=512;cv.height=128;const ctx=cv.getContext('2d');
+ ctx.fillStyle='#fff';ctx.font='900 52px Arial, sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText((p.name||'ROCKER').slice(0,18),256,64,490);
+ const texture=new THREE.CanvasTexture(cv);
+ const tag=new THREE.Sprite(new THREE.SpriteMaterial({map:texture,transparent:true,depthTest:false}));tag.scale.set(4.65,1.16,1);tag.position.y=3.66;root.add(tag);parts.tag=tag;
+ return {root,parts,color:p.color,lastAction:'idle'};
 }
 
 // Chat bubbles are true 3D sprites anchored in world coordinates, independent of avatar pose.
@@ -289,65 +318,86 @@ function updateBubbles(now){
  for(const [id,b] of activeBubbles){
   const a=avatars.get(id);
   if(!a||now>=b.expires){scene.remove(b.sprite);b.sprite.material.map.dispose();b.sprite.material.dispose();activeBubbles.delete(id);continue}
-  b.sprite.position.set(a.root.position.x,a.root.position.y+6.1,a.root.position.z);
+  b.sprite.position.set(a.root.position.x,a.root.position.y+5.0,a.root.position.z);
   b.sprite.material.opacity=Math.min(1,(b.expires-now)/350);
  }
 }
 function toWorld(p){return {x:(p.x-600)*.058,z:(p.y-500)*.058+8}}
+// Smooth motion blending for the upgraded chibi rig. All poses share the same joints.
 function animateAvatar(a,p,t){
- const q=p.id===state.id&&state.me?state.me:p,wp=toWorld(q),P=a.parts;
+ const q=(p.id===state.id&&state.me)?state.me:p,wp=toWorld(q),P=a.parts;
  a.root.position.x+=(wp.x-a.root.position.x)*.28;
  a.root.position.z+=(wp.z-a.root.position.z)*.28;
- const act=q.action||'idle',time=t*.001;
- a.root.position.y=0;
- a.root.rotation.x=0;
- P.upper.rotation.set(0,0,0);P.neck.rotation.set(0,0,0);
- for(const k of ['leftShoulder','rightShoulder','leftElbow','rightElbow','leftHip','rightHip','leftKnee','rightKnee'])P[k].rotation.set(0,0,0);
- P.horns.visible=act==='peace';P.bottle.visible=act==='drink';
- if(act==='jump')a.root.position.y=Math.abs(Math.sin(time*8))*1.08;
- if(act==='run')a.root.position.y=Math.abs(Math.sin(time*12))*.18;
+ const act=q.action||'idle',sec=t*.001,pose={};
+ const keys=['upper','neck','leftShoulder','rightShoulder','leftElbow','rightElbow','leftHip','rightHip','leftKnee','rightKnee'];
+ for(const key of keys)pose[key]=[0,0,0];
+ let height=0,lean=0;
+ const set=(key,x=0,y=0,z=0)=>{pose[key]=[x,y,z]};
+ if(act==='walk'||act==='run'){
+  const fast=act==='run',pace=fast?11.6:7.4,amp=fast?.66:.39;
+  const wave=Math.sin(sec*pace),opp=Math.sin(sec*pace+Math.PI);
+  set('leftHip',wave*amp);set('rightHip',opp*amp);
+  set('leftKnee',Math.max(0,wave)*(.68*(fast?1:.7)));
+  set('rightKnee',Math.max(0,opp)*(.68*(fast?1:.7)));
+  set('leftShoulder',-wave*amp*.58);set('rightShoulder',-opp*amp*.58);
+  set('leftElbow',-.12);set('rightElbow',-.12);
+  set('upper',fast?-.14:-.035,0,Math.sin(sec*pace)*.035);
+  height=Math.abs(Math.sin(sec*pace))*(fast?.12:.048);
+ }
+ if(act==='jump'){
+  const phase=Math.sin(sec*8.3);const lift=Math.max(0,phase);
+  height=lift*1.03;set('leftHip',-.35*(1-lift));set('rightHip',-.35*(1-lift));
+  set('leftKnee',.62*(1-lift));set('rightKnee',.62*(1-lift));
+  set('leftShoulder',-.18,0,.64);set('rightShoulder',-.18,0,-.64);
+ }
  if(act==='peace'){
-   P.rightShoulder.rotation.z=2.15;P.rightShoulder.rotation.x=-.45;P.rightElbow.rotation.z=.58;
-   P.leftShoulder.rotation.z=-.16;P.neck.rotation.z=.06;
+  set('rightShoulder',-.44,0,-2.42);set('rightElbow',0,0,-.24);
+  set('leftShoulder',0,0,-.09);set('neck',0,0,.08);
  }
  if(act==='wave'){
-   P.rightShoulder.rotation.z=1.95+Math.sin(time*6.5)*.16;P.rightShoulder.rotation.x=-.12;P.rightElbow.rotation.z=.72+Math.sin(time*6.5)*.28;P.neck.rotation.z=-.05;
- }
- if(act==='drink'){
-   const sip=(1+Math.sin(time*5.2))*.5;
-   P.rightShoulder.rotation.z=1.76;P.rightShoulder.rotation.x=-.42;P.rightShoulder.rotation.y=.18;
-   P.rightElbow.rotation.z=.98+.22*sip;P.rightElbow.rotation.x=.18;
-   P.bottle.position.set(.02,-.02,.22);P.bottle.rotation.set(.18+.22*sip,0,1.18);
-   P.neck.rotation.x=.03+.04*sip;P.neck.rotation.y=.04;
+  const wobble=Math.sin(sec*8.2);
+  set('rightShoulder',-.58,.12,-2.03);set('rightElbow',-.18,0,-.56+wobble*.37);
+  set('neck',0,0,-.07);
  }
  if(act==='clap'){
-   const beat=(1+Math.cos(time*17))*.5;
-   const spread=.08+.28*(1-beat);
-   P.leftShoulder.rotation.x=-1.18;P.rightShoulder.rotation.x=-1.18;
-   P.leftShoulder.rotation.z=-spread;P.rightShoulder.rotation.z=spread;
-   P.leftElbow.rotation.z=.95;P.rightElbow.rotation.z=-.95;
-   P.upper.rotation.x=.06;
+  const beat=(1+Math.cos(sec*16.2))*.5;const gap=.08+.38*(1-beat);
+  // Both elbows bend towards a common point in front of the chest.
+  set('leftShoulder',-1.03,0,.62+gap*.25);set('rightShoulder',-1.03,0,-.62-gap*.25);
+  set('leftElbow',-.30,0,.78-gap*.38);set('rightElbow',-.30,0,-.78+gap*.38);
+  set('upper',.035);
  }
- if(act==='walk'||act==='run'){
-   const pace=act==='run'?12:8,amp=act==='run'?.72:.46,kneeAmp=act==='run'?.72:.5;
-   const swing=Math.sin(time*pace),backswing=Math.sin(time*pace+Math.PI);
-   P.leftShoulder.rotation.x=swing*amp*.6;P.rightShoulder.rotation.x=backswing*amp*.6;
-   P.leftHip.rotation.x=backswing*amp;P.rightHip.rotation.x=swing*amp;
-   P.leftKnee.rotation.x=Math.max(0,swing)*kneeAmp;P.rightKnee.rotation.x=Math.max(0,backswing)*kneeAmp;
-   P.upper.rotation.z=Math.sin(time*pace)*.04;
+ if(act==='drink'){
+  const sip=(1+Math.sin(sec*4.8))*.5;
+  // Forward forearm, elbow folded so bottle tip rises to the mouth.
+  set('rightShoulder',-1.14,-.14,-.72);set('rightElbow',-.78-.16*sip,.03,-.48);
+  P.bottle.rotation.set(-.28-.35*sip,0,-.12);set('neck',.04+.05*sip);
  }
  if(act==='sit'){
-   a.root.position.y=-.32;P.upper.rotation.x=.16;
-   P.leftHip.rotation.x=-1.38;P.rightHip.rotation.x=-1.38;
-   P.leftKnee.rotation.x=1.42;P.rightKnee.rotation.x=1.42;
-   P.leftShoulder.rotation.x=.18;P.rightShoulder.rotation.x=.18;
+  height=-.24;set('upper',.06);set('leftHip',-1.43);set('rightHip',-1.43);
+  set('leftKnee',1.45);set('rightKnee',1.45);
+  set('leftShoulder',.16);set('rightShoulder',.16);
  }
  if(act==='lie'){
-   a.root.position.y=.48;a.root.rotation.x=-Math.PI/2;
-   P.leftShoulder.rotation.x=.18;P.rightShoulder.rotation.x=.18;
-   P.leftHip.rotation.x=.12;P.rightHip.rotation.x=.12;
+  height=.52;lean=-Math.PI/2;
+  set('leftShoulder',.13);set('rightShoulder',.13);set('leftHip',.11);set('rightHip',.11);
  }
- if(act!=='lie'){const yaw=Number(q.facing)||0;let delta=((yaw-a.root.rotation.y+Math.PI*3)%(Math.PI*2))-Math.PI;a.root.rotation.y+=delta*.2}
+ // Damped transitions preserve smoothness when starting and stopping actions.
+ const alpha=act===a.lastAction?.24:.14;
+ for(const k of keys){const target=pose[k],o=P[k];
+   o.rotation.x+= (target[0]-o.rotation.x)*alpha;
+   o.rotation.y+= (target[1]-o.rotation.y)*alpha;
+   o.rotation.z+= (target[2]-o.rotation.z)*alpha;
+ }
+ a.root.position.y+=(height-a.root.position.y)*.28;
+ a.root.rotation.x+=(lean-a.root.rotation.x)*.22;
+ P.horns.visible=act==='peace';P.bottle.visible=act==='drink';
+ if(act!=='drink')P.bottle.rotation.set(0,0,0);
+ if(act!=='lie'){
+  const yaw=Number(q.facing)||0;
+  const delta=((yaw-a.root.rotation.y+Math.PI*3)%(Math.PI*2))-Math.PI;
+  a.root.rotation.y+=delta*.2;
+ }
+ a.lastAction=act;
 }
 // Click or tap the ground to walk; dragging continues to orbit the camera.
 
