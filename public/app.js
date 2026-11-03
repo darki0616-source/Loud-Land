@@ -203,6 +203,19 @@ function rockPathAt(m,elapsed){
  const phase=elapsedFraction*Math.PI*8 - m.index*.115;
  return {x:m.x+Math.sin(phase)*180,y:m.y+Math.sin(phase*2)*90,dx:180*Math.cos(phase),dy:180*Math.cos(phase*2)};
 }
+// When circle pit or train completes, each participant moves to a distinct
+// outward point and keeps jumping with the 🤘 bubble until manual input.
+function beginRockCelebration(m){
+ const angle=(m.kind==='circle'?0:-Math.PI/2)+2*Math.PI*m.index/Math.max(1,m.count);
+ const radius=m.kind==='circle'?150:Math.max(58,Math.min(108,40+m.count*6));
+ m.scatterTarget={
+  x:Math.max(20,Math.min(1380,m.x+Math.cos(angle)*radius)),
+  y:Math.max(220,Math.min(1100,m.y+Math.sin(angle)*radius))
+ };
+ m.phase='scatter';m.phaseStarted=performance.now();
+ state.action='slam-retreat';state.me.action='slam-retreat';
+ state.actionUntil=Infinity;sendMove();
+}
 function finishRockMotion(){
  rockMotion=null;state.action='idle';state.me.action='idle';state.actionUntil=0;
  updateActionButtons();sendMove();
@@ -1155,9 +1168,30 @@ function tick(t){
   }
   if(!dx&&!dy&&rockMotion){
    const m=rockMotion,elapsed=Math.max(0,slamNow()-m.startAt);
-   if(elapsed>=m.duration)finishRockMotion();
-   else{
-    const p=rockPathAt(m,elapsed),oldX=state.me.x,oldY=state.me.y;
+   if(!m.phase&&elapsed>=m.duration)beginRockCelebration(m);
+   if(m.phase==='scatter'){
+    const target=m.scatterTarget;
+    const tx=target.x-state.me.x,ty=target.y-state.me.y;
+    const distance=Math.hypot(tx,ty);
+    if(distance<=3.5||t-m.phaseStarted>11000){
+     m.phase='celebrate';
+     state.action='slam-celebrate';state.me.action='slam-celebrate';
+     state.actionUntil=Infinity;sendMove();
+    }else{
+     // Jumping retreat at a gentle, frame-rate-independent pace.
+     const step=Math.min(distance,Math.max(.15,frameDelta*.075));
+     state.me.x=Math.max(20,Math.min(1380,state.me.x+tx/distance*step));
+     state.me.y=Math.max(220,Math.min(1100,state.me.y+ty/distance*step));
+     state.me.facing=Math.atan2(tx,ty);
+     state.action='slam-retreat';state.me.action='slam-retreat';
+     state.actionUntil=Infinity;
+     if(t-state.lastSent>90){state.lastSent=t;sendMove()}
+    }
+   }else if(m.phase==='celebrate'){
+    state.action='slam-celebrate';state.me.action='slam-celebrate';
+    state.actionUntil=Infinity;
+   }else{
+    const p=rockPathAt(m,elapsed);
     state.me.x=Math.max(20,Math.min(1380,p.x));
     state.me.y=Math.max(220,Math.min(1100,p.y));
     state.me.facing=Math.atan2(p.dx,p.dy);
