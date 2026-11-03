@@ -51,7 +51,7 @@ const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-per
 const cssRenderer=new CSS3DRenderer();cssRenderer.domElement.className='css-world';host.appendChild(cssRenderer.domElement);
 const stageVideo=document.querySelector('#youtubeScreen');stageVideo.classList.add('onstage');
 const stageWebObject=new CSS3DObject(stageVideo);stageWebObject.position.set(0,6.3,-29.12);stageWebObject.scale.set(.015,.015,.015);scene.add(stageWebObject);
-const controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.dampingFactor=.07;controls.minDistance=11;controls.maxDistance=105;controls.maxPolarAngle=Math.PI/2.12;controls.target.set(0,1,4);controls.enablePan=false;
+const controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.dampingFactor=.07;controls.minDistance=11;controls.maxDistance=105;controls.maxPolarAngle=Math.PI/2.12;controls.minAzimuthAngle=-1.12;controls.maxAzimuthAngle=1.12;controls.target.set(0,1,4);controls.enablePan=false;
 // Keep the local avatar in the center while preserving camera orbit and zoom.
 const cameraFocus=new THREE.Vector3();let cameraFollowInitialized=false;
 function followLocalAvatar(){
@@ -209,12 +209,17 @@ updateEnvironment(true);
 // Upgraded stylized 3D characters with visible joints, inspired by the provided rounded doll reference.
 function makeAvatar(p){
  let root=new THREE.Group();scene.add(root);
- const shirt=mat(p.color,.86),skirtMat=mat('#9c7450',.92),stocking=mat('#f7f3eb',.96),shoe=mat('#ece8df',.96);
- const hairTone=p.gender==='female'?'#6b4b39':'#4e392d',hair=mat(hairTone,.95),blush=mat('#f7cbbf',.96),eyeMat=mat('#4a403d',.5);
+ const shirt=mat(p.color,.86),skirtMat=mat('#9c7450',.92),pantsMat=mat('#8b6a49',.92),stocking=mat('#f7f3eb',.96),shoe=mat('#ece8df',.96);
+ const hairTone=p.gender==='female'?'#6b4b39':'#4e392d',hair=mat(hairTone,.95),blush=mat('#f7cbbf',.96),eyeMat=mat('#111111',.5);
  const parts={};
  const upper=new THREE.Group();upper.position.y=1.08;root.add(upper);parts.upper=upper;
  const torso=new THREE.Mesh(new THREE.CapsuleGeometry(.46,.56,7,14),shirt);torso.scale.set(1.0,1.14,.88);torso.position.y=.28;torso.castShadow=true;upper.add(torso);parts.torso=torso;
- const hem=new THREE.Mesh(new THREE.CylinderGeometry(.58,.64,.46,18),skirtMat);hem.position.y=-.28;hem.castShadow=true;upper.add(hem);parts.hem=hem;
+ let hem;
+ if(p.gender==='female'){hem=new THREE.Mesh(new THREE.CylinderGeometry(.58,.64,.46,18),skirtMat);hem.position.y=-.28;hem.castShadow=true;upper.add(hem)}
+ else{hem=new THREE.Mesh(new THREE.CylinderGeometry(.58,.6,.34,16),pantsMat);hem.position.y=-.23;hem.castShadow=true;upper.add(hem);
+ const leftPant=new THREE.Mesh(new THREE.CylinderGeometry(.19,.21,.44,12),pantsMat);leftPant.position.set(-.22,-.48,0);leftPant.castShadow=true;upper.add(leftPant);
+ const rightPant=leftPant.clone();rightPant.position.x=.22;upper.add(rightPant)}
+ parts.hem=hem;
  const neck=new THREE.Group();neck.position.set(0,1.64,0);upper.add(neck);parts.neck=neck;
  const head=new THREE.Mesh(new THREE.SphereGeometry(.66,20,18),new THREE.MeshStandardMaterial({color:'#efd4bf',roughness:.95}));head.scale.y=.95;head.castShadow=true;neck.add(head);parts.head=head;
  const hairCap=new THREE.Mesh(new THREE.SphereGeometry(.69,20,18,0,Math.PI*2,0,Math.PI*.72),hair);hairCap.position.y=.12;hairCap.castShadow=true;neck.add(hairCap);
@@ -241,7 +246,7 @@ function makeAvatar(p){
    const hand=new THREE.Mesh(new THREE.SphereGeometry(.14,12,10),new THREE.MeshStandardMaterial({color:'#efd4bf',roughness:.95}));hand.scale.set(1,.92,.88);hand.position.set(0,-.46,.02);hand.castShadow=true;elbow.add(hand);parts[side+'Hand']=hand;
  }
  function makeLeg(side){
-   const hip=new THREE.Group();hip.position.set(side==='left' ? -.22 : .22,.82,0);root.add(hip);parts[side+'Hip']=hip;
+   const hip=new THREE.Group();hip.position.set(side==='left' ? -.22 : .22,1.18,0);root.add(hip);parts[side+'Hip']=hip;
    const thigh=new THREE.Mesh(new THREE.CapsuleGeometry(.14,.38,5,10),stocking);thigh.position.y=-.28;thigh.castShadow=true;hip.add(thigh);
    const knee=new THREE.Group();knee.position.y=-.58;hip.add(knee);parts[side+'Knee']=knee;
    const calf=new THREE.Mesh(new THREE.CapsuleGeometry(.13,.34,5,10),stocking);calf.position.y=-.25;calf.castShadow=true;knee.add(calf);
@@ -310,15 +315,15 @@ function animateAvatar(a,p,t){
    P.rightShoulder.rotation.z=1.95+Math.sin(time*6.5)*.16;P.rightShoulder.rotation.x=-.12;P.rightElbow.rotation.z=.72+Math.sin(time*6.5)*.28;P.neck.rotation.z=-.05;
  }
  if(act==='drink'){
-   const sip=(1+Math.sin(time*4.2))*.5;
-   P.rightShoulder.rotation.z=1.32;P.rightShoulder.rotation.x=-1.05;P.rightShoulder.rotation.y=-.12;
-   P.rightElbow.rotation.z=1.18+.18*sip;
-   P.bottle.rotation.set(.78+.12*sip,0,-.05);
-   P.neck.rotation.x=.05+.06*sip;
+   const sip=(1+Math.sin(time*5.2))*.5;
+   P.rightShoulder.rotation.z=1.76;P.rightShoulder.rotation.x=-.42;P.rightShoulder.rotation.y=.18;
+   P.rightElbow.rotation.z=.98+.22*sip;P.rightElbow.rotation.x=.18;
+   P.bottle.position.set(.02,-.02,.22);P.bottle.rotation.set(.18+.22*sip,0,1.18);
+   P.neck.rotation.x=.03+.04*sip;P.neck.rotation.y=.04;
  }
  if(act==='clap'){
-   const beat=(1+Math.cos(time*11))*.5;
-   const spread=.12+.24*(1-beat);
+   const beat=(1+Math.cos(time*17))*.5;
+   const spread=.08+.28*(1-beat);
    P.leftShoulder.rotation.x=-1.18;P.rightShoulder.rotation.x=-1.18;
    P.leftShoulder.rotation.z=-spread;P.rightShoulder.rotation.z=spread;
    P.leftElbow.rotation.z=.95;P.rightElbow.rotation.z=-.95;
@@ -356,7 +361,7 @@ renderer.domElement.addEventListener('pointerup',e=>{
  if(dist>9)return;
  const bounds=renderer.domElement.getBoundingClientRect();pointer.set(((e.clientX-bounds.left)/bounds.width)*2-1,-((e.clientY-bounds.top)/bounds.height)*2+1);
  groundRay.setFromCamera(pointer,camera);if(!groundRay.ray.intersectPlane(groundPlane,hit))return;
- const x=Math.max(20,Math.min(1380,hit.x/.058+600)),y=Math.max(290,Math.min(980,(hit.z-8)/.058+500));
+ const x=Math.max(20,Math.min(1380,hit.x/.058+600)),y=Math.max(220,Math.min(1100,(hit.z-8)/.058+500));
  state.walkTarget={x,y};toast('선택한 위치로 이동합니다');
 });
 function tick(t){
@@ -364,7 +369,7 @@ function tick(t){
  if(dx||dy)state.walkTarget=null;
  if(!dx&&!dy&&state.walkTarget){const tx=state.walkTarget.x-state.me.x,ty=state.walkTarget.y-state.me.y,n=Math.hypot(tx,ty);if(n>4){dx=tx/n;dy=ty/n}else state.walkTarget=null}
  state.moving=!!(dx||dy);
- if(state.moving){let n=Math.hypot(dx,dy),speed=state.action==='run'?5:3.2;state.me.x=Math.max(20,Math.min(1380,state.me.x+dx/n*speed));state.me.y=Math.max(290,Math.min(980,state.me.y+dy/n*speed));state.me.facing=Math.atan2(dx,dy);
+ if(state.moving){let n=Math.hypot(dx,dy),speed=state.action==='run'?5:3.2;state.me.x=Math.max(20,Math.min(1380,state.me.x+dx/n*speed));state.me.y=Math.max(220,Math.min(1100,state.me.y+dy/n*speed));state.me.facing=Math.atan2(dx,dy);
  if(['sit','lie'].includes(state.action)){state.action='idle';state.me.action='idle'}
  if(state.action==='idle'||state.action==='walk')state.me.action='walk';
  }else if(state.me.action==='walk')state.me.action='idle';
