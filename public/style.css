@@ -214,3 +214,16 @@ button,input{touch-action:manipulation}
 .skip-vote-actions button:disabled{opacity:.48;cursor:default}
 .skip-vote-card small{display:block;margin-top:13px;color:#a6b7c9;font-size:11px;line-height:1.5}
 @media(max-width:700px){.skip-vote-card{padding:18px}.shared-music-actions{width:auto!important}.shared-music-label{flex:1;min-width:0}.shared-music-bar{flex-wrap:nowrap!important}.shared-music-actions #sharedSkip{min-width:110px;font-size:11px}}
+
+/* v21 rock play dropdown: opaque and compact, never behind the world iframe. */
+.rock-menu-panel{position:absolute;top:calc(env(safe-area-inset-top) + 57px);right:12px;z-index:45;width:min(260px,calc(100% - 24px));display:flex;flex-direction:column;gap:8px;background:#161e2d;border:1px solid #51617c;border-radius:15px;padding:13px;box-shadow:0 14px 35px #080e1bcc;color:#f4f7ff}
+.rock-menu-panel.hidden{display:none!important}
+.rock-menu-panel strong{font-size:14px}
+.rock-menu-panel button{width:100%;min-height:39px;padding:10px;text-align:left;border-radius:10px;background:#303e53;color:#fff;border:1px solid #50627c;font-weight:800}
+.rock-menu-panel button.placing{background:#d7fa81;color:#18231c}
+.rock-menu-panel button:disabled{opacity:.48;cursor:not-allowed}
+.rock-menu-panel small{font-size:10px;color:#aebbd0}
+.hudright button.rock-menu-button{background:#d7fa81!important;color:#1d271d!important;border-color:#d7fa81!important;font-weight:900}
+.slam-overlay .rock-label{font-size:12px;color:#fff;font-weight:900;letter-spacing:.04em}
+.rock-path{pointer-events:none}
+@media(max-width:700px){.rock-menu-panel{top:calc(env(safe-area-inset-top) + 51px);right:6px;width:min(240px,calc(100% - 12px))}}
