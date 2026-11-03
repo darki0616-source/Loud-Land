@@ -3,7 +3,7 @@ import { OrbitControls } from 'https://esm.sh/three@0.160.1/examples/jsm/control
 import { CSS3DRenderer, CSS3DObject } from 'https://esm.sh/three@0.160.1/examples/jsm/renderers/CSS3DRenderer.js';
 const $=id=>document.getElementById(id), palette=['#ff747d','#67d8d1','#f9c463','#a8a0ff','#90dd81','#ff9ce1','#72b5ff','#eeeeee'];
 const mats=[{x:118,y:682,c:'#f5a5a3'},{x:290,y:706,c:'#a7def4'},{x:470,y:690,c:'#f5ce80'},{x:650,y:708,c:'#b3d9a0'},{x:835,y:694,c:'#ceb8f1'},{x:1015,y:710,c:'#ffd2a5'},{x:1185,y:688,c:'#b2d8ff'}];
-const state={id:null,me:null,players:new Map(),keys:new Set(),action:'idle',pose:'stand',actionUntil:0,lastSent:0,es:null,music:{id:'',paused:true,position:0,startedAt:0,token:0},queue:[],serverDelta:0,yt:null,ytReady:false,lastTrack:'',audioEnabled:false,walkTarget:null,moving:false};
+const state={id:null,me:null,players:new Map(),keys:new Set(),action:'idle',pose:'stand',actionUntil:0,lastSent:0,es:null,music:{id:'',paused:true,position:0,startedAt:0,token:0},queue:[],serverDelta:0,yt:null,ytReady:false,lastTrack:'',audioEnabled:false,walkTarget:null,benchTarget:null,moving:false};
 let slamMode=false,slam=null,slamCooldownUntil=0,slamMotion=null;
 let chosenColor=palette[0],chosenGender='male',toastTimer;const avatars=new Map();const activeBubbles=new Map();
 function toast(msg){$('toast').textContent=msg;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('show'),3000)}
@@ -63,13 +63,13 @@ function updateActionButtons(){
 }
 function react(a){
  if(!state.me)return;
- if(slamMotion){slamMotion=null;state.walkTarget=null}
+ if(slamMotion){slamMotion=null;state.walkTarget=null}state.benchTarget=null;
  if(a==='sit'||a==='lie'){
-  const near=mats.some(m=>Math.hypot(state.me.x-m.x,state.me.y-m.y)<105);
+  const near=mats.some(m=>Math.hypot(state.me.x-m.x,state.me.y-m.y)<105)||benchSeats.some(b=>Math.hypot(state.me.x-b.x,state.me.y-b.y)<75);
   if(!near&&state.pose==='stand')return toast('돗자리 근처에서 앉거나 누울 수 있어요');
   state.pose=state.pose===a?'stand':a;
   state.me.pose=state.pose;
-  state.walkTarget=null;
+  state.walkTarget=null;state.benchTarget=null;
   if(state.action==='run'||state.action==='jump')state.action='idle';
   state.me.action=state.action;
   state.actionUntil=state.action==='idle'?0:state.actionUntil;
@@ -123,7 +123,7 @@ function onSlamGo(event){
   const rx=Math.max(20,Math.min(1380,ax+Math.cos(angle)*reach));
   const ry=Math.max(220,Math.min(1100,ay+Math.sin(angle)*reach));
   slamMotion={phase:'charge',approach:{x:Math.max(20,Math.min(1380,ax)),y:Math.max(220,Math.min(1100,ay))},retreat:{x:rx,y:ry},started:performance.now(),phaseStarted:performance.now()};
-  state.walkTarget=null;
+  state.walkTarget=null;state.benchTarget=null;
   state.pose='stand';state.me.pose='stand';state.action='slam-charge';state.actionUntil=Infinity;state.me.action='slam-charge';
   document.querySelectorAll('[data-action]').forEach(b=>b.classList.remove('active'));
   sendMove();
@@ -322,8 +322,56 @@ matPositions.forEach((m,i)=>{
  for(let j=0;j<2;j++){const pillow=cube(1.5,.28,.9,mat(['#ffefe0','#e2f2fa','#fdf2ce','#fce0f5'][j%4]),m.x-2.5+j*5,.34,m.z-2.0);pillow.rotation.y=.15*(j?1:-1);picnicProps.push(pillow)}
  const table=cylinder(.74,.84,.58,mat('#7d624e'),m.x+3.35,.55,m.z+3.85);picnicProps.push(table);
  const lamp=sphere(.19,new THREE.MeshStandardMaterial({color:'#fff1bf',emissive:'#ffd982',emissiveIntensity:1.3}),m.x+3.35,.98,m.z+3.85);picnicProps.push(lamp);
+ // Food is placed on the grass just IN FRONT of the picnic mat, without
+ // changing any of the existing rest-pose or movement coordinates.
+ const picnicTray=cube(3.8,.10,1.65,mat('#b48b69'),m.x-.75,.16,m.z+3.62,false);
+ // Two realistic paper cups: taper, open dark inner surface, bright rim.
+ const paperCupMaterial=mat(i%2?'#f8e9d5':'#faf8f0',.91),rimMat=mat('#fffdf8',.86);
+ for(let j=0;j<2;j++){
+  const cx=m.x-2.05+j*.65,cz=m.z+3.55;
+  const cup=cylinder(.24,.17,.57,paperCupMaterial,cx,.49,cz);cup.castShadow=false;
+  const top=new THREE.Mesh(new THREE.CircleGeometry(.189,16),mat('#a17d5b'));top.rotation.x=-Math.PI/2;top.position.set(cx,.778,cz);scene.add(top);
+  const rim=new THREE.Mesh(new THREE.TorusGeometry(.235,.028,6,20),rimMat);rim.rotation.x=Math.PI/2;rim.position.set(cx,.79,cz);scene.add(rim);
+ }
+ // Pizza: low round pizza with tomato and cheese, separate raised crust,
+ // plus a few pepperoni pieces. Instanced only a handful per picnic area.
+ const pizzaX=m.x-.38,pizzaZ=m.z+3.66;
+ const pizzaPlate=cylinder(.83,.83,.07,mat('#f0e6d4'),pizzaX,.29,pizzaZ);pizzaPlate.castShadow=false;
+ const pizzaCrust=cylinder(.72,.72,.07,mat('#bb8654'),pizzaX,.37,pizzaZ);pizzaCrust.castShadow=false;
+ const sauce=cylinder(.62,.62,.025,mat('#d25a42'),pizzaX,.423,pizzaZ);sauce.castShadow=false;
+ const cheese=cylinder(.56,.56,.025,mat('#efcb79'),pizzaX,.448,pizzaZ);cheese.castShadow=false;
+ for(let k=0;k<5;k++){
+  const a=k*2.4+i*.27;
+  const topping=cylinder(.105,.105,.017,mat('#b44d3d'),pizzaX+Math.cos(a)*.32,.475,pizzaZ+Math.sin(a)*.32);topping.castShadow=false;
+ }
+ // Snack bag and visible puffed-corn/chips spilling onto the tray.
+ const snackX=m.x+.52,snackZ=m.z+3.65;
+ const bag=cube(.62,.91,.29,mat(i%2?'#dba5ef':'#ffce7b'),snackX,.69,snackZ);bag.rotation.z=.13;bag.castShadow=false;
+ const bagStripe=cube(.65,.14,.31,mat('#fff2dd'),snackX,.83,snackZ);bagStripe.rotation.z=.13;bagStripe.castShadow=false;
+ for(let k=0;k<7;k++){
+  const a=k*2.4+i*.3;
+  const crumb=sphere(.085+(k%3)*.022,mat('#f2db88'),snackX+Math.cos(a)*(.52+.10*(k%2)),.3,snackZ+Math.sin(a)*.36);crumb.castShadow=false;
+ }
+
 });
-for(const x of [-30,-10,10,30]){cube(3.6,.24,1.4,mat('#c49b75'),x,.95,38);for(const dx of [-1,1])cube(.2,.9,.2,wood,x+dx,.48,38);}
+// Clickable shoreline benches: select a seat with a single tap, walk over,
+// then sit in sync for all visitors using the existing pose/move API.
+const benchPickMeshes=[],benchSeats=[];
+const benchWood=mat('#a87d58'),benchSupports=mat('#373f46',.45);
+for(const x of [-33,-11,11,33]){
+ const z=42;
+ const seat=cube(5.2,.24,1.5,benchWood,x,.99,z);benchPickMeshes.push(seat);seat.userData.benchCenter={x,z};
+ const back=cube(5.2,1.05,.2,benchWood,x,1.54,z-.63);back.userData.benchCenter={x,z};benchPickMeshes.push(back);
+ for(const dx of [-2.08,2.08]){
+  const leg=cube(.19,.88,.19,benchSupports,x+dx,.46,z);leg.userData.benchCenter={x,z};benchPickMeshes.push(leg);
+  const arm=cube(.23,.14,1.58,benchSupports,x+dx,1.23,z);arm.userData.benchCenter={x,z};benchPickMeshes.push(arm);
+  cube(.17,.38,.16,benchSupports,x+dx,1.1,z-.48);
+ }
+ for(const slot of [-1,1]){
+  const wx=x+slot*1.14,wz=z+.12;
+  benchSeats.push({x:wx/.058+600,y:(wz-8)/.058+500,wx,wz,center:x});
+ }
+}
 function palmTree(x,z,h=6.3){cylinder(.42,.62,h,wood,x,h*.5,z);const top=sphere(1.2,mat('#679873'),x,h+.65,z);top.scale.set(1.2,.8,1.2);for(let i=0;i<5;i++){const leaf=new THREE.Mesh(new THREE.CapsuleGeometry(.14,3.1,4,8),mat('#5a8e62'));leaf.position.set(x,h+.4,z);leaf.rotation.z=-1.1+i*.55;leaf.rotation.y=i*1.22;leaf.castShadow=true;scene.add(leaf)}}
 [[-46,52,6.4],[-34,63,6.7],[-18,58,6.0],[18,60,6.3],[34,64,6.8],[48,54,6.2]].forEach(v=>palmTree(...v));
 function umbrella(x,z,c){const pole=cylinder(.08,.08,2.2,metal,x,1.1,z);const top=new THREE.Mesh(new THREE.ConeGeometry(2.3,1.15,18,1,true),mat(c,.7));top.position.set(x,2.5,z);top.rotation.y=.4;top.castShadow=true;scene.add(top);cube(1.5,.12,1.1,mat('#c79b74'),x,.36,z+1.7,false)}
@@ -731,6 +779,8 @@ function animateAvatar(a,p,t){
  }else if(ikMode==='drink')placeHandIK(P,'right',rightHandTarget,.58);
  else if(ikMode==='wave')placeHandIK(P,'right',rightHandTarget,.64);
  else if(ikMode==='snack')placeHandIK(P,'right',rightHandTarget,.56);
+ // Seat is higher than the grass; raise the seated avatar to the bench cushion.
+ if(basePose==='sit'&&benchSeats.some(seat=>Math.hypot(q.x-seat.x,q.y-seat.y)<24))height+=.46;
  a.root.position.y+=(height-a.root.position.y)*.28;
  a.root.rotation.x+=(lean-a.root.rotation.x)*.22;
  P.snackCrumbs.forEach((crumb,i)=>{
@@ -817,6 +867,21 @@ gameTouchSurface.addEventListener('pointerup',e=>{
   post('slam',{id:state.id,command:'start',x,y}).then(d=>applySlam(d.slam,d.cooldownUntil)).catch(e=>toast(e.message));
   return;
  }
+ // Raycast the actual 3D bench geometry, not the ground below it.
+ // This works for both touch and mouse through the shared game touch surface.
+ const benchHits=groundRay.intersectObjects(benchPickMeshes,false);
+ if(benchHits.length){
+  const selected=benchHits[0],center=selected.object.userData.benchCenter;
+  const options=benchSeats.filter(seat=>seat.center===center.x);
+  const seat=options.reduce((a,b)=>Math.abs(a.wx-selected.point.x)<=Math.abs(b.wx-selected.point.x)?a:b);
+  if(slamMotion){slamMotion=null;state.action='idle';state.actionUntil=0;state.me.action='idle'}
+  state.pose='stand';state.me.pose='stand';state.action='idle';state.me.action='idle';state.actionUntil=0;
+  state.benchTarget=seat;state.walkTarget={x:seat.x,y:seat.y};
+  updateActionButtons();sendMove();
+  moveMarker.position.set(seat.wx,.085,seat.wz);moveMarker.visible=true;moveMarkerUntil=performance.now()+1150;
+  return;
+ }
+ state.benchTarget=null;
  if(slamMotion){slamMotion=null;state.action='idle';state.actionUntil=0;state.me.action='idle'}
  if(state.pose!=='stand'){state.pose='stand';state.me.pose='stand';updateActionButtons()}
  state.walkTarget={x,y};
@@ -843,7 +908,7 @@ function tick(t){
   dx+=+(k.has('d')||k.has('arrowright'))-+(k.has('a')||k.has('arrowleft'));
   dy+=+(k.has('s')||k.has('arrowdown'))-+(k.has('w')||k.has('arrowup'));
   if(dx||dy){
-   state.walkTarget=null;
+   state.walkTarget=null;state.benchTarget=null;
    if(slamMotion)finishSlamMotion();
   }
   if(!dx&&!dy&&slamMotion){
@@ -881,7 +946,15 @@ function tick(t){
   }
   if(!dx&&!dy&&!slamMotion&&state.walkTarget){
    const tx=state.walkTarget.x-state.me.x,ty=state.walkTarget.y-state.me.y,n=Math.hypot(tx,ty);
-   if(n>4){dx=tx/n;dy=ty/n}else state.walkTarget=null;
+   if(n>4){dx=tx/n;dy=ty/n}else{
+    state.walkTarget=null;
+    if(state.benchTarget){
+     const bench=state.benchTarget;state.benchTarget=null;
+     state.me.x=bench.x;state.me.y=bench.y;state.me.facing=0; // seated looking toward the sea
+     state.pose='sit';state.me.pose='sit';state.action='idle';state.me.action='idle';state.actionUntil=0;
+     updateActionButtons();sendMove();
+    }
+   }
   }
   state.moving=!!(dx||dy);
   if(state.moving){
