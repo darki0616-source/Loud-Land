@@ -141,3 +141,22 @@ button,input{touch-action:manipulation}
  .chat-panel{bottom:calc(env(safe-area-inset-bottom) + 115px)!important}
  .movement-guide{display:none!important}
 }
+
+/* v11: one stable native gesture layer, including the CSS3D YouTube screen.
+   This must sit ABOVE the iframe and the non-interactive avatar canvas.
+   All HUD/slam/chat buttons are separate siblings in .gamewrap with higher z-index. */
+#world>.game-touch-surface{
+ position:absolute!important;inset:0!important;
+ width:100%!important;height:100%!important;
+ z-index:8!important;display:block!important;
+ background:transparent!important;
+ touch-action:none!important;
+ -webkit-user-select:none!important;user-select:none!important;
+ -webkit-touch-callout:none!important;
+ overscroll-behavior:contain!important;
+ cursor:grab;
+}
+#world>.game-touch-surface:active{cursor:grabbing}
+#world>.css-world{pointer-events:none!important}
+/* Even if another iframe style is introduced, its wrapper must not consume pinch gestures. */
+#world #youtubeScreen.onstage{touch-action:none!important}

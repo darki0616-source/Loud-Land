@@ -126,6 +126,26 @@ const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-per
 const cssRenderer=new CSS3DRenderer();cssRenderer.domElement.className='css-world';host.appendChild(cssRenderer.domElement);
 const stageVideo=document.querySelector('#youtubeScreen');stageVideo.classList.add('onstage');
 const stageWebObject=new CSS3DObject(stageVideo);stageWebObject.position.set(0,6.3,-29.12);stageWebObject.scale.set(.015,.015,.015);scene.add(stageWebObject);
+// The YouTube iframe is an independent browser browsing context. On iOS it
+// otherwise captures two-finger gestures and pinches the entire page.
+// A single transparent native pointer surface ABOVE the CSS3D iframe makes
+// ALL taps/drags/pinches inside the 3D world reach OrbitControls consistently.
+// YouTube playback and queue controls stay available via our music panel.
+const gameTouchSurface=document.createElement('div');
+gameTouchSurface.className='game-touch-surface';
+gameTouchSurface.setAttribute('aria-label','게임 맵 터치 조작 영역');
+// Do not make the overlay focusable: keyboard controls still use document.
+host.appendChild(gameTouchSurface);
+gameTouchSurface.addEventListener('touchmove',event=>{
+ if(event.cancelable)event.preventDefault();
+},{passive:false});
+// Safari's legacy gesture events can still trigger browser-level zoom if
+// the two fingers began on different layered descendants of the game map.
+const gameWrap=host.closest('.gamewrap');
+for(const type of ['gesturestart','gesturechange','gestureend']){
+ gameWrap?.addEventListener(type,event=>{if(event.cancelable)event.preventDefault()},{passive:false});
+}
+
 
 // Stable single-pass avatar composition. The YouTube iframe is CSS3D;
 // actors and bubbles live exclusively on a fixed transparent WebGL overlay.
@@ -152,7 +172,7 @@ function renderStageForeground(){
  try{stageForeground.render(scene,foregroundCamera)}finally{scene.background=original}
 }
 
-const controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.dampingFactor=.07;controls.minDistance=3.2;controls.maxDistance=105;controls.maxPolarAngle=Math.PI/2.12;controls.target.set(0,1,4);controls.enablePan=false;
+const controls=new OrbitControls(camera,gameTouchSurface);controls.enableDamping=true;controls.dampingFactor=.07;controls.minDistance=3.2;controls.maxDistance=105;controls.maxPolarAngle=Math.PI/2.12;controls.target.set(0,1,4);controls.enablePan=false;
 // Full 360° orbit on mouse and touch. Collide the camera with the actual stage
 // box, never an infinite Z-plane (the old plane felt like a left/right lock).
 // When the stage is between the player and the camera, dolly in along the
@@ -662,8 +682,17 @@ function updateSlamDust(t){
 moveMarker.rotation.x=-Math.PI/2;moveMarker.visible=false;scene.add(moveMarker);
 let moveMarkerUntil=0;
 let pointerStart=null;
-renderer.domElement.addEventListener('pointerdown',e=>{pointerStart={x:e.clientX,y:e.clientY,time:performance.now()}});
-renderer.domElement.addEventListener('pointerup',e=>{
+const activeMapPointers=new Set();
+gameTouchSurface.addEventListener('pointerdown',e=>{
+ // A pinch must not accidentally place a slam or start walking.
+ if(e.pointerType==='touch'&&activeMapPointers.size)pointerStart=null;
+ else pointerStart={x:e.clientX,y:e.clientY,time:performance.now()};
+ activeMapPointers.add(e.pointerId);
+});
+gameTouchSurface.addEventListener('pointercancel',e=>{activeMapPointers.delete(e.pointerId);pointerStart=null});
+gameTouchSurface.addEventListener('pointerup',e=>{
+ const wasMultiTouch=activeMapPointers.size>1;activeMapPointers.delete(e.pointerId);
+ if(wasMultiTouch){pointerStart=null;return}
  if(!pointerStart||!state.me)return;
  const dist=Math.hypot(e.clientX-pointerStart.x,e.clientY-pointerStart.y);pointerStart=null;
  if(dist>9)return;
