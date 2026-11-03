@@ -227,3 +227,7 @@ button,input{touch-action:manipulation}
 .slam-overlay .rock-label{font-size:12px;color:#fff;font-weight:900;letter-spacing:.04em}
 .rock-path{pointer-events:none}
 @media(max-width:700px){.rock-menu-panel{top:calc(env(safe-area-inset-top) + 51px);right:6px;width:min(240px,calc(100% - 12px))}}
+
+/* v25: 11 chibi reactions, including Buriburi. Avoid desktop overflow and mobile clipping. */
+@media (min-width:701px){.controlbar .actions{grid-template-columns:repeat(11,minmax(0,1fr))}.controlbar{width:min(1110px,calc(100% - 24px))}}
+@media (max-width:700px){.controlbar .actions{grid-template-columns:repeat(4,minmax(0,1fr))}.controlbar .actions button{min-height:39px!important}.controlbar .actions button span{font-size:8px!important}}
