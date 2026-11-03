@@ -172,6 +172,7 @@ const server=http.createServer(async(req,res)=>{
           const entry={id:vid,title:await getVideoTitle(vid),addedBy:p.name};
           // Always append to the shared queue; automatically start when nothing is playing.
           queue.push(entry);scheduleSave();if(!music.id)nextTrack();else broadcast({type:'music',...musicState()});
+          broadcast({type:'music-booked',name:p.name,title:entry.title,videoId:entry.id,at:Date.now()});
         } else if(d.command==='pause'&&!music.paused&&music.id){music.position=Math.max(0,(Date.now()-music.startedAt)/1000);music.paused=true;scheduleSave();broadcast({type:'music',...musicState()})}
         else if(d.command==='resume'&&music.paused&&music.id){music.startedAt=Date.now()-music.position*1000;music.paused=false;scheduleSave();broadcast({type:'music',...musicState()})}
         else if(d.command==='duration'&&music.id&&Number(d.token)===music.token){
