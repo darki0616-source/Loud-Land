@@ -160,3 +160,7 @@ button,input{touch-action:manipulation}
 #world>.css-world{pointer-events:none!important}
 /* Even if another iframe style is introduced, its wrapper must not consume pinch gestures. */
 #world #youtubeScreen.onstage{touch-action:none!important}
+
+/* v14: 10 reactions in two rows of five, tablet/mobile touch friendly. */
+@media (max-width: 700px){.controlbar .actions{grid-template-columns:repeat(5,minmax(0,1fr));gap:3px}.controlbar .actions button{min-height:46px;padding:3px 0;font-size:17px}.controlbar .actions button span{font-size:9px}}
+@media (min-width: 701px){.controlbar{width:min(1020px,calc(100% - 24px))}.controlbar .actions{display:grid;grid-template-columns:repeat(10,minmax(0,1fr))}.controlbar .actions button{min-width:0}}
