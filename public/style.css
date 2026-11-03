@@ -181,3 +181,36 @@ button,input{touch-action:manipulation}
 .music-booking-notice strong{font-size:12px;font-weight:800;line-height:1.45}
 .music-booking-notice small{font-size:11px;color:#d3e9bc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 @media(max-width:700px){.players-panel{right:8px;top:calc(env(safe-area-inset-top) + 53px);width:min(240px,calc(100% - 16px));max-height:48%}.hudright #playersToggle{font-size:10px!important;padding-inline:6px!important}}
+
+
+/* v19: controls are global actions available to every joined guest, not host-only. */
+.shared-music-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:9px;padding:10px 13px;border:1px solid #43536a;border-radius:13px;background:#171d2c;color:#f3f7ff;box-shadow:0 7px 20px #050a1633;position:relative;z-index:2}
+.shared-music-label{display:flex;align-items:center;gap:10px;min-width:0;flex:1}
+.shared-music-label>span{font-size:12px;font-weight:900;white-space:nowrap;color:#d7fa81}
+.shared-music-label>small{font-size:11px;font-weight:650;color:#bdc9d9;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;min-width:0}
+.shared-music-actions{display:flex;align-items:center;gap:7px;flex-shrink:0}
+.shared-music-actions button{border:1px solid #52627a;background:#29354a;color:#f7faff;border-radius:9px;min-height:37px;padding:8px 11px;font-size:12px;font-weight:850;cursor:pointer;touch-action:manipulation}
+.shared-music-actions button:hover:not(:disabled){border-color:#d7fa81;background:#36485b}
+.shared-music-actions button:disabled{opacity:.4;cursor:default}
+@media(max-width:700px){.shared-music-bar{gap:7px;padding:8px;flex-wrap:wrap;margin-top:6px;border-radius:11px}.shared-music-label{width:100%;flex-basis:100%}.shared-music-label>span{font-size:11px}.shared-music-label>small{font-size:10px}.shared-music-actions{width:100%;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}.shared-music-actions button{min-height:38px;padding:7px 4px;font-size:12px}}
+
+/* v20 -- one public vote control, no shared pause/restart. */
+.shared-music-actions{display:flex!important;grid-template-columns:none!important;min-width:0}
+.shared-music-actions #sharedSkip{min-width:115px;white-space:nowrap}
+.musiccontrols{display:flex;gap:8px}.musiccontrols button{flex:1}
+.skip-vote-overlay[hidden]{display:none!important}
+.skip-vote-overlay{position:fixed;inset:0;z-index:75;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(5,10,20,.67);pointer-events:auto;box-sizing:border-box}
+.skip-vote-card{background:#171e2c;border:1px solid #4c6174;border-radius:18px;width:min(430px,100%);padding:23px;color:#eef4fc;box-shadow:0 28px 80px #0009;box-sizing:border-box}
+.skip-vote-top{display:flex;align-items:center;justify-content:space-between;gap:8px;color:#b8cbdc;font-size:12px;font-weight:800}
+.skip-vote-timer{background:#2b394a;color:#cffa9e;border-radius:9px;padding:7px 9px;white-space:nowrap}
+.skip-vote-card h3{font-size:19px;margin:12px 0 8px;line-height:1.4;overflow-wrap:anywhere}
+.skip-vote-card p{color:#c6d0df;font-size:12px;line-height:1.65;margin:4px 0 13px}
+.skip-vote-bar{width:100%;height:8px;background:#333f50;overflow:hidden;border-radius:20px}
+.skip-vote-bar>div{height:100%;background:#c5f982;transition:width .25s}
+.skip-vote-tally{font-size:12px;font-weight:700;color:#dfe8f3;margin:10px 0 16px}
+.skip-vote-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.skip-vote-actions button{border:1px solid #53657a;color:#f8fafc;border-radius:11px;background:#35475c;min-height:47px;font-weight:800;cursor:pointer}
+.skip-vote-actions button:first-child{background:#c8f985;color:#1a2a1f;border:0}
+.skip-vote-actions button:disabled{opacity:.48;cursor:default}
+.skip-vote-card small{display:block;margin-top:13px;color:#a6b7c9;font-size:11px;line-height:1.5}
+@media(max-width:700px){.skip-vote-card{padding:18px}.shared-music-actions{width:auto!important}.shared-music-label{flex:1;min-width:0}.shared-music-bar{flex-wrap:nowrap!important}.shared-music-actions #sharedSkip{min-width:110px;font-size:11px}}
