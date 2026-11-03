@@ -21,7 +21,7 @@ window.onYouTubeIframeAPIReady=()=>{state.yt=new YT.Player('youtubePlayer',{heig
 async function musicCommand(command,extra={}){if(!state.id)return toast('먼저 입장해주세요');try{let d=await post('music',{id:state.id,command,...extra});applyMusic(d.music,d.serverNow,d.queue);toast('공유 음악이 업데이트되었습니다')}catch(e){toast(e.message)}}
 $('playLink').onclick=()=>musicCommand('enqueue',{url:$('videoUrl').value});$('pauseMusic').onclick=()=>musicCommand('pause');$('resumeMusic').onclick=()=>musicCommand('resume');$('skipMusic').onclick=()=>musicCommand('skip');$('enableAudio').onclick=()=>{state.audioEnabled=true;try{state.yt?.unMute()}catch(e){}syncVideo(true);toast('이 기기의 소리를 켰어요')};$('videoUrl').addEventListener('keydown',e=>{if(e.key==='Enter')$('playLink').click()});
 function updateCrowdCount(n){const el=document.getElementById('boardVisitors');if(el)el.textContent=String(n)}
-function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='snapshot'){state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;updateCrowdCount(d.count);applyMusic(d.music,d.serverNow,d.queue);applySlam(d.slam,d.slamCooldownUntil);if(Array.isArray(d.chat)){$('chatMessages').replaceChildren();d.chat.forEach(appendChat)}}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;updateCrowdCount(d.count);if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){appendChat(d.entry);showBubble(d.entry)}else if(d.type==='move'){state.players.set(d.player.id,d.player)}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count;updateCrowdCount(d.count)}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue);else if(d.type==='slam')applySlam(d.slam,d.cooldownUntil);else if(d.type==='slam-go')onSlamGo(d)}}
+function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='snapshot'){state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;updateCrowdCount(d.count);applyMusic(d.music,d.serverNow,d.queue);applySlam(d.slam,d.slamCooldownUntil);if(Array.isArray(d.chat)){$('chatMessages').replaceChildren();d.chat.forEach(appendChat)}}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;updateCrowdCount(d.count);if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){appendChat(d.entry);showBubble(d.entry)}else if(d.type==='move'){state.players.set(d.player.id,d.player)}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count;updateCrowdCount(d.count)}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue);else if(d.type==='slam')applySlam(d.slam,d.cooldownUntil);else if(d.type==='slam-go')onSlamGo(d);else if(d.type==='slam-impact')spawnSlamDust(d.x,d.y)}}
 async function join(){try{let d=await post('join',{name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);cameraFollowInitialized=false;state.players=new Map(d.players.map(p=>[p.id,p]));$('joinModal').classList.add('hidden');$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='페스티벌 참가 중';$('avatarPreview').querySelector('b').style.background=chosenColor;applyMusic(d.music,d.serverNow,d.queue);applySlam(d.slam,d.slamCooldownUntil);listen();$('audioModal').classList.remove('hidden');showMovementGuide();toast('ONEseason에 오신 것을 환영합니다!')}catch(e){$('joinError').textContent='입장 실패: '+(e?.message||'연결을 확인해주세요');console.error('ONEseason join error:',e)}}
 $('audioYes').onclick=()=>{state.audioEnabled=true;$('audioModal').classList.add('hidden');if(state.ytReady){try{state.yt.unMute();state.yt.setVolume(75)}catch(e){}}syncVideo(true);toast(state.music.id?'음악 재생을 허용했어요':'음악이 등록되면 바로 재생돼요')};$('audioNo').onclick=()=>{state.audioEnabled=false;$('audioModal').classList.add('hidden');try{state.yt?.pauseVideo()}catch(e){}toast('음악을 끈 상태로 입장했어요')};$('joinBtn').onclick=join;$('nick').onkeydown=e=>{if(e.key==='Enter')join()};$('editAvatar').onclick=()=>{if(state.id){post('leave',{id:state.id}).catch(()=>{});state.es?.close();state.id=null;state.me=null;cameraFollowInitialized=false;state.players.clear();slam=null;slamMode=false;slamMotion=null;refreshSlamUI()}$('joinModal').classList.remove('hidden')};$('helpBtn').onclick=()=>toast('WASD 이동 · 클릭/터치 이동 · 드래그 시점 회전 · 1~8 리액션');
 function react(a){
@@ -581,7 +581,12 @@ function animateAvatar(a,p,t){
   set('leftShoulder',.16);set('rightShoulder',.16);
  }
  if(act==='slam-celebrate'){
-  height=Math.abs(Math.sin(sec*12.5))*.28;set('leftShoulder',-.16,0,-.2);set('rightShoulder',-.16,0,.2);
+  // Repeating joyful jumps until the player takes control again.
+  const hop=Math.pow(Math.max(0,Math.sin(sec*10.8)),.85);
+  height=hop*.68;
+  set('leftHip',-.15*(1-hop));set('rightHip',-.15*(1-hop));
+  set('leftKnee',.34*(1-hop));set('rightKnee',.34*(1-hop));
+  set('leftShoulder',-.16,0,-.35);set('rightShoulder',-.16,0,.35);
  }
  if(act==='lie'){
   height=.52;lean=-Math.PI/2;
@@ -619,6 +624,40 @@ const groundRay=new THREE.Raycaster(), pointer=new THREE.Vector2(), groundPlane=
 const moveMarker=new THREE.Mesh(new THREE.RingGeometry(.28,.43,24),new THREE.MeshBasicMaterial({color:'#d8ff8c',side:THREE.DoubleSide,transparent:true,opacity:.75,depthWrite:false}));
 const slamCircle=new THREE.Mesh(new THREE.RingGeometry(1.35,1.68,48),new THREE.MeshBasicMaterial({color:'#dcfd85',side:THREE.DoubleSide,transparent:true,opacity:.9,depthWrite:false}));
 slamCircle.rotation.x=-Math.PI/2;slamCircle.visible=false;scene.add(slamCircle);
+// A lightweight, pooled 3D puff of sand: shown to EVERY player after the
+// first arrival. No per-frame material allocations and no extra audio.
+const slamDustParticles=[];
+const slamDustGeometry=new THREE.SphereGeometry(1,7,5);
+for(let i=0;i<28;i++){
+ const material=new THREE.MeshBasicMaterial({color:['#eddfc7','#cfc2aa','#e7d1a7','#faf0d9'][i%4],transparent:true,opacity:0,depthWrite:false});
+ const mesh=new THREE.Mesh(slamDustGeometry,material);
+ mesh.visible=false;mesh.renderOrder=25;scene.add(mesh);
+ slamDustParticles.push({mesh,active:false,vx:0,vy:0,vz:0,start:0,duration:0,size:0,x:0,y:0,z:0});
+}
+function spawnSlamDust(x,y){
+ const center=toWorld({x,y}),now=performance.now();
+ slamDustParticles.forEach((p,i)=>{
+  // Deterministic distribution makes the cloud look consistent to spectators.
+  const angle=(i*.61803398875%1)*Math.PI*2;
+  const energy=.65+(i%7)*.085;
+  p.x=center.x;p.y=.16;p.z=center.z;
+  p.vx=Math.cos(angle)*energy*.014;
+  p.vz=Math.sin(angle)*energy*.014;
+  p.vy=.009+(i%5)*.003;
+  p.size=.19+(i%4)*.07;p.duration=830+(i%6)*115;
+  p.start=now;p.active=true;
+  p.mesh.visible=true;p.mesh.position.set(p.x,p.y,p.z);
+ });
+}
+function updateSlamDust(t){
+ for(const p of slamDustParticles){if(!p.active)continue;
+  const elapsed=t-p.start,progress=elapsed/p.duration;
+  if(progress>=1){p.active=false;p.mesh.visible=false;continue}
+  p.mesh.position.set(p.x+p.vx*elapsed,p.y+p.vy*elapsed-.000005*elapsed*elapsed,p.z+p.vz*elapsed);
+  p.mesh.scale.setScalar(p.size*(1+progress*.95));
+  p.mesh.material.opacity=.67*(1-progress)**1.5;
+ }
+}
 
 moveMarker.rotation.x=-Math.PI/2;moveMarker.visible=false;scene.add(moveMarker);
 let moveMarkerUntil=0;
@@ -655,6 +694,7 @@ function finishSlamMotion(){
  sendMove();
 }
 function tick(t){
+ const frameDelta=Math.min(50,Math.max(0,t-(tick.lastFrame??t)));tick.lastFrame=t;
  if(state.me){
   let dx=0,dy=0,speed=3.2,k=state.keys;
   dx+=+(k.has('d')||k.has('arrowright'))-+(k.has('a')||k.has('arrowleft'));
@@ -665,9 +705,13 @@ function tick(t){
   }
   if(!dx&&!dy&&slamMotion){
    const m=slamMotion;
-   if(t-m.started>16500){finishSlamMotion()}
-   else if(m.phase==='celebrate'){
-    if(t-m.phaseStarted>1000)finishSlamMotion();
+   if(m.phase==='celebrate'){
+    // Keep the hop + rock-horns bubble until the user moves, taps, or reacts.
+    state.action='slam-celebrate';state.me.action='slam-celebrate';
+   }else if(t-m.started>16500){
+    // Safety timeout for an unreachable approach/retreat; still keep celebrating.
+    m.phase='celebrate';m.phaseStarted=t;
+    state.action='slam-celebrate';state.me.action='slam-celebrate';sendMove();
    }else{
     const dest=m.phase==='charge'?m.approach:m.retreat;
     const tx=dest.x-state.me.x,ty=dest.y-state.me.y,n=Math.hypot(tx,ty);
@@ -684,7 +728,8 @@ function tick(t){
      }
     }else{
      dx=tx/n;dy=ty/n;
-     speed=m.phase==='charge'?8:4.5;
+     // Frame-rate-independent slow retreat, about 2–3 s instead of a sudden dash.
+     speed=m.phase==='charge'?8:Math.min(1.1,Math.max(.1,frameDelta*0.024));
      state.action=m.phase==='charge'?'slam-charge':'slam-retreat';
      state.me.action=state.action;
     }
@@ -714,7 +759,7 @@ function tick(t){
  for(let [id,p] of state.players){if(!avatars.has(id)){let a=makeAvatar(p),pos=toWorld(p);a.root.position.set(pos.x,0,pos.z);avatars.set(id,a)}animateAvatar(avatars.get(id),p,t)}
  for(let [id,a] of avatars)if(!state.players.has(id)){scene.remove(a.root);a.root.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material?.map)o.material.map.dispose();if(o.material)o.material.dispose()});avatars.delete(id)}
  if(moveMarker.visible){moveMarker.material.opacity=Math.min(.75,Math.max(0,(moveMarkerUntil-t)/1050)*.75);if(t>moveMarkerUntil)moveMarker.visible=false}
- updateEnvironment();updateOcean(t);updateBubbles(t);animateShow(t);followLocalAvatar();controls.update();keepCameraInFrontOfStage();updateSlamVisual(t);renderer.render(scene,camera);cssRenderer.render(scene,camera);renderStageForeground();requestAnimationFrame(tick)
+ updateEnvironment();updateOcean(t);updateSlamDust(t);updateBubbles(t);animateShow(t);followLocalAvatar();controls.update();keepCameraInFrontOfStage();updateSlamVisual(t);renderer.render(scene,camera);cssRenderer.render(scene,camera);renderStageForeground();requestAnimationFrame(tick)
 }
 function resize(){let w=host.clientWidth,h=host.clientHeight;if(!w||!h)return;camera.aspect=w/h;camera.updateProjectionMatrix();renderer.setSize(w,h,false);cssRenderer.setSize(w,h);if(stageForeground)stageForeground.setSize(w,h,false)}new ResizeObserver(resize).observe(host);resize();requestAnimationFrame(tick);
 setInterval(()=>{syncVideo();reportDuration();let m=state.music;if(!m.id)return;let sec=m.paused?m.position:(Date.now()+state.serverDelta-m.startedAt)/1000;let dur=state.ytReady?state.yt.getDuration():0;$('progressFill').style.width=dur?Math.min(100,sec/dur*100)+'%':'0%'},5000);
