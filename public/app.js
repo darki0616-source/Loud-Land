@@ -403,6 +403,89 @@ function animateShow(t){let sec=t*.001;stageLights.forEach((l,i)=>{const beat=70
 }
 for(let i=0;i<55;i++){let x=(Math.sin(i*44.7)*.5+.5)*66-33,z=(Math.sin(i*21.8)*.5+.5)*40-10;if(z<12&&z>-8){let c=sphere(.10,mat(['#d9ee98','#d78bae','#8cc5eb'][i%3]),x,.1,z);c.castShadow=false}}
 
+// ONEseason hourly firework show. The event clock uses the same server-adjusted
+// time as shared music/slam. UTC hour boundaries also coincide with every
+// local :00, including Korea; no per-user timer or database is required.
+// Deterministic seeds/locations keep the show consistent across visitors.
+const fireworkCount=180;
+const fireworks=[];
+const fireworkColors=['#ffe48a','#ff779e','#8ce9ff','#cda8ff','#8cffab','#ffb36b'];
+const fireworkLocations=[[-19,28,-8],[6,34,-5],[26,30,5],[-5,39,15],[14,35,-18],[0,31,7]];
+const sparkleCanvas=document.createElement('canvas');sparkleCanvas.width=sparkleCanvas.height=64;
+const sparkleCtx=sparkleCanvas.getContext('2d');
+const glow=sparkleCtx.createRadialGradient(32,32,1,32,32,32);
+glow.addColorStop(0,'rgba(255,255,255,1)');glow.addColorStop(.22,'rgba(255,255,255,.93)');glow.addColorStop(.55,'rgba(255,255,255,.35)');glow.addColorStop(1,'rgba(255,255,255,0)');
+sparkleCtx.fillStyle=glow;sparkleCtx.fillRect(0,0,64,64);
+const fireworkDot=new THREE.CanvasTexture(sparkleCanvas);
+for(let j=0;j<fireworkLocations.length;j++){
+ const positions=new Float32Array(fireworkCount*3),velocity=new Float32Array(fireworkCount*3),colors=new Float32Array(fireworkCount*3);
+ const geometry=new THREE.BufferGeometry();
+ geometry.setAttribute('position',new THREE.BufferAttribute(positions,3).setUsage(THREE.DynamicDrawUsage));
+ geometry.setAttribute('color',new THREE.BufferAttribute(colors,3));
+ const material=new THREE.PointsMaterial({size:1.65,map:fireworkDot,vertexColors:true,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending,alphaTest:.015,sizeAttenuation:true,fog:false});
+ const cloud=new THREE.Points(geometry,material);cloud.frustumCulled=false;cloud.visible=false;cloud.renderOrder=35;scene.add(cloud);
+ const rocket=new THREE.Sprite(new THREE.SpriteMaterial({map:fireworkDot,color:fireworkColors[j],transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending}));rocket.scale.set(2.4,2.4,1);rocket.visible=false;scene.add(rocket);
+ fireworks.push({cloud,rocket,velocity,positions,colors,location:fireworkLocations[j],start:j*.72,explosionDelay:.7+(j%2)*.12});
+}
+let lastFireworkHour=-1,fireworkStart=0,fireworkActive=false;
+function startHourlyFireworks(nowMilliseconds,frameTime){
+ const hourKey=Math.floor(nowMilliseconds/3600000);
+ const fraction=nowMilliseconds-hourKey*3600000;
+ if(fraction>=5000||hourKey===lastFireworkHour)return;
+ lastFireworkHour=hourKey;
+ // Backdate to the clock boundary so all viewers see the same phase.
+ fireworkStart=frameTime-fraction;
+ fireworkActive=true;
+ for(let j=0;j<fireworks.length;j++){
+  const f=fireworks[j],color=new THREE.Color(fireworkColors[j]);
+  for(let i=0;i<fireworkCount;i++){
+   // Golden-angle sphere distribution, with slight deterministic speed changes.
+   const v=1-2*(i+.5)/fireworkCount;
+   const ang=i*2.399963229728653 + j*.43;
+   const radius=Math.sqrt(1-v*v);
+   const speed=5.8+((i*73+j*19)%57)/57*5.5;
+   const k=i*3;
+   f.velocity[k]=Math.cos(ang)*radius*speed;
+   f.velocity[k+1]=v*speed;
+   f.velocity[k+2]=Math.sin(ang)*radius*speed;
+   const warm=1-((i*17+j*11)%9)*.045;
+   f.colors[k]=color.r*warm;f.colors[k+1]=color.g*warm;f.colors[k+2]=color.b*warm;
+  }
+  f.cloud.geometry.attributes.color.needsUpdate=true;
+  f.cloud.visible=false;f.rocket.visible=false;
+ }
+}
+function updateHourlyFireworks(t){
+ // serverDelta comes from the same timestamp used for music synchronization.
+ const now=Date.now()+(Number.isFinite(state.serverDelta)?state.serverDelta:0);
+ startHourlyFireworks(now,t);
+ if(!fireworkActive)return;
+ const seconds=(t-fireworkStart)*.001;
+ let any=false;
+ for(const f of fireworks){
+  const elapsed=seconds-f.start,explodeAt=f.explosionDelay;
+  const [x,y,z]=f.location;
+  f.rocket.visible=elapsed>=0&&elapsed<explodeAt;
+  if(f.rocket.visible){any=true;const progress=elapsed/explodeAt;f.rocket.position.set(x,y-25+25*progress*progress,z);f.rocket.material.opacity=.95-progress*.2;}
+  const burst=elapsed-explodeAt;
+  f.cloud.visible=burst>=0&&burst<3.65;
+  if(!f.cloud.visible)continue;
+  any=true;
+  const fade=burst<.24?burst/.24:Math.pow(Math.max(0,1-(burst-.24)/3.41),1.3);
+  f.cloud.material.opacity=.97*fade;
+  const pos=f.positions,vel=f.velocity;
+  const drag=(1-Math.exp(-burst*.55))/.55;
+  for(let i=0;i<pos.length;i+=3){
+   pos[i]=x+vel[i]*drag;
+   pos[i+1]=y+vel[i+1]*drag-2.4*burst*burst;
+   pos[i+2]=z+vel[i+2]*drag;
+  }
+  f.cloud.geometry.attributes.position.needsUpdate=true;
+ }
+ if(!any&&seconds>9){fireworkActive=false;for(const f of fireworks){f.cloud.visible=false;f.rocket.visible=false}}
+}
+
+
 function updateOcean(t){
  const sec=t*.001;
  const a=ocean.geometry.attributes.position.array;
@@ -976,7 +1059,7 @@ function tick(t){
  for(let [id,p] of state.players){if(!avatars.has(id)){let a=makeAvatar(p),pos=toWorld(p);a.root.position.set(pos.x,0,pos.z);avatars.set(id,a)}animateAvatar(avatars.get(id),p,t)}
  for(let [id,a] of avatars)if(!state.players.has(id)){scene.remove(a.root);a.root.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material?.map)o.material.map.dispose();if(o.material)o.material.dispose()});avatars.delete(id)}
  if(moveMarker.visible){moveMarker.material.opacity=Math.min(.75,Math.max(0,(moveMarkerUntil-t)/1050)*.75);if(t>moveMarkerUntil)moveMarker.visible=false}
- updateEnvironment();animateSky(t);updateOcean(t);updateSlamDust(t);updateBubbles(t);animateShow(t);followLocalAvatar();controls.update();keepCameraInFrontOfStage();updateSlamVisual(t);renderer.render(scene,camera);cssRenderer.render(scene,camera);renderStageForeground();requestAnimationFrame(tick)
+ updateEnvironment();animateSky(t);updateOcean(t);updateSlamDust(t);updateBubbles(t);animateShow(t);updateHourlyFireworks(t);followLocalAvatar();controls.update();keepCameraInFrontOfStage();updateSlamVisual(t);renderer.render(scene,camera);cssRenderer.render(scene,camera);renderStageForeground();requestAnimationFrame(tick)
 }
 function resize(){let w=host.clientWidth,h=host.clientHeight;if(!w||!h)return;camera.aspect=w/h;camera.updateProjectionMatrix();renderer.setSize(w,h,false);cssRenderer.setSize(w,h);if(stageForeground)stageForeground.setSize(w,h,false)}new ResizeObserver(resize).observe(host);resize();requestAnimationFrame(tick);
 setInterval(()=>{syncVideo();reportDuration();let m=state.music;if(!m.id)return;let sec=m.paused?m.position:(Date.now()+state.serverDelta-m.startedAt)/1000;let dur=state.ytReady?state.yt.getDuration():0;$('progressFill').style.width=dur?Math.min(100,sec/dur*100)+'%':'0%'},5000);
