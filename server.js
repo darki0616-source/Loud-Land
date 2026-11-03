@@ -8,6 +8,11 @@ const PUBLIC = path.join(__dirname, 'public');
 const clients = new Map();
 const players = new Map();
 const chatHistory=[];
+let activeSlam=null,slamCooldownUntil=0;
+const SLAM_COUNTDOWN_MS=5000,SLAM_COOLDOWN_MS=15000;
+function publicSlam(){return activeSlam?{id:activeSlam.id,x:activeSlam.x,y:activeSlam.y,endAt:activeSlam.endAt,participants:[...activeSlam.participants]}:null}
+function slamUpdate(){broadcast({type:'slam',slam:publicSlam(),cooldownUntil:slamCooldownUntil})}
+
 const chatChoices=['안녕','뛰어','👍','❤️'];
 let music = {id:'', title:'', startedAt:0, paused:true, position:0, changedBy:'', token:0, duration:0};
 const queue=[]; let nextTrackToken=1;
@@ -68,9 +73,9 @@ const clean = (s,max=30)=>String(s||'').replace(/[\x00-\x1f<>]/g,'').trim().slic
 const send=(res,obj)=>{res.write('data: '+JSON.stringify(obj)+'\n\n');};
 const broadcast=obj=>{for(const res of clients.values()) {try {send(res,obj);}catch{}}};
 const json=(res,status,obj)=>{res.writeHead(status,{'content-type':'application/json; charset=utf-8','cache-control':'no-store','access-control-allow-origin':'*'});res.end(JSON.stringify(obj));};
-const snapshot=()=>({type:'snapshot',players:[...players.values()],chat:chatHistory,...musicState(),count:players.size});
+const snapshot=()=>({type:'snapshot',players:[...players.values()],chat:chatHistory,...musicState(),slam:publicSlam(),slamCooldownUntil,count:players.size});
 const clamp=(n,min,max)=>Math.min(max,Math.max(min,Number(n)||0));
-function cleanup(){const now=Date.now();for(const [id,p] of players)if(now-p.seen>35000){players.delete(id);pauseForEmpty();const r=clients.get(id);if(r){r.end();clients.delete(id)}broadcast({type:'leave',id,count:players.size})}}
+function cleanup(){const now=Date.now();for(const [id,p] of players)if(now-p.seen>35000){players.delete(id);if(activeSlam?.participants.delete(id))slamUpdate();pauseForEmpty();const r=clients.get(id);if(r){r.end();clients.delete(id)}broadcast({type:'leave',id,count:players.size})}}
 setInterval(cleanup,7000).unref();
 function videoId(input){const v=String(input||'').trim();if(/^[\w-]{11}$/.test(v))return v;try{const u=new URL(v);const host=u.hostname.replace(/^www\./,'');if(host==='youtu.be')return /^[\w-]{11}$/.test(u.pathname.slice(1))?u.pathname.slice(1):null;if(['youtube.com','m.youtube.com','music.youtube.com','youtube-nocookie.com'].includes(host)){const id=u.searchParams.get('v')||u.pathname.match(/\/(?:embed|shorts|live)\/([\w-]{11})/)?.[1];return /^[\w-]{11}$/.test(id||'')?id:null}}catch{}return null}
 // Read the actual public YouTube title server-side; never trust a user-submitted title.
@@ -124,6 +129,30 @@ const server=http.createServer(async(req,res)=>{
         chatHistory.push(entry);if(chatHistory.length>35)chatHistory.shift();
         broadcast({type:'chat',entry});return json(res,200,{ok:true});
       }
+      if(url.pathname==='/api/slam'){
+        if(d.command==='start'){
+          if(activeSlam)return json(res,409,{error:'이미 진행 중인 슬램이 있어요.'});
+          const now=Date.now();if(now<slamCooldownUntil)return json(res,429,{error:'슬램 쿨타임이 아직 남아 있어요.'});
+          const x=Number(d.x),y=Number(d.y);
+          // Slam can only take place on the accessible festival floor, not in the sea/stage.
+          if(!Number.isFinite(x)||!Number.isFinite(y)||x<20||x>1380||y<250||y>880)return json(res,400,{error:'슬램 위치는 페스티벌 바닥을 선택해 주세요.'});
+          const eventId=crypto.randomUUID();
+          activeSlam={id:eventId,x:Math.round(x),y:Math.round(y),endAt:now+SLAM_COUNTDOWN_MS,participants:new Set([id])};
+          slamCooldownUntil=now+SLAM_COOLDOWN_MS;
+          const current=activeSlam;
+          setTimeout(()=>{
+            if(activeSlam!==current)return;
+            const participants=[...current.participants].filter(pid=>players.has(pid));
+            broadcast({type:'slam-go',id:eventId,x:current.x,y:current.y,participants});
+            activeSlam=null;slamUpdate();
+          },SLAM_COUNTDOWN_MS);
+          slamUpdate();
+        }else if(d.command==='join'){
+          if(!activeSlam||Date.now()>=activeSlam.endAt||d.slamId!==activeSlam.id)return json(res,409,{error:'이미 끝난 슬램이에요.'});
+          activeSlam.participants.add(id);slamUpdate();
+        }else return json(res,400,{error:'Invalid slam command'});
+        return json(res,200,{slam:publicSlam(),cooldownUntil:slamCooldownUntil,serverNow:Date.now()});
+      }
       if(url.pathname==='/api/music'){
         if(d.command==='enqueue'||d.command==='play'){
           const vid=videoId(d.url||d.videoId);if(!vid)return json(res,400,{error:'유효한 유튜브 링크를 입력하세요.'});
@@ -145,7 +174,7 @@ const server=http.createServer(async(req,res)=>{
         else return json(res,400,{error:'Invalid command'});
         return json(res,200,{ok:true,...musicState()});
       }
-      if(url.pathname==='/api/leave'){players.delete(id);pauseForEmpty();clients.get(id)?.end();clients.delete(id);broadcast({type:'leave',id,count:players.size});return json(res,200,{ok:true})}
+      if(url.pathname==='/api/leave'){players.delete(id);if(activeSlam?.participants.delete(id))slamUpdate();pauseForEmpty();clients.get(id)?.end();clients.delete(id);broadcast({type:'leave',id,count:players.size});return json(res,200,{ok:true})}
       return json(res,404,{error:'Not found'});
     }catch(e){return json(res,400,{error:e.message})}
   }
