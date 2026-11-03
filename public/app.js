@@ -881,29 +881,22 @@ function animateAvatar(a,p,t){
   }
  }
  if(act==='buriburi'){
-  // Adapted from the supplied stage-dance frame: a wide, nearly horizontal
-  // arm line, alternating tucked-in forearm, low knee bounce and torso sway.
-  // A two-sided eight-count loop makes the pose recognisable from behind, too.
-  const beat=sec*5.7;
-  const sway=Math.sin(beat), pulse=(1-Math.cos(beat*2))*.5;
-  const phrase=Math.sin(beat*.5);
-  const tuckLeft=(1+Math.sin(beat*.5))*.5;
-  const tuckRight=1-tuckLeft;
-  // Keep both arms extended horizontally instead of the previous low hip shimmy.
-  // Every few beats, an elbow folds so the forearm briefly crosses the chest.
-  const leftFold=Math.pow(tuckLeft,4), rightFold=Math.pow(tuckRight,4);
-  set('leftShoulder',-.10-.07*pulse,-.10*phrase,-1.41+.16*pulse+.58*leftFold);
-  set('rightShoulder',-.10-.07*pulse,.10*phrase,1.41-.16*pulse-.58*rightFold);
-  set('leftElbow',-.08-.94*leftFold);
-  set('rightElbow',-.08-.94*rightFold);
-  // Knees stay bent as in the stage frame; the torso rocks side-to-side.
-  set('upper',.075+.055*pulse,.06*phrase,.12*sway);
-  set('neck',-.035,-.04*phrase,-.05*sway);
-  set('leftHip',-.24+.10*sway,0,-.05*sway);
-  set('rightHip',-.24-.10*sway,0,-.05*sway);
-  set('leftKnee',.31+.10*Math.max(0,sway));
-  set('rightKnee',.31+.10*Math.max(0,-sway));
-  height=-.07+.055*pulse;
+  // Stage reference: both arms hold a fixed, straight horizontal T-pose.
+  // All rhythmic motion comes from the waist/hips, not alternating arm gestures.
+  const shake=Math.sin(sec*17.5);
+  const rebound=Math.sin(sec*35)*.012;
+  set('leftShoulder',0,0,-Math.PI/2);
+  set('rightShoulder',0,0,Math.PI/2);
+  set('leftElbow',0,0,0);
+  set('rightElbow',0,0,0);
+  // Shift the pelvis/body rhythmically left-right under a nearly fixed shoulder line.
+  set('upper',0,0,.025*shake);
+  set('neck',0,0,-.025*shake);
+  set('leftHip',-.17,0,-.17*shake);
+  set('rightHip',-.17,0,-.17*shake);
+  set('leftKnee',.22+.055*Math.max(0,shake));
+  set('rightKnee',.22+.055*Math.max(0,-shake));
+  height=-.035+rebound;
  }
  if(act==='jump'){
   const phase=Math.sin(sec*10.6);const lift=Math.max(0,phase);
@@ -994,6 +987,9 @@ function animateAvatar(a,p,t){
   // Allow gestures with shoulder and head while resting on the back.
   if(act==='headbang')set('neck',Math.sin(sec*9.4)*.24,0,0);
  }
+ // Only the Buriburi dance slides the torso laterally; return smoothly on exit.
+ const hipSlide=act==='buriburi'?Math.sin(sec*17.5)*.24:0;
+ P.upper.position.x+=(hipSlide-P.upper.position.x)*.38;
  const alpha=act===a.lastAction?.25:.17;
  for(const k of keys){
   if(ikMode==='clap'&&['leftShoulder','leftElbow','rightShoulder','rightElbow'].includes(k))continue;
