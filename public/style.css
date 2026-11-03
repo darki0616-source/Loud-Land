@@ -92,3 +92,8 @@ html,body{width:100%;max-width:100%;overscroll-behavior:none;overflow:hidden}
 /* Eight reactions: four columns by two rows on phones. */
 @media(min-width:701px){.actions{grid-template-columns:repeat(8,minmax(0,1fr))}}
 @media(max-width:700px){.actions{grid-template-columns:repeat(4,minmax(0,1fr))}}
+
+/* Characters and speech bubbles overlay only the projected CSS3D video screen. */
+#world .stage-avatar-foreground{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;z-index:2!important;pointer-events:none!important;touch-action:none!important;background:transparent!important;cursor:default!important}
+#world>.css-world{z-index:1}
+#world>canvas:not(.stage-avatar-foreground){position:relative;z-index:0}

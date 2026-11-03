@@ -51,6 +51,61 @@ const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-per
 const cssRenderer=new CSS3DRenderer();cssRenderer.domElement.className='css-world';host.appendChild(cssRenderer.domElement);
 const stageVideo=document.querySelector('#youtubeScreen');stageVideo.classList.add('onstage');
 const stageWebObject=new CSS3DObject(stageVideo);stageWebObject.position.set(0,6.3,-29.12);stageWebObject.scale.set(.015,.015,.015);scene.add(stageWebObject);
+
+// The video iframe is CSS3D (above the WebGL canvas). Render ONLY the
+// audience/emoji silhouettes over the video's projected rectangle using a
+// transparent, pointer-through foreground pass. Never hide the original
+// avatars or bubbles; this supplements their original main-scene rendering.
+// A normal depth buffer cannot be shared between CSS3D and WebGL renderers.
+let stageForeground=null;
+try{
+ stageForeground=new THREE.WebGLRenderer({alpha:true,antialias:false,powerPreference:'low-power'});
+ stageForeground.setPixelRatio(Math.min(window.devicePixelRatio||1,1.15));
+ stageForeground.outputColorSpace=THREE.SRGBColorSpace;
+ stageForeground.setClearColor(0x000000,0);
+ stageForeground.setSize(Math.max(1,host.clientWidth),Math.max(1,host.clientHeight),false);
+ stageForeground.domElement.className='stage-avatar-foreground';
+ stageForeground.domElement.setAttribute('aria-hidden','true');
+ stageForeground.domElement.style.pointerEvents='none';
+ host.appendChild(stageForeground.domElement);
+}catch(e){console.warn('Stage foreground pass unavailable; keeping normal characters',e);stageForeground=null}
+const foregroundCamera=camera.clone();foregroundCamera.layers.set(1);
+const screenCornerPositions=[
+ new THREE.Vector3(-8.64,-4.86,0),new THREE.Vector3(8.64,-4.86,0),
+ new THREE.Vector3(8.64,4.86,0),new THREE.Vector3(-8.64,4.86,0)
+];
+const screenProjected=new THREE.Vector3();
+function addForegroundLayer(object){object.traverse(child=>child.layers.enable(1))}
+function renderStageForeground(){
+ if(!stageForeground)return;
+ const canvas=stageForeground.domElement;
+ // When camera goes behind the screen, the video plane should not overlay
+ // the audience, and the original WebGL pass is left untouched.
+ if(camera.position.z<=stageWebObject.position.z+.03){canvas.style.display='none';return}
+ stageWebObject.updateMatrixWorld(true);
+ const w=host.clientWidth,h=host.clientHeight;
+ if(w<1||h<1){canvas.style.display='none';return}
+ const polygon=[];
+ for(const local of screenCornerPositions){
+  screenProjected.copy(local).applyMatrix4(stageWebObject.matrixWorld);
+  const viewZ=screenProjected.clone().applyMatrix4(camera.matrixWorldInverse).z;
+  if(viewZ>=-.1){canvas.style.display='none';return}
+  screenProjected.project(camera);
+  polygon.push(`${((screenProjected.x+1)*.5*w).toFixed(1)}px ${((1-screenProjected.y)*.5*h).toFixed(1)}px`);
+ }
+ // Do not attempt foreground compositing for the back side of the screen.
+ const screenNormal=new THREE.Vector3(0,0,1).transformDirection(stageWebObject.matrixWorld);
+ if(new THREE.Vector3().subVectors(camera.position,stageWebObject.position).dot(screenNormal)<0){canvas.style.display='none';return}
+ canvas.style.display='block';
+ canvas.style.clipPath=`polygon(${polygon.join(',')})`;
+ foregroundCamera.copy(camera);
+ foregroundCamera.layers.set(1);
+ // The avatar layer is drawn only inside the precise on-screen video polygon.
+ // Characters remain visible outside the polygon via the original renderer.
+ const oldBackground=scene.background;scene.background=null;
+ try{stageForeground.render(scene,foregroundCamera)}finally{scene.background=oldBackground}
+}
+
 const controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.dampingFactor=.07;controls.minDistance=3.2;controls.maxDistance=105;controls.maxPolarAngle=Math.PI/2.12;controls.target.set(0,1,4);controls.enablePan=false;
 // Full 360° orbit on mouse and touch. Collide the camera with the actual stage
 // box, never an infinite Z-plane (the old plane felt like a left/right lock).
@@ -223,6 +278,7 @@ function updateEnvironment(force=false){
   moonOrb.visible=true;moonLight.visible=p.moon>0.08;moonOrb.position.set(mx,my,112);moonLight.position.set(mx*.72,my+6,88);
  }else{moonOrb.visible=false;moonLight.visible=false}
 }
+for(const light of [hemi,sunLight,moonLight])light.layers.enable(1);
 updateEnvironment(true);
 
 
@@ -335,6 +391,7 @@ function makeAvatar(p){
  ctx.fillStyle='#fff';ctx.font='900 52px Arial, sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText((p.name||'ROCKER').slice(0,18),256,64,490);
  const texture=new THREE.CanvasTexture(cv);
  const tag=new THREE.Sprite(new THREE.SpriteMaterial({map:texture,transparent:true,depthTest:false}));tag.scale.set(4.65,1.16,1);tag.position.y=3.66;root.add(tag);parts.tag=tag;
+ addForegroundLayer(root);
  return {root,parts,color:p.color,lastAction:'idle'};
 }
 
@@ -353,7 +410,7 @@ function showBubble(entry){
  const old=activeBubbles.get(entry.playerId);
  if(old){scene.remove(old.sprite);old.sprite.material.map.dispose();old.sprite.material.dispose()}
  const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:bubbleTexture(entry.message),transparent:true,depthTest:false,depthWrite:false}));
- sprite.scale.set(3.4,1.49,1);sprite.renderOrder=150;scene.add(sprite);
+ sprite.scale.set(3.4,1.49,1);sprite.renderOrder=150;scene.add(sprite);sprite.layers.enable(1);
  activeBubbles.set(entry.playerId,{sprite,expires:performance.now()+3800});
 }
 
@@ -539,9 +596,9 @@ function tick(t){
  for(let [id,p] of state.players){if(!avatars.has(id)){let a=makeAvatar(p),pos=toWorld(p);a.root.position.set(pos.x,0,pos.z);avatars.set(id,a)}animateAvatar(avatars.get(id),p,t)}
  for(let [id,a] of avatars)if(!state.players.has(id)){scene.remove(a.root);a.root.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material?.map)o.material.map.dispose();if(o.material)o.material.dispose()});avatars.delete(id)}
  if(moveMarker.visible){moveMarker.material.opacity=Math.min(.75,Math.max(0,(moveMarkerUntil-t)/1050)*.75);if(t>moveMarkerUntil)moveMarker.visible=false}
- updateEnvironment();updateOcean(t);updateBubbles(t);animateShow(t);followLocalAvatar();controls.update();keepCameraInFrontOfStage();renderer.render(scene,camera);cssRenderer.render(scene,camera);requestAnimationFrame(tick)
+ updateEnvironment();updateOcean(t);updateBubbles(t);animateShow(t);followLocalAvatar();controls.update();keepCameraInFrontOfStage();renderer.render(scene,camera);cssRenderer.render(scene,camera);renderStageForeground();requestAnimationFrame(tick)
 }
-function resize(){let w=host.clientWidth,h=host.clientHeight;if(!w||!h)return;camera.aspect=w/h;camera.updateProjectionMatrix();renderer.setSize(w,h,false);cssRenderer.setSize(w,h)}new ResizeObserver(resize).observe(host);resize();requestAnimationFrame(tick);
+function resize(){let w=host.clientWidth,h=host.clientHeight;if(!w||!h)return;camera.aspect=w/h;camera.updateProjectionMatrix();renderer.setSize(w,h,false);cssRenderer.setSize(w,h);if(stageForeground)stageForeground.setSize(w,h,false)}new ResizeObserver(resize).observe(host);resize();requestAnimationFrame(tick);
 setInterval(()=>{syncVideo();reportDuration();let m=state.music;if(!m.id)return;let sec=m.paused?m.position:(Date.now()+state.serverDelta-m.startedAt)/1000;let dur=state.ytReady?state.yt.getDuration():0;$('progressFill').style.width=dur?Math.min(100,sec/dur*100)+'%':'0%'},5000);
 window.addEventListener('pagehide',()=>{if(state.id)navigator.sendBeacon('/api/leave',new Blob([JSON.stringify({id:state.id})],{type:'application/json'}))});
 
