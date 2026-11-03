@@ -51,9 +51,27 @@ const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-per
 const cssRenderer=new CSS3DRenderer();cssRenderer.domElement.className='css-world';host.appendChild(cssRenderer.domElement);
 const stageVideo=document.querySelector('#youtubeScreen');stageVideo.classList.add('onstage');
 const stageWebObject=new CSS3DObject(stageVideo);stageWebObject.position.set(0,6.3,-29.12);stageWebObject.scale.set(.015,.015,.015);scene.add(stageWebObject);
-const controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.dampingFactor=.07;controls.minDistance=11;controls.maxDistance=105;controls.maxPolarAngle=Math.PI/2.12;controls.target.set(0,1,4);controls.enablePan=false;
-const STAGE_CAMERA_Z_LIMIT=-10.4;
-function keepCameraInFrontOfStage(){if(camera.position.z<STAGE_CAMERA_Z_LIMIT){camera.position.z += (STAGE_CAMERA_Z_LIMIT-camera.position.z)*.28;controls.object.position.copy(camera.position);camera.lookAt(controls.target);}}
+const controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.dampingFactor=.07;controls.minDistance=3.2;controls.maxDistance=105;controls.maxPolarAngle=Math.PI/2.12;controls.target.set(0,1,4);controls.enablePan=false;
+// Full 360° orbit on mouse and touch. Collide the camera with the actual stage
+// box, never an infinite Z-plane (the old plane felt like a left/right lock).
+// When the stage is between the player and the camera, dolly in along the
+// current view direction instead of refusing horizontal orbit.
+const stageCameraBox=new THREE.Box3(new THREE.Vector3(-23.6,-.3,-32),new THREE.Vector3(23.6,15.1,-16.7));
+const cameraHit=new THREE.Vector3(),cameraRay=new THREE.Ray(),cameraOffset=new THREE.Vector3();
+function keepCameraInFrontOfStage(){
+ cameraOffset.subVectors(camera.position,controls.target);
+ const distance=cameraOffset.length();if(distance<.001)return;
+ cameraOffset.divideScalar(distance);
+ cameraRay.set(controls.target,cameraOffset);
+ const hit=cameraRay.intersectBox(stageCameraBox,cameraHit);
+ if(!hit||controls.target.distanceToSquared(hit)>=distance*distance)return;
+ const room=controls.target.distanceTo(hit)-.8;
+ if(room<.6)return;
+ const safe=controls.target.clone().addScaledVector(cameraOffset,Math.max(.9,room));
+ camera.position.lerp(safe,.65);
+ camera.lookAt(controls.target);
+}
+
 // Keep the local avatar in the center while preserving camera orbit and zoom.
 const cameraFocus=new THREE.Vector3();let cameraFollowInitialized=false;
 function followLocalAvatar(){
@@ -256,7 +274,7 @@ function makeAvatar(p){
  // Minimal articulated limbs: smooth joints tucked inside sleeve/leg, not exposed balls.
  function arm(side){
    const direction=side==='left'?-1:1;
-   const shoulder=new THREE.Group();shoulder.position.set(direction*.53,.79,0);upper.add(shoulder);parts[side+'Shoulder']=shoulder;
+   const shoulder=new THREE.Group();shoulder.position.set(direction*.57,.72,0);upper.add(shoulder);parts[side+'Shoulder']=shoulder;
    child(shoulder,new THREE.CapsuleGeometry(.137,.22,5,10),shirtMat,[0,-.19,0]);
    const elbow=new THREE.Group();elbow.position.y=-.40;shoulder.add(elbow);parts[side+'Elbow']=elbow;
    child(elbow,new THREE.CapsuleGeometry(.106,.18,5,10),skinMat,[0,-.18,0]);
@@ -273,11 +291,21 @@ function makeAvatar(p){
  arm('left');arm('right');leg('left');leg('right');
  // Festival wristband attached to the left wrist, follows joint animations.
  const band=child(parts.leftElbow,new THREE.TorusGeometry(.119,.026,5,12),mat('#d5ff79',.65),[0,-.29,.006]);band.rotation.x=Math.PI/2;
- // Mini crossbody bag and its flexible strap: attached to upper body, not screen space.
- const strapMat=mat('#504a5f',.82);
- const strap=child(upper,new THREE.TorusGeometry(.60,.034,6,28,Math.PI*.82),strapMat,[-.035,.36,.365]);strap.rotation.z=.75;strap.scale.set(1.05,1.22,.9);
- child(upper,new THREE.SphereGeometry(.24,14,10),mat('#d0b286',.92),[-.29,-.05,.47],[1.16,.68,.53]);
- child(upper,new THREE.SphereGeometry(.07,10,8),mat('#f5e5b2'),[-.21,-.05,.61],[1,.45,.35]);
+ // Crossbody bag: both ends of the strap meet the bag at its top corners;
+ // front diagonal sits *on* the torso, with the return running over the shoulder.
+ // All of these belong to the upper torso, so the bag remains coherent in poses.
+ const strapMat=mat('#504a5f',.9),bagMat=mat('#c6a780',.91),flapMat=mat('#ddbd94',.9);
+ function strapPath(coords){
+  const curve=new THREE.CatmullRomCurve3(coords.map(v=>new THREE.Vector3(...v)));
+  const o=new THREE.Mesh(new THREE.TubeGeometry(curve,24,.033,6,false),strapMat);
+  o.castShadow=false;upper.add(o);return o;
+ }
+ // Upper coordinates: pouch is centered at left hip, shoulder at right.
+ strapPath([[.45,.77,.18],[.32,.68,.31],[.19,.55,.42],[.01,.36,.46],[-.19,.18,.50],[-.34,.035,.51]]);
+ strapPath([[-.34,.035,.51],[-.44,-.05,.18],[-.49,.10,-.17],[-.40,.40,-.34],[-.07,.74,-.28],[.27,.83,-.17],[.45,.77,.18]]);
+ const pouch=child(upper,new THREE.SphereGeometry(.26,16,12),bagMat,[-.34,-.105,.52],[1.05,.72,.52]);
+ const flap=child(upper,new THREE.SphereGeometry(.22,16,12),flapMat,[-.34,.010,.575],[1.11,.43,.56]);
+ child(upper,new THREE.SphereGeometry(.044,10,8),mat('#f3e4bb',.65),[-.34,-.033,.696],[1,.9,.38]);
  // Existing rock horns and bottle stay parented to right hand as the arm animates.
  const horns=new THREE.Group();parts.rightHand.add(horns);horns.position.set(0,.025,.09);horns.visible=false;parts.horns=horns;
  child(horns,new THREE.SphereGeometry(.067,10,8),skinMat,[0,0,0],[1,.7,.8]);
@@ -323,6 +351,37 @@ function updateBubbles(now){
  }
 }
 function toWorld(p){return {x:(p.x-600)*.058,z:(p.y-500)*.058+8}}
+// Two-bone IK keeps the hands on exact, reachable targets for clap and drinking.
+// All targets are in the upper-torso coordinate system. The hand meshes are
+// at elbow-local (0,-.39,.018); elbow and forearm are .40 and .39 long.
+const armDown=new THREE.Vector3(0,-1,0);
+const armDesired=new THREE.Quaternion(),elbowDesired=new THREE.Quaternion();
+const ikShoulder=new THREE.Vector3(),ikToHand=new THREE.Vector3(),ikDirection=new THREE.Vector3();
+const ikPole=new THREE.Vector3(),ikElbow=new THREE.Vector3(),ikUpperDir=new THREE.Vector3(),ikLowerDir=new THREE.Vector3();
+function placeHandIK(P,side,handTarget,smooth=.48){
+ const shoulder=P[side+'Shoulder'],elbow=P[side+'Elbow'];
+ ikShoulder.copy(shoulder.position);
+ ikToHand.subVectors(handTarget,ikShoulder);
+ let distance=ikToHand.length();if(distance<.02)return;
+ const l1=.40,l2=.39; // shoulder -> elbow, elbow -> hand centre
+ distance=Math.min(l1+l2-.004,distance);
+ ikDirection.copy(ikToHand).normalize();
+ // Keep elbow outside the torso instead of crossing the character's face.
+ ikPole.set(side==='left'?-1:1,-.25,-.28);
+ ikPole.addScaledVector(ikDirection,-ikPole.dot(ikDirection)).normalize();
+ const along=(l1*l1-l2*l2+distance*distance)/(2*distance);
+ const bend=Math.sqrt(Math.max(0,l1*l1-along*along));
+ ikElbow.copy(ikShoulder).addScaledVector(ikDirection,along).addScaledVector(ikPole,bend);
+ ikUpperDir.subVectors(ikElbow,ikShoulder).normalize();
+ armDesired.setFromUnitVectors(armDown,ikUpperDir);
+ shoulder.quaternion.slerp(armDesired,smooth);
+ // Solve elbow in the parent shoulder's CURRENT coordinate frame so that
+ // damping never flips the wrist to the other side during a pose transition.
+ ikLowerDir.subVectors(handTarget,ikElbow).normalize();
+ ikLowerDir.applyQuaternion(shoulder.quaternion.clone().invert());
+ elbowDesired.setFromUnitVectors(armDown,ikLowerDir);
+ elbow.quaternion.slerp(elbowDesired,smooth);
+}
 // Smooth motion blending for the upgraded chibi rig. All poses share the same joints.
 function animateAvatar(a,p,t){
  const q=(p.id===state.id&&state.me)?state.me:p,wp=toWorld(q),P=a.parts;
@@ -331,7 +390,7 @@ function animateAvatar(a,p,t){
  const act=q.action||'idle',sec=t*.001,pose={};
  const keys=['upper','neck','leftShoulder','rightShoulder','leftElbow','rightElbow','leftHip','rightHip','leftKnee','rightKnee'];
  for(const key of keys)pose[key]=[0,0,0];
- let height=0,lean=0;
+ let height=0,lean=0,ikMode=null,leftHandTarget=null,rightHandTarget=null;
  const set=(key,x=0,y=0,z=0)=>{pose[key]=[x,y,z]};
  if(act==='walk'||act==='run'){
   const fast=act==='run',pace=fast?11.6:7.4,amp=fast?.66:.39;
@@ -348,29 +407,38 @@ function animateAvatar(a,p,t){
   const phase=Math.sin(sec*8.3);const lift=Math.max(0,phase);
   height=lift*1.03;set('leftHip',-.35*(1-lift));set('rightHip',-.35*(1-lift));
   set('leftKnee',.62*(1-lift));set('rightKnee',.62*(1-lift));
-  set('leftShoulder',-.18,0,.64);set('rightShoulder',-.18,0,-.64);
+  // hands stay beside shoulders, never across the oversized head.
+  set('leftShoulder',-.24,0,-.65);set('rightShoulder',-.24,0,.65);
  }
  if(act==='peace'){
-  set('rightShoulder',-.44,0,-2.42);set('rightElbow',0,0,-.24);
-  set('leftShoulder',0,0,-.09);set('neck',0,0,.08);
+  // Raised horn hand is off to the avatar's right, outside the head silhouette.
+  set('rightShoulder',-.28,-.10,-2.56);set('rightElbow',-.12,0,-.18);
+  set('leftShoulder',0,0,-.13);set('neck',0,0,.04);
  }
  if(act==='wave'){
   const wobble=Math.sin(sec*8.2);
-  set('rightShoulder',-.58,.12,-2.03);set('rightElbow',-.18,0,-.56+wobble*.37);
-  set('neck',0,0,-.07);
+  // Right hand to the outer side of the hair, rather than in front of eyes.
+  set('rightShoulder',-.24,0,-2.50);set('rightElbow',-.12,0,-.30+wobble*.22);
+  set('neck',0,0,-.04);
  }
  if(act==='clap'){
-  const beat=(1+Math.cos(sec*16.2))*.5;const gap=.08+.38*(1-beat);
-  // Both elbows bend towards a common point in front of the chest.
-  set('leftShoulder',-1.03,0,.62+gap*.25);set('rightShoulder',-1.03,0,-.62-gap*.25);
-  set('leftElbow',-.30,0,.78-gap*.38);set('rightElbow',-.30,0,-.78+gap*.38);
-  set('upper',.035);
+  // Palm centres stop ~0.26 units apart: each hand radius is 0.13.
+  // Both targets sit at lower chest height, below the large round face.
+  const beat=(1+Math.cos(sec*19.5))*.5;
+  const halfGap=.133+.19*(1-beat);
+  const front=.34;
+  leftHandTarget=new THREE.Vector3(-halfGap,.20,front);
+  rightHandTarget=new THREE.Vector3(halfGap,.20,front);
+  ikMode='clap';
+  set('upper',.018);
  }
  if(act==='drink'){
-  const sip=(1+Math.sin(sec*4.8))*.5;
-  // Forward forearm, elbow folded so bottle tip rises to the mouth.
-  set('rightShoulder',-1.14,-.14,-.72);set('rightElbow',-.78-.16*sip,.03,-.48);
-  P.bottle.rotation.set(-.28-.35*sip,0,-.12);set('neck',.04+.05*sip);
+  // Hand stays to the side of the cheek; the tilted bottle reaches the mouth.
+  const sip=(1+Math.sin(sec*5.0))*.5;
+  rightHandTarget=new THREE.Vector3(.34,.80+.025*sip,.51);
+  ikMode='drink';
+  P.bottle.rotation.set(.08,0,1.06+.11*sip);
+  set('neck',.025+.025*sip);
  }
  if(act==='sit'){
   height=-.24;set('upper',.06);set('leftHip',-1.43);set('rightHip',-1.43);
@@ -381,13 +449,19 @@ function animateAvatar(a,p,t){
   height=.52;lean=-Math.PI/2;
   set('leftShoulder',.13);set('rightShoulder',.13);set('leftHip',.11);set('rightHip',.11);
  }
- // Damped transitions preserve smoothness when starting and stopping actions.
- const alpha=act===a.lastAction?.24:.14;
- for(const k of keys){const target=pose[k],o=P[k];
-   o.rotation.x+= (target[0]-o.rotation.x)*alpha;
-   o.rotation.y+= (target[1]-o.rotation.y)*alpha;
-   o.rotation.z+= (target[2]-o.rotation.z)*alpha;
+ const alpha=act===a.lastAction?.25:.17;
+ for(const k of keys){
+  if(ikMode==='clap'&&['leftShoulder','leftElbow','rightShoulder','rightElbow'].includes(k))continue;
+  if(ikMode==='drink'&&['rightShoulder','rightElbow'].includes(k))continue;
+  const target=pose[k],o=P[k];
+  o.rotation.x+=(target[0]-o.rotation.x)*alpha;
+  o.rotation.y+=(target[1]-o.rotation.y)*alpha;
+  o.rotation.z+=(target[2]-o.rotation.z)*alpha;
  }
+ if(ikMode==='clap'){
+  placeHandIK(P,'left',leftHandTarget,.58);
+  placeHandIK(P,'right',rightHandTarget,.58);
+ }else if(ikMode==='drink')placeHandIK(P,'right',rightHandTarget,.48);
  a.root.position.y+=(height-a.root.position.y)*.28;
  a.root.rotation.x+=(lean-a.root.rotation.x)*.22;
  P.horns.visible=act==='peace';P.bottle.visible=act==='drink';
@@ -402,6 +476,10 @@ function animateAvatar(a,p,t){
 // Click or tap the ground to walk; dragging continues to orbit the camera.
 
 const groundRay=new THREE.Raycaster(), pointer=new THREE.Vector2(), groundPlane=new THREE.Plane(new THREE.Vector3(0,1,0),0), hit=new THREE.Vector3();
+// Reusable, small translucent destination ring. No notifications over controls.
+const moveMarker=new THREE.Mesh(new THREE.RingGeometry(.28,.43,24),new THREE.MeshBasicMaterial({color:'#d8ff8c',side:THREE.DoubleSide,transparent:true,opacity:.75,depthWrite:false}));
+moveMarker.rotation.x=-Math.PI/2;moveMarker.visible=false;scene.add(moveMarker);
+let moveMarkerUntil=0;
 let pointerStart=null;
 renderer.domElement.addEventListener('pointerdown',e=>{pointerStart={x:e.clientX,y:e.clientY,time:performance.now()}});
 renderer.domElement.addEventListener('pointerup',e=>{
@@ -411,7 +489,10 @@ renderer.domElement.addEventListener('pointerup',e=>{
  const bounds=renderer.domElement.getBoundingClientRect();pointer.set(((e.clientX-bounds.left)/bounds.width)*2-1,-((e.clientY-bounds.top)/bounds.height)*2+1);
  groundRay.setFromCamera(pointer,camera);if(!groundRay.ray.intersectPlane(groundPlane,hit))return;
  const x=Math.max(20,Math.min(1380,hit.x/.058+600)),y=Math.max(220,Math.min(1100,(hit.z-8)/.058+500));
- state.walkTarget={x,y};toast('선택한 위치로 이동합니다');
+ state.walkTarget={x,y};
+ // Visual ground marker replaces the full-screen toast (which covered mobile HUD).
+ moveMarker.position.set(hit.x,.065,hit.z);moveMarker.visible=true;moveMarkerUntil=performance.now()+1150;
+
 });
 function tick(t){
  if(state.me){let dx=0,dy=0,k=state.keys;dx+=+(k.has('d')||k.has('arrowright'))-+(k.has('a')||k.has('arrowleft'));dy+=+(k.has('s')||k.has('arrowdown'))-+(k.has('w')||k.has('arrowup'));
@@ -427,6 +508,7 @@ function tick(t){
  }
  for(let [id,p] of state.players){if(!avatars.has(id)){let a=makeAvatar(p),pos=toWorld(p);a.root.position.set(pos.x,0,pos.z);avatars.set(id,a)}animateAvatar(avatars.get(id),p,t)}
  for(let [id,a] of avatars)if(!state.players.has(id)){scene.remove(a.root);a.root.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material?.map)o.material.map.dispose();if(o.material)o.material.dispose()});avatars.delete(id)}
+ if(moveMarker.visible){moveMarker.material.opacity=Math.min(.75,Math.max(0,(moveMarkerUntil-t)/1050)*.75);if(t>moveMarkerUntil)moveMarker.visible=false}
  updateEnvironment();updateOcean(t);updateBubbles(t);animateShow(t);followLocalAvatar();controls.update();keepCameraInFrontOfStage();renderer.render(scene,camera);cssRenderer.render(scene,camera);requestAnimationFrame(tick)
 }
 function resize(){let w=host.clientWidth,h=host.clientHeight;if(!w||!h)return;camera.aspect=w/h;camera.updateProjectionMatrix();renderer.setSize(w,h,false);cssRenderer.setSize(w,h)}new ResizeObserver(resize).observe(host);resize();requestAnimationFrame(tick);
