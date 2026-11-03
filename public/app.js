@@ -757,9 +757,9 @@ function tick(t){
      }
     }else{
      dx=tx/n;dy=ty/n;
-     // Frame-time-based slam approach: about half the original 8-units/frame speed
-     // at 60 fps, consistent on 30/60/120 Hz screens. Retreat stays unchanged.
-     speed=m.phase==='charge'?Math.min(3.3,frameDelta*0.065):Math.min(1.1,Math.max(.1,frameDelta*0.024));
+     // Balanced slam approach: ~5 units/frame at 60 fps, between v11 (8) and v12 (~1.1).
+     // Normalize by frame time across refresh rates; retreat remains deliberately slow.
+     speed=m.phase==='charge'?Math.min(6.5,frameDelta*0.30):Math.min(1.1,Math.max(.1,frameDelta*0.024));
      state.action=m.phase==='charge'?'slam-charge':'slam-retreat';
      state.me.action=state.action;
     }
