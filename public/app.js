@@ -34,7 +34,7 @@ function react(a){
  if(['sit','lie'].includes(a)&&!near)return toast('돗자리 가까이에서 앉거나 누울 수 있어요');
  // Keep original position instead of teleporting to the mat center.
  state.action=a;
- state.actionUntil=['sit','lie','jump','run'].includes(a)?Infinity:performance.now()+1350;
+ state.actionUntil=['sit','lie','jump','run'].includes(a)?Infinity:performance.now()+(a==='peace'?2200:1750);
  state.me.action=a;
  if(['sit','lie'].includes(a))state.walkTarget=null;
  document.querySelectorAll('[data-action]').forEach(b=>b.classList.toggle('active',b.dataset.action===a));
@@ -264,9 +264,14 @@ function makeAvatar(p){
    const bang=child(neck,new THREE.SphereGeometry(.20,12,9),hair,[x,.615,.33],[1,.40,.70]);
  }
  if(female){
-   // Simple rounded bob, only two full locks and a short back layer.
-   child(neck,new THREE.SphereGeometry(.74,20,14),hair,[0,.005,-.22],[.97,.91,.72]);
-   for(const side of [-1,1])child(neck,new THREE.CapsuleGeometry(.18,.40,5,11),hair,[side*.645,-.27,-.04],[1.02,1.03,.82]);
+   // A visible bob silhouette: the original rear hair was buried inside the larger head.
+   // Keep a rear layer BEHIND the skull, then place the two tips outside the cheek contour.
+   child(neck,new THREE.SphereGeometry(.855,24,18),hair,[0,.02,-.28],[1.04,1.05,.92]);
+   for(const side of [-1,1]){
+     const lock=child(neck,new THREE.CapsuleGeometry(.195,.45,7,12),hair,[side*.755,-.27,.14],[.96,1.03,.90]);
+     lock.rotation.z=side*.10;
+     child(neck,new THREE.SphereGeometry(.21,12,9),hair,[side*.77,-.52,.155],[.93,.83,.95]);
+   }
  }else{
    // Close-fitting side hair visible near ears.
    for(const side of [-1,1])child(neck,new THREE.SphereGeometry(.22,12,10),hair,[side*.66,.22,-.10],[.72,1.03,.78]);
@@ -306,11 +311,19 @@ function makeAvatar(p){
  const pouch=child(upper,new THREE.SphereGeometry(.26,16,12),bagMat,[-.34,-.105,.52],[1.05,.72,.52]);
  const flap=child(upper,new THREE.SphereGeometry(.22,16,12),flapMat,[-.34,.010,.575],[1.11,.43,.56]);
  child(upper,new THREE.SphereGeometry(.044,10,8),mat('#f3e4bb',.65),[-.34,-.033,.696],[1,.9,.38]);
- // Existing rock horns and bottle stay parented to right hand as the arm animates.
- const horns=new THREE.Group();parts.rightHand.add(horns);horns.position.set(0,.025,.09);horns.visible=false;parts.horns=horns;
- child(horns,new THREE.SphereGeometry(.067,10,8),skinMat,[0,0,0],[1,.7,.8]);
- for(const x of [-.064,.064])child(horns,new THREE.CapsuleGeometry(.024,.145,3,6),skinMat,[x,.10,.01]);
- const bottle=new THREE.Group();parts.rightHand.add(bottle);bottle.position.set(0,-.005,.14);bottle.visible=false;parts.bottle=bottle;
+ // A white emoji speech-bubble replaces the unreliable tiny finger geometry.
+ // The emoji is camera-facing and follows the player; no arm blocking the face.
+ const emojiCanvas=document.createElement('canvas');emojiCanvas.width=320;emojiCanvas.height=210;
+ const eg=emojiCanvas.getContext('2d');
+ eg.fillStyle='rgba(255,255,255,.97)';eg.beginPath();eg.roundRect(14,12,292,164,58);eg.fill();
+ eg.beginPath();eg.moveTo(136,175);eg.lineTo(160,198);eg.lineTo(184,175);eg.fill();
+ eg.textAlign='center';eg.textBaseline='middle';eg.font='100px "Apple Color Emoji","Segoe UI Emoji",sans-serif';eg.fillText('🤘',160,94);
+ const emojiTexture=new THREE.CanvasTexture(emojiCanvas);emojiTexture.colorSpace=THREE.SRGBColorSpace;
+ const rockBubble=new THREE.Sprite(new THREE.SpriteMaterial({map:emojiTexture,transparent:true,depthTest:false,depthWrite:false}));
+ rockBubble.scale.set(2.05,1.35,1);rockBubble.position.set(0,4.30,0);rockBubble.visible=false;rockBubble.renderOrder=140;root.add(rockBubble);parts.rockBubble=rockBubble;
+ // Bottle is anchored to the torso rather than the animated wrist so its tip can be
+ // placed directly on the mouth even when the arm is changing pose.
+ const bottle=new THREE.Group();upper.add(bottle);bottle.position.set(.46,.68,.61);bottle.visible=false;parts.bottle=bottle;
  const glass=mat('#498c75',.3);child(bottle,new THREE.CylinderGeometry(.10,.12,.39,12),glass,[0,-.16,0]);
  child(bottle,new THREE.CylinderGeometry(.045,.065,.19,10),glass,[0,.13,0]);
  child(bottle,new THREE.CylinderGeometry(.06,.06,.055,10),mat('#f3ca82'),[0,.25,0]);
@@ -404,22 +417,22 @@ function animateAvatar(a,p,t){
   height=Math.abs(Math.sin(sec*pace))*(fast?.12:.048);
  }
  if(act==='jump'){
-  const phase=Math.sin(sec*8.3);const lift=Math.max(0,phase);
+  const phase=Math.sin(sec*10.6);const lift=Math.max(0,phase);
   height=lift*1.03;set('leftHip',-.35*(1-lift));set('rightHip',-.35*(1-lift));
   set('leftKnee',.62*(1-lift));set('rightKnee',.62*(1-lift));
   // hands stay beside shoulders, never across the oversized head.
   set('leftShoulder',-.24,0,-.65);set('rightShoulder',-.24,0,.65);
  }
  if(act==='peace'){
-  // Raised horn hand is off to the avatar's right, outside the head silhouette.
-  set('rightShoulder',-.28,-.10,-2.56);set('rightElbow',-.12,0,-.18);
-  set('leftShoulder',0,0,-.13);set('neck',0,0,.04);
+  // Keep both hands down. The visible 🤘 reaction is a speech bubble above the head.
+  set('leftShoulder',-.04,0,-.10);set('rightShoulder',-.04,0,.10);
  }
  if(act==='wave'){
-  const wobble=Math.sin(sec*8.2);
-  // Right hand to the outer side of the hair, rather than in front of eyes.
-  set('rightShoulder',-.24,0,-2.50);set('rightElbow',-.12,0,-.30+wobble*.22);
-  set('neck',0,0,-.04);
+  // A waving hand stays OUTSIDE the head's x silhouette, never crossing the face.
+  const wobble=Math.sin(sec*9.0);
+  rightHandTarget=new THREE.Vector3(1.13+.085*wobble,1.12+.04*wobble,.17);
+  ikMode='wave';
+  set('neck',0,0,-.035);
  }
  if(act==='clap'){
   // Palm centres stop ~0.26 units apart: each hand radius is 0.13.
@@ -433,12 +446,20 @@ function animateAvatar(a,p,t){
   set('upper',.018);
  }
  if(act==='drink'){
-  // Hand stays to the side of the cheek; the tilted bottle reaches the mouth.
-  const sip=(1+Math.sin(sec*5.0))*.5;
-  rightHandTarget=new THREE.Vector3(.34,.80+.025*sip,.51);
+  // The wrist comes up from the front-right, UNDER the face. Only the bottle
+  // crosses toward the lips; the big chibi hand stays below chin level.
+  const sip=(1+Math.sin(sec*4.8))*.5;
+  rightHandTarget=new THREE.Vector3(.48,.67+.012*sip,.58);
   ikMode='drink';
-  P.bottle.rotation.set(.08,0,1.06+.11*sip);
-  set('neck',.025+.025*sip);
+  set('neck',.012+.02*sip);
+  // Place the cap exactly at mouth height, independent of wrist rotation.
+  const mouth=new THREE.Vector3(0,.94,.755);
+  const approach=mouth.clone().sub(rightHandTarget).normalize();
+  const start=rightHandTarget.clone().addScaledVector(approach,.28);
+  P.bottle.position.lerp(start,.28);
+  const targetRotation=new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0),approach);
+  P.bottle.quaternion.slerp(targetRotation,.32);
+  P.bottle.scale.setScalar(1.3);
  }
  if(act==='sit'){
   height=-.24;set('upper',.06);set('leftHip',-1.43);set('rightHip',-1.43);
@@ -452,7 +473,7 @@ function animateAvatar(a,p,t){
  const alpha=act===a.lastAction?.25:.17;
  for(const k of keys){
   if(ikMode==='clap'&&['leftShoulder','leftElbow','rightShoulder','rightElbow'].includes(k))continue;
-  if(ikMode==='drink'&&['rightShoulder','rightElbow'].includes(k))continue;
+  if((ikMode==='drink'||ikMode==='wave')&&['rightShoulder','rightElbow'].includes(k))continue;
   const target=pose[k],o=P[k];
   o.rotation.x+=(target[0]-o.rotation.x)*alpha;
   o.rotation.y+=(target[1]-o.rotation.y)*alpha;
@@ -461,11 +482,12 @@ function animateAvatar(a,p,t){
  if(ikMode==='clap'){
   placeHandIK(P,'left',leftHandTarget,.58);
   placeHandIK(P,'right',rightHandTarget,.58);
- }else if(ikMode==='drink')placeHandIK(P,'right',rightHandTarget,.48);
+ }else if(ikMode==='drink')placeHandIK(P,'right',rightHandTarget,.58);
+ else if(ikMode==='wave')placeHandIK(P,'right',rightHandTarget,.64);
  a.root.position.y+=(height-a.root.position.y)*.28;
  a.root.rotation.x+=(lean-a.root.rotation.x)*.22;
- P.horns.visible=act==='peace';P.bottle.visible=act==='drink';
- if(act!=='drink')P.bottle.rotation.set(0,0,0);
+ P.rockBubble.visible=act==='peace';P.bottle.visible=act==='drink';
+ if(act==='peace')P.rockBubble.position.y=4.34+Math.sin(sec*7)*.075;
  if(act!=='lie'){
   const yaw=Number(q.facing)||0;
   const delta=((yaw-a.root.rotation.y+Math.PI*3)%(Math.PI*2))-Math.PI;
