@@ -70,10 +70,20 @@ try{
  host.appendChild(stageForeground.domElement);
 }catch(e){console.warn('Stage foreground pass unavailable; keeping normal characters',e);stageForeground=null}
 const foregroundCamera=camera.clone();foregroundCamera.layers.set(1);
-const screenCornerPositions=[
- new THREE.Vector3(-8.64,-4.86,0),new THREE.Vector3(8.64,-4.86,0),
- new THREE.Vector3(8.64,4.86,0),new THREE.Vector3(-8.64,4.86,0)
-];
+// IMPORTANT: CSS3DObject coordinates are CSS PIXELS before its .015 world scale.
+// v6 used +-8.64 here (already world-scaled values), so the projected clip
+// polygon was 1/66.7th of the intended size and covered almost no video.
+// Derive the local dimensions from the actual on-stage element each frame.
+function getStageScreenCorners(){
+ const halfW=(stageVideo.offsetWidth || 1152)*.5;
+ const halfH=(stageVideo.offsetHeight || 648)*.5;
+ return [
+  new THREE.Vector3(-halfW,-halfH,0),
+  new THREE.Vector3( halfW,-halfH,0),
+  new THREE.Vector3( halfW, halfH,0),
+  new THREE.Vector3(-halfW, halfH,0)
+ ];
+}
 const screenProjected=new THREE.Vector3();
 function addForegroundLayer(object){object.traverse(child=>child.layers.enable(1))}
 function renderStageForeground(){
@@ -86,7 +96,7 @@ function renderStageForeground(){
  const w=host.clientWidth,h=host.clientHeight;
  if(w<1||h<1){canvas.style.display='none';return}
  const polygon=[];
- for(const local of screenCornerPositions){
+ for(const local of getStageScreenCorners()){
   screenProjected.copy(local).applyMatrix4(stageWebObject.matrixWorld);
   const viewZ=screenProjected.clone().applyMatrix4(camera.matrixWorldInverse).z;
   if(viewZ>=-.1){canvas.style.display='none';return}
@@ -100,9 +110,19 @@ function renderStageForeground(){
  canvas.style.clipPath=`polygon(${polygon.join(',')})`;
  foregroundCamera.copy(camera);
  foregroundCamera.layers.set(1);
- // The avatar layer is drawn only inside the precise on-screen video polygon.
- // Characters remain visible outside the polygon via the original renderer.
- const oldBackground=scene.background;scene.background=null;
+ // Only people on the audience side of the video plane get foreground priority.
+ // This never changes their normal layer (0), visibility, or multiplayer state.
+ for(const [id,a] of avatars){
+  const inFront=a.root.position.z>stageWebObject.position.z+.12;
+  a.root.traverse(part=>part.layers.toggle(1,inFront));
+ }
+ for(const [id,b] of activeBubbles){
+  const a=avatars.get(id);
+  b.sprite.layers.toggle(1,!!a && a.root.position.z>stageWebObject.position.z+.12);
+ }
+ // The extra renderer is transparent; CSS3D remains underneath it.
+ const oldBackground=scene.background;
+ scene.background=null;
  try{stageForeground.render(scene,foregroundCamera)}finally{scene.background=oldBackground}
 }
 

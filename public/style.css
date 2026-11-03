@@ -97,3 +97,10 @@ html,body{width:100%;max-width:100%;overscroll-behavior:none;overflow:hidden}
 #world .stage-avatar-foreground{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;z-index:2!important;pointer-events:none!important;touch-action:none!important;background:transparent!important;cursor:default!important}
 #world>.css-world{z-index:1}
 #world>canvas:not(.stage-avatar-foreground){position:relative;z-index:0}
+
+/* v7: isolate the 3D scene stacks so the mobile CSS3D iframe does not
+   out-stack the translucent WebGL foreground pass. */
+#world{isolation:isolate!important}
+#world>.css-world{position:absolute!important;z-index:2!important}
+#world>.stage-avatar-foreground{position:absolute!important;z-index:3!important;pointer-events:none!important}
+#world>canvas:not(.stage-avatar-foreground){z-index:1!important}
