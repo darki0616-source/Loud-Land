@@ -4,7 +4,7 @@ import { CSS3DRenderer, CSS3DObject } from 'https://esm.sh/three@0.160.1/example
 const $=id=>document.getElementById(id), palette=['#ff747d','#67d8d1','#f9c463','#a8a0ff','#90dd81','#ff9ce1','#72b5ff','#eeeeee'];
 const mats=[{x:118,y:682,c:'#f5a5a3'},{x:290,y:706,c:'#a7def4'},{x:470,y:690,c:'#f5ce80'},{x:650,y:708,c:'#b3d9a0'},{x:835,y:694,c:'#ceb8f1'},{x:1015,y:710,c:'#ffd2a5'},{x:1185,y:688,c:'#b2d8ff'}];
 const state={id:null,me:null,players:new Map(),keys:new Set(),action:'idle',actionUntil:0,lastSent:0,es:null,music:{id:'',paused:true,position:0,startedAt:0,token:0},queue:[],serverDelta:0,yt:null,ytReady:false,lastTrack:'',audioEnabled:false,walkTarget:null,moving:false};
-let slamMode=false,slam=null,slamCooldownUntil=0,slamArrival=null;
+let slamMode=false,slam=null,slamCooldownUntil=0,slamMotion=null;
 let chosenColor=palette[0],chosenGender='male',toastTimer;const avatars=new Map();const activeBubbles=new Map();
 function toast(msg){$('toast').textContent=msg;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('show'),3000)}
 document.querySelectorAll('[data-gender]').forEach(b=>b.onclick=()=>{chosenGender=b.dataset.gender;document.querySelectorAll('[data-gender]').forEach(x=>x.classList.toggle('selected',x===b))});
@@ -23,9 +23,10 @@ $('playLink').onclick=()=>musicCommand('enqueue',{url:$('videoUrl').value});$('p
 function updateCrowdCount(n){const el=document.getElementById('boardVisitors');if(el)el.textContent=String(n)}
 function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='snapshot'){state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;updateCrowdCount(d.count);applyMusic(d.music,d.serverNow,d.queue);applySlam(d.slam,d.slamCooldownUntil);if(Array.isArray(d.chat)){$('chatMessages').replaceChildren();d.chat.forEach(appendChat)}}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;updateCrowdCount(d.count);if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){appendChat(d.entry);showBubble(d.entry)}else if(d.type==='move'){state.players.set(d.player.id,d.player)}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count;updateCrowdCount(d.count)}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue);else if(d.type==='slam')applySlam(d.slam,d.cooldownUntil);else if(d.type==='slam-go')onSlamGo(d)}}
 async function join(){try{let d=await post('join',{name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);cameraFollowInitialized=false;state.players=new Map(d.players.map(p=>[p.id,p]));$('joinModal').classList.add('hidden');$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='페스티벌 참가 중';$('avatarPreview').querySelector('b').style.background=chosenColor;applyMusic(d.music,d.serverNow,d.queue);applySlam(d.slam,d.slamCooldownUntil);listen();$('audioModal').classList.remove('hidden');showMovementGuide();toast('ONEseason에 오신 것을 환영합니다!')}catch(e){$('joinError').textContent='입장 실패: '+(e?.message||'연결을 확인해주세요');console.error('ONEseason join error:',e)}}
-$('audioYes').onclick=()=>{state.audioEnabled=true;$('audioModal').classList.add('hidden');if(state.ytReady){try{state.yt.unMute();state.yt.setVolume(75)}catch(e){}}syncVideo(true);toast(state.music.id?'음악 재생을 허용했어요':'음악이 등록되면 바로 재생돼요')};$('audioNo').onclick=()=>{state.audioEnabled=false;$('audioModal').classList.add('hidden');try{state.yt?.pauseVideo()}catch(e){}toast('음악을 끈 상태로 입장했어요')};$('joinBtn').onclick=join;$('nick').onkeydown=e=>{if(e.key==='Enter')join()};$('editAvatar').onclick=()=>{if(state.id){post('leave',{id:state.id}).catch(()=>{});state.es?.close();state.id=null;state.me=null;cameraFollowInitialized=false;state.players.clear();slam=null;slamMode=false;slamArrival=null;refreshSlamUI()}$('joinModal').classList.remove('hidden')};$('helpBtn').onclick=()=>toast('WASD 이동 · 클릭/터치 이동 · 드래그 시점 회전 · 1~8 리액션');
+$('audioYes').onclick=()=>{state.audioEnabled=true;$('audioModal').classList.add('hidden');if(state.ytReady){try{state.yt.unMute();state.yt.setVolume(75)}catch(e){}}syncVideo(true);toast(state.music.id?'음악 재생을 허용했어요':'음악이 등록되면 바로 재생돼요')};$('audioNo').onclick=()=>{state.audioEnabled=false;$('audioModal').classList.add('hidden');try{state.yt?.pauseVideo()}catch(e){}toast('음악을 끈 상태로 입장했어요')};$('joinBtn').onclick=join;$('nick').onkeydown=e=>{if(e.key==='Enter')join()};$('editAvatar').onclick=()=>{if(state.id){post('leave',{id:state.id}).catch(()=>{});state.es?.close();state.id=null;state.me=null;cameraFollowInitialized=false;state.players.clear();slam=null;slamMode=false;slamMotion=null;refreshSlamUI()}$('joinModal').classList.remove('hidden')};$('helpBtn').onclick=()=>toast('WASD 이동 · 클릭/터치 이동 · 드래그 시점 회전 · 1~8 리액션');
 function react(a){
  if(!state.me)return;
+ if(slamMotion){slamMotion=null;state.walkTarget=null;}
  if(state.action===a&&['jump','run'].includes(a)){
    state.action='idle';state.actionUntil=0;state.me.action=state.moving?'walk':'idle';
    document.querySelectorAll('[data-action]').forEach(b=>b.classList.remove('active'));
@@ -60,13 +61,26 @@ function applySlam(event,cooldown){
  if(slam)slamMode=false;
  refreshSlamUI();
 }
+// Every participant receives the same roster, so the landing lanes are
+// deterministic on all clients. The circle around the centre prevents piling up.
 function onSlamGo(event){
- if(event.id!==slam?.id && slam) return;
- if(Array.isArray(event.participants)&&event.participants.includes(state.id)&&state.me){
-  state.walkTarget={x:event.x,y:event.y};
-  state.action='run';state.actionUntil=Infinity;state.me.action='run';
-  slamArrival={x:event.x,y:event.y,until:performance.now()+7500};
-  document.querySelectorAll('[data-action]').forEach(b=>b.classList.toggle('active',b.dataset.action==='run'));
+ if(event.id!==slam?.id && slam)return;
+ const group=Array.isArray(event.participants)?event.participants:[];
+ const index=group.indexOf(state.id);
+ if(index!==-1&&state.me){
+  const count=group.length;
+  const angle=-Math.PI/2+index*2*Math.PI/count;
+  const radius=count===1?18:Math.max(23,Math.min(46,16+count*4));
+  const ax=event.x+Math.cos(angle)*radius,ay=event.y+Math.sin(angle)*radius;
+  // Retreat follows the outward lane rather than sending everybody back to
+  // the same centre. Clamp to the server's accepted festival coordinates.
+  const reach=(count===1?48:55);
+  const rx=Math.max(20,Math.min(1380,ax+Math.cos(angle)*reach));
+  const ry=Math.max(220,Math.min(1100,ay+Math.sin(angle)*reach));
+  slamMotion={phase:'charge',approach:{x:Math.max(20,Math.min(1380,ax)),y:Math.max(220,Math.min(1100,ay))},retreat:{x:rx,y:ry},started:performance.now(),phaseStarted:performance.now()};
+  state.walkTarget=null;
+  state.action='slam-charge';state.actionUntil=Infinity;state.me.action='slam-charge';
+  document.querySelectorAll('[data-action]').forEach(b=>b.classList.remove('active'));
   sendMove();
  }
  slam=null;refreshSlamUI();
@@ -496,8 +510,8 @@ function animateAvatar(a,p,t){
  for(const key of keys)pose[key]=[0,0,0];
  let height=0,lean=0,ikMode=null,leftHandTarget=null,rightHandTarget=null;
  const set=(key,x=0,y=0,z=0)=>{pose[key]=[x,y,z]};
- if(act==='walk'||act==='run'){
-  const fast=act==='run',pace=fast?11.6:7.4,amp=fast?.66:.39;
+ if(act==='walk'||act==='run'||act==='slam-charge'||act==='slam-retreat'){
+  const fast=act!=='walk',pace=fast?11.6:7.4,amp=fast?.66:.39;
   const wave=Math.sin(sec*pace),opp=Math.sin(sec*pace+Math.PI);
   set('leftHip',wave*amp);set('rightHip',opp*amp);
   set('leftKnee',Math.max(0,wave)*(.68*(fast?1:.7)));
@@ -506,6 +520,15 @@ function animateAvatar(a,p,t){
   set('leftElbow',-.12);set('rightElbow',-.12);
   set('upper',fast?-.14:-.035,0,Math.sin(sec*pace)*.035);
   height=Math.abs(Math.sin(sec*pace))*(fast?.12:.048);
+  if(act==='slam-charge'||act==='slam-retreat'){
+   // Running jumps: clear take-off + bend + landing every stride.
+   const hop=Math.pow(Math.max(0,Math.sin(sec*15.8)),1.1);
+   height=.09+hop*.77;
+   set('leftKnee',.22+hop*.6+Math.max(0,wave)*.18);
+   set('rightKnee',.22+hop*.6+Math.max(0,opp)*.18);
+   set('upper',act==='slam-retreat'?.06:-.16,0,Math.sin(sec*pace)*.03);
+   if(act==='slam-retreat'){set('leftShoulder',-.14,0,-.22);set('rightShoulder',-.14,0,.22)}
+  }
  }
  if(act==='jump'){
   const phase=Math.sin(sec*10.6);const lift=Math.max(0,phase);
@@ -557,6 +580,9 @@ function animateAvatar(a,p,t){
   set('leftKnee',1.45);set('rightKnee',1.45);
   set('leftShoulder',.16);set('rightShoulder',.16);
  }
+ if(act==='slam-celebrate'){
+  height=Math.abs(Math.sin(sec*12.5))*.28;set('leftShoulder',-.16,0,-.2);set('rightShoulder',-.16,0,.2);
+ }
  if(act==='lie'){
   height=.52;lean=-Math.PI/2;
   set('leftShoulder',.13);set('rightShoulder',.13);set('leftHip',.11);set('rightHip',.11);
@@ -577,8 +603,8 @@ function animateAvatar(a,p,t){
  else if(ikMode==='wave')placeHandIK(P,'right',rightHandTarget,.64);
  a.root.position.y+=(height-a.root.position.y)*.28;
  a.root.rotation.x+=(lean-a.root.rotation.x)*.22;
- P.rockBubble.visible=act==='peace';P.bottle.visible=act==='drink';
- if(act==='peace')P.rockBubble.position.y=4.34+Math.sin(sec*7)*.075;
+ P.rockBubble.visible=act==='peace'||act==='slam-retreat'||act==='slam-celebrate';P.bottle.visible=act==='drink';
+ if(P.rockBubble.visible)P.rockBubble.position.y=4.34+Math.sin(sec*7)*.075;
  if(act!=='lie'){
   const yaw=Number(q.facing)||0;
   const delta=((yaw-a.root.rotation.y+Math.PI*3)%(Math.PI*2))-Math.PI;
@@ -610,6 +636,7 @@ renderer.domElement.addEventListener('pointerup',e=>{
   post('slam',{id:state.id,command:'start',x,y}).then(d=>applySlam(d.slam,d.cooldownUntil)).catch(e=>toast(e.message));
   return;
  }
+ if(slamMotion){slamMotion=null;state.action='idle';state.actionUntil=0;state.me.action='idle'}
  state.walkTarget={x,y};
  // Visual ground marker replaces the full-screen toast (which covered mobile HUD).
  moveMarker.position.set(hit.x,.065,hit.z);moveMarker.visible=true;moveMarkerUntil=performance.now()+1150;
@@ -621,19 +648,69 @@ renderer.domElement.addEventListener('pointerup',e=>{
 // Leave WebGL avatar and sprite visibility controlled solely by the actual
 // multiplayer/reaction/chat lifetime states.
 
+function finishSlamMotion(){
+ slamMotion=null;
+ state.action='idle';state.actionUntil=0;state.me.action='idle';
+ document.querySelectorAll('[data-action]').forEach(b=>b.classList.remove('active'));
+ sendMove();
+}
 function tick(t){
- if(state.me){let dx=0,dy=0,k=state.keys;dx+=+(k.has('d')||k.has('arrowright'))-+(k.has('a')||k.has('arrowleft'));dy+=+(k.has('s')||k.has('arrowdown'))-+(k.has('w')||k.has('arrowup'));
- if(dx||dy){state.walkTarget=null;slamArrival=null;}
- if(!dx&&!dy&&state.walkTarget){const tx=state.walkTarget.x-state.me.x,ty=state.walkTarget.y-state.me.y,n=Math.hypot(tx,ty);if(n>4){dx=tx/n;dy=ty/n}else{state.walkTarget=null;if(slamArrival){slamArrival=null;state.action='idle';state.actionUntil=0;state.me.action='idle';document.querySelectorAll('[data-action]').forEach(b=>b.classList.remove('active'))}}}
- if(slamArrival&&t>slamArrival.until){slamArrival=null;state.walkTarget=null;state.action='idle';state.me.action='idle';document.querySelectorAll('[data-action]').forEach(b=>b.classList.remove('active'))}
- state.moving=!!(dx||dy);
- if(state.moving){let n=Math.hypot(dx,dy),speed=state.action==='run'?5:3.2;state.me.x=Math.max(20,Math.min(1380,state.me.x+dx/n*speed));state.me.y=Math.max(220,Math.min(1100,state.me.y+dy/n*speed));state.me.facing=Math.atan2(dx,dy);
- if(['sit','lie'].includes(state.action)){state.action='idle';state.me.action='idle'}
- if(state.action==='idle'||state.action==='walk')state.me.action='walk';
- }else if(state.me.action==='walk')state.me.action='idle';
- if(t>state.actionUntil&&state.action!=='idle'&&state.action!=='run'){state.action='idle';state.me.action=state.moving?'walk':'idle';document.querySelectorAll('[data-action]').forEach(b=>b.classList.remove('active'))}
- if(t-state.lastSent>150){state.lastSent=t;sendMove()}
+ if(state.me){
+  let dx=0,dy=0,speed=3.2,k=state.keys;
+  dx+=+(k.has('d')||k.has('arrowright'))-+(k.has('a')||k.has('arrowleft'));
+  dy+=+(k.has('s')||k.has('arrowdown'))-+(k.has('w')||k.has('arrowup'));
+  if(dx||dy){
+   state.walkTarget=null;
+   if(slamMotion)finishSlamMotion();
+  }
+  if(!dx&&!dy&&slamMotion){
+   const m=slamMotion;
+   if(t-m.started>16500){finishSlamMotion()}
+   else if(m.phase==='celebrate'){
+    if(t-m.phaseStarted>1000)finishSlamMotion();
+   }else{
+    const dest=m.phase==='charge'?m.approach:m.retreat;
+    const tx=dest.x-state.me.x,ty=dest.y-state.me.y,n=Math.hypot(tx,ty);
+    if(n<=4){
+     state.me.x=dest.x;state.me.y=dest.y;
+     if(m.phase==='charge'){
+      m.phase='retreat';m.phaseStarted=t;
+      state.action='slam-retreat';state.me.action='slam-retreat';
+      // The next frame naturally rotates to the outward retreat direction.
+      sendMove();
+     }else{
+      m.phase='celebrate';m.phaseStarted=t;
+      state.action='slam-celebrate';state.me.action='slam-celebrate';sendMove();
+     }
+    }else{
+     dx=tx/n;dy=ty/n;
+     speed=m.phase==='charge'?8:4.5;
+     state.action=m.phase==='charge'?'slam-charge':'slam-retreat';
+     state.me.action=state.action;
+    }
+   }
+  }
+  if(!dx&&!dy&&!slamMotion&&state.walkTarget){
+   const tx=state.walkTarget.x-state.me.x,ty=state.walkTarget.y-state.me.y,n=Math.hypot(tx,ty);
+   if(n>4){dx=tx/n;dy=ty/n}else state.walkTarget=null;
+  }
+  state.moving=!!(dx||dy);
+  if(state.moving){
+   const n=Math.hypot(dx,dy);
+   if(!slamMotion)speed=state.action==='run'?5:3.2;
+   state.me.x=Math.max(20,Math.min(1380,state.me.x+dx/n*speed));
+   state.me.y=Math.max(220,Math.min(1100,state.me.y+dy/n*speed));
+   state.me.facing=Math.atan2(dx,dy);
+   if(['sit','lie'].includes(state.action)){state.action='idle';state.me.action='idle'}
+   if(!slamMotion&&(state.action==='idle'||state.action==='walk'))state.me.action='walk';
+  }else if(!slamMotion&&state.me.action==='walk')state.me.action='idle';
+  if(!slamMotion&&t>state.actionUntil&&state.action!=='idle'&&state.action!=='run'){
+   state.action='idle';state.me.action=state.moving?'walk':'idle';
+   document.querySelectorAll('[data-action]').forEach(b=>b.classList.remove('active'));
+  }
+  if(t-state.lastSent>150){state.lastSent=t;sendMove()}
  }
+
  for(let [id,p] of state.players){if(!avatars.has(id)){let a=makeAvatar(p),pos=toWorld(p);a.root.position.set(pos.x,0,pos.z);avatars.set(id,a)}animateAvatar(avatars.get(id),p,t)}
  for(let [id,a] of avatars)if(!state.players.has(id)){scene.remove(a.root);a.root.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material?.map)o.material.map.dispose();if(o.material)o.material.dispose()});avatars.delete(id)}
  if(moveMarker.visible){moveMarker.material.opacity=Math.min(.75,Math.max(0,(moveMarkerUntil-t)/1050)*.75);if(t>moveMarkerUntil)moveMarker.visible=false}
