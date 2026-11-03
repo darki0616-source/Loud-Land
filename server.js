@@ -117,7 +117,7 @@ const server=http.createServer(async(req,res)=>{
       const id=clean(d.id,80),p=players.get(id);if(!p)return json(res,401,{error:'Session expired. Please rejoin.'});p.seen=Date.now();
       if(url.pathname==='/api/move'){
         p.x=clamp(d.x,20,1380);p.y=clamp(d.y,220,1100);p.facing=clamp(d.facing,-Math.PI,Math.PI);
-        p.action=['idle','walk','peace','jump','run','wave','clap','sit','lie','drink'].includes(d.action)?d.action:'idle';
+        p.action=['idle','walk','peace','jump','run','wave','clap','sit','lie','drink','slam-charge','slam-retreat','slam-celebrate'].includes(d.action)?d.action:'idle';
         broadcast({type:'move',player:p});return json(res,200,{ok:true});
       }
       if(url.pathname==='/api/chat'){
