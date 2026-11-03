@@ -106,12 +106,12 @@ const server=http.createServer(async(req,res)=>{
     try{
       const d=await receive(req);
       if(url.pathname==='/api/join'){
-        const id=crypto.randomUUID(),p={id,name:clean(d.name,18)||'ROCKER',color:colors.includes(d.color)?d.color:colors[0],gender:d.gender==='female'?'female':'male',x:clamp(190+Math.random()*880,20,1380),y:clamp(420+Math.random()*260,300,960),facing:0,action:'idle',seen:Date.now()};
+        const id=crypto.randomUUID(),p={id,name:clean(d.name,18)||'ROCKER',color:colors.includes(d.color)?d.color:colors[0],gender:d.gender==='female'?'female':'male',x:clamp(190+Math.random()*880,20,1380),y:clamp(390+Math.random()*420,220,1100),facing:0,action:'idle',seen:Date.now()};
         players.set(id,p);resumeForFirst();broadcast({type:'join',player:p,count:players.size});return json(res,200,{id,...snapshot()});
       }
       const id=clean(d.id,80),p=players.get(id);if(!p)return json(res,401,{error:'Session expired. Please rejoin.'});p.seen=Date.now();
       if(url.pathname==='/api/move'){
-        p.x=clamp(d.x,20,1380);p.y=clamp(d.y,290,980);p.facing=clamp(d.facing,-Math.PI,Math.PI);
+        p.x=clamp(d.x,20,1380);p.y=clamp(d.y,220,1100);p.facing=clamp(d.facing,-Math.PI,Math.PI);
         p.action=['idle','walk','peace','jump','run','wave','clap','sit','lie','drink'].includes(d.action)?d.action:'idle';
         broadcast({type:'move',player:p});return json(res,200,{ok:true});
       }
