@@ -104,3 +104,40 @@ html,body{width:100%;max-width:100%;overscroll-behavior:none;overflow:hidden}
 #world>.css-world{position:absolute!important;z-index:2!important}
 #world>.stage-avatar-foreground{position:absolute!important;z-index:3!important;pointer-events:none!important}
 #world>canvas:not(.stage-avatar-foreground){z-index:1!important}
+
+/* v8: solid, minimal, mobile-safe festival controls */
+:root{--ui-bg:#171d2c;--ui-panel:#20283a;--ui-border:#3f4a61;--ui-ink:#f3f7ff;--ui-accent:#d7fa81}
+html,body{touch-action:pan-x pan-y;overscroll-behavior:none;-webkit-text-size-adjust:100%;text-size-adjust:100%}
+button,input{touch-action:manipulation}
+.mobilepad{display:none!important}
+.hudbar{background:var(--ui-bg)!important;border-bottom:1px solid var(--ui-border);box-shadow:0 9px 28px rgba(5,7,14,.3);padding-block:calc(env(safe-area-inset-top) + 9px) 9px!important}
+.hudright button{background:#323e50!important;color:#f7f9ff!important;border:1px solid #526178!important;border-radius:12px!important;box-shadow:none!important}
+.hudright button.slam-start{background:#dbf884!important;color:#1c2919!important;border-color:#dbf884!important}
+.hudright button.slam-start:disabled{background:#454e60!important;color:#c2c9d7!important;border-color:#454e60!important;cursor:default}
+.hudright button.slam-start.placing{background:#ffc583!important;color:#21202a!important}
+.controlbar{background:var(--ui-bg)!important;border:1px solid var(--ui-border)!important;border-radius:17px!important;box-shadow:0 8px 24px rgba(0,0,0,.35)!important;backdrop-filter:none!important}
+.actions button{background:var(--ui-panel)!important;border:1px solid #48536a!important;border-radius:11px!important;color:var(--ui-ink)!important;box-shadow:none!important}
+.actions button.active{background:#3d4c3b!important;border-color:#d7fa81!important}
+.chat-panel,.join-notices div,.music-open .sidebar{background:var(--ui-bg)!important;backdrop-filter:none!important;border:1px solid var(--ui-border)!important}
+.chat-choices button,.musiccontrols button{background:var(--ui-panel)!important;border-radius:10px!important}
+.slam-hint{position:absolute;top:calc(env(safe-area-inset-top) + 59px);left:50%;transform:translateX(-50%);z-index:12;background:#171d2c;color:#d7fa81;border:1px solid #46566a;border-radius:0 0 10px 10px;padding:6px 12px;font-size:11px;font-weight:800;white-space:nowrap;pointer-events:none;max-width:93%;overflow:hidden;text-overflow:ellipsis}
+.slam-overlay{position:absolute;transform:translate(-50%,-90%);z-index:18;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:112px;padding:10px 11px;background:#171d2c;border:2px solid #d7fa81;border-radius:14px;box-shadow:0 8px 25px #000a;pointer-events:none}
+.slam-overlay[hidden]{display:none!important}
+.slam-count{font-size:39px;line-height:1;color:#d7fa81;font-weight:950;letter-spacing:-2px;font-variant-numeric:tabular-nums}
+.slam-members{font-size:10px;color:#e4ecf6;white-space:nowrap}
+.slam-overlay button{pointer-events:auto;background:#d7fa81;border:0;color:#172015;font-size:12px;font-weight:900;border-radius:9px;padding:8px 12px;min-height:34px}
+.slam-overlay button:disabled{background:#4b5d4a;color:#e4f0df}
+#world>.stage-avatar-foreground{z-index:4!important;display:block!important;clip-path:none!important;opacity:1!important}
+#world>.css-world{z-index:2!important}
+@media(max-width:700px){
+ .hudbar{padding:calc(env(safe-area-inset-top) + 7px) 7px 8px!important;gap:4px!important}
+ .hudlogo{font-size:13px!important;line-height:33px!important}
+ .hudright{gap:4px!important}
+ .hudright button{font-size:10px!important;min-height:34px!important;padding:7px 6px!important;letter-spacing:-.3px}
+ .hudright .slam-start{max-width:112px;white-space:normal!important;line-height:1.1}
+ .slam-hint{top:calc(env(safe-area-inset-top) + 56px);font-size:10px}
+ .controlbar{bottom:calc(env(safe-area-inset-bottom) + 6px)!important;padding:5px!important;border-radius:13px!important}
+ .actions button{min-height:46px!important}
+ .chat-panel{bottom:calc(env(safe-area-inset-bottom) + 115px)!important}
+ .movement-guide{display:none!important}
+}

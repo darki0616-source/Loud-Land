@@ -4,6 +4,7 @@ import { CSS3DRenderer, CSS3DObject } from 'https://esm.sh/three@0.160.1/example
 const $=id=>document.getElementById(id), palette=['#ff747d','#67d8d1','#f9c463','#a8a0ff','#90dd81','#ff9ce1','#72b5ff','#eeeeee'];
 const mats=[{x:118,y:682,c:'#f5a5a3'},{x:290,y:706,c:'#a7def4'},{x:470,y:690,c:'#f5ce80'},{x:650,y:708,c:'#b3d9a0'},{x:835,y:694,c:'#ceb8f1'},{x:1015,y:710,c:'#ffd2a5'},{x:1185,y:688,c:'#b2d8ff'}];
 const state={id:null,me:null,players:new Map(),keys:new Set(),action:'idle',actionUntil:0,lastSent:0,es:null,music:{id:'',paused:true,position:0,startedAt:0,token:0},queue:[],serverDelta:0,yt:null,ytReady:false,lastTrack:'',audioEnabled:false,walkTarget:null,moving:false};
+let slamMode=false,slam=null,slamCooldownUntil=0,slamArrival=null;
 let chosenColor=palette[0],chosenGender='male',toastTimer;const avatars=new Map();const activeBubbles=new Map();
 function toast(msg){$('toast').textContent=msg;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('show'),3000)}
 document.querySelectorAll('[data-gender]').forEach(b=>b.onclick=()=>{chosenGender=b.dataset.gender;document.querySelectorAll('[data-gender]').forEach(x=>x.classList.toggle('selected',x===b))});
@@ -20,9 +21,9 @@ window.onYouTubeIframeAPIReady=()=>{state.yt=new YT.Player('youtubePlayer',{heig
 async function musicCommand(command,extra={}){if(!state.id)return toast('먼저 입장해주세요');try{let d=await post('music',{id:state.id,command,...extra});applyMusic(d.music,d.serverNow,d.queue);toast('공유 음악이 업데이트되었습니다')}catch(e){toast(e.message)}}
 $('playLink').onclick=()=>musicCommand('enqueue',{url:$('videoUrl').value});$('pauseMusic').onclick=()=>musicCommand('pause');$('resumeMusic').onclick=()=>musicCommand('resume');$('skipMusic').onclick=()=>musicCommand('skip');$('enableAudio').onclick=()=>{state.audioEnabled=true;try{state.yt?.unMute()}catch(e){}syncVideo(true);toast('이 기기의 소리를 켰어요')};$('videoUrl').addEventListener('keydown',e=>{if(e.key==='Enter')$('playLink').click()});
 function updateCrowdCount(n){const el=document.getElementById('boardVisitors');if(el)el.textContent=String(n)}
-function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='snapshot'){state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;updateCrowdCount(d.count);applyMusic(d.music,d.serverNow,d.queue);if(Array.isArray(d.chat)){$('chatMessages').replaceChildren();d.chat.forEach(appendChat)}}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;updateCrowdCount(d.count);if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){appendChat(d.entry);showBubble(d.entry)}else if(d.type==='move'){state.players.set(d.player.id,d.player)}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count;updateCrowdCount(d.count)}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue)}}
-async function join(){try{let d=await post('join',{name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);cameraFollowInitialized=false;state.players=new Map(d.players.map(p=>[p.id,p]));$('joinModal').classList.add('hidden');$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='페스티벌 참가 중';$('avatarPreview').querySelector('b').style.background=chosenColor;applyMusic(d.music,d.serverNow,d.queue);listen();$('audioModal').classList.remove('hidden');showMovementGuide();toast('ONEseason에 오신 것을 환영합니다!')}catch(e){$('joinError').textContent='입장 실패: '+(e?.message||'연결을 확인해주세요');console.error('ONEseason join error:',e)}}
-$('audioYes').onclick=()=>{state.audioEnabled=true;$('audioModal').classList.add('hidden');if(state.ytReady){try{state.yt.unMute();state.yt.setVolume(75)}catch(e){}}syncVideo(true);toast(state.music.id?'음악 재생을 허용했어요':'음악이 등록되면 바로 재생돼요')};$('audioNo').onclick=()=>{state.audioEnabled=false;$('audioModal').classList.add('hidden');try{state.yt?.pauseVideo()}catch(e){}toast('음악을 끈 상태로 입장했어요')};$('joinBtn').onclick=join;$('nick').onkeydown=e=>{if(e.key==='Enter')join()};$('editAvatar').onclick=()=>{if(state.id){post('leave',{id:state.id}).catch(()=>{});state.es?.close();state.id=null;state.me=null;cameraFollowInitialized=false;state.players.clear()}$('joinModal').classList.remove('hidden')};$('helpBtn').onclick=()=>toast('WASD 이동 · 클릭/터치 이동 · 드래그 시점 회전 · 1~8 리액션');
+function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='snapshot'){state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;updateCrowdCount(d.count);applyMusic(d.music,d.serverNow,d.queue);applySlam(d.slam,d.slamCooldownUntil);if(Array.isArray(d.chat)){$('chatMessages').replaceChildren();d.chat.forEach(appendChat)}}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;updateCrowdCount(d.count);if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){appendChat(d.entry);showBubble(d.entry)}else if(d.type==='move'){state.players.set(d.player.id,d.player)}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count;updateCrowdCount(d.count)}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue);else if(d.type==='slam')applySlam(d.slam,d.cooldownUntil);else if(d.type==='slam-go')onSlamGo(d)}}
+async function join(){try{let d=await post('join',{name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);cameraFollowInitialized=false;state.players=new Map(d.players.map(p=>[p.id,p]));$('joinModal').classList.add('hidden');$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='페스티벌 참가 중';$('avatarPreview').querySelector('b').style.background=chosenColor;applyMusic(d.music,d.serverNow,d.queue);applySlam(d.slam,d.slamCooldownUntil);listen();$('audioModal').classList.remove('hidden');showMovementGuide();toast('ONEseason에 오신 것을 환영합니다!')}catch(e){$('joinError').textContent='입장 실패: '+(e?.message||'연결을 확인해주세요');console.error('ONEseason join error:',e)}}
+$('audioYes').onclick=()=>{state.audioEnabled=true;$('audioModal').classList.add('hidden');if(state.ytReady){try{state.yt.unMute();state.yt.setVolume(75)}catch(e){}}syncVideo(true);toast(state.music.id?'음악 재생을 허용했어요':'음악이 등록되면 바로 재생돼요')};$('audioNo').onclick=()=>{state.audioEnabled=false;$('audioModal').classList.add('hidden');try{state.yt?.pauseVideo()}catch(e){}toast('음악을 끈 상태로 입장했어요')};$('joinBtn').onclick=join;$('nick').onkeydown=e=>{if(e.key==='Enter')join()};$('editAvatar').onclick=()=>{if(state.id){post('leave',{id:state.id}).catch(()=>{});state.es?.close();state.id=null;state.me=null;cameraFollowInitialized=false;state.players.clear();slam=null;slamMode=false;slamArrival=null;refreshSlamUI()}$('joinModal').classList.remove('hidden')};$('helpBtn').onclick=()=>toast('WASD 이동 · 클릭/터치 이동 · 드래그 시점 회전 · 1~8 리액션');
 function react(a){
  if(!state.me)return;
  if(state.action===a&&['jump','run'].includes(a)){
@@ -42,8 +43,68 @@ function react(a){
 }
 document.querySelectorAll('[data-action]').forEach(b=>b.onclick=()=>react(b.dataset.action));
 document.addEventListener('keydown',e=>{if(e.target instanceof HTMLInputElement)return;let k=e.key.toLowerCase();if(k.startsWith('arrow')||k===' ')e.preventDefault();state.keys.add(k);let acts={'1':'peace','2':'jump','3':'run','4':'wave','5':'clap','6':'sit','7':'lie','8':'drink'};if(acts[k]&&!e.repeat)react(acts[k])});document.addEventListener('keyup',e=>state.keys.delete(e.key.toLowerCase()));window.addEventListener('blur',()=>state.keys.clear());
-document.querySelectorAll('[data-dir]').forEach(b=>{let k={up:'arrowup',down:'arrowdown',left:'arrowleft',right:'arrowright'}[b.dataset.dir];b.addEventListener('pointerdown',e=>{e.preventDefault();state.keys.add(k);b.setPointerCapture(e.pointerId)});for(let ev of ['pointerup','pointercancel','lostpointercapture'])b.addEventListener(ev,()=>state.keys.delete(k))});
 function sendMove(){if(!state.id||!state.me)return;let p=state.me;post('move',{id:state.id,x:Math.round(p.x),y:Math.round(p.y),facing:p.facing,action:p.action}).catch(()=>{})}
+// Shared SLAM countdown (server timestamps, 15 s global launch cooldown).
+const slamButton=$('slamButton'),slamInfo=$('slamInfo'),slamMarker=$('slamMarker'),slamCount=$('slamCount'),slamMembers=$('slamMembers'),slamJoin=$('slamJoin');
+function slamNow(){return Date.now()+state.serverDelta}
+function refreshSlamUI(){
+ const remain=Math.max(0,Math.ceil((slamCooldownUntil-slamNow())/1000));
+ slamButton.disabled=!state.id||!!slam||remain>0;
+ slamButton.classList.toggle('placing',slamMode);
+ slamButton.textContent=slamMode?'📍 바닥을 터치하세요':slam?'🔥 슬램 진행 중':remain?`🔥 슬램 ${remain}초`:'🔥 슬램 만들기';
+ slamInfo.textContent=slamMode?'슬램 위치를 터치하세요':slam?'참가할 수 있어요':remain?`다음 슬램까지 ${remain}초`:'5초 카운트다운 후 참가자들이 모여요';
+}
+function applySlam(event,cooldown){
+ if(Number.isFinite(cooldown))slamCooldownUntil=cooldown;
+ slam=event||null;
+ if(slam)slamMode=false;
+ refreshSlamUI();
+}
+function onSlamGo(event){
+ if(event.id!==slam?.id && slam) return;
+ if(Array.isArray(event.participants)&&event.participants.includes(state.id)&&state.me){
+  state.walkTarget={x:event.x,y:event.y};
+  state.action='run';state.actionUntil=Infinity;state.me.action='run';
+  slamArrival={x:event.x,y:event.y,until:performance.now()+7500};
+  document.querySelectorAll('[data-action]').forEach(b=>b.classList.toggle('active',b.dataset.action==='run'));
+  sendMove();
+ }
+ slam=null;refreshSlamUI();
+}
+slamButton.onclick=()=>{
+ if(!state.id)return toast('먼저 입장해 주세요');
+ if(slam||slamCooldownUntil>slamNow())return refreshSlamUI();
+ slamMode=!slamMode;refreshSlamUI();
+};
+slamJoin.onclick=async event=>{
+ event.preventDefault();event.stopPropagation();
+ if(!state.id||!slam)return;
+ try{const result=await post('slam',{id:state.id,command:'join',slamId:slam.id});applySlam(result.slam,result.cooldownUntil)}catch(error){toast(error.message)}
+};
+function updateSlamVisual(t){
+ if(t-(updateSlamVisual.last||0)>180){refreshSlamUI();updateSlamVisual.last=t}
+ if(!slam){slamMarker.hidden=true;slamCircle.visible=false;return}
+ const left=slam.endAt-slamNow();
+ if(left<=0){slamMarker.hidden=true;slamCircle.visible=false;return}
+ const countdown=Math.max(1,Math.ceil(left/1000));
+ const participants=slam.participants||[];
+ slamMarker.hidden=false;slamCircle.visible=true;
+ slamCount.textContent=String(countdown);
+ slamMembers.textContent=participants.length+'명 참가';
+ const joined=participants.includes(state.id);
+ slamJoin.disabled=joined;slamJoin.textContent=joined?'✓ 참가 완료':'참가하기';
+ const world=toWorld(slam),pos=new THREE.Vector3(world.x,3.4,world.z).project(camera);
+ if(pos.z>=1||pos.z<=-1){slamMarker.hidden=true;return}
+ const px=(pos.x+1)*.5*host.clientWidth,py=(1-pos.y)*.5*host.clientHeight;
+ // Keep overlay clear of the HUD and action dock without losing the world anchor.
+ slamMarker.style.left=Math.max(72,Math.min(host.clientWidth-72,px))+'px';
+ slamMarker.style.top=Math.max(115,Math.min(host.clientHeight-165,py))+'px';
+ slamCircle.position.set(world.x,.085,world.z);
+ slamCircle.scale.setScalar(1+Math.sin(t*.009)*.07);
+}
+setInterval(refreshSlamUI,800);
+refreshSlamUI();
+
 // ===== 3D SPACE =====
 const host=$('world');const scene=new THREE.Scene();scene.background=new THREE.Color('#78bfff');scene.fog=new THREE.FogExp2('#78bfff',.0068);
 const camera=new THREE.PerspectiveCamera(56,1,.1,350);camera.position.set(0,27,39);
@@ -52,78 +113,29 @@ const cssRenderer=new CSS3DRenderer();cssRenderer.domElement.className='css-worl
 const stageVideo=document.querySelector('#youtubeScreen');stageVideo.classList.add('onstage');
 const stageWebObject=new CSS3DObject(stageVideo);stageWebObject.position.set(0,6.3,-29.12);stageWebObject.scale.set(.015,.015,.015);scene.add(stageWebObject);
 
-// The video iframe is CSS3D (above the WebGL canvas). Render ONLY the
-// audience/emoji silhouettes over the video's projected rectangle using a
-// transparent, pointer-through foreground pass. Never hide the original
-// avatars or bubbles; this supplements their original main-scene rendering.
-// A normal depth buffer cannot be shared between CSS3D and WebGL renderers.
+// Stable single-pass avatar composition. The YouTube iframe is CSS3D;
+// actors and bubbles live exclusively on a fixed transparent WebGL overlay.
+// This avoids double-rendering and frame-to-frame clipping changes (flicker).
 let stageForeground=null;
 try{
  stageForeground=new THREE.WebGLRenderer({alpha:true,antialias:false,powerPreference:'low-power'});
  stageForeground.setPixelRatio(Math.min(window.devicePixelRatio||1,1.15));
  stageForeground.outputColorSpace=THREE.SRGBColorSpace;
  stageForeground.setClearColor(0x000000,0);
- stageForeground.setSize(Math.max(1,host.clientWidth),Math.max(1,host.clientHeight),false);
  stageForeground.domElement.className='stage-avatar-foreground';
- stageForeground.domElement.setAttribute('aria-hidden','true');
  stageForeground.domElement.style.pointerEvents='none';
+ stageForeground.domElement.setAttribute('aria-hidden','true');
  host.appendChild(stageForeground.domElement);
-}catch(e){console.warn('Stage foreground pass unavailable; keeping normal characters',e);stageForeground=null}
-const foregroundCamera=camera.clone();foregroundCamera.layers.set(1);
-// IMPORTANT: CSS3DObject coordinates are CSS PIXELS before its .015 world scale.
-// v6 used +-8.64 here (already world-scaled values), so the projected clip
-// polygon was 1/66.7th of the intended size and covered almost no video.
-// Derive the local dimensions from the actual on-stage element each frame.
-function getStageScreenCorners(){
- const halfW=(stageVideo.offsetWidth || 1152)*.5;
- const halfH=(stageVideo.offsetHeight || 648)*.5;
- return [
-  new THREE.Vector3(-halfW,-halfH,0),
-  new THREE.Vector3( halfW,-halfH,0),
-  new THREE.Vector3( halfW, halfH,0),
-  new THREE.Vector3(-halfW, halfH,0)
- ];
-}
-const screenProjected=new THREE.Vector3();
-function addForegroundLayer(object){object.traverse(child=>child.layers.enable(1))}
+}catch(error){console.warn('Foreground WebGL disabled:',error);stageForeground=null}
+const foregroundCamera=camera.clone();
+function addForegroundLayer(object){if(stageForeground)object.traverse(child=>child.layers.set(1));}
 function renderStageForeground(){
  if(!stageForeground)return;
- const canvas=stageForeground.domElement;
- // When camera goes behind the screen, the video plane should not overlay
- // the audience, and the original WebGL pass is left untouched.
- if(camera.position.z<=stageWebObject.position.z+.03){canvas.style.display='none';return}
- stageWebObject.updateMatrixWorld(true);
- const w=host.clientWidth,h=host.clientHeight;
- if(w<1||h<1){canvas.style.display='none';return}
- const polygon=[];
- for(const local of getStageScreenCorners()){
-  screenProjected.copy(local).applyMatrix4(stageWebObject.matrixWorld);
-  const viewZ=screenProjected.clone().applyMatrix4(camera.matrixWorldInverse).z;
-  if(viewZ>=-.1){canvas.style.display='none';return}
-  screenProjected.project(camera);
-  polygon.push(`${((screenProjected.x+1)*.5*w).toFixed(1)}px ${((1-screenProjected.y)*.5*h).toFixed(1)}px`);
- }
- // Do not attempt foreground compositing for the back side of the screen.
- const screenNormal=new THREE.Vector3(0,0,1).transformDirection(stageWebObject.matrixWorld);
- if(new THREE.Vector3().subVectors(camera.position,stageWebObject.position).dot(screenNormal)<0){canvas.style.display='none';return}
- canvas.style.display='block';
- canvas.style.clipPath=`polygon(${polygon.join(',')})`;
  foregroundCamera.copy(camera);
  foregroundCamera.layers.set(1);
- // Only people on the audience side of the video plane get foreground priority.
- // This never changes their normal layer (0), visibility, or multiplayer state.
- for(const [id,a] of avatars){
-  const inFront=a.root.position.z>stageWebObject.position.z+.12;
-  a.root.traverse(part=>part.layers.toggle(1,inFront));
- }
- for(const [id,b] of activeBubbles){
-  const a=avatars.get(id);
-  b.sprite.layers.toggle(1,!!a && a.root.position.z>stageWebObject.position.z+.12);
- }
- // The extra renderer is transparent; CSS3D remains underneath it.
- const oldBackground=scene.background;
+ const original=scene.background;
  scene.background=null;
- try{stageForeground.render(scene,foregroundCamera)}finally{scene.background=oldBackground}
+ try{stageForeground.render(scene,foregroundCamera)}finally{scene.background=original}
 }
 
 const controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.dampingFactor=.07;controls.minDistance=3.2;controls.maxDistance=105;controls.maxPolarAngle=Math.PI/2.12;controls.target.set(0,1,4);controls.enablePan=false;
@@ -157,9 +169,9 @@ function followLocalAvatar(){
  camera.position.add(delta);controls.target.add(delta);
  cameraFollowInitialized=true;
 }
-const hemi=new THREE.HemisphereLight('#d7efff','#557157',2.35);scene.add(hemi);
-const sunLight=new THREE.DirectionalLight('#fff0c7',2.8);sunLight.position.set(24,38,92);sunLight.castShadow=!matchMedia('(max-width:700px)').matches;sunLight.shadow.mapSize.set(1024,1024);sunLight.shadow.camera.left=-62;sunLight.shadow.camera.right=62;sunLight.shadow.camera.top=62;sunLight.shadow.camera.bottom=-62;scene.add(sunLight);
-const moonLight=new THREE.DirectionalLight('#d8e8ff',1.55);moonLight.position.set(-18,26,92);scene.add(moonLight);
+const hemi=new THREE.HemisphereLight('#d7efff','#557157',2.35);scene.add(hemi);hemi.layers.enable(1);
+const sunLight=new THREE.DirectionalLight('#fff0c7',2.8);sunLight.position.set(24,38,92);sunLight.castShadow=!matchMedia('(max-width:700px)').matches;sunLight.shadow.mapSize.set(1024,1024);sunLight.shadow.camera.left=-62;sunLight.shadow.camera.right=62;sunLight.shadow.camera.top=62;sunLight.shadow.camera.bottom=-62;scene.add(sunLight);sunLight.layers.enable(1);
+const moonLight=new THREE.DirectionalLight('#d8e8ff',1.55);moonLight.position.set(-18,26,92);scene.add(moonLight);moonLight.layers.enable(1);
 const skyDome=new THREE.Mesh(new THREE.SphereGeometry(175,28,20),new THREE.MeshBasicMaterial({color:'#82c4ff',side:THREE.BackSide,fog:false}));scene.add(skyDome);
 const sunOrb=new THREE.Mesh(new THREE.SphereGeometry(4.5,24,18),new THREE.MeshBasicMaterial({color:'#ffd580'}));scene.add(sunOrb);
 const moonOrb=new THREE.Mesh(new THREE.SphereGeometry(3.4,20,16),new THREE.MeshBasicMaterial({color:'#eff6ff'}));scene.add(moonOrb);
@@ -430,7 +442,7 @@ function showBubble(entry){
  const old=activeBubbles.get(entry.playerId);
  if(old){scene.remove(old.sprite);old.sprite.material.map.dispose();old.sprite.material.dispose()}
  const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:bubbleTexture(entry.message),transparent:true,depthTest:false,depthWrite:false}));
- sprite.scale.set(3.4,1.49,1);sprite.renderOrder=150;scene.add(sprite);sprite.layers.enable(1);
+ sprite.scale.set(3.4,1.49,1);sprite.renderOrder=150;scene.add(sprite);if(stageForeground)sprite.layers.set(1);
  activeBubbles.set(entry.playerId,{sprite,expires:performance.now()+3800});
 }
 
@@ -579,6 +591,9 @@ function animateAvatar(a,p,t){
 const groundRay=new THREE.Raycaster(), pointer=new THREE.Vector2(), groundPlane=new THREE.Plane(new THREE.Vector3(0,1,0),0), hit=new THREE.Vector3();
 // Reusable, small translucent destination ring. No notifications over controls.
 const moveMarker=new THREE.Mesh(new THREE.RingGeometry(.28,.43,24),new THREE.MeshBasicMaterial({color:'#d8ff8c',side:THREE.DoubleSide,transparent:true,opacity:.75,depthWrite:false}));
+const slamCircle=new THREE.Mesh(new THREE.RingGeometry(1.35,1.68,48),new THREE.MeshBasicMaterial({color:'#dcfd85',side:THREE.DoubleSide,transparent:true,opacity:.9,depthWrite:false}));
+slamCircle.rotation.x=-Math.PI/2;slamCircle.visible=false;scene.add(slamCircle);
+
 moveMarker.rotation.x=-Math.PI/2;moveMarker.visible=false;scene.add(moveMarker);
 let moveMarkerUntil=0;
 let pointerStart=null;
@@ -590,6 +605,11 @@ renderer.domElement.addEventListener('pointerup',e=>{
  const bounds=renderer.domElement.getBoundingClientRect();pointer.set(((e.clientX-bounds.left)/bounds.width)*2-1,-((e.clientY-bounds.top)/bounds.height)*2+1);
  groundRay.setFromCamera(pointer,camera);if(!groundRay.ray.intersectPlane(groundPlane,hit))return;
  const x=Math.max(20,Math.min(1380,hit.x/.058+600)),y=Math.max(220,Math.min(1100,(hit.z-8)/.058+500));
+ if(slamMode){
+  slamMode=false;refreshSlamUI();
+  post('slam',{id:state.id,command:'start',x,y}).then(d=>applySlam(d.slam,d.cooldownUntil)).catch(e=>toast(e.message));
+  return;
+ }
  state.walkTarget={x,y};
  // Visual ground marker replaces the full-screen toast (which covered mobile HUD).
  moveMarker.position.set(hit.x,.065,hit.z);moveMarker.visible=true;moveMarkerUntil=performance.now()+1150;
@@ -603,8 +623,9 @@ renderer.domElement.addEventListener('pointerup',e=>{
 
 function tick(t){
  if(state.me){let dx=0,dy=0,k=state.keys;dx+=+(k.has('d')||k.has('arrowright'))-+(k.has('a')||k.has('arrowleft'));dy+=+(k.has('s')||k.has('arrowdown'))-+(k.has('w')||k.has('arrowup'));
- if(dx||dy)state.walkTarget=null;
- if(!dx&&!dy&&state.walkTarget){const tx=state.walkTarget.x-state.me.x,ty=state.walkTarget.y-state.me.y,n=Math.hypot(tx,ty);if(n>4){dx=tx/n;dy=ty/n}else state.walkTarget=null}
+ if(dx||dy){state.walkTarget=null;slamArrival=null;}
+ if(!dx&&!dy&&state.walkTarget){const tx=state.walkTarget.x-state.me.x,ty=state.walkTarget.y-state.me.y,n=Math.hypot(tx,ty);if(n>4){dx=tx/n;dy=ty/n}else{state.walkTarget=null;if(slamArrival){slamArrival=null;state.action='idle';state.actionUntil=0;state.me.action='idle';document.querySelectorAll('[data-action]').forEach(b=>b.classList.remove('active'))}}}
+ if(slamArrival&&t>slamArrival.until){slamArrival=null;state.walkTarget=null;state.action='idle';state.me.action='idle';document.querySelectorAll('[data-action]').forEach(b=>b.classList.remove('active'))}
  state.moving=!!(dx||dy);
  if(state.moving){let n=Math.hypot(dx,dy),speed=state.action==='run'?5:3.2;state.me.x=Math.max(20,Math.min(1380,state.me.x+dx/n*speed));state.me.y=Math.max(220,Math.min(1100,state.me.y+dy/n*speed));state.me.facing=Math.atan2(dx,dy);
  if(['sit','lie'].includes(state.action)){state.action='idle';state.me.action='idle'}
@@ -616,7 +637,7 @@ function tick(t){
  for(let [id,p] of state.players){if(!avatars.has(id)){let a=makeAvatar(p),pos=toWorld(p);a.root.position.set(pos.x,0,pos.z);avatars.set(id,a)}animateAvatar(avatars.get(id),p,t)}
  for(let [id,a] of avatars)if(!state.players.has(id)){scene.remove(a.root);a.root.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material?.map)o.material.map.dispose();if(o.material)o.material.dispose()});avatars.delete(id)}
  if(moveMarker.visible){moveMarker.material.opacity=Math.min(.75,Math.max(0,(moveMarkerUntil-t)/1050)*.75);if(t>moveMarkerUntil)moveMarker.visible=false}
- updateEnvironment();updateOcean(t);updateBubbles(t);animateShow(t);followLocalAvatar();controls.update();keepCameraInFrontOfStage();renderer.render(scene,camera);cssRenderer.render(scene,camera);renderStageForeground();requestAnimationFrame(tick)
+ updateEnvironment();updateOcean(t);updateBubbles(t);animateShow(t);followLocalAvatar();controls.update();keepCameraInFrontOfStage();updateSlamVisual(t);renderer.render(scene,camera);cssRenderer.render(scene,camera);renderStageForeground();requestAnimationFrame(tick)
 }
 function resize(){let w=host.clientWidth,h=host.clientHeight;if(!w||!h)return;camera.aspect=w/h;camera.updateProjectionMatrix();renderer.setSize(w,h,false);cssRenderer.setSize(w,h);if(stageForeground)stageForeground.setSize(w,h,false)}new ResizeObserver(resize).observe(host);resize();requestAnimationFrame(tick);
 setInterval(()=>{syncVideo();reportDuration();let m=state.music;if(!m.id)return;let sec=m.paused?m.position:(Date.now()+state.serverDelta-m.startedAt)/1000;let dur=state.ytReady?state.yt.getDuration():0;$('progressFill').style.width=dur?Math.min(100,sec/dur*100)+'%':'0%'},5000);
