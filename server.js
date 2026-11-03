@@ -17,6 +17,20 @@ function slamUpdate(){broadcast({type:'slam',slam:publicSlam(),cooldownUntil:sla
 const chatChoices=['안녕','뛰어','👍','❤️'];
 let music = {id:'', title:'', startedAt:0, paused:true, position:0, changedBy:'', token:0, duration:0};
 const queue=[]; let nextTrackToken=1;
+// Vote-to-skip is transient: a strict majority of connected members at start is required.
+const SKIP_VOTE_MS=20000, SKIP_VOTE_COOLDOWN_MS=15000;
+let skipVote=null, skipVoteCooldownUntil=0,skipVoteTimer=null;
+function publicSkipVote(){if(!skipVote)return null;return {id:skipVote.id,proposer:skipVote.proposer,endAt:skipVote.endAt,yes:[...skipVote.yes].length,no:[...skipVote.no].length,required:Math.floor(skipVote.eligible.size/2)+1,eligible:[...skipVote.eligible],voted:[...new Set([...skipVote.yes,...skipVote.no])]}}
+function broadcastSkipVote(){broadcast({type:'skip-vote',vote:publicSkipVote(),cooldownUntil:skipVoteCooldownUntil,serverNow:Date.now()})}
+function finishSkipVote(passed,reason){if(!skipVote)return;const old=skipVote;skipVote=null;clearTimeout(skipVoteTimer);skipVoteTimer=null;
+ broadcast({type:'skip-vote-result',passed,reason,proposer:old.proposer,yes:old.yes.size,no:old.no.size,required:Math.floor(old.eligible.size/2)+1});
+ if(passed&&music.id&&music.token===old.trackToken)nextTrack();broadcastSkipVote();}
+function checkSkipVote(){if(!skipVote)return;const required=Math.floor(skipVote.eligible.size/2)+1;
+ if(skipVote.yes.size>=required)return finishSkipVote(true,'majority');
+ if(skipVote.no.size>=required||skipVote.yes.size+(skipVote.eligible.size-skipVote.yes.size-skipVote.no.size)<required)return finishSkipVote(false,'rejected');
+ if(Date.now()>=skipVote.endAt)return finishSkipVote(false,'timeout');broadcastSkipVote();}
+function voterLeaves(id){if(!skipVote||!skipVote.eligible.has(id))return;skipVote.eligible.delete(id);skipVote.yes.delete(id);skipVote.no.delete(id);if(skipVote.eligible.size===0)finishSkipVote(false,'no-voters');else checkSkipVote()}
+
 const DATA_DIR=process.env.DATA_DIR||path.join(__dirname,'data');
 const STATE_PATH=path.join(DATA_DIR,'festival-state.json');
 let saveTimeout=null;
@@ -66,7 +80,7 @@ function resumeForFirst(){if(players.size===1&&music.id&&music.paused){music.sta
 process.on('SIGTERM',()=>{pauseForEmpty();clearTimeout(saveTimeout);Promise.race([saveNow(),new Promise(r=>setTimeout(r,2500))]).finally(()=>server.close(()=>process.exit(0)))});
 
 const musicState=()=>({music,queue:queue.map(({id,title,addedBy})=>({id,title,addedBy})),serverNow:Date.now()});
-function nextTrack(){const entry=queue.shift();if(entry){music={id:entry.id,title:entry.title,startedAt:Date.now(),paused:false,position:0,changedBy:entry.addedBy,token:nextTrackToken++,duration:0}}else{music={id:'',title:'',startedAt:0,paused:true,position:0,changedBy:'',token:nextTrackToken++,duration:0}}broadcast({type:'music',...musicState()});scheduleSave()}
+function nextTrack(){if(skipVote)finishSkipVote(false,'track-changed');const entry=queue.shift();if(entry){music={id:entry.id,title:entry.title,startedAt:Date.now(),paused:false,position:0,changedBy:entry.addedBy,token:nextTrackToken++,duration:0}}else{music={id:'',title:'',startedAt:0,paused:true,position:0,changedBy:'',token:nextTrackToken++,duration:0}}broadcast({type:'music',...musicState()});scheduleSave()}
 // End-of-track fallback based on reported duration, independent of any one viewer.
 setInterval(()=>{if(music.id&&!music.paused&&music.duration>0&&(Date.now()-music.startedAt)/1000>music.duration+1)nextTrack()},1500).unref();
 const colors = ['#ff747d','#67d8d1','#f9c463','#a8a0ff','#90dd81','#ff9ce1','#72b5ff','#eeeeee'];
@@ -74,9 +88,9 @@ const clean = (s,max=30)=>String(s||'').replace(/[\x00-\x1f<>]/g,'').trim().slic
 const send=(res,obj)=>{res.write('data: '+JSON.stringify(obj)+'\n\n');};
 const broadcast=obj=>{for(const res of clients.values()) {try {send(res,obj);}catch{}}};
 const json=(res,status,obj)=>{res.writeHead(status,{'content-type':'application/json; charset=utf-8','cache-control':'no-store','access-control-allow-origin':'*'});res.end(JSON.stringify(obj));};
-const snapshot=()=>({type:'snapshot',players:[...players.values()],chat:chatHistory,...musicState(),slam:publicSlam(),slamCooldownUntil,count:players.size});
+const snapshot=()=>({type:'snapshot',players:[...players.values()],chat:chatHistory,...musicState(),skipVote:publicSkipVote(),skipVoteCooldownUntil,slam:publicSlam(),slamCooldownUntil,count:players.size});
 const clamp=(n,min,max)=>Math.min(max,Math.max(min,Number(n)||0));
-function cleanup(){const now=Date.now();for(const [id,p] of players)if(now-p.seen>35000){players.delete(id);if(activeSlam?.participants.delete(id))slamUpdate();pauseForEmpty();const r=clients.get(id);if(r){r.end();clients.delete(id)}broadcast({type:'leave',id,count:players.size})}}
+function cleanup(){const now=Date.now();for(const [id,p] of players)if(now-p.seen>35000){players.delete(id);voterLeaves(id);voterLeaves(id);if(activeSlam?.participants.delete(id))slamUpdate();pauseForEmpty();const r=clients.get(id);if(r){r.end();clients.delete(id)}broadcast({type:'leave',id,count:players.size})}}
 setInterval(cleanup,7000).unref();
 function videoId(input){const v=String(input||'').trim();if(/^[\w-]{11}$/.test(v))return v;try{const u=new URL(v);const host=u.hostname.replace(/^www\./,'');if(host==='youtu.be')return /^[\w-]{11}$/.test(u.pathname.slice(1))?u.pathname.slice(1):null;if(['youtube.com','m.youtube.com','music.youtube.com','youtube-nocookie.com'].includes(host)){const id=u.searchParams.get('v')||u.pathname.match(/\/(?:embed|shorts|live)\/([\w-]{11})/)?.[1];return /^[\w-]{11}$/.test(id||'')?id:null}}catch{}return null}
 // Read the actual public YouTube title server-side; never trust a user-submitted title.
@@ -173,9 +187,7 @@ const server=http.createServer(async(req,res)=>{
           // Always append to the shared queue; automatically start when nothing is playing.
           queue.push(entry);scheduleSave();if(!music.id)nextTrack();else broadcast({type:'music',...musicState()});
           broadcast({type:'music-booked',name:p.name,title:entry.title,videoId:entry.id,at:Date.now()});
-        } else if(d.command==='pause'&&!music.paused&&music.id){music.position=Math.max(0,(Date.now()-music.startedAt)/1000);music.paused=true;scheduleSave();broadcast({type:'music',...musicState()})}
-        else if(d.command==='resume'&&music.paused&&music.id){music.startedAt=Date.now()-music.position*1000;music.paused=false;scheduleSave();broadcast({type:'music',...musicState()})}
-        else if(d.command==='duration'&&music.id&&Number(d.token)===music.token){
+        } else if(d.command==='duration'&&music.id&&Number(d.token)===music.token){
           const duration=Number(d.duration);if(Number.isFinite(duration)&&duration>=2&&duration<=86400){music.duration=duration;scheduleSave();if(!music.paused&&(Date.now()-music.startedAt)/1000>duration+1)nextTrack()}
         }
         else if(d.command==='ended'&&music.id&&Number(d.token)===music.token){
@@ -183,11 +195,29 @@ const server=http.createServer(async(req,res)=>{
           const elapsed=music.paused?music.position:(Date.now()-music.startedAt)/1000;
           if(!music.duration||elapsed>=music.duration-3)nextTrack();
         }
-        else if(d.command==='skip'&&music.id){nextTrack()}
+        else if(d.command==='skip'){return json(res,403,{error:'다음 곡은 투표 과반수 동의가 필요합니다.'})}
+        else if(d.command==='vote-start'){
+          if(!music.id)return json(res,409,{error:'재생 중인 곡이 없습니다.'});
+          if(skipVote)return json(res,409,{error:'이미 다음 곡 투표가 진행 중입니다.'});
+          if(Date.now()<skipVoteCooldownUntil)return json(res,429,{error:'다음 곡 투표 쿨타임이 남아 있습니다.'});
+          const eligible=new Set(players.keys());
+          skipVote={id:crypto.randomUUID(),proposer:p.name,eligible,yes:new Set([id]),no:new Set(),endAt:Date.now()+SKIP_VOTE_MS,trackToken:music.token};
+          skipVoteCooldownUntil=Date.now()+SKIP_VOTE_MS+SKIP_VOTE_COOLDOWN_MS;
+          broadcastSkipVote();
+          skipVoteTimer=setTimeout(()=>{if(skipVote)finishSkipVote(false,'timeout')},SKIP_VOTE_MS);
+          if(skipVote.eligible.size===1)checkSkipVote();
+        }
+        else if(d.command==='vote-cast'){
+          if(!skipVote||d.voteId!==skipVote.id||Date.now()>=skipVote.endAt)return json(res,409,{error:'진행 중인 투표가 아닙니다.'});
+          if(!skipVote.eligible.has(id))return json(res,403,{error:'투표 시작 후 입장한 분은 다음 투표부터 참여할 수 있습니다.'});
+          if(skipVote.yes.has(id)||skipVote.no.has(id))return json(res,409,{error:'이미 투표했습니다.'});
+          if(d.choice!=='yes'&&d.choice!=='no')return json(res,400,{error:'찬성 또는 반대를 선택해주세요.'});
+          skipVote[d.choice].add(id);checkSkipVote();
+        }
         else return json(res,400,{error:'Invalid command'});
         return json(res,200,{ok:true,...musicState()});
       }
-      if(url.pathname==='/api/leave'){players.delete(id);if(activeSlam?.participants.delete(id))slamUpdate();pauseForEmpty();clients.get(id)?.end();clients.delete(id);broadcast({type:'leave',id,count:players.size});return json(res,200,{ok:true})}
+      if(url.pathname==='/api/leave'){players.delete(id);voterLeaves(id);if(activeSlam?.participants.delete(id))slamUpdate();pauseForEmpty();clients.get(id)?.end();clients.delete(id);broadcast({type:'leave',id,count:players.size});return json(res,200,{ok:true})}
       return json(res,404,{error:'Not found'});
     }catch(e){return json(res,400,{error:e.message})}
   }
