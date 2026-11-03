@@ -268,9 +268,11 @@ function makeAvatar(p){
    // Keep a rear layer BEHIND the skull, then place the two tips outside the cheek contour.
    child(neck,new THREE.SphereGeometry(.855,24,18),hair,[0,.02,-.28],[1.04,1.05,.92]);
    for(const side of [-1,1]){
-     const lock=child(neck,new THREE.CapsuleGeometry(.195,.45,7,12),hair,[side*.755,-.27,.14],[.96,1.03,.90]);
-     lock.rotation.z=side*.10;
-     child(neck,new THREE.SphereGeometry(.21,12,9),hair,[side*.77,-.52,.155],[.93,.83,.95]);
+     // Lift side locks beside the cheeks rather than below the jaw.
+     // Keep them outside the skull for an obvious bob outline from the front.
+     const lock=child(neck,new THREE.CapsuleGeometry(.18,.41,7,12),hair,[side*.78,-.015,.205],[.92,1.02,.91]);
+     lock.rotation.z=side*.12;
+     child(neck,new THREE.SphereGeometry(.19,12,9),hair,[side*.79,-.275,.205],[.91,.86,.92]);
    }
  }else{
    // Close-fitting side hair visible near ears.
@@ -516,6 +518,61 @@ renderer.domElement.addEventListener('pointerup',e=>{
  moveMarker.position.set(hit.x,.065,hit.z);moveMarker.visible=true;moveMarkerUntil=performance.now()+1150;
 
 });
+// Keep the projected stage video unobstructed without restricting orbit or walking.
+// Avatars are hidden only for the observer whose camera sees them over the video;
+// multiplayer state and animations remain active everywhere else.
+const stageScreenCorners=[new THREE.Vector3(),new THREE.Vector3(),new THREE.Vector3(),new THREE.Vector3()];
+const projectPoint=new THREE.Vector3();
+function screenPoint(x,y,z){
+ projectPoint.set(x,y,z).project(camera);
+ return {x:projectPoint.x,y:projectPoint.y,z:projectPoint.z};
+}
+function stageScreenBounds(){
+ // CSS3D object is scaled uniformly in world units (including mobile CSS sizes).
+ const halfWidth=stageVideo.offsetWidth*stageWebObject.scale.x*.5;
+ const halfHeight=stageVideo.offsetHeight*stageWebObject.scale.y*.5;
+ const cx=stageWebObject.position.x,cy=stageWebObject.position.y,cz=stageWebObject.position.z;
+ const corners=stageScreenCorners;
+ corners[0].set(cx-halfWidth,cy-halfHeight,cz);
+ corners[1].set(cx+halfWidth,cy-halfHeight,cz);
+ corners[2].set(cx-halfWidth,cy+halfHeight,cz);
+ corners[3].set(cx+halfWidth,cy+halfHeight,cz);
+ let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+ // If stage is behind the camera, it cannot be obscured.
+ for(const corner of corners){
+  corner.project(camera);
+  if(corner.z<-1||corner.z>1)return null;
+  minX=Math.min(minX,corner.x);maxX=Math.max(maxX,corner.x);
+  minY=Math.min(minY,corner.y);maxY=Math.max(maxY,corner.y);
+ }
+ if(maxX<-1||minX>1||maxY<-1||minY>1)return null;
+ return {minX,maxX,minY,maxY};
+}
+function overlapsScreen(rect,box){
+ return rect&&box.minX<rect.maxX&&box.maxX>rect.minX&&box.minY<rect.maxY&&box.maxY>rect.minY;
+}
+function avatarOverStage(avatar,rect){
+ if(!rect)return false;
+ const root=avatar.root;
+ // Only foreground avatars should yield to the stage screen.
+ if(root.position.z<=stageWebObject.position.z+.25)return false;
+ const x=root.position.x,y=root.position.y,z=root.position.z;
+ const a=screenPoint(x-.57,y+.30,z);
+ const b=screenPoint(x+.57,y+3.02,z);
+ if(a.z<-1||a.z>1||b.z<-1||b.z>1)return false;
+ return overlapsScreen(rect,{minX:Math.min(a.x,b.x),maxX:Math.max(a.x,b.x),minY:Math.min(a.y,b.y),maxY:Math.max(a.y,b.y)});
+}
+function updateStageClearance(){
+ const bounds=stageScreenBounds();
+ for(const avatar of avatars.values())avatar.root.visible=!avatarOverStage(avatar,bounds);
+ for(const bubble of activeBubbles.values()){
+  if(!bounds){bubble.sprite.visible=true;continue}
+  const point=screenPoint(bubble.sprite.position.x,bubble.sprite.position.y,bubble.sprite.position.z);
+  const w=3.4/Math.max(.001,bubble.sprite.position.distanceTo(camera))*1.2;
+  const h=w*.48;
+  bubble.sprite.visible=point.z>=-1&&point.z<=1&&!overlapsScreen(bounds,{minX:point.x-w,maxX:point.x+w,minY:point.y-h,maxY:point.y+h});
+ }
+}
 function tick(t){
  if(state.me){let dx=0,dy=0,k=state.keys;dx+=+(k.has('d')||k.has('arrowright'))-+(k.has('a')||k.has('arrowleft'));dy+=+(k.has('s')||k.has('arrowdown'))-+(k.has('w')||k.has('arrowup'));
  if(dx||dy)state.walkTarget=null;
@@ -531,7 +588,7 @@ function tick(t){
  for(let [id,p] of state.players){if(!avatars.has(id)){let a=makeAvatar(p),pos=toWorld(p);a.root.position.set(pos.x,0,pos.z);avatars.set(id,a)}animateAvatar(avatars.get(id),p,t)}
  for(let [id,a] of avatars)if(!state.players.has(id)){scene.remove(a.root);a.root.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material?.map)o.material.map.dispose();if(o.material)o.material.dispose()});avatars.delete(id)}
  if(moveMarker.visible){moveMarker.material.opacity=Math.min(.75,Math.max(0,(moveMarkerUntil-t)/1050)*.75);if(t>moveMarkerUntil)moveMarker.visible=false}
- updateEnvironment();updateOcean(t);updateBubbles(t);animateShow(t);followLocalAvatar();controls.update();keepCameraInFrontOfStage();renderer.render(scene,camera);cssRenderer.render(scene,camera);requestAnimationFrame(tick)
+ updateEnvironment();updateOcean(t);updateBubbles(t);animateShow(t);followLocalAvatar();controls.update();keepCameraInFrontOfStage();updateStageClearance();renderer.render(scene,camera);cssRenderer.render(scene,camera);requestAnimationFrame(tick)
 }
 function resize(){let w=host.clientWidth,h=host.clientHeight;if(!w||!h)return;camera.aspect=w/h;camera.updateProjectionMatrix();renderer.setSize(w,h,false);cssRenderer.setSize(w,h)}new ResizeObserver(resize).observe(host);resize();requestAnimationFrame(tick);
 setInterval(()=>{syncVideo();reportDuration();let m=state.music;if(!m.id)return;let sec=m.paused?m.position:(Date.now()+state.serverDelta-m.startedAt)/1000;let dur=state.ytReady?state.yt.getDuration():0;$('progressFill').style.width=dur?Math.min(100,sec/dur*100)+'%':'0%'},5000);
