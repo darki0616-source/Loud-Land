@@ -9,6 +9,7 @@ const clients = new Map();
 const players = new Map();
 const chatHistory=[];
 let activeSlam=null,slamCooldownUntil=0;
+let pendingSlamImpact=null; // Last launch roster; exactly one shared first-arrival dust burst
 const SLAM_COUNTDOWN_MS=5000,SLAM_COOLDOWN_MS=15000;
 function publicSlam(){return activeSlam?{id:activeSlam.id,x:activeSlam.x,y:activeSlam.y,endAt:activeSlam.endAt,participants:[...activeSlam.participants]}:null}
 function slamUpdate(){broadcast({type:'slam',slam:publicSlam(),cooldownUntil:slamCooldownUntil})}
@@ -116,9 +117,18 @@ const server=http.createServer(async(req,res)=>{
       }
       const id=clean(d.id,80),p=players.get(id);if(!p)return json(res,401,{error:'Session expired. Please rejoin.'});p.seen=Date.now();
       if(url.pathname==='/api/move'){
+        const previousAction=p.action;
         p.x=clamp(d.x,20,1380);p.y=clamp(d.y,220,1100);p.facing=clamp(d.facing,-Math.PI,Math.PI);
         p.action=['idle','walk','peace','jump','run','wave','clap','sit','lie','drink','slam-charge','slam-retreat','slam-celebrate'].includes(d.action)?d.action:'idle';
-        broadcast({type:'move',player:p});return json(res,200,{ok:true});
+        broadcast({type:'move',player:p});
+        // Fire once, when the FIRST participant changes from charging to retreating.
+        // This is server-broadcast, so spectators see the same dust burst.
+        if(pendingSlamImpact && !pendingSlamImpact.fired && pendingSlamImpact.participants.has(id)
+           && previousAction==='slam-charge' && p.action==='slam-retreat'){
+          pendingSlamImpact.fired=true;
+          broadcast({type:'slam-impact',slamId:pendingSlamImpact.id,x:p.x,y:p.y});
+        }
+        return json(res,200,{ok:true});
       }
       if(url.pathname==='/api/chat'){
         const message=clean(d.message,20);
@@ -143,6 +153,7 @@ const server=http.createServer(async(req,res)=>{
           setTimeout(()=>{
             if(activeSlam!==current)return;
             const participants=[...current.participants].filter(pid=>players.has(pid));
+            pendingSlamImpact={id:eventId,participants:new Set(participants),fired:false};
             broadcast({type:'slam-go',id:eventId,x:current.x,y:current.y,participants});
             activeSlam=null;slamUpdate();
           },SLAM_COUNTDOWN_MS);
