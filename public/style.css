@@ -164,3 +164,20 @@ button,input{touch-action:manipulation}
 /* v14: 10 reactions in two rows of five, tablet/mobile touch friendly. */
 @media (max-width: 700px){.controlbar .actions{grid-template-columns:repeat(5,minmax(0,1fr));gap:3px}.controlbar .actions button{min-height:46px;padding:3px 0;font-size:17px}.controlbar .actions button span{font-size:9px}}
 @media (min-width: 701px){.controlbar{width:min(1020px,calc(100% - 24px))}.controlbar .actions{display:grid;grid-template-columns:repeat(10,minmax(0,1fr))}.controlbar .actions button{min-width:0}}
+
+/* v15 — solid online-user popover and nonblocking shared music notifications */
+.hudright #playersToggle{display:inline-flex;align-items:center;justify-content:center;gap:5px;white-space:nowrap}
+.players-panel{position:absolute;top:calc(env(safe-area-inset-top) + 61px);right:12px;z-index:34;width:min(270px,calc(100% - 24px));max-height:min(360px,55%);overflow:hidden;display:flex;flex-direction:column;border:1px solid #4b596f;border-radius:14px;background:#171d2c;color:#f5f7fb;box-shadow:0 15px 44px #05080fcc;pointer-events:auto}
+.players-panel.hidden{display:none!important}
+.players-panel-head{display:flex;align-items:center;justify-content:space-between;padding:13px 13px 10px;border-bottom:1px solid #3a4658;font-size:13px}
+.players-panel-head button{border:0;background:#2c3648;color:#f6f8ff;border-radius:7px;width:30px;height:30px;cursor:pointer}
+.players-list{list-style:none!important;margin:0;padding:7px 8px 10px;overflow-y:auto;display:flex;flex-direction:column;gap:3px}
+.players-entry{display:flex;align-items:center;gap:10px;min-height:35px;padding:5px 8px;border-radius:9px;background:#232c3b;font-size:13px}
+.players-swatch{display:inline-block;width:11px;height:11px;border-radius:50%;flex:0 0 auto;border:1px solid #ffffff66}
+.players-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.players-entry small{padding:3px 6px;background:#405338;border-radius:5px;color:#dcffa1;font-size:10px}
+.players-empty{padding:12px;color:#aab8ce;font-size:12px;text-align:center}
+.join-notices .music-booking-notice{background:#1b2935!important;border:1px solid #a9d97a!important;color:#f6ffed!important;display:flex;flex-direction:column;gap:3px;pointer-events:none;max-width:min(350px,calc(100vw - 32px));box-sizing:border-box}
+.music-booking-notice strong{font-size:12px;font-weight:800;line-height:1.45}
+.music-booking-notice small{font-size:11px;color:#d3e9bc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media(max-width:700px){.players-panel{right:8px;top:calc(env(safe-area-inset-top) + 53px);width:min(240px,calc(100% - 16px));max-height:48%}.hudright #playersToggle{font-size:10px!important;padding-inline:6px!important}}
