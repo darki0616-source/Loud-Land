@@ -883,8 +883,8 @@ function animateAvatar(a,p,t){
  if(act==='buriburi'){
   // Stage reference: both arms hold a fixed, straight horizontal T-pose.
   // All rhythmic motion comes from the waist/hips, not alternating arm gestures.
-  const shake=Math.sin(sec*17.5);
-  const rebound=Math.sin(sec*35)*.012;
+  const shake=Math.sin(sec*12.5);
+  const rebound=Math.sin(sec*25)*.012;
   set('leftShoulder',0,0,-Math.PI/2);
   set('rightShoulder',0,0,Math.PI/2);
   set('leftElbow',0,0,0);
@@ -988,7 +988,7 @@ function animateAvatar(a,p,t){
   if(act==='headbang')set('neck',Math.sin(sec*9.4)*.24,0,0);
  }
  // Only the Buriburi dance slides the torso laterally; return smoothly on exit.
- const hipSlide=act==='buriburi'?Math.sin(sec*17.5)*.24:0;
+ const hipSlide=act==='buriburi'?Math.sin(sec*12.5)*.24:0;
  P.upper.position.x+=(hipSlide-P.upper.position.x)*.38;
  const alpha=act===a.lastAction?.25:.17;
  for(const k of keys){
