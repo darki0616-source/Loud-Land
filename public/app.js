@@ -881,21 +881,29 @@ function animateAvatar(a,p,t){
   }
  }
  if(act==='buriburi'){
-  // ONEseason adaptation of the playful Buriburi chorus energy:
-  // soft knee bounces, alternating hip shakes and shoulder swings, repeated in 8 beats.
-  // Keep both hands WELL BELOW the enlarged head silhouette.
-  const tempo=sec*10.2, beat=Math.sin(tempo), doubleBeat=Math.sin(tempo*2);
-  const side=Math.sin(tempo*.5), bounce=Math.pow(Math.abs(beat),1.4);
-  height=.045+bounce*.075;
-  set('upper',-.06+Math.sin(tempo*.5+.35)*.09,Math.sin(tempo*.5)*.17,side*.18);
-  set('neck',Math.sin(tempo*.5)*.06,-side*.07,-side*.09);
-  set('leftHip',-.12+.16*beat,0,-.08*side);
-  set('rightHip',-.12-.16*beat,0,.08*side);
-  set('leftKnee',.17+.18*Math.max(0,beat));
-  set('rightKnee',.17+.18*Math.max(0,-beat));
-  set('leftShoulder',-.26+.12*doubleBeat,0,-.25+side*.14);
-  set('rightShoulder',-.26-.12*doubleBeat,0,.25+side*.14);
-  set('leftElbow',-.18+.07*beat);set('rightElbow',-.18-.07*beat);
+  // Adapted from the supplied stage-dance frame: a wide, nearly horizontal
+  // arm line, alternating tucked-in forearm, low knee bounce and torso sway.
+  // A two-sided eight-count loop makes the pose recognisable from behind, too.
+  const beat=sec*5.7;
+  const sway=Math.sin(beat), pulse=(1-Math.cos(beat*2))*.5;
+  const phrase=Math.sin(beat*.5);
+  const tuckLeft=(1+Math.sin(beat*.5))*.5;
+  const tuckRight=1-tuckLeft;
+  // Keep both arms extended horizontally instead of the previous low hip shimmy.
+  // Every few beats, an elbow folds so the forearm briefly crosses the chest.
+  const leftFold=Math.pow(tuckLeft,4), rightFold=Math.pow(tuckRight,4);
+  set('leftShoulder',-.10-.07*pulse,-.10*phrase,-1.41+.16*pulse+.58*leftFold);
+  set('rightShoulder',-.10-.07*pulse,.10*phrase,1.41-.16*pulse-.58*rightFold);
+  set('leftElbow',-.08-.94*leftFold);
+  set('rightElbow',-.08-.94*rightFold);
+  // Knees stay bent as in the stage frame; the torso rocks side-to-side.
+  set('upper',.075+.055*pulse,.06*phrase,.12*sway);
+  set('neck',-.035,-.04*phrase,-.05*sway);
+  set('leftHip',-.24+.10*sway,0,-.05*sway);
+  set('rightHip',-.24-.10*sway,0,-.05*sway);
+  set('leftKnee',.31+.10*Math.max(0,sway));
+  set('rightKnee',.31+.10*Math.max(0,-sway));
+  height=-.07+.055*pulse;
  }
  if(act==='jump'){
   const phase=Math.sin(sec*10.6);const lift=Math.max(0,phase);
