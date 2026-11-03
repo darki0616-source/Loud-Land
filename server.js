@@ -14,9 +14,11 @@ const SLAM_COUNTDOWN_MS=5000,SLAM_COOLDOWN_MS=15000;
 // Circle pit and shoulder-to-shoulder figure-eight train: server-authoritative join roster.
 const ROCK_COUNTDOWN_MS=5000,ROCK_COOLDOWN_MS=15000;
 const ROCK_DURATIONS={circle:20000,train:36000};
-let activeRock=null,rockRunningUntil=0,rockCooldownUntil=0;
+let activeRock=null,rockRunningUntil=0;
+// Each rock game has its own 15 second cooldown. The active performance remains exclusive.
+const rockCooldowns={circle:0,train:0};
 function publicRock(){return activeRock?{id:activeRock.id,kind:activeRock.kind,x:activeRock.x,y:activeRock.y,endAt:activeRock.endAt,participants:[...activeRock.participants]}:null}
-function rockUpdate(){broadcast({type:'rockplay',event:publicRock(),cooldownUntil:rockCooldownUntil,serverNow:Date.now()})}
+function rockUpdate(){broadcast({type:'rockplay',event:publicRock(),rockCooldowns:{...rockCooldowns},rockRunningUntil,serverNow:Date.now()})}
 function rockMemberLeaves(id){if(activeRock?.participants.delete(id))rockUpdate()}
 
 function publicSlam(){return activeSlam?{id:activeSlam.id,x:activeSlam.x,y:activeSlam.y,endAt:activeSlam.endAt,participants:[...activeSlam.participants]}:null}
@@ -96,7 +98,7 @@ const clean = (s,max=30)=>String(s||'').replace(/[\x00-\x1f<>]/g,'').trim().slic
 const send=(res,obj)=>{res.write('data: '+JSON.stringify(obj)+'\n\n');};
 const broadcast=obj=>{for(const res of clients.values()) {try {send(res,obj);}catch{}}};
 const json=(res,status,obj)=>{res.writeHead(status,{'content-type':'application/json; charset=utf-8','cache-control':'no-store','access-control-allow-origin':'*'});res.end(JSON.stringify(obj));};
-const snapshot=()=>({type:'snapshot',players:[...players.values()],chat:chatHistory,...musicState(),skipVote:publicSkipVote(),skipVoteCooldownUntil,slam:publicSlam(),slamCooldownUntil,rockPlay:publicRock(),rockCooldownUntil,count:players.size});
+const snapshot=()=>({type:'snapshot',players:[...players.values()],chat:chatHistory,...musicState(),skipVote:publicSkipVote(),skipVoteCooldownUntil,slam:publicSlam(),slamCooldownUntil,rockPlay:publicRock(),rockCooldowns:{...rockCooldowns},rockRunningUntil,count:players.size});
 const clamp=(n,min,max)=>Math.min(max,Math.max(min,Number(n)||0));
 function cleanup(){const now=Date.now();for(const [id,p] of players)if(now-p.seen>35000){players.delete(id);voterLeaves(id);voterLeaves(id);if(activeSlam?.participants.delete(id))slamUpdate();rockMemberLeaves(id);pauseForEmpty();const r=clients.get(id);if(r){r.end();clients.delete(id)}broadcast({type:'leave',id,count:players.size})}}
 setInterval(cleanup,7000).unref();
@@ -167,7 +169,7 @@ const server=http.createServer(async(req,res)=>{
           const now=Date.now(),kind=String(d.kind||'');
           if(!Object.hasOwn(ROCK_DURATIONS,kind))return json(res,400,{error:'지원하지 않는 락놀이입니다.'});
           if(activeSlam||activeRock||now<rockRunningUntil)return json(res,409,{error:'다른 락놀이가 진행 중이에요.'});
-          if(now<rockCooldownUntil)return json(res,429,{error:'락놀이 쿨타임이 남아 있어요.'});
+          if(now<rockCooldowns[kind])return json(res,429,{error:(kind==='circle'?'써클핏':'기차놀이')+' 쿨타임이 남아 있어요.'});
           const x=Number(d.x),y=Number(d.y);
           // Reserve room for a wide loop inside the walkable zone (not the stage or sea).
           if(!Number.isFinite(x)||!Number.isFinite(y)||x<235||x>1165||y<370||y>795)return json(res,400,{error:'넓은 잔디 광장 안쪽의 바닥을 선택해 주세요.'});
@@ -175,7 +177,7 @@ const server=http.createServer(async(req,res)=>{
           const current={id:eventId,kind,x:Math.round(x),y:Math.round(y),endAt:now+ROCK_COUNTDOWN_MS,participants:new Set([id])};
           activeRock=current;
           rockRunningUntil=current.endAt+duration;
-          rockCooldownUntil=rockRunningUntil+ROCK_COOLDOWN_MS;
+          rockCooldowns[kind]=rockRunningUntil+ROCK_COOLDOWN_MS;
           setTimeout(()=>{
             if(activeRock!==current)return;
             const participants=[...current.participants].filter(pid=>players.has(pid));
@@ -187,7 +189,7 @@ const server=http.createServer(async(req,res)=>{
           if(!activeRock||Date.now()>=activeRock.endAt||d.eventId!==activeRock.id)return json(res,409,{error:'이미 끝난 락놀이예요.'});
           activeRock.participants.add(id);rockUpdate();
         }else return json(res,400,{error:'잘못된 요청입니다.'});
-        return json(res,200,{event:publicRock(),cooldownUntil:rockCooldownUntil,serverNow:Date.now()});
+        return json(res,200,{event:publicRock(),rockCooldowns:{...rockCooldowns},rockRunningUntil,serverNow:Date.now()});
       }
       if(url.pathname==='/api/slam'){
         if(d.command==='start'){
