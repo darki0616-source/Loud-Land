@@ -883,17 +883,17 @@ function animateAvatar(a,p,t){
  if(act==='buriburi'){
   // Stage reference: both arms hold a fixed, straight horizontal T-pose.
   // All rhythmic motion comes from the waist/hips, not alternating arm gestures.
-  const shake=Math.sin(sec*12.5);
-  const rebound=Math.sin(sec*25)*.012;
+  const shake=Math.sin(sec*9.5);
+  const rebound=Math.sin(sec*19)*.009;
   set('leftShoulder',0,0,-Math.PI/2);
   set('rightShoulder',0,0,Math.PI/2);
   set('leftElbow',0,0,0);
   set('rightElbow',0,0,0);
   // Shift the pelvis/body rhythmically left-right under a nearly fixed shoulder line.
-  set('upper',0,0,.025*shake);
-  set('neck',0,0,-.025*shake);
-  set('leftHip',-.17,0,-.17*shake);
-  set('rightHip',-.17,0,-.17*shake);
+  set('upper',0,0,.018*shake);
+  set('neck',0,0,-.018*shake);
+  set('leftHip',-.17,0,-.10*shake);
+  set('rightHip',-.17,0,-.10*shake);
   set('leftKnee',.22+.055*Math.max(0,shake));
   set('rightKnee',.22+.055*Math.max(0,-shake));
   height=-.035+rebound;
@@ -988,7 +988,7 @@ function animateAvatar(a,p,t){
   if(act==='headbang')set('neck',Math.sin(sec*9.4)*.24,0,0);
  }
  // Only the Buriburi dance slides the torso laterally; return smoothly on exit.
- const hipSlide=act==='buriburi'?Math.sin(sec*12.5)*.24:0;
+ const hipSlide=act==='buriburi'?Math.sin(sec*9.5)*.14:0;
  P.upper.position.x+=(hipSlide-P.upper.position.x)*.38;
  const alpha=act===a.lastAction?.25:.17;
  for(const k of keys){
