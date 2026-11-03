@@ -51,7 +51,9 @@ const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-per
 const cssRenderer=new CSS3DRenderer();cssRenderer.domElement.className='css-world';host.appendChild(cssRenderer.domElement);
 const stageVideo=document.querySelector('#youtubeScreen');stageVideo.classList.add('onstage');
 const stageWebObject=new CSS3DObject(stageVideo);stageWebObject.position.set(0,6.3,-29.12);stageWebObject.scale.set(.015,.015,.015);scene.add(stageWebObject);
-const controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.dampingFactor=.07;controls.minDistance=11;controls.maxDistance=105;controls.maxPolarAngle=Math.PI/2.12;controls.minAzimuthAngle=-1.12;controls.maxAzimuthAngle=1.12;controls.target.set(0,1,4);controls.enablePan=false;
+const controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.dampingFactor=.07;controls.minDistance=11;controls.maxDistance=105;controls.maxPolarAngle=Math.PI/2.12;controls.target.set(0,1,4);controls.enablePan=false;
+const STAGE_CAMERA_Z_LIMIT=-10.4;
+function keepCameraInFrontOfStage(){if(camera.position.z<STAGE_CAMERA_Z_LIMIT){camera.position.z += (STAGE_CAMERA_Z_LIMIT-camera.position.z)*.28;controls.object.position.copy(camera.position);camera.lookAt(controls.target);}}
 // Keep the local avatar in the center while preserving camera orbit and zoom.
 const cameraFocus=new THREE.Vector3();let cameraFollowInitialized=false;
 function followLocalAvatar(){
@@ -210,15 +212,12 @@ updateEnvironment(true);
 function makeAvatar(p){
  let root=new THREE.Group();scene.add(root);
  const shirt=mat(p.color,.86),skirtMat=mat('#9c7450',.92),pantsMat=mat('#8b6a49',.92),stocking=mat('#f7f3eb',.96),shoe=mat('#ece8df',.96);
- const hairTone=p.gender==='female'?'#6b4b39':'#4e392d',hair=mat(hairTone,.95),blush=mat('#f7cbbf',.96),eyeMat=mat('#111111',.5);
+ const hairTone=p.gender==='female'?'#6b4b39':'#4e392d',hair=mat(hairTone,.95),blush=mat('#f7cbbf',.96),eyeMat=new THREE.MeshBasicMaterial({color:'#111111'});
  const parts={};
  const upper=new THREE.Group();upper.position.y=1.08;root.add(upper);parts.upper=upper;
  const torso=new THREE.Mesh(new THREE.CapsuleGeometry(.46,.56,7,14),shirt);torso.scale.set(1.0,1.14,.88);torso.position.y=.28;torso.castShadow=true;upper.add(torso);parts.torso=torso;
- let hem;
- if(p.gender==='female'){hem=new THREE.Mesh(new THREE.CylinderGeometry(.58,.64,.46,18),skirtMat);hem.position.y=-.28;hem.castShadow=true;upper.add(hem)}
- else{hem=new THREE.Mesh(new THREE.CylinderGeometry(.58,.6,.34,16),pantsMat);hem.position.y=-.23;hem.castShadow=true;upper.add(hem);
- const leftPant=new THREE.Mesh(new THREE.CylinderGeometry(.19,.21,.44,12),pantsMat);leftPant.position.set(-.22,-.48,0);leftPant.castShadow=true;upper.add(leftPant);
- const rightPant=leftPant.clone();rightPant.position.x=.22;upper.add(rightPant)}
+ const hemColor=p.gender==='female'?skirtMat:pantsMat;
+ let hem=new THREE.Mesh(new THREE.CylinderGeometry(.52,.58,.16,18),hemColor);hem.position.y=-.24;hem.castShadow=true;upper.add(hem);
  parts.hem=hem;
  const neck=new THREE.Group();neck.position.set(0,1.64,0);upper.add(neck);parts.neck=neck;
  const head=new THREE.Mesh(new THREE.SphereGeometry(.66,20,18),new THREE.MeshStandardMaterial({color:'#efd4bf',roughness:.95}));head.scale.y=.95;head.castShadow=true;neck.add(head);parts.head=head;
@@ -233,7 +232,7 @@ function makeAvatar(p){
  }else{
    const backHair=new THREE.Mesh(new THREE.CapsuleGeometry(.22,.36,5,10),hair);backHair.position.set(0,.03,-.18);backHair.castShadow=true;neck.add(backHair);
  }
- for(const x of [-.18,.18]){const eye=new THREE.Mesh(new THREE.SphereGeometry(.048,10,8),eyeMat);eye.position.set(x,.02,.58);neck.add(eye)}
+ for(const x of [-.18,.18]){const eye=new THREE.Mesh(new THREE.CircleGeometry(.055,18),eyeMat);eye.position.set(x,.02,.605);neck.add(eye)}
  for(const x of [-.34,.34]){const cheek=new THREE.Mesh(new THREE.SphereGeometry(.09,10,8),blush);cheek.position.set(x,-.18,.54);neck.add(cheek)}
  const mouth=new THREE.Mesh(new THREE.SphereGeometry(.03,8,6),eyeMat);mouth.scale.set(1,.45,.8);mouth.position.set(0,-.2,.58);neck.add(mouth);
  function makeArm(side){
@@ -378,7 +377,7 @@ function tick(t){
  }
  for(let [id,p] of state.players){if(!avatars.has(id)){let a=makeAvatar(p),pos=toWorld(p);a.root.position.set(pos.x,0,pos.z);avatars.set(id,a)}animateAvatar(avatars.get(id),p,t)}
  for(let [id,a] of avatars)if(!state.players.has(id)){scene.remove(a.root);a.root.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material?.map)o.material.map.dispose();if(o.material)o.material.dispose()});avatars.delete(id)}
- updateEnvironment();updateOcean(t);updateBubbles(t);animateShow(t);followLocalAvatar();controls.update();renderer.render(scene,camera);cssRenderer.render(scene,camera);requestAnimationFrame(tick)
+ updateEnvironment();updateOcean(t);updateBubbles(t);animateShow(t);followLocalAvatar();controls.update();keepCameraInFrontOfStage();renderer.render(scene,camera);cssRenderer.render(scene,camera);requestAnimationFrame(tick)
 }
 function resize(){let w=host.clientWidth,h=host.clientHeight;if(!w||!h)return;camera.aspect=w/h;camera.updateProjectionMatrix();renderer.setSize(w,h,false);cssRenderer.setSize(w,h)}new ResizeObserver(resize).observe(host);resize();requestAnimationFrame(tick);
 setInterval(()=>{syncVideo();reportDuration();let m=state.music;if(!m.id)return;let sec=m.paused?m.position:(Date.now()+state.serverDelta-m.startedAt)/1000;let dur=state.ytReady?state.yt.getDuration():0;$('progressFill').style.width=dur?Math.min(100,sec/dur*100)+'%':'0%'},5000);
