@@ -361,11 +361,10 @@ const benchWood=mat('#a87d58'),benchSupports=mat('#373f46',.45);
 for(const x of [-33,-11,11,33]){
  const z=42;
  const seat=cube(5.2,.24,1.5,benchWood,x,.99,z);benchPickMeshes.push(seat);seat.userData.benchCenter={x,z};
- const back=cube(5.2,1.05,.2,benchWood,x,1.54,z-.63);back.userData.benchCenter={x,z};benchPickMeshes.push(back);
+ // Backless beach bench: no backrest mesh, so seated avatars stay visible from behind.
  for(const dx of [-2.08,2.08]){
   const leg=cube(.19,.88,.19,benchSupports,x+dx,.46,z);leg.userData.benchCenter={x,z};benchPickMeshes.push(leg);
   const arm=cube(.23,.14,1.58,benchSupports,x+dx,1.23,z);arm.userData.benchCenter={x,z};benchPickMeshes.push(arm);
-  cube(.17,.38,.16,benchSupports,x+dx,1.1,z-.48);
  }
  for(const slot of [-1,1]){
   const wx=x+slot*1.14,wz=z+.12;
