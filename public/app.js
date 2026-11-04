@@ -3,7 +3,10 @@ import { OrbitControls } from 'https://esm.sh/three@0.160.1/examples/jsm/control
 import { GLTFLoader } from 'https://esm.sh/three@0.160.1/examples/jsm/loaders/GLTFLoader.js';
 import { CSS3DRenderer, CSS3DObject } from 'https://esm.sh/three@0.160.1/examples/jsm/renderers/CSS3DRenderer.js';
 const $=id=>document.getElementById(id), palette=['#ff747d','#67d8d1','#f9c463','#a8a0ff','#90dd81','#ff9ce1','#72b5ff','#eeeeee','#16171d'];
-const mats=[{x:1203.45,y:362.069,c:'#f5a5a3'},{x:1203.45,y:517.517,c:'#a7def4'},{x:1203.45,y:547.116,c:'#f5ce80'},{x:1203.45,y:573.534,c:'#b3d9a0'},{x:1203.45,y:672.414,c:'#ceb8f1'},{x:1203.45,y:862.069,c:'#ffd2a5'},{x:1203.45,y:1051.724,c:'#b2d8ff'}];
+// Regular physical layout positions: 9.5 world units between 6.1-unit mats.
+const picnicWorldZ=[3,12.5,22,31.5,41,50.5,60];
+const picnicMatColors=['#f5a5a3','#a7def4','#f5ce80','#b3d9a0','#ceb8f1','#ffd2a5','#b2d8ff'];
+const mats=picnicWorldZ.map((worldZ,i)=>({x:35/.058+600,y:500,c:picnicMatColors[i],worldZ}));
 const state={id:null,me:null,players:new Map(),keys:new Set(),action:'idle',pose:'stand',actionUntil:0,lastSent:0,es:null,music:{id:'',paused:true,position:0,startedAt:0,token:0},queue:[],history:[],serverDelta:0,yt:null,ytReady:false,lastTrack:'',audioEnabled:false,skipVote:null,skipVoteCooldownUntil:0,walkTarget:null,benchTarget:null,moving:false};
 let slamMode=false,slam=null,slamCooldownUntil=0,slamMotion=null;
 let rockPlacementMode=null,rockPlay=null,rockCooldowns={circle:0,train:0,mosh:0,row:0,toast:0},rockRunningUntil=0,rockMotion=null;
@@ -625,6 +628,8 @@ function contractWorldZ(z){
  }
  return (lo+hi)*.5;
 }
+// Input and render coordinates remain compatible with the extended-world map.
+for(const m of mats)m.y=(contractWorldZ(m.worldZ)-8)/.058+500;
 // Extend the ground without changing the stage or audience barrier.
 const floor=cube(104,.4,118,grass,0,-.24,25);floor.receiveShadow=true;
 const promenade=cube(112,.05,3.2,mat('#6a806d'),0,.02,1,false);
@@ -714,43 +719,66 @@ for(let x of [-8,8]){cylinder(.12,.12,3.2,metal,x,4,-24);sphere(.18,mat('#fcf6d5
 for(let x=-34;x<=34;x+=3){cube(.11,1.45,.11,metal,x,.9,-13.2);if(x<34)cube(3,.13,.13,metal,x+1.5,1.48,-13.2)}
 // Walkway and picnic area
 cube(96,.05,2.2,mat('#5e705e'),0,.04,10,false);cube(102,.06,38,mat('#486c59'),0,.03,27,false);
-const matPositions=mats.map(m=>({x:(m.x-600)*.058,z:((m.y-500)*.058)+8,c:m.c}));
+// v82: each blanket + food + pillows is one local-coordinate 3D group.
+// Never expandWorldZ() independently for its accessories: it previously
+// pulled the tray, food and pillow away from the blanket by different amounts.
+const picnicGroups=[];
 const picnicProps=[];
-matPositions.forEach((m,i)=>{
- const blanket=cube(8.8,.10,6.1,mat(m.c),m.x,.13,m.z);blanket.rotation.y=[-.12,.10,0,-.08,.12,.05,-.07][i%7];
- for(let edge of [-1,1])cube(8.5,.025,.11,mat('#f8f6e5'),m.x,.22,m.z+edge*2.42,false);
- for(let j=0;j<2;j++){const pillow=cube(1.5,.28,.9,mat(['#ffefe0','#e2f2fa','#fdf2ce','#fce0f5'][j%4]),m.x-2.5+j*5,.34,m.z-2.0);pillow.rotation.y=.15*(j?1:-1);picnicProps.push(pillow)}
- const table=cylinder(.74,.84,.58,mat('#7d624e'),m.x+3.35,.55,m.z+3.85);picnicProps.push(table);
- const lamp=sphere(.19,new THREE.MeshStandardMaterial({color:'#fff1bf',emissive:'#ffd982',emissiveIntensity:1.3}),m.x+3.35,.98,m.z+3.85);picnicProps.push(lamp);
+function addPicnicCube(group,w,h,d,material,x,y,z,cast=true){
+ const o=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),material);
+ o.position.set(x,y,z);o.castShadow=cast;o.receiveShadow=true;group.add(o);return o;
+}
+function addPicnicCylinder(group,rt,rb,h,material,x,y,z){
+ const o=new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,h,14),material);
+ o.position.set(x,y,z);o.castShadow=true;group.add(o);return o;
+}
+function addPicnicSphere(group,r,material,x,y,z){
+ const o=new THREE.Mesh(new THREE.SphereGeometry(r,12,10),material);
+ o.position.set(x,y,z);o.castShadow=true;group.add(o);return o;
+}
+mats.forEach((matData,i)=>{
+ const picnicGroup=new THREE.Group();
+ picnicGroup.position.set(35,0,matData.worldZ);
+ scene.add(picnicGroup);picnicGroups.push(picnicGroup);
+ // All accessory coordinates below are intentionally LOCAL to this group.
+ const m={x:0,z:0,c:matData.c};
+ const pcube=(...args)=>addPicnicCube(picnicGroup,...args);
+ const pcylinder=(...args)=>addPicnicCylinder(picnicGroup,...args);
+ const psphere=(...args)=>addPicnicSphere(picnicGroup,...args);
+ const blanket=pcube(8.8,.10,6.1,mat(m.c),m.x,.13,m.z);blanket.rotation.y=0;
+ for(let edge of [-1,1])pcube(8.5,.025,.11,mat('#f8f6e5'),m.x,.22,m.z+edge*2.42,false);
+ for(let j=0;j<2;j++){const pillow=pcube(1.5,.28,.9,mat(['#ffefe0','#e2f2fa','#fdf2ce','#fce0f5'][j%4]),m.x-2.6+j*5.2,.34,m.z-2.0);pillow.rotation.y=.15*(j?1:-1);picnicProps.push(pillow)}
+ const table=pcylinder(.74,.84,.58,mat('#7d624e'),m.x+3.35,.55,m.z+2.04);picnicProps.push(table);
+ const lamp=psphere(.19,new THREE.MeshStandardMaterial({color:'#fff1bf',emissive:'#ffd982',emissiveIntensity:1.3}),m.x+3.35,.98,m.z+2.04);picnicProps.push(lamp);
  // Food is placed on the grass just IN FRONT of the picnic mat, without
  // changing any of the existing rest-pose or movement coordinates.
- const picnicTray=cube(3.8,.10,1.65,mat('#b48b69'),m.x-.75,.16,m.z+3.62,false);
+ const picnicTray=pcube(3.8,.10,1.65,mat('#b48b69'),m.x-.75,.16,m.z+1.65,false);
  // Two realistic paper cups: taper, open dark inner surface, bright rim.
  const paperCupMaterial=mat(i%2?'#f8e9d5':'#faf8f0',.91),rimMat=mat('#fffdf8',.86);
  for(let j=0;j<2;j++){
-  const cx=m.x-2.05+j*.65,cz=m.z+3.55;
-  const cup=cylinder(.24,.17,.57,paperCupMaterial,cx,.49,cz);cup.castShadow=false;
-  const top=new THREE.Mesh(new THREE.CircleGeometry(.189,16),mat('#a17d5b'));top.rotation.x=-Math.PI/2;top.position.set(cx,.778,cz);scene.add(top);
-  const rim=new THREE.Mesh(new THREE.TorusGeometry(.235,.028,6,20),rimMat);rim.rotation.x=Math.PI/2;rim.position.set(cx,.79,cz);scene.add(rim);
+  const cx=m.x-2.05+j*.65,cz=m.z+1.60;
+  const cup=pcylinder(.24,.17,.57,paperCupMaterial,cx,.49,cz);cup.castShadow=false;
+  const top=new THREE.Mesh(new THREE.CircleGeometry(.189,16),mat('#a17d5b'));top.rotation.x=-Math.PI/2;top.position.set(cx,.778,cz);picnicGroup.add(top);
+  const rim=new THREE.Mesh(new THREE.TorusGeometry(.235,.028,6,20),rimMat);rim.rotation.x=Math.PI/2;rim.position.set(cx,.79,cz);picnicGroup.add(rim);
  }
  // Pizza: low round pizza with tomato and cheese, separate raised crust,
  // plus a few pepperoni pieces. Instanced only a handful per picnic area.
- const pizzaX=m.x-.38,pizzaZ=m.z+3.66;
- const pizzaPlate=cylinder(.83,.83,.07,mat('#f0e6d4'),pizzaX,.29,pizzaZ);pizzaPlate.castShadow=false;
- const pizzaCrust=cylinder(.72,.72,.07,mat('#bb8654'),pizzaX,.37,pizzaZ);pizzaCrust.castShadow=false;
- const sauce=cylinder(.62,.62,.025,mat('#d25a42'),pizzaX,.423,pizzaZ);sauce.castShadow=false;
- const cheese=cylinder(.56,.56,.025,mat('#efcb79'),pizzaX,.448,pizzaZ);cheese.castShadow=false;
+ const pizzaX=m.x-.38,pizzaZ=m.z+1.70;
+ const pizzaPlate=pcylinder(.83,.83,.07,mat('#f0e6d4'),pizzaX,.29,pizzaZ);pizzaPlate.castShadow=false;
+ const pizzaCrust=pcylinder(.72,.72,.07,mat('#bb8654'),pizzaX,.37,pizzaZ);pizzaCrust.castShadow=false;
+ const sauce=pcylinder(.62,.62,.025,mat('#d25a42'),pizzaX,.423,pizzaZ);sauce.castShadow=false;
+ const cheese=pcylinder(.56,.56,.025,mat('#efcb79'),pizzaX,.448,pizzaZ);cheese.castShadow=false;
  for(let k=0;k<5;k++){
   const a=k*2.4+i*.27;
-  const topping=cylinder(.105,.105,.017,mat('#b44d3d'),pizzaX+Math.cos(a)*.32,.475,pizzaZ+Math.sin(a)*.32);topping.castShadow=false;
+  const topping=pcylinder(.105,.105,.017,mat('#b44d3d'),pizzaX+Math.cos(a)*.32,.475,pizzaZ+Math.sin(a)*.32);topping.castShadow=false;
  }
  // Snack bag and visible puffed-corn/chips spilling onto the tray.
- const snackX=m.x+.52,snackZ=m.z+3.65;
- const bag=cube(.62,.91,.29,mat(i%2?'#dba5ef':'#ffce7b'),snackX,.69,snackZ);bag.rotation.z=.13;bag.castShadow=false;
- const bagStripe=cube(.65,.14,.31,mat('#fff2dd'),snackX,.83,snackZ);bagStripe.rotation.z=.13;bagStripe.castShadow=false;
+ const snackX=m.x+.52,snackZ=m.z+1.70;
+ const bag=pcube(.62,.91,.29,mat(i%2?'#dba5ef':'#ffce7b'),snackX,.69,snackZ);bag.rotation.z=.13;bag.castShadow=false;
+ const bagStripe=pcube(.65,.14,.31,mat('#fff2dd'),snackX,.83,snackZ);bagStripe.rotation.z=.13;bagStripe.castShadow=false;
  for(let k=0;k<7;k++){
   const a=k*2.4+i*.3;
-  const crumb=sphere(.085+(k%3)*.022,mat('#f2db88'),snackX+Math.cos(a)*(.52+.10*(k%2)),.3,snackZ+Math.sin(a)*.36);crumb.castShadow=false;
+  const crumb=psphere(.085+(k%3)*.022,mat('#f2db88'),snackX+Math.cos(a)*(.52+.10*(k%2)),.3,snackZ+Math.sin(a)*.36);crumb.castShadow=false;
  }
 
 });
@@ -805,7 +833,7 @@ const pier=cube(7.2,.14,20,mat('#8b6b53'),40,.18,77,false);pier.receiveShadow=tr
 // Move picnic, signage, stalls, trees, benches, shoreline and sea back as
 // one environmental set. Keep the rebuilt static lawn and floor unchanged.
 // All objects are positioned via the same world-space mapping as avatars.
-const fixedGroundSet=new Set([floor,lawn,promenade]);
+const fixedGroundSet=new Set([floor,lawn,promenade,...picnicGroups]);
 for(const item of scene.children){
  if(fixedGroundSet.has(item))continue;
  if(item.position.z>8 && item.position.y<25){
