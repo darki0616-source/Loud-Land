@@ -605,10 +605,31 @@ function sphere(r,m,x,y,z){let o=new THREE.Mesh(new THREE.SphereGeometry(r,12,10
 function cylinder(rt,rb,h,m,x,y,z){let o=new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,h,14),m);o.position.set(x,y,z);o.castShadow=true;scene.add(o);return o}
 function label(str,size=100,color='#ffffff',bg='#22283b'){let cv=document.createElement('canvas');cv.width=512;cv.height=128;let c=cv.getContext('2d');c.fillStyle=bg;c.fillRect(0,0,512,128);c.fillStyle=color;c.font=`900 ${size}px Arial`;c.textAlign='center';c.textBaseline='middle';c.fillText(str,256,67);let tex=new THREE.CanvasTexture(cv);tex.colorSpace=THREE.SRGBColorSpace;return new THREE.MeshBasicMaterial({map:tex,transparent:true,side:THREE.DoubleSide})}
 
-const floor=cube(104,.4,86,grass,0,-.24,10);floor.receiveShadow=true;
+// v78: Widen the free standing area ahead of the picnic zone. The stage
+// itself is unchanged. A smooth piecewise coordinate transform keeps all
+// players on the same server coordinates while shifting the rest area back.
+const AUDIENCE_REAR_SHIFT=26;
+function expandWorldZ(z){
+ if(z<=8)return z;
+ if(z>=14)return z+AUDIENCE_REAR_SHIFT;
+ const t=(z-8)/6;
+ return z+AUDIENCE_REAR_SHIFT*t*t*(3-2*t);
+}
+function contractWorldZ(z){
+ if(z<=8)return z;
+ if(z>=14+AUDIENCE_REAR_SHIFT)return z-AUDIENCE_REAR_SHIFT;
+ let lo=8,hi=14;
+ for(let i=0;i<24;i++){
+  const mid=(lo+hi)*.5;
+  if(expandWorldZ(mid)<z)lo=mid;else hi=mid;
+ }
+ return (lo+hi)*.5;
+}
+// Extend the ground without changing the stage or audience barrier.
+const floor=cube(104,.4,118,grass,0,-.24,25);floor.receiveShadow=true;
 const promenade=cube(112,.05,3.2,mat('#6a806d'),0,.02,1,false);
 promenade.receiveShadow=true;
-const lawn=cube(100,.06,36,mat('#4f765f'),0,.03,24,false);
+const lawn=cube(100,.06,62,mat('#4f765f'),0,.03,38,false);
 lawn.receiveShadow=true;
 const sandMat=mat('#dec391',.95),wetSandMat=mat('#c9ab74',.94);
 const beach=cube(110,.06,28,sandMat,0,.02,56,false);beach.receiveShadow=true;
@@ -767,6 +788,22 @@ for(let x of [-44,44]){cube(5.5,2.9,3.4,mat('#6b8ac7'),x,1.65,22);cube(6.4,.35,4
 for(let x=-42;x<=42;x+=14){const poleL=cylinder(.09,.09,5.6,metal,x,4.7,7);const poleR=cylinder(.09,.09,5.6,metal,x+7,4.7,7);for(let i=0;i<7;i++){const bulb=sphere(.14,new THREE.MeshStandardMaterial({color:['#ffdb8a','#fca5b5','#a8ecff','#c7f591'][i%4],emissive:['#ffdb8a','#fca5b5','#a8ecff','#c7f591'][i%4],emissiveIntensity:1.0,roughness:.3}),x+i*1.16,5.45,7+Math.sin(i/6*Math.PI)*.35);bulb.castShadow=false}}
 const pier=cube(7.2,.14,20,mat('#8b6b53'),40,.18,77,false);pier.receiveShadow=true;for(let dz=69;dz<=85;dz+=4){for(let dx of [37.2,42.8])cube(.24,1.7,.24,wood,dx,.72,dz)}
 
+// Move picnic, signage, stalls, trees, benches, shoreline and sea back as
+// one environmental set. Keep the rebuilt static lawn and floor unchanged.
+// All objects are positioned via the same world-space mapping as avatars.
+const fixedGroundSet=new Set([floor,lawn,promenade]);
+for(const item of scene.children){
+ if(fixedGroundSet.has(item))continue;
+ if(item.position.z>8 && item.position.y<25){
+  item.position.z=expandWorldZ(item.position.z);
+ }
+}
+// Bench targets are server coordinates, not world coordinates: update only
+// their visible world positions after the corresponding meshes are shifted.
+for(const seat of benchSeats){
+ seat.wz=expandWorldZ(seat.wz);
+}
+
 const stageLights=[];for(let i=0;i<7;i++){let x=-17+i*5.6;let l=new THREE.SpotLight(['#ff64a5','#8c84ff','#c4fb79','#68e8f3'][i%4],110,65,.50,.65);l.position.set(x,9,-19);l.target.position.set(x*.65,0,0);scene.add(l,l.target);stageLights.push(l)}
 // Controlled, pooled lighting + flame and spark bursts. No per-frame geometry allocation.
 const flameGroups=[],emberMat=new THREE.MeshBasicMaterial({color:'#ffc979',transparent:true,opacity:.95,depthWrite:false});
@@ -875,7 +912,7 @@ function updateOcean(t){
  ocean.geometry.attributes.position.needsUpdate=true;
  ocean.geometry.computeVertexNormals();
  const active=!!state.music.id&&!state.music.paused;
- foamStrips.forEach((foam,i)=>{foam.position.z=56.2+i*1.45+Math.sin(sec*1.25+i*.8)*.28;foam.material.opacity=.16+Math.sin(sec*1.8+i)*.08+(active?.06:0)});
+ foamStrips.forEach((foam,i)=>{foam.position.z=expandWorldZ(56.2+i*1.45)+Math.sin(sec*1.25+i*.8)*.28;foam.material.opacity=.16+Math.sin(sec*1.8+i)*.08+(active?.06:0)});
 }
 function updateEnvironment(force=false){
  const now=new Date();
@@ -1362,7 +1399,7 @@ function updateBubbles(now){
   b.sprite.material.opacity=Math.min(1,(b.expires-now)/350);
  }
 }
-function toWorld(p){return {x:(p.x-600)*.058,z:(p.y-500)*.058+8}}
+function toWorld(p){return {x:(p.x-600)*.058,z:expandWorldZ((p.y-500)*.058+8)}}
 // Two-bone IK keeps the hands on exact, reachable targets for clap and drinking.
 // All targets are in the upper-torso coordinate system. The hand meshes are
 // at elbow-local (0,-.39,.018); elbow and forearm are .40 and .39 long.
@@ -1804,7 +1841,7 @@ gameTouchSurface.addEventListener('pointerup',e=>{
  if(dist>9)return;
  const bounds=renderer.domElement.getBoundingClientRect();pointer.set(((e.clientX-bounds.left)/bounds.width)*2-1,-((e.clientY-bounds.top)/bounds.height)*2+1);
  groundRay.setFromCamera(pointer,camera);if(!groundRay.ray.intersectPlane(groundPlane,hit))return;
- const x=Math.max(20,Math.min(1380,hit.x/.058+600)),y=Math.max(220,Math.min(1100,(hit.z-8)/.058+500));
+ const x=Math.max(20,Math.min(1380,hit.x/.058+600)),y=Math.max(220,Math.min(1100,(contractWorldZ(hit.z)-8)/.058+500));
  if(rockPlacementMode){
   const kind=rockPlacementMode;rockPlacementMode=null;refreshRockUI();
   post('rockplay',{id:state.id,command:'start',kind,x,y}).then(d=>applyRockPlay(d.event,d.rockCooldowns,d.rockRunningUntil)).catch(e=>toast(e.message));
