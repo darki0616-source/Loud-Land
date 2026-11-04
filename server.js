@@ -7,6 +7,17 @@ const PORT = Number(process.env.PORT || 3000);
 const PUBLIC = path.join(__dirname, 'public');
 const clients = new Map();
 const players = new Map();
+// A browser tab keeps one stable session key across refresh/reconnect attempts.
+// The key is private: it is never included in public player snapshots/events.
+const sessionPlayers = new Map();
+const playerSessions = new Map();
+const pageOwners = new Map();
+function forgetSession(id){
+  const key=playerSessions.get(id);
+  if(key&&sessionPlayers.get(key)===id)sessionPlayers.delete(key);
+  playerSessions.delete(id);pageOwners.delete(id);
+}
+
 const chatHistory=[];
 let activeSlam=null,slamCooldownUntil=0;
 let pendingSlamImpact=null; // Last launch roster; exactly one shared first-arrival dust burst
@@ -30,7 +41,8 @@ const MAX_CHAT_LENGTH=80;
 let music = {id:'', title:'', startedAt:0, paused:true, position:0, changedBy:'', token:0, duration:0};
 const queue=[]; const history=[]; let nextTrackToken=1;
 function trackRef(t){return t&&{id:t.id,title:t.title,addedBy:t.addedBy}}
-// Vote-to-skip is transient: a strict majority of connected members at start is required.
+// Choosing a specific queued or previously played track requires a strict-majority vote.
+// Advancing to the next queued track is an immediate action available to any visitor.
 const SKIP_VOTE_MS=20000; // Voting lasts up to 20s; no cooldown between votes.
 let skipVote=null, skipVoteCooldownUntil=0,skipVoteTimer=null;
 function publicSkipVote(){if(!skipVote)return null;return {id:skipVote.id,proposer:skipVote.proposer,kind:skipVote.kind||'skip',target:skipVote.target||null,endAt:skipVote.endAt,yes:[...skipVote.yes].length,no:[...skipVote.no].length,required:Math.floor(skipVote.eligible.size/2)+1,eligible:[...skipVote.eligible],voted:[...new Set([...skipVote.yes,...skipVote.no])]}}
@@ -112,7 +124,7 @@ const broadcast=obj=>{for(const res of clients.values()) {try {send(res,obj);}ca
 const json=(res,status,obj)=>{res.writeHead(status,{'content-type':'application/json; charset=utf-8','cache-control':'no-store','access-control-allow-origin':'*'});res.end(JSON.stringify(obj));};
 const snapshot=()=>({type:'snapshot',players:[...players.values()],chat:chatHistory,...musicState(),skipVote:publicSkipVote(),skipVoteCooldownUntil,slam:publicSlam(),slamCooldownUntil,rockPlay:publicRock(),rockCooldowns:{...rockCooldowns},rockRunningUntil,count:players.size});
 const clamp=(n,min,max)=>Math.min(max,Math.max(min,Number(n)||0));
-function cleanup(){const now=Date.now();for(const [id,p] of players)if(now-p.seen>180000){players.delete(id);voterLeaves(id);if(activeSlam?.participants.delete(id))slamUpdate();rockMemberLeaves(id);pauseForEmpty();const r=clients.get(id);if(r){r.end();clients.delete(id)}broadcast({type:'leave',id,count:players.size})}}
+function cleanup(){const now=Date.now();for(const [id,p] of players)if(now-p.seen>180000){players.delete(id);forgetSession(id);voterLeaves(id);if(activeSlam?.participants.delete(id))slamUpdate();rockMemberLeaves(id);pauseForEmpty();const r=clients.get(id);if(r){r.end();clients.delete(id)}broadcast({type:'leave',id,count:players.size})}}
 setInterval(cleanup,7000).unref();
 function videoId(input){const v=String(input||'').trim();if(/^[\w-]{11}$/.test(v))return v;try{const u=new URL(v);const host=u.hostname.replace(/^www\./,'');if(host==='youtu.be')return /^[\w-]{11}$/.test(u.pathname.slice(1))?u.pathname.slice(1):null;if(['youtube.com','m.youtube.com','music.youtube.com','youtube-nocookie.com'].includes(host)){const id=u.searchParams.get('v')||u.pathname.match(/\/(?:embed|shorts|live)\/([\w-]{11})/)?.[1];return /^[\w-]{11}$/.test(id||'')?id:null}}catch{}return null}
 // Read the actual public YouTube title server-side; never trust a user-submitted title.
@@ -148,8 +160,24 @@ const server=http.createServer(async(req,res)=>{
     try{
       const d=await receive(req);
       if(url.pathname==='/api/join'){
+        const sessionKey=typeof d.sessionKey==='string'&&/^[a-zA-Z0-9_-]{20,100}$/.test(d.sessionKey)?d.sessionKey:null;
+        const pageId=typeof d.pageId==='string'&&/^[a-zA-Z0-9_-]{20,100}$/.test(d.pageId)?d.pageId:null;
+        // Repeated joins from reconnect/parallel timers must reuse the SAME avatar.
+        if(sessionKey){
+          const existingId=sessionPlayers.get(sessionKey);
+          const existing=players.get(existingId);
+          if(existing){
+            existing.seen=Date.now();
+            if(pageId)pageOwners.set(existingId,pageId);
+            return json(res,200,{id:existingId,reused:true,...snapshot()});
+          }
+          if(existingId)sessionPlayers.delete(sessionKey);
+        }
         const id=crypto.randomUUID(),p={id,name:clean(d.name,18)||'ROCKER',color:colors.includes(d.color)?d.color:colors[0],gender:d.gender==='female'?'female':'male',x:clamp(190+Math.random()*880,20,1380),y:clamp(390+Math.random()*420,220,1100),facing:0,action:'idle',pose:'stand',seen:Date.now()};
-        players.set(id,p);resumeForFirst();broadcast({type:'join',player:p,count:players.size});return json(res,200,{id,...snapshot()});
+        players.set(id,p);
+        if(sessionKey){sessionPlayers.set(sessionKey,id);playerSessions.set(id,sessionKey)}
+        if(pageId)pageOwners.set(id,pageId);
+        resumeForFirst();broadcast({type:'join',player:p,count:players.size});return json(res,200,{id,reused:false,...snapshot()});
       }
       const id=clean(d.id,80),p=players.get(id);if(!p)return json(res,401,{error:'Session expired. Please rejoin.'});p.seen=Date.now();
       if(url.pathname==='/api/heartbeat'){return json(res,200,{ok:true})}
@@ -258,12 +286,16 @@ const server=http.createServer(async(req,res)=>{
           const elapsed=music.paused?music.position:(Date.now()-music.startedAt)/1000;
           if(!music.duration||elapsed>=music.duration-3)nextTrack();
         }
-        else if(d.command==='skip'){return json(res,403,{error:'다음 곡은 투표 과반수 동의가 필요합니다.'})}
-        else if(d.command==='vote-start'||d.command==='vote-select'){
+        else if(d.command==='skip'){
+          if(!music.id)return json(res,409,{error:'재생 중인 곡이 없습니다.'});
+          nextTrack();
+          broadcast({type:'music-control',name:p.name,command:'skip'});
+        }
+        else if(d.command==='vote-select'){
           if(!music.id)return json(res,409,{error:'재생 중인 곡이 없습니다.'});
           if(skipVote)return json(res,409,{error:'이미 음악 투표가 진행 중입니다.'});
           let target=null;
-          if(d.command==='vote-select'){
+          {
             const source=String(d.source||'');const index=Number(d.index);
             const list=source==='history'?history:source==='queue'?queue:null;
             if(!list||!Number.isInteger(index)||index<0||index>=list.length)return json(res,400,{error:'선택한 곡을 찾을 수 없습니다.'});
@@ -287,7 +319,14 @@ const server=http.createServer(async(req,res)=>{
         else return json(res,400,{error:'Invalid command'});
         return json(res,200,{ok:true,...musicState()});
       }
-      if(url.pathname==='/api/leave'){players.delete(id);voterLeaves(id);if(activeSlam?.participants.delete(id))slamUpdate();rockMemberLeaves(id);pauseForEmpty();clients.get(id)?.end();clients.delete(id);broadcast({type:'leave',id,count:players.size});return json(res,200,{ok:true})}
+      if(url.pathname==='/api/leave'){
+        // A late pagehide beacon from a previous page must not kick the newer page.
+        const owner=pageOwners.get(id);
+        if(owner&&d.pageId!==owner)return json(res,200,{ok:true,ignored:'stale-page'});
+        players.delete(id);forgetSession(id);voterLeaves(id);
+        if(activeSlam?.participants.delete(id))slamUpdate();rockMemberLeaves(id);pauseForEmpty();
+        clients.get(id)?.end();clients.delete(id);broadcast({type:'leave',id,count:players.size});return json(res,200,{ok:true})
+      }
       return json(res,404,{error:'Not found'});
     }catch(e){return json(res,400,{error:e.message})}
   }
