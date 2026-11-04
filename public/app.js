@@ -800,14 +800,15 @@ function animateToastSparks(t){for(let i=toastSparks.length-1;i>=0;i--){const p=
 // Real Quaternius Universal Base Characters glTF hair assets (CC0) supplied by the user.
 // Each geometry is loaded once. Avatar instances clone it and tint the surface locally.
 const hairLoader=new GLTFLoader(),hairAssetCache=new Map();
+// Fits are measured against the visible avatar head (radius .81; top Y ~= .90).
+// top is the local height of the hair bounding box, not an extra offset.
+// Keep X/Z fairly close to the skull, with a slight forward shift for the fringe.
 const hairFit={
- // v60: larger silhouette and stronger forward placement so imported hair wraps
- // around the chibi face instead of sinking into the head sphere.
- short:{width:2.26,height:1.56,depth:2.18,top:1.27,yOffset:0.12,zOffset:0.28},
- bob:{width:2.28,height:1.60,depth:2.22,top:1.28,yOffset:0.13,zOffset:0.30},
- long:{width:2.30,height:2.76,depth:2.20,top:1.34,yOffset:0.13,zOffset:0.32},
- buns:{width:2.62,height:2.02,depth:2.38,top:1.53,yOffset:0.20,zOffset:0.34},
- buzz:{width:1.98,height:1.22,depth:1.94,top:1.09,yOffset:0.07,zOffset:0.20}
+ short:{width:1.91,height:1.32,depth:1.82,top:1.045,forward:.055},
+ bob:{width:1.94,height:1.34,depth:1.86,top:1.055,forward:.060},
+ long:{width:2.00,height:2.30,depth:1.92,top:1.065,forward:.065},
+ buns:{width:2.18,height:1.56,depth:2.03,top:1.145,forward:.055},
+ buzz:{width:1.77,height:1.03,depth:1.69,top:.975,forward:.035}
 };
 function getHairAsset(style){
  style=normalizeHairStyle(style);
@@ -823,28 +824,41 @@ function getHairAsset(style){
  return hairAssetCache.get(style);
 }
 function attachImportedHair(neck,style,color){
- const holder=new THREE.Group();holder.position.set(0,.08,.12);neck.add(holder);
+ // Keep the hair mount anchored to the head itself. Never accumulate independent
+ // Y/Z offsets on both a holder and the imported geometry.
+ const holder=new THREE.Group();neck.add(holder);
  if(stageForeground)holder.layers.set(1);
- const cap=new THREE.Mesh(new THREE.SphereGeometry(.93,24,16,0,Math.PI*2,0,Math.PI*.44),new THREE.MeshStandardMaterial({color,roughness:.9,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1}));
- cap.position.set(0,.25,.10);holder.add(cap);
+ // A small fallback shell appears only until the external mesh has loaded.
+ const cap=new THREE.Mesh(
+  new THREE.SphereGeometry(.835,24,16,0,Math.PI*2,0,Math.PI*.41),
+  new THREE.MeshStandardMaterial({color,roughness:.9})
+ );
+ cap.position.set(0,.16,-.015);holder.add(cap);
  if(stageForeground)cap.layers.set(1);
  getHairAsset(style).then(({scene,size,center})=>{
   if(!neck.parent)return;
   const hair=scene.clone(true),fit=hairFit[normalizeHairStyle(style)];
-  const desiredWidth=fit.width,desiredHeight=fit.height,desiredDepth=fit.depth;
-  const scaleX=desiredWidth/Math.max(size.x,.001),scaleY=desiredHeight/Math.max(size.y,.001),scaleZ=desiredDepth/Math.max(size.z,.001);
-  const yOffset=fit.yOffset||0,zOffset=fit.zOffset||0;
-  hair.scale.set(scaleX,scaleY,scaleZ);
-  hair.position.set(-center.x*scaleX,fit.top-(center.y+size.y*.5)*scaleY+yOffset,-center.z*scaleZ+.12+zOffset);
+  const sx=fit.width/Math.max(size.x,.001);
+  const sy=fit.height/Math.max(size.y,.001);
+  const sz=fit.depth/Math.max(size.z,.001);
+  hair.scale.set(sx,sy,sz);
+  // Top-align against the skull, while the model's own deep/long portions
+  // extend down the side and back instead of floating above the forehead.
+  hair.position.set(-center.x*sx,
+   fit.top-(center.y+size.y/2)*sy,
+   -center.z*sz+fit.forward);
   hair.traverse(o=>{
-   if(o.isMesh){
-    o.material=new THREE.MeshStandardMaterial({color,roughness:.84,metalness:0,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
-    o.castShadow=true;o.receiveShadow=true;o.renderOrder=22;
-    if(stageForeground)o.layers.set(1);
-   }
+   if(!o.isMesh)return;
+   // Clone materials per avatar for independently selectable hair colors.
+   o.material=new THREE.MeshStandardMaterial({color,roughness:.84,metalness:0,side:THREE.DoubleSide});
+   o.castShadow=true;o.receiveShadow=true;
+   // Hair that resolves asynchronously must join the same foreground layer as
+   // the body, otherwise the CSS3D YouTube stage can cover only the hairstyle.
+   if(stageForeground)o.layers.set(1);
   });
   if(stageForeground)addForegroundLayer(hair);
-  holder.remove(cap);cap.geometry.dispose();cap.material.dispose();holder.add(hair);
+  holder.remove(cap);cap.geometry.dispose();cap.material.dispose();
+  holder.add(hair);
  }).catch(err=>{console.warn('Hair asset load failed:',style,err)});
  return holder;
 }
