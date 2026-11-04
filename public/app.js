@@ -846,131 +846,173 @@ function makeAvatar(p){
  const smile=new THREE.EllipseCurve(0,0,.084,.046,Math.PI*.08,Math.PI*.92,false,0);
  const points=smile.getPoints(15);const smileGeo=new THREE.BufferGeometry().setFromPoints(points.map(v=>new THREE.Vector3(v.x,-v.y,0)));
  const smileLine=new THREE.Line(smileGeo,new THREE.LineBasicMaterial({color:'#533f39'}));smileLine.position.set(0,-.17,.746);neck.add(smileLine);
- // Hairstyle v54: a fitted scalp, tapered sculpted locks and curved hair curtains.
- // Keep the face unobstructed and avoid the disconnected sphere/capsule look.
+ // v55: hairstyles are constructed as layered sculpted surfaces, not stacks
+ // of sphere/capsule props. All nine share a fitted scalp and have unique
+ // front / profile / back silhouettes. Faces and the chibi proportions remain intact.
  const hairStyle=hairStyles.some(([id])=>id===p.hairStyle)?p.hairStyle:(female?'bob':'short');
- const hairLight=mat(new THREE.Color(hairHex).lerp(new THREE.Color('#ffffff'),.085),.96);
- const hairShade=mat(new THREE.Color(hairHex).multiplyScalar(.79),.97);
- function scalp(height=.46,scale=[1,1,1],offset=[0,.16,-.015]){
-  return child(neck,new THREE.SphereGeometry(.838,32,18,0,Math.PI*2,0,Math.PI*height),hair,offset,scale);
+ const hc=new THREE.Color(hairHex);
+ const mainHair=mat(hc,.84);
+ const shadeHair=mat(hc.clone().multiplyScalar(.77),.89);
+ const lightHair=mat(hc.clone().lerp(new THREE.Color('#ffffff'),.16),.83);
+ const edgeHair=mat(hc.clone().multiplyScalar(.91),.87);
+ for(const hairMaterial of [mainHair,shadeHair,lightHair,edgeHair])hairMaterial.side=THREE.DoubleSide;
+ // The head has a radius of ~0.81, and the front faces +Z.
+ // Partial scalp shells lie just above the head and cover seams between locks.
+ function scalp(cut=.48,scale=[1.018,1.025,1.018],offset=[0,.15,-.025],m=mainHair){
+  const mesh=child(neck,new THREE.SphereGeometry(.836,40,22,0,Math.PI*2,0,Math.PI*cut),m,offset,scale);
+  mesh.castShadow=true;return mesh;
  }
- // A continuous tapered 3D strand swept along a spline. Its oval cross-section
- // gives a soft, sculpted shape rather than the old beads/straight cylinders.
- function lock(points,radius=.16,material=hair,flatten=1){
-  const curve=new THREE.CatmullRomCurve3(points.map(v=>new THREE.Vector3(...v)));
-  const segments=Math.max(9,points.length*5),sides=7,verts=[],normals=[],indices=[];
-  const tangent=new THREE.Vector3(),axis=new THREE.Vector3(),binormal=new THREE.Vector3();
-  for(let i=0;i<=segments;i++){
-   const t=i/segments,pos=curve.getPoint(t);
-   curve.getTangent(t,tangent).normalize();
-   axis.set(0,0,1).addScaledVector(tangent,-tangent.z).normalize();
-   if(axis.lengthSq()<.01)axis.set(1,0,0);
-   binormal.crossVectors(tangent,axis).normalize();
-   const taper=Math.max(.055,Math.pow(Math.sin(Math.PI*(.12+.88*t)),.66));
-   const r=radius*taper;
-   for(let j=0;j<sides;j++){
-    const ang=j/sides*Math.PI*2,radial=axis.clone().multiplyScalar(Math.cos(ang)).addScaledVector(binormal,Math.sin(ang)*flatten).normalize();
-    const v=pos.clone().addScaledVector(axis,Math.cos(ang)*r).addScaledVector(binormal,Math.sin(ang)*r*flatten);
-    verts.push(v.x,v.y,v.z);normals.push(radial.x,radial.y,radial.z);
-    if(i<segments){let k=i*sides+j,n=i*sides+(j+1)%sides;indices.push(k,k+sides,n,k+sides,n+sides,n)}
+ // A sculpted ribbon: elliptical 3D cross-section, variable thickness, smooth
+ // catmull-rom centerline, full caps and tip taper. Not detached flat cones.
+ function strand(points,width=.17,material=mainHair,depth=.48){
+  const curve=new THREE.CatmullRomCurve3(points.map(v=>new THREE.Vector3(...v)),false,'centripetal',.45);
+  const steps=22,faces=10,pos=[],normals=[],indices=[];
+  const tangent=new THREE.Vector3(),across=new THREE.Vector3(),thick=new THREE.Vector3();
+  const worldForward=new THREE.Vector3(0,0,1);
+  for(let i=0;i<=steps;i++){
+   const t=i/steps,center=curve.getPoint(t);
+   tangent.copy(curve.getTangent(t)).normalize();
+   across.crossVectors(worldForward,tangent);
+   if(across.lengthSq()<.025)across.set(1,0,0);
+   across.normalize();thick.crossVectors(tangent,across).normalize();
+   const endFactor=Math.pow(Math.sin(Math.PI*(.075+.925*t)),.62);
+   const thickness=width*Math.max(.015,endFactor);
+   for(let j=0;j<faces;j++){
+    const a=j/faces*Math.PI*2,cos=Math.cos(a),sin=Math.sin(a);
+    const v=center.clone().addScaledVector(across,cos*thickness).addScaledVector(thick,sin*thickness*depth);
+    pos.push(v.x,v.y,v.z);
+    const n=across.clone().multiplyScalar(cos).addScaledVector(thick,sin/depth).normalize();
+    normals.push(n.x,n.y,n.z);
+    if(i<steps){const k=i*faces+j,n=i*faces+(j+1)%faces;indices.push(k,k+faces,n,n,k+faces,n+faces)}
    }
   }
-  const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));geo.setAttribute('normal',new THREE.Float32BufferAttribute(normals,3));geo.setIndex(indices);
+  const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  geo.setAttribute('normal',new THREE.Float32BufferAttribute(normals,3));geo.setIndex(indices);
   const mesh=new THREE.Mesh(geo,material);mesh.castShadow=true;neck.add(mesh);return mesh;
  }
- function curtain(bottom=-.45,front=false,wave=0){
-  // Curved mesh spanning only the BACK of the head; smooth, rounded hem.
-  const segments=18,rows=7,vertices=[],uv=[],indices=[];
-  for(let row=0;row<=rows;row++){
-   const t=row/rows;
-   for(let j=0;j<=segments;j++){
-    const u=j/segments,x=(u*2-1)*.80;
-    const edge=Math.pow(Math.abs(u*2-1),2.7);
-    const y=.47+((bottom+.12*edge)-.47)*t;
-    const z=-.17-.65*Math.sqrt(Math.max(0,1-(x/.85)**2))+.09*Math.sin(t*Math.PI)+wave*Math.sin(u*12+t*9)*t;
-    vertices.push(x,y,z);uv.push(u,t);
-    if(row<rows&&j<segments){let k=row*(segments+1)+j;indices.push(k,k+1,k+segments+1,k+1,k+segments+2,k+segments+1)}
+ // Smooth rear sheet with a scalloped hem; makes long styles look like one
+ // haircut even from behind. Individual locks sculpt detail over the surface.
+ function rearSheet(length=-.60,flare=.04,undulation=0,material=mainHair){
+  const cols=28,rows=18,verts=[],uv=[],idx=[];
+  for(let j=0;j<=rows;j++){
+   const t=j/rows,y=.50+(length-.50)*t;
+   for(let i=0;i<=cols;i++){
+    const a=(-.73+1.46*(i/cols))*Math.PI;
+    const hem=Math.sin(a*4.2)*undulation*t*t;
+    const x=Math.sin(a)*(.79+flare*t),z=-.11-Math.cos(a)*(.72+flare*.35*t);
+    verts.push(x,y+hem,z);uv.push(i/cols,t);
+    if(j<rows&&i<cols){const q=j*(cols+1)+i;idx.push(q,q+cols+1,q+1,q+1,q+cols+1,q+cols+2)}
    }
   }
-  const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));geo.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));geo.setIndex(indices);geo.computeVertexNormals();
-  const m=hair.clone();m.side=THREE.DoubleSide;const mesh=new THREE.Mesh(geo,m);mesh.castShadow=true;neck.add(mesh);
+  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));
+  g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));g.setIndex(idx);g.computeVertexNormals();
+  const double=material.clone();double.side=THREE.DoubleSide;
+  const m=new THREE.Mesh(g,double);m.castShadow=true;neck.add(m);return m;
  }
- function fringe(side=1,length=.25){
-  const x=side*.31;
-  lock([[x,.71,.36],[x-side*.07,.60,.56],[x-side*.14,.45-length*.22,.67],[x-side*.17,.37-length*.28,.675]],.135,hair,.72);
+ function sweepFringe(direction=1,amount=.16,part=-.12){
+  // Curved overlapping locks from the parting to the opposite eyebrow.
+  for(let k=0;k<5;k++){
+   const x=part+direction*(-.27+k*.155),tip=x+direction*(.22+amount);
+   const h=.745-.036*k;
+   strand([[x,h,.30],[x+direction*.04,.67,.48],[tip-direction*.07,.51-.025*k,.62],[tip,.405-.035*k,.67]],.115-k*.006,k===1?lightHair:mainHair,.38);
+  }
  }
- function sideLock(side,length=.5,wave=0,radius=.15){
-  const x=side*.72;
-  lock([[x,.45,.11],[x+side*.03,.13,.20],[x+side*(.05+wave*.1),-.13,.16],[x+side*.025,-length,.13]],radius,hair,.85);
+ function sideLayers(side,yEnd=-.38,fullness=.1,number=3,wave=0){
+  for(let j=0;j<number;j++){
+   const x=side*(.66+j*.057),frontZ=.07+(j===0?.18:-j*.10);
+   const backX=x+side*fullness;
+   strand([[side*.61,.51,frontZ-.05],[x,.28,frontZ],[backX+side*wave*.3,-.01,frontZ+.035],
+    [backX-side*wave*.5,yEnd*.58,frontZ+.025],[backX+side*wave,yEnd-(j%2)*.04,frontZ-.08]],
+    .105+(j===0?.042:0),j===1?edgeHair:mainHair,.62);
+  }
  }
+ function hairTip(x,z,tipX,tipZ,peak=1.18,width=.16,material=mainHair){
+  strand([[x,.72,z],[x+(tipX-x)*.30,.91+(peak-.91)*.35,z+(tipZ-z)*.12],
+   [x+(tipX-x)*.77,peak,z+(tipZ-z)*.65],[tipX,peak+.045,tipZ]],width,material,.72);
+ }
+ function waveLocks(side,length=-.96){
+  for(let j=0;j<4;j++){
+   const x=side*(.65+j*.042),z=.18-j*.19;
+   const shift=side*(.12+j*.011);
+   strand([[side*.56,.53,z],[x,.32,z+.05],[x+shift,.02,z+.09],
+    [x-shift,-.23,z+.07],[x+shift,-.51,z+.04],[x-shift*.85,length,z-.07]],
+    .145-j*.008,j===1?lightHair:mainHair,.69);
+  }
+ }
+ // Accent grooves run WITH the hair and hug the same silhouette.
+ // They are subtle, and inherit the selected hair color.
  if(hairStyle==='buzz'){
-  // Clean close-cut silhouette; no locks or fringe.
-  scalp(.39,[1.01,.965,1.01],[0,.16,-.012]);
+  scalp(.40,[1.001,.972,1.001],[0,.145,-.02],edgeHair);
+  // Short, smooth trim around the temples, no protruding pieces.
+  for(const side of [-1,1])strand([[side*.61,.49,.16],[side*.73,.34,.08],[side*.72,.25,.02]],.070,shadeHair,.50);
  }else if(hairStyle==='short'){
-  scalp(.49,[1.015,1.04,1.015]);
-  // Directional swept fringe, trimmed temple sides.
-  for(let i=0;i<4;i++){
-   const x=-.52+i*.31;
-   lock([[x,.75,.29],[x+.08,.63,.49],[x+.17,.52-i*.025,.61],[x+.24,.46-i*.025,.59]],.125,i%2?hair:hairLight,.70);
-  }
-  for(const side of [-1,1])sideLock(side,.23,0,.115);
+  scalp(.475,[1.022,1.042,1.02]);
+  sweepFringe(1,.045,-.31);
+  for(const side of [-1,1])sideLayers(side,-.22,.015,2);
+  for(let i=0;i<3;i++)strand([[-.53+i*.37,.80,.00],[-.38+i*.34,.87,.05],[-.16+i*.29,.80,.22]],.077,i===1?lightHair:edgeHair,.37);
  }else if(hairStyle==='bob'){
-  scalp(.52);curtain(-.49);
-  for(const side of [-1,1]){sideLock(side,.51,0,.175);sideLock(side,.39,0,.095)}
-  for(let i=0;i<5;i++){const x=-.54+i*.27;lock([[x,.69,.39],[x,.56,.56],[x,.44,.665]],.113,hair,.66)}
+  scalp(.49);rearSheet(-.44,.105,.017);
+  for(const side of [-1,1]){sideLayers(side,-.46,.055,3);strand([[side*.56,.46,.27],[side*.69,.11,.34],[side*.67,-.31,.30],[side*.55,-.47,.26]],.155,lightHair,.60)}
+  for(let k=0;k<7;k++){let x=-.58+k*.195;strand([[x,.77,.28],[x,.65,.47],[x,.50,.61],[x,-.02+.47,.66]],.072,k%3===0?shadeHair:mainHair,.45)}
  }else if(hairStyle==='long'){
-  scalp(.49);curtain(-1.08);
+  scalp(.47);rearSheet(-1.18,.17,.025);
   for(const side of [-1,1]){
-   sideLock(side,1.00,0,.18);
-   lock([[side*.66,.41,.24],[side*.77,.03,.26],[side*.76,-.49,.28],[side*.7,-.96,.20]],.13,hairLight,.78);
+   sideLayers(side,-1.15,.05,4,.035);
+   strand([[side*.51,.55,.18],[side*.72,.18,.24],[side*.77,-.52,.26],[side*.70,-1.17,.17]],.16,lightHair,.57);
   }
-  fringe(-1,.19);fringe(1,.18);
+  sweepFringe(-1,.035,.30);
  }else if(hairStyle==='wavy'){
-  scalp(.48);curtain(-.82,false,.035);
-  for(const side of [-1,1])for(let k=0;k<3;k++){
-   const z=.08-k*.20,x=side*(.67-k*.07);
-   lock([[x,.47,z],[x+side*.10,.12,z+.09],[x-side*.07,-.16,z+.12],[x+side*.13,-.50,z+.03],[x-side*.02,-.84,z]],.135,k===1?hairLight:hair,.89);
-  }
-  for(let k=0;k<4;k++)fringe(k%2?1:-1,.12+k*.028);
+  scalp(.47);rearSheet(-.93,.16,.10);
+  for(const side of [-1,1])waveLocks(side,-.98);
+  sweepFringe(-1,.065,.24);
  }else if(hairStyle==='ponytail'){
-  scalp(.49,[1.005,1.01,1.005]);
-  for(const side of [-1,1])sideLock(side,.18,0,.105);
-  // Smooth gathered rear knot, then one thick tapered flowing tail.
-  child(neck,new THREE.SphereGeometry(.17,14,12),hairShade,[0,.27,-.81],[1,.9,1]);
-  lock([[0,.25,-.88],[0,-.03,-.97],[.07,-.47,-1.04],[.14,-.89,-1.02]],.245,hair,.90);
-  for(let j=0;j<3;j++)lock([[.05*(j-1),-.20,-.99],[.06*(j-1)+.07,-.57,-1.045],[.12*(j-1)+.13,-.92,-1.03]],.073,j===1?hairLight:hair,.7);
-  for(let k=0;k<4;k++){let x=-.47+k*.29;lock([[x,.73,.26],[x*.75,.60,.46],[x*.55,.50,.58]],.10,hair,.67)}
+  scalp(.48,[1.02,1.055,1.01]);
+  for(const side of [-1,1])sideLayers(side,-.18,.015,2);
+  sweepFringe(1,.02,-.30);
+  // Tucked back from the temples into a real gathered ponytail.
+  for(const side of [-1,1])for(let k=0;k<3;k++){
+   strand([[side*(.45+k*.09),.67,.25],[side*(.58+k*.06),.60,-.09],
+    [side*(.42+k*.06),.36,-.60],[side*.09,.31,-.85]],.085,k===1?lightHair:edgeHair,.48);
+  }
+  child(neck,new THREE.TorusGeometry(.16,.048,8,20),shadeHair,[0,.27,-.86]).rotation.x=Math.PI/2;
+  for(let j=0;j<7;j++){
+   const a=j/7*Math.PI*2,x=Math.cos(a)*.095,z=-.90+Math.sin(a)*.09;
+   strand([[x,.28,z],[x*.9,.05,z-.15],[x+.08,-.37,z-.19],[x+.12,-.80-(j%3)*.07,z-.12]],.095,j%3===0?lightHair:mainHair,.75);
+  }
  }else if(hairStyle==='mohawk'){
-  scalp(.37,[.995,.88,.995]);
-  // A coherent central ridge with layered tapered blades along front-to-back.
-  for(let k=0;k<7;k++){
-   const z=.64-k*.21,high=k===0?.40:(k<5?.63:.47);
-   lock([[0,.67,z],[0,.96,z-.03],[0,1.15+high*.53,z-.09],[0,1.12+high*.62,z-.18]],.195,k%3===0?hairLight:hair,.7);
+  // Tapered shaved sides and a single continuous central crest front-to-back.
+  scalp(.38,[1.007,.94,1.007],[0,.15,-.018],shadeHair);
+  for(let j=0;j<9;j++){
+   const z=.65-j*.17,peak=.97+.30*Math.sin(Math.PI*(j+.5)/9);
+   // Each crest segment overlaps its neighbor to create one continuous ridge.
+   strand([[0,.67,z],[0,.84,z-.02],[0,peak,z-.075],[0,peak+.20,z-.15]],.19,j%4===0?lightHair:mainHair,.60);
   }
-  for(const side of [-1,1])sideLock(side,.13,0,.075);
+  for(const side of [-1,1])strand([[side*.56,.45,.10],[side*.70,.25,.0],[side*.7,.13,-.01]],.070,shadeHair,.52);
  }else if(hairStyle==='spiky'){
-  scalp(.46);
-  // Soft asymmetric tufts arising from the scalp instead of detached cones.
-  for(let k=0;k<12;k++){
-   const a=k*2.39996,r=k%3===0?.34:.57,x=Math.cos(a)*r,z=Math.sin(a)*r-.015;
-   const dx=Math.cos(a)*(.20+(k%3)*.04),dz=Math.sin(a)*(.12+(k%2)*.06);
-   lock([[x,.74,z],[x+dx*.30,.95,z+dz*.30],[x+dx,1.12+(k%3)*.08,z+dz]],.125,k%4===0?hairLight:hair,.87);
+  scalp(.445,[1.02,1.01,1.02]);
+  // Separated directional sculpted wedges with intentional negative space.
+  for(let j=0;j<11;j++){
+   const a=2.4*j,r=j%3===0?.29:.52,x=Math.cos(a)*r,z=Math.sin(a)*r;
+   const outward=.15+j%3*.045,tx=x+Math.cos(a)*outward,tz=z+Math.sin(a)*outward;
+   hairTip(x,z,tx,tz,1.02+(j%4)*.085,.13,j%4===1?lightHair:mainHair);
   }
-  for(let k=0;k<4;k++){let x=-.46+k*.30;lock([[x,.70,.36],[x+.04,.51,.55],[x+.10,.43,.64]],.105,hair,.7)}
+  for(let j=0;j<4;j++)strand([[-.48+j*.26,.70,.32],[-.41+j*.28,.59,.47],[-.34+j*.29,.43,.62]],.115,mainHair,.53);
  }else if(hairStyle==='curly'){
-  scalp(.52,[1.04,1.03,1.05]);
-  // Staggered compact curls with continuous scalp under the ringlets.
+  scalp(.47,[1.02,1.02,1.02]);
+  // Individual helical curls are swept splines, not clusters of balls.
   for(let ring=0;ring<3;ring++){
-   const count=ring===0?11:ring===1?10:7,r=ring===0?.68:ring===1?.46:.22;
-   for(let k=0;k<count;k++){
-    const a=(k+(ring%2)*.5)/count*Math.PI*2;
-    const x=Math.cos(a)*r,z=Math.sin(a)*r-.01;
-    const y=ring===0?.64:ring===1?.88:1.02;
-    child(neck,new THREE.SphereGeometry(.17+(k%3)*.015,11,9),k%5===0?hairLight:hair,[x,y,z],[1,.84,1]);
+   const count=[15,12,8][ring],radius=[.67,.43,.18][ring];
+   for(let j=0;j<count;j++){
+    const a=(j+ring*.37)*Math.PI*2/count,x=Math.cos(a)*radius,z=Math.sin(a)*radius;
+    const y=.65+ring*.19;
+    strand([[x,y,z],[x+.10*Math.cos(a+1),y+.15,z+.1*Math.sin(a+1)],
+     [x-.085*Math.cos(a),y+.23,z-.08*Math.sin(a)],
+     [x+.07*Math.cos(a+1),y+.24,z+.07*Math.sin(a+1)]],.13,j%5===0?lightHair:mainHair,.8);
    }
   }
-  for(const side of [-1,1])for(let k=0;k<3;k++){
-   child(neck,new THREE.SphereGeometry(.165,10,9),hair,[side*(.74+(k%2)*.035),.30-k*.20,.06],[1,.96,.90]);
+  for(const side of [-1,1])for(let j=0;j<3;j++){
+   const x=side*(.69+j*.025),y=.42-j*.19;
+   strand([[x,y+.12,.08],[x+side*.14,y+.09,.17],[x-side*.035,y-.04,.18],[x+side*.08,y-.12,.12]],.12,j===1?lightHair:mainHair,.72);
   }
  }
  // No head accessory is rendered.
