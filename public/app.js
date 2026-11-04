@@ -6,13 +6,15 @@ const $=id=>document.getElementById(id), palette=['#ff747d','#67d8d1','#f9c463',
 // Picnic zone layout tuned for mobile: keep the main standing/stage area
 // compact, and place the picnic blankets cleanly in the side rest zone.
 const picnicSlots=[
- {worldX:30,worldZ:16},
- {worldX:39,worldZ:20},
- {worldX:30,worldZ:28},
- {worldX:39,worldZ:32},
- {worldX:30,worldZ:40},
- {worldX:39,worldZ:44},
- {worldX:30,worldZ:52}
+ // Picnic zone: keep all blankets below the red stage boundary,
+ // inside the lower yellow-marked rest area.
+ {worldX:30,worldZ:32},
+ {worldX:41,worldZ:34},
+ {worldX:30,worldZ:41},
+ {worldX:41,worldZ:43},
+ {worldX:30,worldZ:50},
+ {worldX:41,worldZ:52},
+ {worldX:41,worldZ:60}
 ];
 const picnicMatColors=['#f5a5a3','#a7def4','#f5ce80','#b3d9a0','#ceb8f1','#ffd2a5','#b2d8ff'];
 const mats=picnicSlots.map((slot,i)=>({x:slot.worldX/.058+600,y:500,c:picnicMatColors[i],worldX:slot.worldX,worldZ:slot.worldZ}));
