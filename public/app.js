@@ -7,8 +7,18 @@ const state={id:null,me:null,players:new Map(),keys:new Set(),action:'idle',pose
 let slamMode=false,slam=null,slamCooldownUntil=0,slamMotion=null;
 let rockPlacementMode=null,rockPlay=null,rockCooldowns={circle:0,train:0,mosh:0},rockRunningUntil=0,rockMotion=null;
 let chosenColor=palette[0],chosenGender='male',toastTimer;const avatars=new Map();const activeBubbles=new Map();
+// Keep a visitor's own appearance on this browser only (not by shared public IP).
+const PROFILE_STORAGE_KEY='oneseason-profile-v1';
+function readSavedProfile(){try{const p=JSON.parse(localStorage.getItem(PROFILE_STORAGE_KEY)||'null');return p&&typeof p==='object'?p:null}catch{return null}}
+function saveProfile(p){try{localStorage.setItem(PROFILE_STORAGE_KEY,JSON.stringify({name:String(p.name||'ROCKER').slice(0,18),color:p.color,gender:p.gender}))}catch{}}
+function selectGender(g){chosenGender=g==='female'?'female':'male';document.querySelectorAll('[data-gender]').forEach(b=>b.classList.toggle('selected',b.dataset.gender===chosenGender))}
+const savedProfile=readSavedProfile();
+if(savedProfile){if(typeof savedProfile.name==='string')$('nick').value=savedProfile.name.slice(0,18);if(palette.includes(savedProfile.color))chosenColor=savedProfile.color;if(['male','female'].includes(savedProfile.gender))selectGender(savedProfile.gender)}
+let editingProfile=false;
+function refreshProfilePreview(){if(!state.me)return;$('profileName').textContent=state.me.name;$('avatarPreview').querySelector('b').style.background=state.me.color}
+
 function toast(msg){$('toast').textContent=msg;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('show'),3000)}
-document.querySelectorAll('[data-gender]').forEach(b=>b.onclick=()=>{chosenGender=b.dataset.gender;document.querySelectorAll('[data-gender]').forEach(x=>x.classList.toggle('selected',x===b))});
+document.querySelectorAll('[data-gender]').forEach(b=>b.onclick=()=>selectGender(b.dataset.gender));
 function colorPicker(){let r=$('colorPicker');r.innerHTML='';palette.forEach(c=>{let b=document.createElement('button');b.style.background=c;b.className=c===chosenColor?'selected':'';b.setAttribute('aria-label','티셔츠 '+c);b.onclick=()=>{chosenColor=c;colorPicker()};r.append(b)})}colorPicker();
 let rejoining=null,manualExit=false;
 async function post(ep,data){
@@ -27,7 +37,7 @@ async function restoreSession(){
    if(!r.ok)throw Error('재접속 실패');const d=await r.json();
    const old=state.me;state.id=d.id;state.me=d.players.find(x=>x.id===d.id);
    if(old){state.me.x=old.x;state.me.y=old.y;state.me.facing=old.facing;state.me.action=old.action;state.me.pose=old.pose;}
-   state.players=new Map(d.players.map(x=>[x.id,x]));renderOnlinePlayers();listen();
+   state.players=new Map(d.players.map(x=>[x.id,x]));refreshProfilePreview();renderOnlinePlayers();listen();
    applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);
    applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);
    sendMove();toast('서버 연결이 자동 복구됐어요');
@@ -95,7 +105,7 @@ function showBookingNotice(name,title){
  setTimeout(()=>el.remove(),5200);
 }
 
-function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='snapshot'){state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);if(Array.isArray(d.chat)){$('chatMessages').replaceChildren();d.chat.forEach(appendChat)}}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){appendChat(d.entry);showBubble(d.entry)}else if(d.type==='move'){state.players.set(d.player.id,d.player)}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers()}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue,d.history);else if(d.type==='slam')applySlam(d.slam,d.cooldownUntil);else if(d.type==='slam-go')onSlamGo(d);else if(d.type==='slam-impact')spawnSlamDust(d.x,d.y);else if(d.type==='cheer'&&d.playerId!==state.id&&state.audioEnabled)playCheer();else if(d.type==='rockplay')applyRockPlay(d.event,d.rockCooldowns,d.rockRunningUntil);else if(d.type==='rockplay-go')onRockPlayGo(d);else if(d.type==='music-booked')showBookingNotice(d.name,d.title);else if(d.type==='music-control')showMusicControlNotice(d.name,d.command);else if(d.type==='skip-vote')applySkipVote(d.vote,d.cooldownUntil);else if(d.type==='skip-vote-result')showSkipVoteResult(d)};state.es.onerror=()=>{ /* EventSource retries automatically; heartbeat repairs an expired session. */ }}
+function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='snapshot'){state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);if(Array.isArray(d.chat)){$('chatMessages').replaceChildren();d.chat.forEach(appendChat)}}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){appendChat(d.entry);showBubble(d.entry)}else if(d.type==='move'){state.players.set(d.player.id,d.player)}else if(d.type==='profile'){state.players.set(d.player.id,d.player);if(d.player.id===state.id){state.me=d.player;refreshProfilePreview()}renderOnlinePlayers()}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers()}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue,d.history);else if(d.type==='slam')applySlam(d.slam,d.cooldownUntil);else if(d.type==='slam-go')onSlamGo(d);else if(d.type==='slam-impact')spawnSlamDust(d.x,d.y);else if(d.type==='cheer'&&d.playerId!==state.id&&state.audioEnabled)playCheer();else if(d.type==='rockplay')applyRockPlay(d.event,d.rockCooldowns,d.rockRunningUntil);else if(d.type==='rockplay-go')onRockPlayGo(d);else if(d.type==='music-booked')showBookingNotice(d.name,d.title);else if(d.type==='music-control')showMusicControlNotice(d.name,d.command);else if(d.type==='skip-vote')applySkipVote(d.vote,d.cooldownUntil);else if(d.type==='skip-vote-result')showSkipVoteResult(d)};state.es.onerror=()=>{ /* EventSource retries automatically; heartbeat repairs an expired session. */ }}
 function applySkipVote(vote,cooldownUntil){
  state.skipVote=vote||null;if(Number.isFinite(Number(cooldownUntil)))state.skipVoteCooldownUntil=Number(cooldownUntil);
  const overlay=$('skipVoteOverlay');overlay.hidden=!vote;updateSkipVoteUI();updateSharedMusicButtons();
@@ -116,8 +126,16 @@ function updateSkipVoteUI(){
 async function castSkipVote(choice){const vote=state.skipVote;if(!vote||!state.id)return;try{await post('music',{id:state.id,command:'vote-cast',voteId:vote.id,choice})}catch(e){toast(e.message)}}
 function showSkipVoteResult(d){applySkipVote(null,state.skipVoteCooldownUntil);let msg=d.passed?'✅ 과반수 찬성! 요청한 곡으로 이동합니다':d.reason==='timeout'?'투표 시간이 종료되어 현재 곡을 유지합니다':'투표가 부결되어 현재 곡을 유지합니다';notice(msg)}
 setInterval(()=>{updateSkipVoteUI();updateSharedMusicButtons()},500);
-async function join(){manualExit=false;try{let d=await post('join',{name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);state.pose=state.me?.pose||'stand';cameraFollowInitialized=false;state.players=new Map(d.players.map(p=>[p.id,p]));renderOnlinePlayers();$('joinModal').classList.add('hidden');$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='페스티벌 참가 중';$('avatarPreview').querySelector('b').style.background=chosenColor;applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);listen();$('audioModal').classList.remove('hidden');showMovementGuide();toast('ONEseason에 오신 것을 환영합니다!')}catch(e){$('joinError').textContent='입장 실패: '+(e?.message||'연결을 확인해주세요');console.error('ONEseason join error:',e)}}
-$('audioYes').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(true);toast(state.music.id?'음악 재생을 허용했어요':'음악이 등록되면 바로 재생돼요')};$('audioNo').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(false);toast('내 소리를 끈 상태로 입장했어요')};$('joinBtn').onclick=join;$('nick').onkeydown=e=>{if(e.key==='Enter')join()};$('editAvatar').onclick=()=>{manualExit=true;if(state.id){post('leave',{id:state.id}).catch(()=>{});state.es?.close();state.id=null;state.me=null;cameraFollowInitialized=false;state.players.clear();state.skipVote=null;applySkipVote(null,state.skipVoteCooldownUntil);state.pose='stand';slam=null;slamMode=false;slamMotion=null;rockPlay=null;rockMotion=null;rockPlacementMode=null;refreshSlamUI();refreshRockUI()}$('joinModal').classList.remove('hidden')};$('helpBtn').onclick=()=>toast('WASD 이동 · 클릭/터치 이동 · 드래그 시점 회전 · 춤: B/G/V/K · 환호성: H · 담배: C');
+async function join(){if(editingProfile)return updateProfile();manualExit=false;try{let d=await post('join',{name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);state.pose=state.me?.pose||'stand';cameraFollowInitialized=false;state.players=new Map(d.players.map(p=>[p.id,p]));renderOnlinePlayers();$('joinModal').classList.add('hidden');$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='페스티벌 참가 중';$('avatarPreview').querySelector('b').style.background=chosenColor;saveProfile(state.me);applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);listen();$('audioModal').classList.remove('hidden');showMovementGuide();toast('ONEseason에 오신 것을 환영합니다!')}catch(e){$('joinError').textContent='입장 실패: '+(e?.message||'연결을 확인해주세요');console.error('ONEseason join error:',e)}}
+$('audioYes').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(true);toast(state.music.id?'음악 재생을 허용했어요':'음악이 등록되면 바로 재생돼요')};$('audioNo').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(false);toast('내 소리를 끈 상태로 입장했어요')};$('joinBtn').onclick=join;$('nick').onkeydown=e=>{if(e.key==='Enter')join()};function closeProfileEditor(){editingProfile=false;$('joinModal').classList.add('hidden');$('joinBtn').innerHTML='페스티벌 입장하기 <span>↗</span>';$('profileCancel').hidden=true;$('joinError').textContent=''}
+async function updateProfile(){if(!state.id||!state.me)return;const button=$('joinBtn');button.disabled=true;try{
+ const d=await post('profile',{id:state.id,name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender});
+ state.me=d.player;state.players.set(state.id,d.player);saveProfile(d.player);refreshProfilePreview();renderOnlinePlayers();closeProfileEditor();toast('닉네임과 옷 색상을 변경했어요');
+ }catch(e){$('joinError').textContent='변경 실패: '+e.message}finally{button.disabled=false}}
+$('editAvatar').onclick=()=>{if(!state.me)return;editingProfile=true;$('nick').value=state.me.name;chosenColor=state.me.color;selectGender(state.me.gender);colorPicker();$('joinError').textContent='';$('joinBtn').textContent='변경 사항 저장';$('profileCancel').hidden=false;$('joinModal').classList.remove('hidden');$('nick').focus()};
+$('profileCancel').onclick=closeProfileEditor;
+$('profileToggle').onclick=()=>{if(!state.me)return toast('입장 후 변경할 수 있어요');$('editAvatar').click()};
+;$('helpBtn').onclick=()=>toast('WASD 이동 · 클릭/터치 이동 · 드래그 시점 회전 · 춤: B/G/V/K · 환호성: H · 담배: C');
 const sustainedReactions=new Set(['jump','run','headbang','buriburi','groove','windmill','skanking','cheer','smoke']);
 document.querySelectorAll('[data-action-menu]').forEach(button=>button.addEventListener('click',()=>{const dance=button.dataset.actionMenu==='dance';$('danceActions').classList.toggle('hidden',!dance);$('reactionActions').classList.toggle('hidden',dance);document.querySelectorAll('[data-action-menu]').forEach(b=>b.classList.toggle('active',b===button))}));
 function updateActionButtons(){
@@ -1063,7 +1081,7 @@ function animateAvatar(a,p,t){
   const frontL=step===2?pulse:0;
   const backR=step===3?pulse:0;
   // Slightly higher, compact hop on every beat. Returns to floor between counts.
-  height=-.028+.295*pulse+((step===0||step===2)?.022:0)*pulse;
+  height=-.028+.43*pulse+((step===0||step===2)?.028:0)*pulse;
   // Keep torso leaning FORWARD (avatar front is +Z).
   set('upper',.27+.027*pulse,0,.024*Math.sin(beat*Math.PI*.5));
   set('neck',-.055);
@@ -1467,7 +1485,7 @@ function tick(t){
    if(!slamMotion)speed=state.action==='run'?5:3.2;
    state.me.x=Math.max(20,Math.min(1380,state.me.x+dx/n*speed));
    state.me.y=Math.max(220,Math.min(1100,state.me.y+dy/n*speed));
-   state.me.facing=Math.atan2(dx,dy);
+   if(state.action!=='skanking'||slamMotion||rockMotion)state.me.facing=Math.atan2(dx,dy);
    if(state.pose!=='stand'){state.pose='stand';state.me.pose='stand';updateActionButtons()}
    if(['sit','lie'].includes(state.action)){state.action='idle';state.me.action='idle'}
    if(!slamMotion&&!rockMotion&&(state.action==='idle'||state.action==='walk'))state.me.action='walk';
@@ -1481,7 +1499,14 @@ function tick(t){
   if(t-state.lastSent>150){state.lastSent=t;sendMove()}
  }
 
- for(let [id,p] of state.players){if(!avatars.has(id)){let a=makeAvatar(p),pos=toWorld(p);a.root.position.set(pos.x,0,pos.z);avatars.set(id,a)}animateAvatar(avatars.get(id),p,t)}
+ for(let [id,p] of state.players){
+  const current=avatars.get(id);
+  if(current&&(current.color!==p.color||current.name!==p.name||current.gender!==p.gender)){
+   scene.remove(current.root);current.root.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material?.map)o.material.map.dispose();if(o.material)o.material.dispose()});avatars.delete(id);
+  }
+  if(!avatars.has(id)){let a=makeAvatar(p),pos=toWorld(p);a.root.position.set(pos.x,0,pos.z);a.name=p.name;a.gender=p.gender;avatars.set(id,a)}
+  animateAvatar(avatars.get(id),p,t)
+ }
  for(let [id,a] of avatars)if(!state.players.has(id)){scene.remove(a.root);a.root.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material?.map)o.material.map.dispose();if(o.material)o.material.dispose()});avatars.delete(id)}
  if(moveMarker.visible){moveMarker.material.opacity=Math.min(.75,Math.max(0,(moveMarkerUntil-t)/1050)*.75);if(t>moveMarkerUntil)moveMarker.visible=false}
  updateEnvironment();animateSky(t);updateOcean(t);updateSlamDust(t);updateBubbles(t);animateShow(t);updateHourlyFireworks(t);followLocalAvatar();controls.update();keepCameraInFrontOfStage();updateSlamVisual(t);updateRockPlayVisual(t);renderer.render(scene,camera);cssRenderer.render(scene,camera);renderStageForeground();requestAnimationFrame(tick)

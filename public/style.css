@@ -251,3 +251,8 @@ button,input{touch-action:manipulation}
 .slam-hint{display:none!important}
 .slam-hint.is-active{display:block!important;max-width:min(90vw,370px);white-space:normal;text-align:center;line-height:1.35;top:calc(env(safe-area-inset-top) + 72px);border-radius:11px;padding:7px 13px}
 @media(max-width:700px){.slam-hint.is-active{top:calc(env(safe-area-inset-top) + 51px);font-size:10px;z-index:11}}
+
+/* Edit in place without leaving the festival */
+#profileCancel:not([hidden]){display:block;width:100%;margin-top:10px;padding:12px;border:1px solid #6d7792;border-radius:10px;background:#293248;color:#f7f8ff;font-weight:800}
+
+#profileToggle{padding:10px 12px;min-width:40px} @media(max-width:700px){#profileToggle{padding:8px 7px;min-width:31px}}
