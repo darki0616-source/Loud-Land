@@ -836,12 +836,21 @@ function makeAvatar(p){
    // Close-fitting side hair visible near ears.
    for(const side of [-1,1])child(neck,new THREE.SphereGeometry(.22,12,10),hair,[side*.66,.22,-.10],[.72,1.03,.78]);
  }
- // Selectable hat, stripes and a long left-waist festival sash.
+ // Headband replaces the old cap: thin cloth ribbon around the forehead,
+ // never a crown or a brim. Keep existing profile 'hat' keys for compatibility.
  const hatShades={black:'#1d2030',white:'#f9f8ed',blue:'#3e8eea',green:'#4cb57c',yellow:'#f7d345'};
  if(p.hat&&hatShades[p.hat]){
-  const capMat=mat(hatShades[p.hat],.87);
-  child(neck,new THREE.SphereGeometry(.85,24,14,0,Math.PI*2,0,Math.PI*.42),capMat,[0,.26,-.04],[1.04,.63,1.04]);
-  child(neck,new THREE.BoxGeometry(.89,.065,.34),capMat,[0,.72,.65],[1,1,1]);
+  const bandMat=mat(hatShades[p.hat],.91);
+  // Head faces +Z; place this thin curved ribbon on the brow, just outside the hair.
+  // Arc spans the front and sides without covering the top of the head.
+  const frontBand=new THREE.Mesh(new THREE.TorusGeometry(.775,.068,8,42,Math.PI*1.24),bandMat);
+  frontBand.rotation.z=-Math.PI*.12;
+  frontBand.rotation.x=Math.PI/2;
+  frontBand.position.set(0,.415,.055);
+  frontBand.scale.set(1.04,.96,1);
+  neck.add(frontBand);
+  // Front-facing flat section for legibility even from the stage camera angle.
+  child(neck,new THREE.BoxGeometry(.90,.115,.072),bandMat,[0,.575,.678],[1,1,1]);
  }
  if(p.pattern==='stripe'||p.pattern==='wide-stripe'){
   const stripeMat=mat('#f7f8f2',.83),spacing=p.pattern==='stripe'?.16:.31,stripWidth=p.pattern==='stripe'?.045:.105;
@@ -852,13 +861,18 @@ function makeAvatar(p){
  }
  if(p.sash&&p.sash!=='none'){
   const sashColors={black:'#20212c',purple:'#793ac8',red:'#d42c42',green:'#2a9a59','black-check':'#20212c','red-check':'#c72b35'};
-  const fabric=new THREE.Group();fabric.position.set(-.49,1.24,.16);root.add(fabric);parts.sash=fabric;
+  // Vertical hanging sash: pinned at the character's LEFT hip, visible from
+  // the front (+Z), dropping straight down toward the ankle (world Y axis).
+  const fabric=new THREE.Group();fabric.position.set(-.48,1.10,.43);root.add(fabric);parts.sash=fabric;
   const clothMat=mat(sashColors[p.sash]||'#252535',.97);
-  child(fabric,new THREE.BoxGeometry(.23,1.14,.065),clothMat,[-.025,-.57,0],[1,1,1]);
+  child(fabric,new THREE.BoxGeometry(.21,.92,.055),clothMat,[0,-.46,0]);
+  // Vertical stitched edges emphasize top-to-bottom, not a diagonal sash.
+  const edging=mat(p.sash.endsWith('check')?'#ddd7c9':'#eee4ce',.93);
+  for(const x of [-.088,.088])child(fabric,new THREE.BoxGeometry(.012,.89,.061),edging,[x,-.46,0]);
   if(p.sash.endsWith('check')){
    const check=mat(p.sash==='red-check'?'#17181e':'#d5d5d5',.93);
-   for(let y=-.10;y> -1.12;y-=.19)child(fabric,new THREE.BoxGeometry(.246,.028,.074),check,[-.025,y,0]);
-   for(const x of [-.10,.052])child(fabric,new THREE.BoxGeometry(.027,1.13,.073),check,[x,-.56,0]);
+   for(let y=-.09;y>-.90;y-=.145)child(fabric,new THREE.BoxGeometry(.193,.021,.067),check,[0,y,0]);
+   for(const x of [-.039,.039])child(fabric,new THREE.BoxGeometry(.021,.90,.067),check,[x,-.46,0]);
   }
  }
  // Minimal articulated limbs: smooth joints tucked inside sleeve/leg, not exposed balls.
@@ -913,7 +927,9 @@ function makeAvatar(p){
  child(bottle,new THREE.CylinderGeometry(.045,.065,.19,10),glass,[0,.13,0]);
  child(bottle,new THREE.CylinderGeometry(.06,.06,.055,10),mat('#f3ca82'),[0,.25,0]);
  child(bottle,new THREE.CylinderGeometry(.127,.127,.12,12),mat('#f2e1bd'),[0,-.14,0]);
- const toastCup=new THREE.Group();parts.rightElbow.add(toastCup);toastCup.position.set(0,-.58,.08);parts.toastCup=toastCup;
+ // Attach to root instead of the rotating elbow: its open top must point UP.
+ // The cup follows the hand's position each frame without inheriting wrist tilt.
+ const toastCup=new THREE.Group();root.add(toastCup);toastCup.position.set(.7,1.15,.5);parts.toastCup=toastCup;
  child(toastCup,new THREE.CylinderGeometry(.12,.09,.23,12),mat('#ffc977',.5),[0,0,0]);
  child(toastCup,new THREE.TorusGeometry(.11,.015,6,12),mat('#fff2b4',.45),[0,.12,0]).rotation.x=Math.PI/2;
  toastCup.visible=false;
@@ -1316,6 +1332,14 @@ function animateAvatar(a,p,t){
  // B-boy freeze tilts into a stable one-handed inversion rather than continuous windmill spinning.
  const zTarget=act==='windmill'?2.80+.055*Math.sin(sec*2.5):0;
  a.root.rotation.z+=(zTarget-a.root.rotation.z)*.17;
+ if(act==='toast-clink'){
+  // Track the hand even when both shoulder and elbow move during the clink.
+  // A root-attached cup doesn't inherit the arm's rotation (which tipped it over).
+  a.root.updateMatrixWorld(true);
+  const handWorld=P.rightElbow.localToWorld(new THREE.Vector3(0,-.58,.08));
+  P.toastCup.position.copy(a.root.worldToLocal(handWorld));
+  P.toastCup.quaternion.copy(a.root.getWorldQuaternion(new THREE.Quaternion()).invert());
+ }
  P.snackCrumbs.forEach((crumb,i)=>{
   if(act!=='snack'){crumb.visible=false;return}
   const phase=(sec*3.8+i*.19)%1,ring=.08+phase*.47,theta=i*2.39996;
