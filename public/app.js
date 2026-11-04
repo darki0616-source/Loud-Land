@@ -846,9 +846,9 @@ function makeAvatar(p){
  const smile=new THREE.EllipseCurve(0,0,.084,.046,Math.PI*.08,Math.PI*.92,false,0);
  const points=smile.getPoints(15);const smileGeo=new THREE.BufferGeometry().setFromPoints(points.map(v=>new THREE.Vector3(v.x,-v.y,0)));
  const smileLine=new THREE.Line(smileGeo,new THREE.LineBasicMaterial({color:'#533f39'}));smileLine.position.set(0,-.17,.746);neck.add(smileLine);
- // v55: hairstyles are constructed as layered sculpted surfaces, not stacks
- // of sphere/capsule props. All nine share a fitted scalp and have unique
- // front / profile / back silhouettes. Faces and the chibi proportions remain intact.
+ // v56: hairstyles use larger clean clumps and unified silhouettes.
+ // The focus is on chunky, readable shapes that hug the head cleanly
+ // without stray protrusions or strands intersecting the face.
  const hairStyle=hairStyles.some(([id])=>id===p.hairStyle)?p.hairStyle:(female?'bob':'short');
  const hc=new THREE.Color(hairHex);
  const mainHair=mat(hc,.84);
@@ -942,80 +942,82 @@ function makeAvatar(p){
  // Accent grooves run WITH the hair and hug the same silhouette.
  // They are subtle, and inherit the selected hair color.
  if(hairStyle==='buzz'){
-  scalp(.40,[1.001,.972,1.001],[0,.145,-.02],edgeHair);
-  // Short, smooth trim around the temples, no protruding pieces.
-  for(const side of [-1,1])strand([[side*.61,.49,.16],[side*.73,.34,.08],[side*.72,.25,.02]],.070,shadeHair,.50);
+  // Tight cap-like haircut that follows the head silhouette.
+  scalp(.40,[1.002,.97,1.002],[0,.145,-.02],edgeHair);
+  for(const side of [-1,1])strand([[side*.58,.48,.18],[side*.68,.34,.09],[side*.66,.22,.02]],.06,shadeHair,.48);
  }else if(hairStyle==='short'){
-  scalp(.475,[1.022,1.042,1.02]);
-  sweepFringe(1,.045,-.31);
-  for(const side of [-1,1])sideLayers(side,-.22,.015,2);
-  for(let i=0;i<3;i++)strand([[-.53+i*.37,.80,.00],[-.38+i*.34,.87,.05],[-.16+i*.29,.80,.22]],.077,i===1?lightHair:edgeHair,.37);
- }else if(hairStyle==='bob'){
-  scalp(.49);rearSheet(-.44,.105,.017);
-  for(const side of [-1,1]){sideLayers(side,-.46,.055,3);strand([[side*.56,.46,.27],[side*.69,.11,.34],[side*.67,-.31,.30],[side*.55,-.47,.26]],.155,lightHair,.60)}
-  for(let k=0;k<7;k++){let x=-.58+k*.195;strand([[x,.77,.28],[x,.65,.47],[x,.50,.61],[x,-.02+.47,.66]],.072,k%3===0?shadeHair:mainHair,.45)}
- }else if(hairStyle==='long'){
-  scalp(.47);rearSheet(-1.18,.17,.025);
+  // Clean rounded short cut with one soft fringe and compact side clumps.
+  scalp(.49,[1.025,1.04,1.02],[0,.15,-.02]);
+  strand([[-.32,.74,.33],[-.16,.68,.54],[.07,.63,.63],[.28,.57,.59]],.16,lightHair,.46);
   for(const side of [-1,1]){
-   sideLayers(side,-1.15,.05,4,.035);
-   strand([[side*.51,.55,.18],[side*.72,.18,.24],[side*.77,-.52,.26],[side*.70,-1.17,.17]],.16,lightHair,.57);
+   strand([[side*.56,.50,.19],[side*.67,.32,.18],[side*.62,.12,.15]],.16,mainHair,.54);
+   strand([[side*.46,.74,-.01],[side*.63,.76,-.18],[side*.56,.60,-.37]],.13,edgeHair,.48);
   }
-  sweepFringe(-1,.035,.30);
+ }else if(hairStyle==='bob'){
+  // One chunky rounded bob: scalp + short back curtain + cheek-length side masses.
+  scalp(.50,[1.025,1.03,1.02],[0,.15,-.03]);
+  rearSheet(-.34,.08,.008,mainHair);
+  strand([[-.48,.74,.30],[-.23,.67,.54],[.02,.62,.61],[.33,.56,.58]],.15,lightHair,.44);
+  for(const side of [-1,1]){
+   strand([[side*.54,.54,.24],[side*.70,.24,.28],[side*.67,-.10,.24],[side*.54,-.34,.18]],.18,mainHair,.62);
+   strand([[side*.44,.48,-.12],[side*.60,.28,-.18],[side*.58,-.02,-.21],[side*.48,-.28,-.16]],.15,shadeHair,.58);
+  }
+ }else if(hairStyle==='long'){
+  // Long clean silhouette: front framing clumps + a single fuller back mass.
+  scalp(.48,[1.02,1.03,1.02],[0,.15,-.03]);
+  rearSheet(-1.08,.15,.015,mainHair);
+  strand([[-.30,.74,.31],[-.10,.69,.53],[.14,.63,.60],[.34,.57,.55]],.14,lightHair,.42);
+  for(const side of [-1,1]){
+   strand([[side*.54,.55,.20],[side*.72,.22,.24],[side*.77,-.42,.22],[side*.70,-1.02,.10]],.18,mainHair,.62);
+   strand([[side*.44,.49,-.11],[side*.62,.16,-.16],[side*.66,-.38,-.19],[side*.60,-1.00,-.16]],.16,shadeHair,.58);
+  }
  }else if(hairStyle==='wavy'){
-  scalp(.47);rearSheet(-.93,.16,.10);
-  for(const side of [-1,1])waveLocks(side,-.98);
-  sweepFringe(-1,.065,.24);
- }else if(hairStyle==='ponytail'){
-  scalp(.48,[1.02,1.055,1.01]);
-  for(const side of [-1,1])sideLayers(side,-.18,.015,2);
-  sweepFringe(1,.02,-.30);
-  // Tucked back from the temples into a real gathered ponytail.
-  for(const side of [-1,1])for(let k=0;k<3;k++){
-   strand([[side*(.45+k*.09),.67,.25],[side*(.58+k*.06),.60,-.09],
-    [side*(.42+k*.06),.36,-.60],[side*.09,.31,-.85]],.085,k===1?lightHair:edgeHair,.48);
+  // Long hair but with large S-shaped chunky locks, not many thin strands.
+  scalp(.48,[1.02,1.03,1.02],[0,.15,-.03]);
+  rearSheet(-.98,.15,.08,mainHair);
+  strand([[-.28,.74,.32],[-.08,.68,.54],[.13,.62,.61],[.35,.56,.56]],.14,lightHair,.42);
+  for(const side of [-1,1]){
+   strand([[side*.56,.54,.18],[side*.74,.28,.20],[side*.66,-.02,.24],[side*.78,-.36,.20],[side*.66,-.68,.15],[side*.74,-.95,.05]],.19,mainHair,.70);
+   strand([[side*.42,.48,-.10],[side*.58,.20,-.13],[side*.50,-.10,-.18],[side*.64,-.42,-.15],[side*.52,-.72,-.18],[side*.60,-.95,-.12]],.15,shadeHair,.66);
   }
-  child(neck,new THREE.TorusGeometry(.16,.048,8,20),shadeHair,[0,.27,-.86]).rotation.x=Math.PI/2;
-  for(let j=0;j<7;j++){
-   const a=j/7*Math.PI*2,x=Math.cos(a)*.095,z=-.90+Math.sin(a)*.09;
-   strand([[x,.28,z],[x*.9,.05,z-.15],[x+.08,-.37,z-.19],[x+.12,-.80-(j%3)*.07,z-.12]],.095,j%3===0?lightHair:mainHair,.75);
+ }else if(hairStyle==='ponytail'){
+  // Smooth pulled-back top with a chunky ponytail bundle.
+  scalp(.49,[1.02,1.05,1.01],[0,.15,-.03]);
+  strand([[-.20,.74,.22],[-.03,.71,.34],[.17,.70,.24]],.10,lightHair,.34);
+  for(const side of [-1,1]){
+   strand([[side*.52,.58,.20],[side*.62,.56,-.08],[side*.44,.44,-.45],[side*.10,.34,-.76]],.13,mainHair,.46);
+   strand([[side*.43,.50,-.08],[side*.56,.46,-.22],[side*.34,.40,-.54],[side*.08,.33,-.79]],.10,shadeHair,.44);
+  }
+  child(neck,new THREE.TorusGeometry(.14,.042,8,20),shadeHair,[0,.31,-.78]).rotation.x=Math.PI/2;
+  for(const [x,matr] of [[-.08,lightHair],[0,mainHair],[.08,edgeHair]]){
+   strand([[x,.30,-.85],[x*.8,.02,-1.00],[x*.7,-.28,-1.05],[x*.55,-.62,-.98]],.13,matr,.72);
   }
  }else if(hairStyle==='mohawk'){
-  // Tapered shaved sides and a single continuous central crest front-to-back.
-  scalp(.38,[1.007,.94,1.007],[0,.15,-.018],shadeHair);
-  for(let j=0;j<9;j++){
-   const z=.65-j*.17,peak=.97+.30*Math.sin(Math.PI*(j+.5)/9);
-   // Each crest segment overlaps its neighbor to create one continuous ridge.
-   strand([[0,.67,z],[0,.84,z-.02],[0,peak,z-.075],[0,peak+.20,z-.15]],.19,j%4===0?lightHair:mainHair,.60);
+  // Wide clean mohawk ridge with shaved-looking sides.
+  scalp(.39,[1.005,.95,1.005],[0,.15,-.02],shadeHair);
+  for(let j=0;j<7;j++){
+   const z=.56-j*.18,peak=.98+.16*Math.sin(Math.PI*(j+.5)/7);
+   strand([[0,.66,z],[0,.84,z-.02],[0,peak,z-.08],[0,peak+.12,z-.16]],.18,j===3?lightHair:mainHair,.56);
   }
-  for(const side of [-1,1])strand([[side*.56,.45,.10],[side*.70,.25,.0],[side*.7,.13,-.01]],.070,shadeHair,.52);
+  for(const side of [-1,1])strand([[side*.58,.44,.12],[side*.67,.28,.03],[side*.66,.14,-.02]],.06,shadeHair,.48);
  }else if(hairStyle==='spiky'){
-  scalp(.445,[1.02,1.01,1.02]);
-  // Separated directional sculpted wedges with intentional negative space.
-  for(let j=0;j<11;j++){
-   const a=2.4*j,r=j%3===0?.29:.52,x=Math.cos(a)*r,z=Math.sin(a)*r;
-   const outward=.15+j%3*.045,tx=x+Math.cos(a)*outward,tz=z+Math.sin(a)*outward;
-   hairTip(x,z,tx,tz,1.02+(j%4)*.085,.13,j%4===1?lightHair:mainHair);
-  }
-  for(let j=0;j<4;j++)strand([[-.48+j*.26,.70,.32],[-.41+j*.28,.59,.47],[-.34+j*.29,.43,.62]],.115,mainHair,.53);
+  // Keep the spiky identity, but use fewer large wedges anchored to the scalp.
+  scalp(.455,[1.02,1.01,1.02],[0,.15,-.02]);
+  const spikes=[[-.30,.20,1.02,.20],[-.12,.34,1.14,.28],[0,.38,1.18,.33],[.16,.28,1.08,.26],[.31,.12,1.00,.18],[-.26,-.12,1.02,-.06],[.24,-.10,1.00,-.04]];
+  for(const [x,z,peak,tipz] of spikes){hairTip(x,z,x*1.15,tipz,peak,.16,Math.abs(x)<.05?lightHair:mainHair)}
+  for(const side of [-1,1])strand([[side*.54,.52,.12],[side*.66,.38,.08],[side*.63,.20,.02]],.12,edgeHair,.52);
  }else if(hairStyle==='curly'){
-  scalp(.47,[1.02,1.02,1.02]);
-  // Individual helical curls are swept splines, not clusters of balls.
-  for(let ring=0;ring<3;ring++){
-   const count=[15,12,8][ring],radius=[.67,.43,.18][ring];
-   for(let j=0;j<count;j++){
-    const a=(j+ring*.37)*Math.PI*2/count,x=Math.cos(a)*radius,z=Math.sin(a)*radius;
-    const y=.65+ring*.19;
-    strand([[x,y,z],[x+.10*Math.cos(a+1),y+.15,z+.1*Math.sin(a+1)],
-     [x-.085*Math.cos(a),y+.23,z-.08*Math.sin(a)],
-     [x+.07*Math.cos(a+1),y+.24,z+.07*Math.sin(a+1)]],.13,j%5===0?lightHair:mainHair,.8);
-   }
-  }
-  for(const side of [-1,1])for(let j=0;j<3;j++){
-   const x=side*(.69+j*.025),y=.42-j*.19;
-   strand([[x,y+.12,.08],[x+side*.14,y+.09,.17],[x-side*.035,y-.04,.18],[x+side*.08,y-.12,.12]],.12,j===1?lightHair:mainHair,.72);
+  // Chunky curl masses: broad curled ribbons around the silhouette.
+  scalp(.49,[1.02,1.03,1.02],[0,.15,-.03]);
+  rearSheet(-.62,.10,.03,mainHair);
+  strand([[-.24,.73,.30],[-.09,.67,.48],[.10,.62,.53],[.28,.58,.46]],.13,lightHair,.40);
+  for(const side of [-1,1]){
+   strand([[side*.54,.52,.18],[side*.72,.34,.22],[side*.58,.16,.30],[side*.73,-.02,.24],[side*.56,-.18,.22]],.17,mainHair,.74);
+   strand([[side*.42,.46,-.10],[side*.60,.28,-.16],[side*.48,.10,-.24],[side*.62,-.06,-.18],[side*.48,-.22,-.16]],.15,shadeHair,.70);
+   strand([[side*.18,.74,-.36],[side*.33,.63,-.50],[side*.16,.50,-.60],[side*.31,.37,-.54]],.13,edgeHair,.64);
   }
  }
- // No head accessory is rendered.
+ // No head accessory is rendered.// No head accessory is rendered.
  // The clothing stripes are painted on the torso shader, not separate raised meshes.
 
  if(p.sash&&p.sash!=='none'){
