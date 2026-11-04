@@ -3,7 +3,7 @@ import { OrbitControls } from 'https://esm.sh/three@0.160.1/examples/jsm/control
 import { GLTFLoader } from 'https://esm.sh/three@0.160.1/examples/jsm/loaders/GLTFLoader.js';
 import { CSS3DRenderer, CSS3DObject } from 'https://esm.sh/three@0.160.1/examples/jsm/renderers/CSS3DRenderer.js';
 const $=id=>document.getElementById(id), palette=['#ff747d','#67d8d1','#f9c463','#a8a0ff','#90dd81','#ff9ce1','#72b5ff','#eeeeee','#16171d'];
-const mats=[{x:118,y:682,c:'#f5a5a3'},{x:290,y:706,c:'#a7def4'},{x:470,y:690,c:'#f5ce80'},{x:650,y:708,c:'#b3d9a0'},{x:835,y:694,c:'#ceb8f1'},{x:1015,y:710,c:'#ffd2a5'},{x:1185,y:688,c:'#b2d8ff'}];
+const mats=[{x:1203.45,y:362.069,c:'#f5a5a3'},{x:1203.45,y:517.517,c:'#a7def4'},{x:1203.45,y:547.116,c:'#f5ce80'},{x:1203.45,y:573.534,c:'#b3d9a0'},{x:1203.45,y:672.414,c:'#ceb8f1'},{x:1203.45,y:862.069,c:'#ffd2a5'},{x:1203.45,y:1051.724,c:'#b2d8ff'}];
 const state={id:null,me:null,players:new Map(),keys:new Set(),action:'idle',pose:'stand',actionUntil:0,lastSent:0,es:null,music:{id:'',paused:true,position:0,startedAt:0,token:0},queue:[],history:[],serverDelta:0,yt:null,ytReady:false,lastTrack:'',audioEnabled:false,skipVote:null,skipVoteCooldownUntil:0,walkTarget:null,benchTarget:null,moving:false};
 let slamMode=false,slam=null,slamCooldownUntil=0,slamMotion=null;
 let rockPlacementMode=null,rockPlay=null,rockCooldowns={circle:0,train:0,mosh:0,row:0,toast:0},rockRunningUntil=0,rockMotion=null;
@@ -605,10 +605,31 @@ function sphere(r,m,x,y,z){let o=new THREE.Mesh(new THREE.SphereGeometry(r,12,10
 function cylinder(rt,rb,h,m,x,y,z){let o=new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,h,14),m);o.position.set(x,y,z);o.castShadow=true;scene.add(o);return o}
 function label(str,size=100,color='#ffffff',bg='#22283b'){let cv=document.createElement('canvas');cv.width=512;cv.height=128;let c=cv.getContext('2d');c.fillStyle=bg;c.fillRect(0,0,512,128);c.fillStyle=color;c.font=`900 ${size}px Arial`;c.textAlign='center';c.textBaseline='middle';c.fillText(str,256,67);let tex=new THREE.CanvasTexture(cv);tex.colorSpace=THREE.SRGBColorSpace;return new THREE.MeshBasicMaterial({map:tex,transparent:true,side:THREE.DoubleSide})}
 
-const floor=cube(104,.4,86,grass,0,-.24,10);floor.receiveShadow=true;
+// v78: Widen the free standing area ahead of the picnic zone. The stage
+// itself is unchanged. A smooth piecewise coordinate transform keeps all
+// players on the same server coordinates while shifting the rest area back.
+const AUDIENCE_REAR_SHIFT=26;
+function expandWorldZ(z){
+ if(z<=8)return z;
+ if(z>=14)return z+AUDIENCE_REAR_SHIFT;
+ const t=(z-8)/6;
+ return z+AUDIENCE_REAR_SHIFT*t*t*(3-2*t);
+}
+function contractWorldZ(z){
+ if(z<=8)return z;
+ if(z>=14+AUDIENCE_REAR_SHIFT)return z-AUDIENCE_REAR_SHIFT;
+ let lo=8,hi=14;
+ for(let i=0;i<24;i++){
+  const mid=(lo+hi)*.5;
+  if(expandWorldZ(mid)<z)lo=mid;else hi=mid;
+ }
+ return (lo+hi)*.5;
+}
+// Extend the ground without changing the stage or audience barrier.
+const floor=cube(104,.4,118,grass,0,-.24,25);floor.receiveShadow=true;
 const promenade=cube(112,.05,3.2,mat('#6a806d'),0,.02,1,false);
 promenade.receiveShadow=true;
-const lawn=cube(100,.06,36,mat('#4f765f'),0,.03,24,false);
+const lawn=cube(100,.06,79,mat('#4f765f'),0,.03,30.5,false);
 lawn.receiveShadow=true;
 const sandMat=mat('#dec391',.95),wetSandMat=mat('#c9ab74',.94);
 const beach=cube(110,.06,28,sandMat,0,.02,56,false);beach.receiveShadow=true;
@@ -693,13 +714,6 @@ for(let x of [-8,8]){cylinder(.12,.12,3.2,metal,x,4,-24);sphere(.18,mat('#fcf6d5
 for(let x=-34;x<=34;x+=3){cube(.11,1.45,.11,metal,x,.9,-13.2);if(x<34)cube(3,.13,.13,metal,x+1.5,1.48,-13.2)}
 // Walkway and picnic area
 cube(96,.05,2.2,mat('#5e705e'),0,.04,10,false);cube(102,.06,38,mat('#486c59'),0,.03,27,false);
-// v79: simple large rectangular audience / rock-play zone in front of the stage.
-const rockPlayZone=cube(69.5,.032,45.5,mat('#587765'),-13.5,.061,9.8,false);rockPlayZone.receiveShadow=true;
-const rockPlayBorderMat=mat('#7f9c7d',.82);
-cube(69.8,.02,.34,rockPlayBorderMat,-13.5,.082,-12.7,false);
-cube(69.8,.02,.34,rockPlayBorderMat,-13.5,.082,32.3,false);
-cube(.34,.02,45.2,rockPlayBorderMat,-48.2,.082,9.8,false);
-cube(.34,.02,45.2,rockPlayBorderMat,21.2,.082,9.8,false);
 const matPositions=mats.map(m=>({x:(m.x-600)*.058,z:((m.y-500)*.058)+8,c:m.c}));
 const picnicProps=[];
 matPositions.forEach((m,i)=>{
@@ -764,16 +778,45 @@ function umbrella(x,z,c){const pole=cylinder(.08,.08,2.2,metal,x,1.1,z);const to
 // 3D performance information board with real shared playlist rendered as HTML in the world.
 const boardElement=document.createElement('div');
 boardElement.className='festival-board';boardElement.innerHTML='<div class="board-brand">ONEseason · 공연 안내</div><div class="board-row"><small>● <span id="boardStatus">공연 대기 중</span></small><strong id="boardCurrent">현재 재생 중인 곡 없음</strong></div><div class="board-row"><small>다음 공연</small><strong id="boardNext">예약된 곡 없음</strong></div><div class="board-foot">현재 관객 <b id="boardVisitors">0</b>명</div>';
-const boardObject=new CSS3DObject(boardElement);boardObject.position.set(-24,4.6,13.5);boardObject.rotation.y=.25;boardObject.scale.set(.017,.017,.017);scene.add(boardObject);
-cube(8,.5,.8,wood,-24,.4,13.45);for(let x of [-27.4,-20.6])cube(.22,6,.22,metal,x,3,13.5);
+const boardObject=new CSS3DObject(boardElement);boardObject.position.set(-43,4.6,24);boardObject.rotation.y=.25;boardObject.scale.set(.017,.017,.017);scene.add(boardObject);
+cube(8,.5,.8,wood,-43,.4,23.95);for(let x of [-46.4,-39.6])cube(.22,6,.22,metal,x,3,24);
 // trees, lanterns, food stalls
-for(let x of [-34,34])for(let z of [-9,9,23]){cylinder(.45,.65,5,wood,x,2.5,z);sphere(2.7,mat('#477f63'),x,6,z);sphere(1.7,mat('#5a9a70'),x+1.7,5.7,z-1)}
-for(let x of [-27,27]){cube(5,2.8,3,mat('#bc7097'),x,1.6,15);cube(5.8,.35,4.1,mat('#f4c783'),x,3.2,15);let banner=new THREE.Mesh(new THREE.PlaneGeometry(4,1.1),label(x<0?'SNACKS':'MERCH',70,'#fbe9dc','#9e446f'));banner.position.set(x,2.2,16.56);scene.add(banner)}
+for(let x of [-46,48])for(let z of [-9,9,23]){cylinder(.45,.65,5,wood,x,2.5,z);sphere(2.7,mat('#477f63'),x,6,z);sphere(1.7,mat('#5a9a70'),x+1.7,5.7,z-1)}
+for(let x of [-46,47]){cube(5,2.8,3,mat('#bc7097'),x,1.6,15);cube(5.8,.35,4.1,mat('#f4c783'),x,3.2,15);let banner=new THREE.Mesh(new THREE.PlaneGeometry(4,1.1),label(x<0?'SNACKS':'MERCH',70,'#fbe9dc','#9e446f'));banner.position.set(x,2.2,16.56);scene.add(banner)}
 
-for(let x of [-44,44]){cube(5.5,2.9,3.4,mat('#6b8ac7'),x,1.65,22);cube(6.4,.35,4.5,mat('#f4c783'),x,3.28,22);let banner=new THREE.Mesh(new THREE.PlaneGeometry(4.5,1.1),label(x<0?'FOOD':'REST',68,'#fef7e6','#4c6588'));banner.position.set(x,2.2,23.86);scene.add(banner)}
-// v79: move the decorative light boundary to the right edge of the audience zone.
-for(let x=6;x<=48;x+=14){const poleL=cylinder(.09,.09,5.6,metal,x,4.7,7);const poleR=cylinder(.09,.09,5.6,metal,x+7,4.7,7);for(let i=0;i<7;i++){const bulb=sphere(.14,new THREE.MeshStandardMaterial({color:['#ffdb8a','#fca5b5','#a8ecff','#c7f591'][i%4],emissive:['#ffdb8a','#fca5b5','#a8ecff','#c7f591'][i%4],emissiveIntensity:1.0,roughness:.3}),x+i*1.16,5.45,7+Math.sin(i/6*Math.PI)*.35);bulb.castShadow=false}}
+for(let x of [-46,47]){cube(5.5,2.9,3.4,mat('#6b8ac7'),x,1.65,22);cube(6.4,.35,4.5,mat('#f4c783'),x,3.28,22);let banner=new THREE.Mesh(new THREE.PlaneGeometry(4.5,1.1),label(x<0?'FOOD':'REST',68,'#fef7e6','#4c6588'));banner.position.set(x,2.2,23.86);scene.add(banner)}
+// Boundary lights run lengthwise beside the picnic mats, along the red-marked side.
+// They stay a single line, not a fence crossing the open rock-play floor.
+const audienceLightX=24.6;
+const audienceLightBulbColors=['#ffdb8a','#fca5b5','#a8ecff','#c7f591'];
+for(let z=-11;z<=39;z+=5){
+ const post=cylinder(.085,.085,3.8,metal,audienceLightX,1.9,z);
+ post.castShadow=false;
+ for(let j=0;j<4;j++){
+  const bz=z+j*1.25;
+  const c=audienceLightBulbColors[(Math.round(z+11)/5+j)%4];
+  const bulb=sphere(.12,new THREE.MeshStandardMaterial({color:c,emissive:c,emissiveIntensity:.85,roughness:.4}),audienceLightX,3.8+Math.sin(j/3*Math.PI)*.17,bz);
+  bulb.castShadow=false;
+ }
+}
+
 const pier=cube(7.2,.14,20,mat('#8b6b53'),40,.18,77,false);pier.receiveShadow=true;for(let dz=69;dz<=85;dz+=4){for(let dx of [37.2,42.8])cube(.24,1.7,.24,wood,dx,.72,dz)}
+
+// Move picnic, signage, stalls, trees, benches, shoreline and sea back as
+// one environmental set. Keep the rebuilt static lawn and floor unchanged.
+// All objects are positioned via the same world-space mapping as avatars.
+const fixedGroundSet=new Set([floor,lawn,promenade]);
+for(const item of scene.children){
+ if(fixedGroundSet.has(item))continue;
+ if(item.position.z>8 && item.position.y<25){
+  item.position.z=expandWorldZ(item.position.z);
+ }
+}
+// Bench targets are server coordinates, not world coordinates: update only
+// their visible world positions after the corresponding meshes are shifted.
+for(const seat of benchSeats){
+ seat.wz=expandWorldZ(seat.wz);
+}
 
 const stageLights=[];for(let i=0;i<7;i++){let x=-17+i*5.6;let l=new THREE.SpotLight(['#ff64a5','#8c84ff','#c4fb79','#68e8f3'][i%4],110,65,.50,.65);l.position.set(x,9,-19);l.target.position.set(x*.65,0,0);scene.add(l,l.target);stageLights.push(l)}
 // Controlled, pooled lighting + flame and spark bursts. No per-frame geometry allocation.
@@ -883,7 +926,7 @@ function updateOcean(t){
  ocean.geometry.attributes.position.needsUpdate=true;
  ocean.geometry.computeVertexNormals();
  const active=!!state.music.id&&!state.music.paused;
- foamStrips.forEach((foam,i)=>{foam.position.z=56.2+i*1.45+Math.sin(sec*1.25+i*.8)*.28;foam.material.opacity=.16+Math.sin(sec*1.8+i)*.08+(active?.06:0)});
+ foamStrips.forEach((foam,i)=>{foam.position.z=expandWorldZ(56.2+i*1.45)+Math.sin(sec*1.25+i*.8)*.28;foam.material.opacity=.16+Math.sin(sec*1.8+i)*.08+(active?.06:0)});
 }
 function updateEnvironment(force=false){
  const now=new Date();
@@ -1370,7 +1413,7 @@ function updateBubbles(now){
   b.sprite.material.opacity=Math.min(1,(b.expires-now)/350);
  }
 }
-function toWorld(p){return {x:(p.x-600)*.058,z:(p.y-500)*.058+8}}
+function toWorld(p){return {x:(p.x-600)*.058,z:expandWorldZ((p.y-500)*.058+8)}}
 // Two-bone IK keeps the hands on exact, reachable targets for clap and drinking.
 // All targets are in the upper-torso coordinate system. The hand meshes are
 // at elbow-local (0,-.39,.018); elbow and forearm are .40 and .39 long.
@@ -1812,7 +1855,7 @@ gameTouchSurface.addEventListener('pointerup',e=>{
  if(dist>9)return;
  const bounds=renderer.domElement.getBoundingClientRect();pointer.set(((e.clientX-bounds.left)/bounds.width)*2-1,-((e.clientY-bounds.top)/bounds.height)*2+1);
  groundRay.setFromCamera(pointer,camera);if(!groundRay.ray.intersectPlane(groundPlane,hit))return;
- const x=Math.max(20,Math.min(1380,hit.x/.058+600)),y=Math.max(220,Math.min(1100,(hit.z-8)/.058+500));
+ const x=Math.max(20,Math.min(1380,hit.x/.058+600)),y=Math.max(220,Math.min(1100,(contractWorldZ(hit.z)-8)/.058+500));
  if(rockPlacementMode){
   const kind=rockPlacementMode;rockPlacementMode=null;refreshRockUI();
   post('rockplay',{id:state.id,command:'start',kind,x,y}).then(d=>applyRockPlay(d.event,d.rockCooldowns,d.rockRunningUntil)).catch(e=>toast(e.message));
@@ -1982,10 +2025,14 @@ function tick(t){
   if(state.moving){
    const n=Math.hypot(dx,dy);
    if(!slamMotion){
-    // v79: smooth out on-foot travel so click/keyboard movement no longer feels like teleporting.
-    speed=state.action==='run'
-      ?Math.max(1.0,frameDelta*0.17)
-      :Math.max(0.55,frameDelta*0.10);
+    // v80: speed in map units per second; frame-time independent.
+    // Prevent pointer destination changes from looking like instantaneous jumps.
+    const unitsPerSecond=state.action==='run'?170:105;
+    speed=unitsPerSecond*frameDelta/1000;
+    if(state.walkTarget){
+      const distance=Math.hypot(state.walkTarget.x-state.me.x,state.walkTarget.y-state.me.y);
+      speed=Math.min(speed,distance);
+    }
    }
    state.me.x=Math.max(20,Math.min(1380,state.me.x+dx/n*speed));
    state.me.y=Math.max(220,Math.min(1100,state.me.y+dy/n*speed));
