@@ -814,7 +814,7 @@ const hairFit={
  // Two distinct shape variations made from the licensed Quaternius assets.
  // bob2 uses compressed long-hair layers; short2 mirrors the parted cut.
  bob2:{width:2.11,height:1.53,depth:2.06,top:.925,forward:.015},
- short2:{width:1.78,height:1.08,depth:1.58,top:.900,forward:.010}
+ short2:{width:1.90,height:1.12,depth:1.70,top:.895,forward:.008}
 };
 const hairAssetSources={bob2:'long',short2:'short'};
 function getHairAsset(style){
@@ -905,11 +905,12 @@ function fitImportedHairToHead(hair,holder,style){
       targetRadius=1.025;
     }
    }
-   // Short side cut should read as a tighter, shorter haircut.
+   // Short side cut: aggressively push any embedded scalp-side vertices out
+   // to the head shell so the skull never pokes through holes in the mesh.
    if(style==='short2'){
-    const inShortShell = local.y>.12 && local.y<.98 && Math.abs(local.x)<.90 && Math.abs(local.z)<.82;
-    if(inShortShell && ellipsoidRadius>.84 && ellipsoidRadius<1.16){
-      targetRadius=1.02;
+    const inShortShell = local.y>-.08 && local.y<1.03 && Math.abs(local.x)<.97 && Math.abs(local.z)<.90;
+    if(inShortShell && ellipsoidRadius>.18 && ellipsoidRadius<1.10){
+      targetRadius=1.055;
     }
    }
    if(targetRadius!==null && ellipsoidRadius>0.0001){
