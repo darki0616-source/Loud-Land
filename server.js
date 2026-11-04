@@ -24,11 +24,11 @@ let pendingSlamImpact=null; // Last launch roster; exactly one shared first-arri
 const SLAM_COUNTDOWN_MS=5000,SLAM_COOLDOWN_MS=15000;
 // Circle pit and shoulder-to-shoulder figure-eight train: server-authoritative join roster.
 const ROCK_COUNTDOWN_MS=5000,ROCK_COOLDOWN_MS=15000;
-const ROCK_DURATIONS={circle:20000,train:36000,mosh:9000};
+const ROCK_DURATIONS={circle:20000,train:36000,mosh:9000,row:20000,toast:6000};
 let activeRock=null,rockRunningUntil=0;
 const moshDustEvents=new Set();
 // Each rock game has its own 15 second cooldown. The active performance remains exclusive.
-const rockCooldowns={circle:0,train:0,mosh:0};
+const rockCooldowns={circle:0,train:0,mosh:0,row:0,toast:0};
 function publicRock(){return activeRock?{id:activeRock.id,kind:activeRock.kind,x:activeRock.x,y:activeRock.y,endAt:activeRock.endAt,participants:[...activeRock.participants]}:null}
 function rockUpdate(){broadcast({type:'rockplay',event:publicRock(),rockCooldowns:{...rockCooldowns},rockRunningUntil,serverNow:Date.now()})}
 function rockMemberLeaves(id){if(activeRock?.participants.delete(id))rockUpdate()}
@@ -117,7 +117,15 @@ const musicState=()=>({music,queue:queue.map(trackRef),history:history.map(track
 function nextTrack(){if(skipVote)finishSkipVote(false,'track-changed');if(music.id){history.push({id:music.id,title:music.title,addedBy:music.changedBy});if(history.length>50)history.shift()}const entry=queue.shift();if(entry){music={id:entry.id,title:entry.title,startedAt:Date.now(),paused:false,position:0,changedBy:entry.addedBy,token:nextTrackToken++,duration:0}}else{music={id:'',title:'',startedAt:0,paused:true,position:0,changedBy:'',token:nextTrackToken++,duration:0}}broadcast({type:'music',...musicState()});scheduleSave()}
 // End-of-track fallback based on reported duration, independent of any one viewer.
 setInterval(()=>{if(music.id&&!music.paused&&music.duration>0&&(Date.now()-music.startedAt)/1000>music.duration+1)nextTrack()},1500).unref();
-const colors = ['#ff747d','#67d8d1','#f9c463','#a8a0ff','#90dd81','#ff9ce1','#72b5ff','#eeeeee'];
+const colors = ['#ff747d','#67d8d1','#f9c463','#a8a0ff','#90dd81','#ff9ce1','#72b5ff','#eeeeee','#262631','#373943','#a5e1f9','#f1d9a7'];
+const patterns=['solid','stripe','wide-stripe'];
+const sashes=['none','black','purple','red','green','black-check','red-check'];
+const hats=['none','black','white','blue','green','yellow'];
+function apparel(d,fallback={}){return {
+ pattern:patterns.includes(d.pattern)?d.pattern:(fallback.pattern||'solid'),
+ sash:sashes.includes(d.sash)?d.sash:(fallback.sash||'none'),
+ hat:hats.includes(d.hat)?d.hat:(fallback.hat||'none')
+}}
 const clean = (s,max=30)=>String(s||'').replace(/[\x00-\x1f<>]/g,'').trim().slice(0,max);
 const send=(res,obj)=>{res.write('data: '+JSON.stringify(obj)+'\n\n');};
 const broadcast=obj=>{for(const res of clients.values()) {try {send(res,obj);}catch{}}};
@@ -173,7 +181,7 @@ const server=http.createServer(async(req,res)=>{
           }
           if(existingId)sessionPlayers.delete(sessionKey);
         }
-        const id=crypto.randomUUID(),p={id,name:clean(d.name,18)||'ROCKER',color:colors.includes(d.color)?d.color:colors[0],gender:d.gender==='female'?'female':'male',x:clamp(190+Math.random()*880,20,1380),y:clamp(390+Math.random()*420,220,1100),facing:0,action:'idle',pose:'stand',seen:Date.now()};
+        const id=crypto.randomUUID(),p={id,name:clean(d.name,18)||'ROCKER',color:colors.includes(d.color)?d.color:colors[0],...apparel(d),gender:d.gender==='female'?'female':'male',x:clamp(190+Math.random()*880,20,1380),y:clamp(390+Math.random()*420,220,1100),facing:0,action:'idle',pose:'stand',seen:Date.now()};
         players.set(id,p);
         if(sessionKey){sessionPlayers.set(sessionKey,id);playerSessions.set(id,sessionKey)}
         if(pageId)pageOwners.set(id,pageId);
@@ -181,12 +189,12 @@ const server=http.createServer(async(req,res)=>{
       }
       const id=clean(d.id,80),p=players.get(id);if(!p)return json(res,401,{error:'Session expired. Please rejoin.'});p.seen=Date.now();
       if(url.pathname==='/api/heartbeat'){return json(res,200,{ok:true})}
-      if(url.pathname==='/api/profile'){p.name=clean(d.name,18)||'ROCKER';p.color=colors.includes(d.color)?d.color:p.color;p.gender=d.gender==='female'?'female':'male';broadcast({type:'profile',player:p});return json(res,200,{ok:true,player:p})}
+      if(url.pathname==='/api/profile'){p.name=clean(d.name,18)||'ROCKER';p.color=colors.includes(d.color)?d.color:p.color;p.gender=d.gender==='female'?'female':'male';Object.assign(p,apparel(d,p));broadcast({type:'profile',player:p});return json(res,200,{ok:true,player:p})}
       if(url.pathname==='/api/move'){
         const previousAction=p.action;
         p.x=clamp(d.x,20,1380);p.y=clamp(d.y,220,1100);p.facing=clamp(d.facing,-Math.PI,Math.PI);
         p.pose=['stand','sit','lie'].includes(d.pose)?d.pose:'stand';
-        p.action=['idle','walk','peace','jump','run','wave','clap','sit','lie','drink','snack','headbang','buriburi','groove','windmill','skanking','cheer','smoke','mosh-charge','slam-charge','slam-retreat','slam-celebrate','circle-run','train-run'].includes(d.action)?d.action:'idle';
+        p.action=['idle','walk','peace','jump','run','wave','clap','sit','lie','drink','snack','headbang','buriburi','groove','windmill','skanking','cheer','smoke','mosh-charge','slam-charge','slam-retreat','slam-celebrate','circle-run','train-run','row-paddle','toast-clink'].includes(d.action)?d.action:'idle';
         broadcast({type:'move',player:p});
         if(p.action==='cheer'&&previousAction!=='cheer')broadcast({type:'cheer',playerId:id});
         // Fire once, when the FIRST participant changes from charging to retreating.
@@ -223,10 +231,10 @@ const server=http.createServer(async(req,res)=>{
           const now=Date.now(),kind=String(d.kind||'');
           if(!Object.hasOwn(ROCK_DURATIONS,kind))return json(res,400,{error:'지원하지 않는 락놀이입니다.'});
           if(activeSlam||activeRock||now<rockRunningUntil)return json(res,409,{error:'다른 락놀이가 진행 중이에요.'});
-          if(now<rockCooldowns[kind])return json(res,429,{error:(kind==='circle'?'써클핏':kind==='mosh'?'모싱':'기차놀이')+' 쿨타임이 남아 있어요.'});
+          if(now<rockCooldowns[kind])return json(res,429,{error:(kind==='circle'?'써클핏':kind==='mosh'?'모싱':kind==='row'?'노젓기':kind==='toast'?'짠하기':'기차놀이')+' 쿨타임이 남아 있어요.'});
           const x=Number(d.x),y=Number(d.y);
           // Reserve room for a wide loop inside the walkable zone (not the stage or sea).
-          if(!Number.isFinite(x)||!Number.isFinite(y)||(kind==='mosh'?(x<20||x>1380||y<250||y>880):(x<235||x>1165||y<370||y>795)))return json(res,400,{error:kind==='mosh'?'페스티벌 바닥을 선택해 주세요.':'넓은 잔디 광장 안쪽의 바닥을 선택해 주세요.'});
+          if(!Number.isFinite(x)||!Number.isFinite(y)||(kind==='mosh'||kind==='toast'?(x<20||x>1380||y<250||y>880):(x<235||x>1165||y<370||y>795)))return json(res,400,{error:kind==='mosh'?'페스티벌 바닥을 선택해 주세요.':'넓은 잔디 광장 안쪽의 바닥을 선택해 주세요.'});
           const eventId=crypto.randomUUID(),duration=ROCK_DURATIONS[kind];
           const current={id:eventId,kind,x:Math.round(x),y:Math.round(y),endAt:now+ROCK_COUNTDOWN_MS,participants:new Set([id])};
           activeRock=current;
@@ -236,6 +244,7 @@ const server=http.createServer(async(req,res)=>{
             if(activeRock!==current)return;
             const participants=[...current.participants].filter(pid=>players.has(pid));
             broadcast({type:'rockplay-go',id:current.id,kind:current.kind,x:current.x,y:current.y,startAt:current.endAt,duration,participants,serverNow:Date.now()});
+            if(current.kind==='toast'){setTimeout(()=>broadcast({type:'toast-spark',eventId:current.id,x:current.x,y:current.y}),3000).unref()}
             activeRock=null;rockUpdate();
           },ROCK_COUNTDOWN_MS);
           rockUpdate();
