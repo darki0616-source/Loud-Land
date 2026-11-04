@@ -852,12 +852,54 @@ function makeScalpLiner(color){
  mesh.castShadow=true;mesh.receiveShadow=true;
  return mesh;
 }
+// Vertex-level fit to the actual chibi skull, not an arbitrary Y/Z offset.
+// The avatar head is an ellipsoid: center (0,.12,0), radii (.81,.7776,.7533).
+// Fitting only the crown and temple vertices preserves the original artist-made
+// hairstyle silhouette, fringe, buns and long tails below the hairline.
+function fitImportedHairToHead(hair,holder){
+ holder.updateMatrixWorld(true);
+ const worldToHolder=new THREE.Matrix4().copy(holder.matrixWorld).invert();
+ const source=new THREE.Vector3(),local=new THREE.Vector3(),headVector=new THREE.Vector3();
+ hair.traverse(mesh=>{
+  if(!mesh.isMesh||!mesh.geometry?.attributes?.position)return;
+  mesh.geometry=mesh.geometry.clone(); // A differently fitted mesh for each avatar.
+  const pos=mesh.geometry.attributes.position;
+  const toHolder=new THREE.Matrix4().multiplyMatrices(worldToHolder,mesh.matrixWorld);
+  const fromHolder=new THREE.Matrix4().copy(toHolder).invert();
+  for(let i=0;i<pos.count;i++){
+   source.fromBufferAttribute(pos,i);
+   local.copy(source).applyMatrix4(toHolder);
+   const x=local.x,y=local.y,z=local.z;
+   // Do not distort long hair hanging below cheeks or the ponytail/bun tips.
+   const crownWeight=THREE.MathUtils.smoothstep(y,.19,.58);
+   const sideWeight=THREE.MathUtils.smoothstep(Math.abs(x),.52,.75)*.70;
+   const weight=Math.max(crownWeight,sideWeight);
+   if(weight>.001){
+    headVector.set(x/.81,(y-.12)/.7776,z/.7533);
+    const radius=headVector.length();
+    // Hair should lie a little OUTSIDE the spherical scalp surface.
+    // Limit per-vertex correction to avoid making large artificial spikes.
+    if(radius<1.065 && radius>.28){
+     const lift=Math.min(.34,(1.065/radius-1)*.68)*weight;
+     local.x+=x*lift;
+     local.y+=(y-.12)*lift;
+     local.z+=z*lift;
+    }
+   }
+   source.copy(local).applyMatrix4(fromHolder);
+   pos.setXYZ(i,source.x,source.y,source.z);
+  }
+  pos.needsUpdate=true;
+  mesh.geometry.computeVertexNormals();
+  mesh.geometry.computeBoundingSphere();
+  mesh.geometry.computeBoundingBox();
+ });
+}
 function attachImportedHair(neck,style,color){
  const holder=new THREE.Group();neck.add(holder);
  if(stageForeground)holder.layers.set(1);
  const scalp=makeScalpLiner(color);holder.add(scalp);
  if(stageForeground)scalp.layers.set(1);
- // Keep the fitted scalp visible after loading: imported meshes are open on top.
  getHairAsset(style).then(({scene,size,center})=>{
   if(!neck.parent)return;
   const hair=scene.clone(true),fit=hairFit[style];
@@ -865,18 +907,18 @@ function attachImportedHair(neck,style,color){
   const sy=fit.height/Math.max(size.y,.001);
   const sz=fit.depth/Math.max(size.z,.001);
   hair.scale.set(sx,sy,sz);
-  // Single placement only: no nested Y/Z offset and no forced render overlay.
   hair.position.set(-center.x*sx,
    fit.top-(center.y+size.y/2)*sy,
    -center.z*sz+fit.forward);
-  hair.traverse(o=>{
-   if(!o.isMesh)return;
-   o.material=new THREE.MeshStandardMaterial({color,roughness:.86,metalness:0,side:THREE.DoubleSide});
-   o.castShadow=true;o.receiveShadow=true;
-   if(stageForeground)o.layers.set(1);
+  hair.traverse(mesh=>{
+   if(!mesh.isMesh)return;
+   mesh.material=new THREE.MeshStandardMaterial({color,roughness:.86,metalness:0,side:THREE.DoubleSide});
+   mesh.castShadow=true;mesh.receiveShadow=true;
+   if(stageForeground)mesh.layers.set(1);
   });
-  if(stageForeground)addForegroundLayer(hair);
   holder.add(hair);
+  fitImportedHairToHead(hair,holder);
+  if(stageForeground)addForegroundLayer(hair); // async children need explicit layer setup
  }).catch(err=>{console.warn('Hair asset load failed:',style,err)});
  return holder;
 }
