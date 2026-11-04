@@ -857,34 +857,44 @@ function makeScalpLiner(color){
 // Fitting only the crown and temple vertices preserves the original artist-made
 // hairstyle silhouette, fringe, buns and long tails below the hairline.
 function fitImportedHairToHead(hair,holder){
- holder.updateMatrixWorld(true);
- const worldToHolder=new THREE.Matrix4().copy(holder.matrixWorld).invert();
- const source=new THREE.Vector3(),local=new THREE.Vector3(),headVector=new THREE.Vector3();
+ // IMPORTANT: glTF hair arrives asynchronously. Its world matrices must be
+ // updated AFTER attaching it to the animated head, before vertex fitting.
+ // Earlier versions used stale mesh.matrixWorld and calculated in the WRONG
+ // coordinate system, making the intended scalp correction almost invisible.
+ holder.updateWorldMatrix(true,true);
+ hair.updateWorldMatrix(true,true);
+ const holderInverse=holder.matrixWorld.clone().invert();
+ const source=new THREE.Vector3(),local=new THREE.Vector3(),relative=new THREE.Vector3();
+ const headCenter=new THREE.Vector3(0,.12,0);
+ const headRadii=new THREE.Vector3(.81,.7776,.7533);
+ const targetRadius=1.085; // small visible gap from the actual face mesh
+ let correctedVertices=0;
  hair.traverse(mesh=>{
-  if(!mesh.isMesh||!mesh.geometry?.attributes?.position)return;
-  mesh.geometry=mesh.geometry.clone(); // A differently fitted mesh for each avatar.
+  if(!mesh.isMesh || !mesh.geometry?.attributes?.position)return;
+  // NEVER alter cached geometry shared by other avatars.
+  mesh.geometry=mesh.geometry.clone();
   const pos=mesh.geometry.attributes.position;
-  const toHolder=new THREE.Matrix4().multiplyMatrices(worldToHolder,mesh.matrixWorld);
-  const fromHolder=new THREE.Matrix4().copy(toHolder).invert();
+  const toHolder=holderInverse.clone().multiply(mesh.matrixWorld);
+  const fromHolder=toHolder.clone().invert();
   for(let i=0;i<pos.count;i++){
    source.fromBufferAttribute(pos,i);
    local.copy(source).applyMatrix4(toHolder);
-   const x=local.x,y=local.y,z=local.z;
-   // Do not distort long hair hanging below cheeks or the ponytail/bun tips.
-   const crownWeight=THREE.MathUtils.smoothstep(y,.19,.58);
-   const sideWeight=THREE.MathUtils.smoothstep(Math.abs(x),.52,.75)*.70;
-   const weight=Math.max(crownWeight,sideWeight);
-   if(weight>.001){
-    headVector.set(x/.81,(y-.12)/.7776,z/.7533);
-    const radius=headVector.length();
-    // Hair should lie a little OUTSIDE the spherical scalp surface.
-    // Limit per-vertex correction to avoid making large artificial spikes.
-    if(radius<1.065 && radius>.28){
-     const lift=Math.min(.34,(1.065/radius-1)*.68)*weight;
-     local.x+=x*lift;
-     local.y+=(y-.12)*lift;
-     local.z+=z*lift;
-    }
+   relative.copy(local).sub(headCenter);
+   const ellipsoidRadius=Math.sqrt(
+    (relative.x/headRadii.x)**2+
+    (relative.y/headRadii.y)**2+
+    (relative.z/headRadii.z)**2
+   );
+   // Only correct geometry inside the head in the crown/face region.
+   // Long hair hanging below the cheek, buns and outer tips stay unchanged.
+   if(local.y>-.28 && local.y<1.04 &&
+      Math.abs(local.x)<.96 && Math.abs(local.z)<.92 &&
+      ellipsoidRadius>0.06 && ellipsoidRadius<targetRadius){
+    // Fully project embedded vertices to the outer head surface (not a
+    // partial 0.68-strength adjustment as in v63). Retain their direction.
+    const projected=targetRadius/ellipsoidRadius;
+    local.copy(headCenter).addScaledVector(relative,projected);
+    correctedVertices++;
    }
    source.copy(local).applyMatrix4(fromHolder);
    pos.setXYZ(i,source.x,source.y,source.z);
@@ -894,6 +904,7 @@ function fitImportedHairToHead(hair,holder){
   mesh.geometry.computeBoundingSphere();
   mesh.geometry.computeBoundingBox();
  });
+ return correctedVertices;
 }
 function attachImportedHair(neck,style,color){
  const holder=new THREE.Group();neck.add(holder);
@@ -917,8 +928,11 @@ function attachImportedHair(neck,style,color){
    if(stageForeground)mesh.layers.set(1);
   });
   holder.add(hair);
-  fitImportedHairToHead(hair,holder);
+  // Transform hierarchy must be current before fitting model-space vertices.
+  holder.updateWorldMatrix(true,true);
+  const corrected=fitImportedHairToHead(hair,holder);
   if(stageForeground)addForegroundLayer(hair); // async children need explicit layer setup
+  if(corrected===0)console.warn('Hair fit adjusted no vertices:',style);
  }).catch(err=>{console.warn('Hair asset load failed:',style,err)});
  return holder;
 }
