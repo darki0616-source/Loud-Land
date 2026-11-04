@@ -377,7 +377,9 @@ function onRockPlayGo(event){
    rockMotion={id:event.id,kind:event.kind,x:event.x,y:event.y,startAt:event.startAt,duration:event.duration,index,count:participants.length};
    slamMotion=null;state.walkTarget=null;state.benchTarget=null;
    state.pose='stand';state.me.pose='stand';state.action=event.kind==='mosh'?'mosh-charge':event.kind==='circle'?'circle-run':event.kind==='row'?'row-paddle':event.kind==='toast'?'toast-clink':'train-run';state.me.action=state.action;
-   if(event.kind==='row'||event.kind==='toast'){rockMotion.gatherFrom={x:state.me.x,y:state.me.y};}
+   // Every moving group action now gathers smoothly, instead of teleporting
+   // to its first animation point on the first frame.
+   rockMotion.gatherFrom={x:state.me.x,y:state.me.y};
    if(event.kind==='mosh'){const start={x:state.me.x,y:state.me.y};rockMotion.moshStart=start;rockMotion.moshDestination={x:event.x+(index-participants.length/2)*7,y:event.y};rockMotion.dustA=false;rockMotion.dustB=false;}
    state.actionUntil=Infinity;updateActionButtons();sendMove();
  }
@@ -392,6 +394,32 @@ for(const [button,kind] of [[circleButton,'circle'],[trainButton,'train'],[moshB
    slamInfo.textContent=rockPlacementMode?`${kind==='circle'?'써클핏':kind==='mosh'?'모싱':kind==='row'?'노젓기':'기차놀이'} 장소를 터치하세요`:'락놀이 메뉴에서 선택해 주세요';
  };
 }
+// v83: Group action paths are authored in SERVER coordinates but the
+// audience extension nonlinearly stretches displayed Z. Convert offsets in
+// WORLD space instead of passing them through the stretch again.
+// Result: group-play paths keep their shape and speed in the rendered arena.
+function groupWorldPosition(base,point){
+ const origin=toWorld(base);
+ return {x:origin.x+(point.x-base.x)*.058,z:origin.z+(point.y-base.y)*.058};
+}
+function serverFromWorld(world){
+ return {x:world.x/.058+600,y:(contractWorldZ(world.z)-8)/.058+500};
+}
+function groupWorldPathPoint(m,point){
+ const world=groupWorldPosition({x:m.x,y:m.y},point);
+ return {...serverFromWorld(world),dx:point.dx,dy:point.dy};
+}
+function stepWorldToward(from,target,maxWorldStep){
+ const a=toWorld(from),b=toWorld(target);
+ const dx=b.x-a.x,dz=b.z-a.z,dist=Math.hypot(dx,dz);
+ if(dist<=maxWorldStep||dist<.0001)return {...target,done:true};
+ const step=Math.max(0,maxWorldStep)/dist;
+ return {...serverFromWorld({x:a.x+dx*step,z:a.z+dz*step}),done:false};
+}
+function blendGroupWorld(from,to,alpha){
+ const a=toWorld(from),b=toWorld(to),t=Math.min(1,Math.max(0,alpha));
+ return serverFromWorld({x:a.x+(b.x-a.x)*t,z:a.z+(b.z-a.z)*t});
+}
 function moshPathAt(m,elapsed){
  const fraction=Math.min(1,Math.max(0,elapsed/m.duration));
  const from=m.moshStart||{x:state.me.x,y:state.me.y};const dest=m.moshDestination||{x:m.x,y:m.y};
@@ -400,21 +428,23 @@ function moshPathAt(m,elapsed){
  if(fraction<.30){a=from;b=dest;t=fraction/.30}
  else if(fraction<.65){a=dest;b=half;t=(fraction-.30)/.35}
  else {a=half;b=dest;t=Math.min(1,(fraction-.65)/.31)}
- const u=t*t*(3-2*t);const x=a.x+(b.x-a.x)*u,y=a.y+(b.y-a.y)*u;
- return {x,y,dx:b.x-a.x,dy:b.y-a.y};
+ const u=t*t*(3-2*t);
+ const wa=toWorld(a),wb=toWorld(b);
+ const p=serverFromWorld({x:wa.x+(wb.x-wa.x)*u,z:wa.z+(wb.z-wa.z)*u});
+ return {...p,dx:wb.x-wa.x,dy:wb.z-wa.z};
 }
 function rockPathAt(m,elapsed){
  const elapsedFraction=Math.min(1,Math.max(0,elapsed/m.duration));
- if(m.kind==='row'){return {x:m.x+(m.index%2===0?-21:21),y:m.y+Math.floor(m.index/2)*28-22,dx:0,dy:1}}
- if(m.kind==='toast'){const angle=2*Math.PI*m.index/Math.max(1,m.count);return {x:m.x+Math.sin(angle)*22,y:m.y+Math.cos(angle)*22,dx:-Math.sin(angle),dy:-Math.cos(angle)}}
+ if(m.kind==='row'){return groupWorldPathPoint(m,{x:m.x+(m.index%2===0?-21:21),y:m.y+Math.floor(m.index/2)*28-22,dx:0,dy:1})}
+ if(m.kind==='toast'){const angle=2*Math.PI*m.index/Math.max(1,m.count);return groupWorldPathPoint(m,{x:m.x+Math.sin(angle)*22,y:m.y+Math.cos(angle)*22,dx:-Math.sin(angle),dy:-Math.cos(angle)})}
  if(m.kind==='circle'){
    const angle=elapsedFraction*Math.PI*10 + m.index*2*Math.PI/Math.max(1,m.count);
-   return {x:m.x+Math.cos(angle)*115,y:m.y+Math.sin(angle)*115,dx:-Math.sin(angle),dy:Math.cos(angle)};
+   return groupWorldPathPoint(m,{x:m.x+Math.cos(angle)*115,y:m.y+Math.sin(angle)*115,dx:-Math.sin(angle),dy:Math.cos(angle)});
  }
  // Horizontal figure-eight, exactly four complete circuits of the entire path.
  // Wider participant phase offsets reduce crowd overlap while preserving the same figure-eight route and four circuits.
  const phase=elapsedFraction*Math.PI*8 - m.index*.42;
- return {x:m.x+Math.sin(phase)*180,y:m.y+Math.sin(phase*2)*90,dx:180*Math.cos(phase),dy:180*Math.cos(phase*2)};
+ return groupWorldPathPoint(m,{x:m.x+Math.sin(phase)*180,y:m.y+Math.sin(phase*2)*90,dx:180*Math.cos(phase),dy:180*Math.cos(phase*2)});
 }
 // When circle pit or train completes, each participant moves to a distinct
 // outward point and keeps jumping with the 🤘 bubble until manual input.
@@ -1985,12 +2015,15 @@ function tick(t){
       state.action='slam-celebrate';state.me.action='slam-celebrate';sendMove();
      }
     }else{
-     dx=tx/n;dy=ty/n;
-     // Balanced slam approach: ~5 units/frame at 60 fps, between v11 (8) and v12 (~1.1).
-     // Normalize by frame time across refresh rates; retreat remains deliberately slow.
-     speed=m.phase==='charge'?Math.min(6.5,frameDelta*0.30):Math.min(1.1,Math.max(.1,frameDelta*0.024));
+     // Travel through the rendered world at a stable pace even when the
+     // map stretches a short section of server Y into a long 3D corridor.
+     const next=stepWorldToward(state.me,dest,(m.phase==='charge'?13:5.5)*frameDelta/1000);
+     state.me.x=Math.max(20,Math.min(1380,next.x));
+     state.me.y=Math.max(220,Math.min(1100,next.y));
+     state.me.facing=Math.atan2(tx,ty);
      state.action=m.phase==='charge'?'slam-charge':'slam-retreat';
      state.me.action=state.action;
+     state.moving=true;
     }
    }
   }
@@ -2009,9 +2042,9 @@ function tick(t){
      state.actionUntil=Infinity;sendMove();
     }else{
      // Jumping retreat at a gentle, frame-rate-independent pace.
-     const step=Math.min(distance,Math.max(.15,frameDelta*.075));
-     state.me.x=Math.max(20,Math.min(1380,state.me.x+tx/distance*step));
-     state.me.y=Math.max(220,Math.min(1100,state.me.y+ty/distance*step));
+     const next=stepWorldToward(state.me,target,5.5*frameDelta/1000);
+     state.me.x=Math.max(20,Math.min(1380,next.x));
+     state.me.y=Math.max(220,Math.min(1100,next.y));
      state.me.facing=Math.atan2(tx,ty);
      state.action='slam-retreat';state.me.action='slam-retreat';
      state.actionUntil=Infinity;
@@ -2023,10 +2056,11 @@ function tick(t){
    }else{
     const p=m.kind==='mosh'?moshPathAt(m,elapsed):rockPathAt(m,elapsed);
     // Gather into rows/circle with a short smooth approach, then perform in place.
-    const gather=(m.kind==='row'||m.kind==='toast')?Math.min(1,elapsed/1400):1;
+    const gather=Math.min(1,elapsed/1400);
     const from=m.gatherFrom||p;
-    state.me.x=Math.max(20,Math.min(1380,from.x+(p.x-from.x)*gather));
-    state.me.y=Math.max(220,Math.min(1100,from.y+(p.y-from.y)*gather));
+    const smooth=blendGroupWorld(from,p,gather);
+    state.me.x=Math.max(20,Math.min(1380,smooth.x));
+    state.me.y=Math.max(220,Math.min(1100,smooth.y));
     state.me.facing=m.kind==='toast'?Math.atan2(m.x-p.x,m.y-p.y):m.kind==='row'?0:Math.atan2(p.dx,p.dy);
     state.me.action=m.kind==='mosh'?'mosh-charge':m.kind==='circle'?'circle-run':m.kind==='row'?'row-paddle':m.kind==='toast'?'toast-clink':'train-run';state.action=state.me.action;
     if(m.kind==='mosh'){if(elapsed>=m.duration*.30&&!m.dustA){m.dustA=true;post('rockplay',{id:state.id,command:'impact',eventId:m.id,phase:1,x:state.me.x,y:state.me.y}).catch(()=>{})}if(elapsed>=m.duration*.96&&!m.dustB){m.dustB=true;post('rockplay',{id:state.id,command:'impact',eventId:m.id,phase:2,x:state.me.x,y:state.me.y}).catch(()=>{})}}
