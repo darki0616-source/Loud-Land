@@ -376,3 +376,25 @@ html,body{height:100%;height:100dvh;overflow:hidden!important}
  .gamewrap .hud-audio-floating{top:calc(env(safe-area-inset-top) + 47px);left:12px;min-height:30px;padding:6px 9px;font-size:10px}
  .controlbar .audio-muted-notice{bottom:calc(100% + 6px);font-size:11px;padding:7px 11px}
 }
+
+
+/* v77: Original ONEseason logo stays exactly in its pre-audio HUD position.
+   The sound control is a separate floating control BELOW the entire HUD box,
+   rather than nested within the logo or aligned in the logo row. */
+.gamewrap .hudbar>.hudlogo{
+  flex:0 0 auto;
+  margin:0;
+  padding:0;
+}
+.gamewrap .hud-audio-floating{
+  top:calc(env(safe-area-inset-top) + 92px) !important;
+  left:20px;
+  z-index:13;
+  display:block;
+}
+@media(max-width:700px){
+  .gamewrap .hud-audio-floating{
+    top:calc(env(safe-area-inset-top) + 80px) !important;
+    left:12px;
+  }
+}
