@@ -121,10 +121,14 @@ const colors = ['#ff747d','#67d8d1','#f9c463','#a8a0ff','#90dd81','#ff9ce1','#72
 const patterns=['solid','stripe','wide-stripe'];
 const sashes=['none','black','purple','red','green','black-check','red-check'];
 const hats=['none'];
+const hairStyles=['short','bob','long','wavy','ponytail','mohawk','spiky','buzz','curly'];
+const hairColors=['#25222a','#4b3932','#85533e','#edc46b','#d34c53','#4d86d5','#9965c9','#e89bc2'];
 function apparel(d,fallback={}){return {
  pattern:patterns.includes(d.pattern)?d.pattern:(fallback.pattern||'solid'),
  sash:sashes.includes(d.sash)?d.sash:(fallback.sash||'none'),
- hat:hats.includes(d.hat)?d.hat:(fallback.hat||'none')
+ hat:'none',
+ hairStyle:hairStyles.includes(d.hairStyle)?d.hairStyle:(fallback.hairStyle|| (d.gender==='female'?'bob':'short')),
+ hairColor:hairColors.includes(d.hairColor)?d.hairColor:(fallback.hairColor||'#4b3932')
 }}
 const clean = (s,max=30)=>String(s||'').replace(/[\x00-\x1f<>]/g,'').trim().slice(0,max);
 const send=(res,obj)=>{res.write('data: '+JSON.stringify(obj)+'\n\n');};
