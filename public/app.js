@@ -959,8 +959,15 @@ function animateAvatar(a,p,t){
   height=Math.abs(Math.sin(sec*pace))*(fast?.12:.048);
   if(act==='mosh-charge'){
     // Alternating wide arm swings, as if punching through the air (no actual collision).
-    set('leftShoulder',-.9+Math.sin(sec*10)*.95,0,-.42);set('rightShoulder',-.9-Math.sin(sec*10)*.95,0,.42);
-    set('leftElbow',-.65);set('rightElbow',-.65);set('upper',-.20,Math.sin(sec*9)*.13);height=Math.abs(Math.sin(sec*11))*.13;
+    // Larger alternating swings: arms sweep across the chest and far back,
+    // with torso rotation for a much clearer moshing silhouette.
+    const smash=Math.sin(sec*12.5);
+    set('leftShoulder',-1.00+smash*1.23,Math.sin(sec*12.5+.5)*.30,-.64);
+    set('rightShoulder',-1.00-smash*1.23,-Math.sin(sec*12.5+.5)*.30,.64);
+    set('leftElbow',-.38-.28*Math.max(0,smash));
+    set('rightElbow',-.38-.28*Math.max(0,-smash));
+    set('upper',-.24,Math.sin(sec*12.5)*.23,Math.sin(sec*12.5)*.045);
+    height=Math.abs(Math.sin(sec*12.5))*.18;
    }
   if(act==='train-run'){
     // Hands reach forward toward the next person's shoulders, making a line of linked runners.
@@ -1056,7 +1063,7 @@ function animateAvatar(a,p,t){
   const frontL=step===2?pulse:0;
   const backR=step===3?pulse:0;
   // Slightly higher, compact hop on every beat. Returns to floor between counts.
-  height=-.028+.205*pulse+((step===0||step===2)?.018:0)*pulse;
+  height=-.028+.295*pulse+((step===0||step===2)?.022:0)*pulse;
   // Keep torso leaning FORWARD (avatar front is +Z).
   set('upper',.27+.027*pulse,0,.024*Math.sin(beat*Math.PI*.5));
   set('neck',-.055);
@@ -1452,7 +1459,7 @@ function tick(t){
    }
   }
   state.moving=!!(dx||dy);
-  if(state.moving && (state.action==='buriburi'||state.action==='groove'||state.action==='windmill'||state.action==='skanking'||state.action==='cheer'||state.action==='smoke') && !slamMotion && !rockMotion){
+  if(state.moving && (state.action==='buriburi'||state.action==='groove'||state.action==='windmill'||state.action==='cheer'||state.action==='smoke') && !slamMotion && !rockMotion){
    state.action='idle';state.me.action='walk';state.actionUntil=0;updateActionButtons();
   }
   if(state.moving){
@@ -1464,6 +1471,8 @@ function tick(t){
    if(state.pose!=='stand'){state.pose='stand';state.me.pose='stand';updateActionButtons()}
    if(['sit','lie'].includes(state.action)){state.action='idle';state.me.action='idle'}
    if(!slamMotion&&!rockMotion&&(state.action==='idle'||state.action==='walk'))state.me.action='walk';
+   // Skanking remains the authoritative animation while travelling on foot.
+   if(!slamMotion&&!rockMotion&&state.action==='skanking')state.me.action='skanking';
   }else if(!slamMotion&&!rockMotion&&state.me.action==='walk')state.me.action='idle';
   if(!slamMotion&&!rockMotion&&t>state.actionUntil&&state.action!=='idle'&&state.action!=='run'){
    state.action='idle';state.me.action=state.moving?'walk':'idle';
