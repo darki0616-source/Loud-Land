@@ -604,6 +604,64 @@ function dune(x,z,sx,sz,sy=.8){const d=new THREE.Mesh(new THREE.SphereGeometry(1
 // Main stage faces the audience: far north = negative z.
 cube(45,1.7,14,dark,0,1,-25);cube(47,1.2,1,metal,0,2.05,-17.3);cube(46,1.5,1,dark,0,13.8,-31);cube(1,13.8,1,metal,-22,7.8,-31);cube(1,13.8,1,metal,22,7.8,-31);cube(46,11.8,.6,dark,0,7.2,-31);
 const sign=new THREE.Mesh(new THREE.PlaneGeometry(24,1.6),label('ONEseason',78,'#dcfd8b','#18172e'));sign.position.set(0,13.9,-29.85);scene.add(sign);
+
+// Two full-height portrait poster bays just outside the left/right stage pillars.
+// Replace public/assets/posters/left.jpg and right.jpg to publish posters to everyone.
+// A missing image retains its local illustrated placeholder, never a broken plane.
+function makePosterFallback(side){
+ const canvas=document.createElement('canvas');canvas.width=512;canvas.height=1024;
+ const ctx=canvas.getContext('2d');
+ const g=ctx.createLinearGradient(0,0,512,1024);
+ if(side==='left'){g.addColorStop(0,'#342760');g.addColorStop(1,'#151e35')}
+ else{g.addColorStop(0,'#173d4b');g.addColorStop(1,'#1a1a39')}
+ ctx.fillStyle=g;ctx.fillRect(0,0,512,1024);
+ ctx.strokeStyle='rgba(235,255,171,.38)';ctx.lineWidth=6;ctx.strokeRect(27,27,458,970);
+ ctx.textAlign='center';ctx.fillStyle='#e6fbad';
+ ctx.font='bold 52px Arial';ctx.fillText('ONEseason',256,355);
+ ctx.fillStyle='#ffffff';ctx.font='bold 70px Arial';ctx.fillText('POSTER',256,480);
+ ctx.font='bold 31px Arial';ctx.fillText(side==='left'?'LEFT STAGE':'RIGHT STAGE',256,550);
+ ctx.fillStyle='#c7d0df';ctx.font='26px Arial';ctx.fillText('Replace poster image',256,715);
+ const t=new THREE.CanvasTexture(canvas);t.colorSpace=THREE.SRGBColorSpace;return t;
+}
+function createStagePoster(side){
+ const x=side==='left'?-27.4:27.4;
+ const width=6.15,height=13.1,z=-26.7;
+ const group=new THREE.Group();group.position.set(x,7.25,z);scene.add(group);
+ const body=new THREE.Mesh(new THREE.BoxGeometry(7.05,14.25,.45),mat('#141a27',.8));group.add(body);
+ for(const dx of [-3.4,3.4]){
+  const rail=new THREE.Mesh(new THREE.BoxGeometry(.14,14.15,.18),mat('#9aabbd',.48));
+  rail.position.set(dx,0,.34);group.add(rail);
+ }
+ for(const dy of [-6.95,6.95]){
+  const rail=new THREE.Mesh(new THREE.BoxGeometry(7.0,.14,.18),mat('#9aabbd',.48));
+  rail.position.set(0,dy,.34);group.add(rail);
+ }
+ const fallback=makePosterFallback(side);
+ const material=new THREE.MeshBasicMaterial({map:fallback,side:THREE.DoubleSide,toneMapped:false});
+ const plane=new THREE.Mesh(new THREE.PlaneGeometry(width,height),material);
+ plane.position.z=.256;group.add(plane);
+ const texturePath='/assets/posters/'+side+'.jpg';
+ new THREE.TextureLoader().load(texturePath,texture=>{
+  texture.colorSpace=THREE.SRGBColorSpace;
+  texture.wrapS=THREE.ClampToEdgeWrapping;texture.wrapT=THREE.ClampToEdgeWrapping;
+  // Cover the entire portrait panel with a centered crop, no distortion.
+  const targetAspect=width/height;
+  const image=texture.image;
+  const imageAspect=(image?.naturalWidth||image?.width||1)/(image?.naturalHeight||image?.height||1);
+  if(imageAspect>targetAspect){
+   texture.repeat.set(targetAspect/imageAspect,1);
+   texture.offset.set((1-texture.repeat.x)/2,0);
+  }else{
+   texture.repeat.set(1,imageAspect/targetAspect);
+   texture.offset.set(0,(1-texture.repeat.y)/2);
+  }
+  texture.needsUpdate=true;
+  material.map=texture;material.needsUpdate=true;fallback.dispose();
+ },undefined,()=>{/* No uploaded poster yet: keep the clear fallback board. */});
+}
+createStagePoster('left');
+createStagePoster('right');
+
 for(let x=-22;x<=22;x+=2.2){cube(.13,8.6,.13,metal,x,6.2,-30.1,false);let bulb=sphere(.19,mat(['#ff5b98','#bc9dff','#deff8c','#68e6f3'][Math.round((x+22)/2.2)%4],.2,'#ffffff'),x,13.15,-28.9);bulb.material.emissiveIntensity=1.2}
 for(let s of [-1,1]){for(let j=0;j<2;j++){let x=s*18.5,z=-25+j*3.4;cube(3.8,4.3,2.7,dark,x,4.4,z);for(let dy of [3.2,5.5]){let o=cylinder(1,1,.16,metal,x,dy,z+1.44);o.rotation.x=Math.PI/2;let p=cylinder(.72,.72,.17,mat('#0d0e1b'),x,dy,z+1.58);p.rotation.x=Math.PI/2}}}
 // drum kit + guitars on stage
