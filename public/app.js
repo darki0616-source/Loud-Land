@@ -802,6 +802,26 @@ function makeAvatar(p){
  for(let i=0;i<pa.count;i++){const y=pa.getY(i),blend=THREE.MathUtils.smoothstep(y,-.29,-.21);let c=bottom.clone().lerp(topColor,blend);colors.push(c.r,c.g,c.b)}
  bodyGeo.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
  const bodyMat=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.88});
+ if(p.pattern==='stripe'||p.pattern==='wide-stripe'){
+  // Locally calculated ink-like bands on the existing torso surface: no extra 3D parts.
+  const spacing=p.pattern==='stripe'?.155:.31;
+  const width=p.pattern==='stripe'?.046:.105;
+  bodyMat.onBeforeCompile=shader=>{
+   shader.vertexShader=shader.vertexShader.replace('#include <common>',
+     '#include <common>\nvarying vec3 vShirtPosition;');
+   shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>',
+     '#include <begin_vertex>\nvShirtPosition = position;');
+   shader.fragmentShader=shader.fragmentShader.replace('#include <common>',
+     '#include <common>\nvarying vec3 vShirtPosition;');
+   shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',
+     '#include <color_fragment>\n'+
+     'float stripeCoord = mod(vShirtPosition.x + 0.45, '+spacing.toFixed(4)+');\n'+
+     'float stripeEdge = fwidth(stripeCoord) * 0.65;\n'+
+     'float stripeInk = 1.0 - smoothstep('+width.toFixed(4)+' - stripeEdge, '+width.toFixed(4)+' + stripeEdge, stripeCoord);\n'+
+     'float shirtCoverage = smoothstep(-0.18, -0.08, vShirtPosition.y);\n'+
+     'diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.96, 0.97, 0.95), stripeInk * shirtCoverage * 0.93);');
+  };
+ }
  parts.torso=child(upper,bodyGeo,bodyMat,[0,.33,0],[.94,1.12,.88]);
  // Head is about as wide as the torso is tall; neck can nod separately.
  const neck=new THREE.Group();neck.position.set(0,1.12,0);upper.add(neck);parts.neck=neck;
@@ -837,13 +857,8 @@ function makeAvatar(p){
    for(const side of [-1,1])child(neck,new THREE.SphereGeometry(.22,12,10),hair,[side*.66,.22,-.10],[.72,1.03,.78]);
  }
  // Head accessory removed on request. Keep profile 'hat' key only for backward compatibility; no visual item is rendered.
- if(p.pattern==='stripe'||p.pattern==='wide-stripe'){
-  const stripeMat=mat('#f7f8f2',.83),spacing=p.pattern==='stripe'?.16:.31,stripWidth=p.pattern==='stripe'?.045:.105;
-  for(let x=-.34;x<=.35;x+=spacing){
-   // Raised forward strips read clearly on the chibi torso without affecting the base shirt.
-   child(upper,new THREE.BoxGeometry(stripWidth,.51,.035),stripeMat,[x,.41,.425],[1,1,1]);
-  }
- }
+ // The clothing stripes are painted on the torso shader, not separate raised meshes.
+
  if(p.sash&&p.sash!=='none'){
   const sashColors={black:'#20212c',purple:'#793ac8',red:'#d42c42',green:'#2a9a59','black-check':'#20212c','red-check':'#c72b35'};
   // Restore the previous size/position, then rotate the sash 90 degrees as requested.
@@ -1025,7 +1040,7 @@ function animateAvatar(a,p,t){
  const q=(p.id===state.id&&state.me)?state.me:p,wp=toWorld(q),P=a.parts;
  a.root.position.x+=(wp.x-a.root.position.x)*.28;
  a.root.position.z+=(wp.z-a.root.position.z)*.28;
- if(P.sash)P.sash.rotation.z=Math.sin(t*.0028)*.055;
+ if(P.sash)P.sash.rotation.z=Math.PI/2+Math.sin(t*.0028)*.055;
  P.toastCup.visible=q.action==='toast-clink';
  const act=q.action||'idle',basePose=q.pose||((act==='sit'||act==='lie')?act:'stand'),sec=t*.001,pose={};
  const keys=['upper','neck','leftShoulder','rightShoulder','leftElbow','rightElbow','leftHip','rightHip','leftKnee','rightKnee'];
