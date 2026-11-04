@@ -182,6 +182,8 @@ $('playLink').onclick=()=>musicCommand('enqueue',{url:$('videoUrl').value});$('s
   hud.setAttribute('aria-label',state.audioEnabled?'내 소리 끄기':'내 소리 켜기');
   hud.title=state.audioEnabled?'이 기기에서 음악 소리 끄기':'이 기기에서 음악 소리 켜기';
  }
+ const mutedNotice=$('audioMutedNotice');
+ if(mutedNotice)mutedNotice.hidden=Boolean(state.audioEnabled);
 }
 function setPersonalAudio(enabled){state.audioEnabled=Boolean(enabled);try{if(state.ytReady){if(enabled){state.yt.unMute();state.yt.setVolume(75)}else state.yt.mute()}}catch(e){}syncVideo(true);updatePersonalAudioButton()}
 function togglePersonalAudio(){
