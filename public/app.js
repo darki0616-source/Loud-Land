@@ -2024,18 +2024,34 @@ function tick(t){
   }
   if(state.moving){
    const n=Math.hypot(dx,dy);
-   if(!slamMotion){
-    // v80: speed in map units per second; frame-time independent.
-    // Prevent pointer destination changes from looking like instantaneous jumps.
-    const unitsPerSecond=state.action==='run'?170:105;
-    speed=unitsPerSecond*frameDelta/1000;
+   if(!slamMotion && !rockMotion){
+    // v81: FIX movement through the stretched audience area.
+    // v78 expanded 6 metres of map depth to 32 world metres. Moving by
+    // fixed SERVER coordinates made the avatar visibly accelerate inside
+    // that area. Walk in rendered 3D WORLD space, then invert the mapping.
+    const at=toWorld(state.me);
+    let worldDx=dx,worldDz=dy;
     if(state.walkTarget){
-      const distance=Math.hypot(state.walkTarget.x-state.me.x,state.walkTarget.y-state.me.y);
-      speed=Math.min(speed,distance);
+      const goal=toWorld(state.walkTarget);
+      worldDx=goal.x-at.x;
+      worldDz=goal.z-at.z;
     }
+    const worldDist=Math.hypot(worldDx,worldDz);
+    // Same measured speed on every part of the map: 6.09 world units/s
+    // for walking, 9.86 for running. A click never overshoots its target.
+    const worldSpeed=(state.action==='run'?9.86:6.09)*frameDelta/1000;
+    const worldStep=Math.min(worldSpeed,worldDist);
+    if(worldDist>0.00001){
+      const nextX=at.x+worldDx/worldDist*worldStep;
+      const nextZ=at.z+worldDz/worldDist*worldStep;
+      state.me.x=Math.max(20,Math.min(1380,nextX/.058+600));
+      state.me.y=Math.max(220,Math.min(1100,(contractWorldZ(nextZ)-8)/.058+500));
+    }
+   }else{
+    // Group rock-play and slam motion use their own intentional pace.
+    state.me.x=Math.max(20,Math.min(1380,state.me.x+dx/n*speed));
+    state.me.y=Math.max(220,Math.min(1100,state.me.y+dy/n*speed));
    }
-   state.me.x=Math.max(20,Math.min(1380,state.me.x+dx/n*speed));
-   state.me.y=Math.max(220,Math.min(1100,state.me.y+dy/n*speed));
    if(state.action!=='skanking'||slamMotion||rockMotion)state.me.facing=Math.atan2(dx,dy);
    if(state.pose!=='stand'){state.pose='stand';state.me.pose='stand';updateActionButtons()}
    if(['sit','lie'].includes(state.action)){state.action='idle';state.me.action='idle'}
