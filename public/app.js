@@ -9,6 +9,19 @@ let rockPlacementMode=null,rockPlay=null,rockCooldowns={circle:0,train:0,mosh:0}
 let chosenColor=palette[0],chosenGender='male',toastTimer;const avatars=new Map();const activeBubbles=new Map();
 // Keep a visitor's own appearance on this browser only (not by shared public IP).
 const PROFILE_STORAGE_KEY='oneseason-profile-v1';
+// Per-tab identity survives refreshes and reconnects without linking people by IP.
+const SESSION_STORAGE_KEY='oneseason-avatar-session-v1';
+const pageId=crypto.randomUUID();
+function getSessionKey(){
+ try{
+  let key=sessionStorage.getItem(SESSION_STORAGE_KEY);
+  if(!key||!/^[a-zA-Z0-9_-]{20,100}$/.test(key)){
+   key=crypto.randomUUID();sessionStorage.setItem(SESSION_STORAGE_KEY,key);
+  }
+  return key;
+ }catch{return pageId}
+}
+const sessionKey=getSessionKey();
 function readSavedProfile(){try{const p=JSON.parse(localStorage.getItem(PROFILE_STORAGE_KEY)||'null');return p&&typeof p==='object'?p:null}catch{return null}}
 function saveProfile(p){try{localStorage.setItem(PROFILE_STORAGE_KEY,JSON.stringify({name:String(p.name||'ROCKER').slice(0,18),color:p.color,gender:p.gender}))}catch{}}
 function selectGender(g){chosenGender=g==='female'?'female':'male';document.querySelectorAll('[data-gender]').forEach(b=>b.classList.toggle('selected',b.dataset.gender===chosenGender))}
@@ -33,7 +46,7 @@ async function restoreSession(){
  if(rejoining)return rejoining;
  rejoining=(async()=>{
   try{
-   const r=await fetch('/api/join',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:state.me?.name||$('nick').value||'ROCKER',color:state.me?.color||chosenColor,gender:state.me?.gender||chosenGender})});
+   const r=await fetch('/api/join',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sessionKey,pageId,name:state.me?.name||$('nick').value||'ROCKER',color:state.me?.color||chosenColor,gender:state.me?.gender||chosenGender})});
    if(!r.ok)throw Error('재접속 실패');const d=await r.json();
    const old=state.me;state.id=d.id;state.me=d.players.find(x=>x.id===d.id);
    if(old){state.me.x=old.x;state.me.y=old.y;state.me.facing=old.facing;state.me.action=old.action;state.me.pose=old.pose;}
@@ -50,7 +63,7 @@ window.addEventListener('online',()=>{if(state.id&&!manualExit)restoreConnection
 function restoreConnection(){if(!state.id)return;listen();fetch('/api/heartbeat',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id:state.id})}).then(r=>{if(r.status===401)return restoreSession()}).catch(()=>{})}
 
 function applyMusic(m,serverNow,queue,history){state.music=m;if(Array.isArray(queue))state.queue=queue;if(Array.isArray(history))state.history=history;updateFestivalBoard();renderQueue();if(serverNow)state.serverDelta=serverNow-Date.now();$('songTitle').textContent=m.id?m.title||'유튜브 영상':'등록된 음악 없음';$('songCredit').textContent=m.id?`DJ ${m.changedBy||'알 수 없음'} · ${m.paused?'일시정지':'재생 중'}`:'첫 번째 DJ가 되어보세요';$('screenPlaceholder').style.display=m.id?'none':'flex';updateSharedMusicButtons();syncVideo(true)}
-function updateSharedMusicButtons(){const m=state.music||{};const status=$('sharedMusicStatus');if(status)status.textContent=!m.id?'음악 대기 중':'재생 중 · '+(m.title||'유튜브 음악');const btn=$('sharedSkip');if(btn){btn.disabled=!m.id||!!state.skipVote||Date.now()<state.skipVoteCooldownUntil;btn.textContent=state.skipVote?'🗳️ 투표 진행 중':'⏭ 다음 곡 투표'}const side=$('skipMusic');if(side)side.disabled=btn?.disabled??true}
+function updateSharedMusicButtons(){const m=state.music||{};const status=$('sharedMusicStatus');if(status)status.textContent=!m.id?'음악 대기 중':'재생 중 · '+(m.title||'유튜브 음악');const btn=$('sharedSkip');if(btn){btn.disabled=!m.id;btn.textContent='⏭ 다음 곡 바로 재생'}const side=$('skipMusic');if(side)side.disabled=btn?.disabled??true}
 
 function updateFestivalBoard(){let m=state.music||{};const title=document.getElementById('boardCurrent');const next=document.getElementById('boardNext');const status=document.getElementById('boardStatus');if(title)title.textContent=m.title||'현재 재생 중인 곡 없음';if(next)next.textContent=state.queue?.length?state.queue[0].title:'예약된 곡 없음';if(status)status.textContent=m.id?(m.paused?'일시정지':'공연 중'):'공연 대기 중';}
 function renderQueue(){
@@ -72,7 +85,7 @@ function reportDuration(){if(!state.id||!state.ytReady||!state.music.id)return;c
 function syncVideo(force=false){let m=state.music;if(!m.id||!state.ytReady)return;let sec=m.paused?m.position:Math.max(0,(Date.now()+state.serverDelta-m.startedAt)/1000);try{if(state.lastTrack!==String(m.token)+':'+m.id){state.lastTrack=String(m.token)+':'+m.id;reportedToken=0;if(state.audioEnabled&&!m.paused){state.yt.unMute();state.yt.loadVideoById({videoId:m.id,startSeconds:sec})}else{state.yt.mute();state.yt.loadVideoById({videoId:m.id,startSeconds:sec})}return}if(force||Math.abs(state.yt.getCurrentTime()-sec)>3)state.yt.seekTo(sec,true);if(state.audioEnabled)state.yt.unMute();else state.yt.mute();if(m.paused)state.yt.pauseVideo();else if(state.yt.getPlayerState()!==1)state.yt.playVideo()}catch(e){console.warn(e)}}
 window.onYouTubeIframeAPIReady=()=>{state.yt=new YT.Player('youtubePlayer',{height:'100%',width:'100%',playerVars:{playsinline:1,controls:1,rel:0,origin:location.origin},events:{onReady:()=>{state.ytReady=true;syncVideo(true)},onStateChange:e=>{if(e.data===YT.PlayerState.PLAYING||e.data===YT.PlayerState.CUED)reportDuration();if(e.data===YT.PlayerState.ENDED&&state.id&&state.music.id)post('music',{id:state.id,command:'ended',token:state.music.token}).catch(()=>{})},onError:()=>toast('영상이 임베드 재생을 허용하지 않습니다')}})};
 async function musicCommand(command,extra={}){if(!state.id)return toast('먼저 입장해주세요');try{let d=await post('music',{id:state.id,command,...extra});applyMusic(d.music,d.serverNow,d.queue,d.history);toast('공유 음악이 업데이트되었습니다')}catch(e){toast(e.message)}}
-$('playLink').onclick=()=>musicCommand('enqueue',{url:$('videoUrl').value});$('skipMusic').onclick=()=>musicCommand('vote-start');$('sharedSkip').onclick=()=>musicCommand('vote-start');$('skipVoteYes').onclick=()=>castSkipVote('yes');$('skipVoteNo').onclick=()=>castSkipVote('no');function updatePersonalAudioButton(){const btn=$('enableAudio');if(!btn)return;btn.textContent=state.audioEnabled?'🔇 내 소리 끄기':'🔊 내 소리 켜기';btn.setAttribute('aria-pressed',String(state.audioEnabled));btn.title=state.audioEnabled?'내 기기에서만 소리를 끕니다':'내 기기에서만 소리를 켭니다'}
+$('playLink').onclick=()=>musicCommand('enqueue',{url:$('videoUrl').value});$('skipMusic').onclick=()=>musicCommand('skip');$('sharedSkip').onclick=()=>musicCommand('skip');$('skipVoteYes').onclick=()=>castSkipVote('yes');$('skipVoteNo').onclick=()=>castSkipVote('no');function updatePersonalAudioButton(){const btn=$('enableAudio');if(!btn)return;btn.textContent=state.audioEnabled?'🔇 내 소리 끄기':'🔊 내 소리 켜기';btn.setAttribute('aria-pressed',String(state.audioEnabled));btn.title=state.audioEnabled?'내 기기에서만 소리를 끕니다':'내 기기에서만 소리를 켭니다'}
 function setPersonalAudio(enabled){state.audioEnabled=Boolean(enabled);try{if(state.ytReady){if(enabled){state.yt.unMute();state.yt.setVolume(75)}else state.yt.mute()}}catch(e){}syncVideo(true);updatePersonalAudioButton()}
 $('enableAudio').onclick=()=>{setPersonalAudio(!state.audioEnabled);toast(state.audioEnabled?'이 기기의 소리를 켰어요':'이 기기의 소리를 껐어요 (다른 사람 음악은 계속 재생돼요)')};updatePersonalAudioButton();$('videoUrl').addEventListener('keydown',e=>{if(e.key==='Enter')$('playLink').click()});
 function updateCrowdCount(n){const el=document.getElementById('boardVisitors');if(el)el.textContent=String(n)}
@@ -126,7 +139,7 @@ function updateSkipVoteUI(){
 async function castSkipVote(choice){const vote=state.skipVote;if(!vote||!state.id)return;try{await post('music',{id:state.id,command:'vote-cast',voteId:vote.id,choice})}catch(e){toast(e.message)}}
 function showSkipVoteResult(d){applySkipVote(null,state.skipVoteCooldownUntil);let msg=d.passed?'✅ 과반수 찬성! 요청한 곡으로 이동합니다':d.reason==='timeout'?'투표 시간이 종료되어 현재 곡을 유지합니다':'투표가 부결되어 현재 곡을 유지합니다';notice(msg)}
 setInterval(()=>{updateSkipVoteUI();updateSharedMusicButtons()},500);
-async function join(){if(editingProfile)return updateProfile();manualExit=false;try{let d=await post('join',{name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);state.pose=state.me?.pose||'stand';cameraFollowInitialized=false;state.players=new Map(d.players.map(p=>[p.id,p]));renderOnlinePlayers();$('joinModal').classList.add('hidden');$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='페스티벌 참가 중';$('avatarPreview').querySelector('b').style.background=chosenColor;saveProfile(state.me);applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);listen();$('audioModal').classList.remove('hidden');showMovementGuide();toast('ONEseason에 오신 것을 환영합니다!')}catch(e){$('joinError').textContent='입장 실패: '+(e?.message||'연결을 확인해주세요');console.error('ONEseason join error:',e)}}
+let joining=false;async function join(){if(editingProfile)return updateProfile();if(joining)return;joining=true;manualExit=false;try{let d=await post('join',{sessionKey,pageId,name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);state.pose=state.me?.pose||'stand';cameraFollowInitialized=false;state.players=new Map(d.players.map(p=>[p.id,p]));renderOnlinePlayers();$('joinModal').classList.add('hidden');$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='페스티벌 참가 중';$('avatarPreview').querySelector('b').style.background=chosenColor;saveProfile(state.me);applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);listen();$('audioModal').classList.remove('hidden');showMovementGuide();toast('ONEseason에 오신 것을 환영합니다!')}catch(e){$('joinError').textContent='입장 실패: '+(e?.message||'연결을 확인해주세요');console.error('ONEseason join error:',e)}finally{joining=false}}
 $('audioYes').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(true);toast(state.music.id?'음악 재생을 허용했어요':'음악이 등록되면 바로 재생돼요')};$('audioNo').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(false);toast('내 소리를 끈 상태로 입장했어요')};$('joinBtn').onclick=join;$('nick').onkeydown=e=>{if(e.key==='Enter')join()};function closeProfileEditor(){editingProfile=false;$('joinModal').classList.add('hidden');$('joinBtn').innerHTML='페스티벌 입장하기 <span>↗</span>';$('profileCancel').hidden=true;$('joinError').textContent=''}
 async function updateProfile(){if(!state.id||!state.me)return;const button=$('joinBtn');button.disabled=true;try{
  const d=await post('profile',{id:state.id,name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender});
@@ -1513,7 +1526,7 @@ function tick(t){
 }
 function resize(){let w=host.clientWidth,h=host.clientHeight;if(!w||!h)return;camera.aspect=w/h;camera.updateProjectionMatrix();renderer.setSize(w,h,false);cssRenderer.setSize(w,h);if(stageForeground)stageForeground.setSize(w,h,false)}new ResizeObserver(resize).observe(host);resize();requestAnimationFrame(tick);
 setInterval(()=>{syncVideo();reportDuration();let m=state.music;if(!m.id)return;let sec=m.paused?m.position:(Date.now()+state.serverDelta-m.startedAt)/1000;let dur=state.ytReady?state.yt.getDuration():0;$('progressFill').style.width=dur?Math.min(100,sec/dur*100)+'%':'0%'},5000);
-window.addEventListener('pagehide',()=>{if(state.id)navigator.sendBeacon('/api/leave',new Blob([JSON.stringify({id:state.id})],{type:'application/json'}))});
+window.addEventListener('pagehide',()=>{if(state.id)navigator.sendBeacon('/api/leave',new Blob([JSON.stringify({id:state.id,pageId})],{type:'application/json'}))});
 
 const ytScript=document.createElement('script');ytScript.src='https://www.youtube.com/iframe_api';document.head.appendChild(ytScript);
 
