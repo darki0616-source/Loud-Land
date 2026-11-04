@@ -801,12 +801,12 @@ function animateToastSparks(t){for(let i=toastSparks.length-1;i>=0;i--){const p=
 // Each geometry is loaded once. Avatar instances clone it and tint the surface locally.
 const hairLoader=new GLTFLoader(),hairAssetCache=new Map();
 const hairFit={
- // Tuned for the large chibi head: make hair sit outside the scalp and read larger.
- short:{width:1.92,height:1.28,depth:1.84,top:1.18,yOffset:0.05,zOffset:-0.02},
- bob:{width:1.96,height:1.32,depth:1.90,top:1.17,yOffset:0.06,zOffset:-0.02},
- long:{width:2.02,height:2.38,depth:1.96,top:1.22,yOffset:0.05,zOffset:-0.04},
- buns:{width:2.24,height:1.68,depth:2.02,top:1.38,yOffset:0.12,zOffset:-0.08},
- buzz:{width:1.74,height:1.04,depth:1.68,top:1.02,yOffset:0.02,zOffset:-0.01}
+ // v59: push the imported hair outside the head volume and enlarge the silhouette.
+ short:{width:2.12,height:1.44,depth:2.06,top:1.23,yOffset:0.09,zOffset:0.16},
+ bob:{width:2.16,height:1.50,depth:2.12,top:1.23,yOffset:0.11,zOffset:0.18},
+ long:{width:2.18,height:2.58,depth:2.10,top:1.28,yOffset:0.09,zOffset:0.16},
+ buns:{width:2.46,height:1.88,depth:2.26,top:1.46,yOffset:0.16,zOffset:0.20},
+ buzz:{width:1.88,height:1.14,depth:1.84,top:1.05,yOffset:0.04,zOffset:0.10}
 };
 function getHairAsset(style){
  style=normalizeHairStyle(style);
@@ -822,20 +822,20 @@ function getHairAsset(style){
  return hairAssetCache.get(style);
 }
 function attachImportedHair(neck,style,color){
- const holder=new THREE.Group();holder.position.y=.02;neck.add(holder);
- const cap=new THREE.Mesh(new THREE.SphereGeometry(.87,24,16,0,Math.PI*2,0,Math.PI*.40),new THREE.MeshStandardMaterial({color,roughness:.9}));
- cap.position.set(0,.20,-.01);holder.add(cap);
+ const holder=new THREE.Group();holder.position.set(0,.05,.07);neck.add(holder);
+ const cap=new THREE.Mesh(new THREE.SphereGeometry(.90,24,16,0,Math.PI*2,0,Math.PI*.42),new THREE.MeshStandardMaterial({color,roughness:.9}));
+ cap.position.set(0,.23,.05);holder.add(cap);
  getHairAsset(style).then(({scene,size,center})=>{
   if(!neck.parent)return;
   const hair=scene.clone(true),fit=hairFit[normalizeHairStyle(style)];
   const desiredWidth=fit.width,desiredHeight=fit.height,desiredDepth=fit.depth;
   const scaleX=desiredWidth/Math.max(size.x,.001),scaleY=desiredHeight/Math.max(size.y,.001),scaleZ=desiredDepth/Math.max(size.z,.001);
   const yOffset=fit.yOffset||0,zOffset=fit.zOffset||0;
-  // Fit artist-made hair to the larger chibi head so the asset wraps around the scalp
-  // instead of sinking into it. We align by the asset bbox top, then add tuned offsets.
+  // Push the imported hair farther out from the round head so bangs and side volume
+  // remain visible instead of sinking inside the face sphere.
   hair.scale.set(scaleX,scaleY,scaleZ);
-  hair.position.set(-center.x*scaleX,fit.top-(center.y+size.y*.5)*scaleY+yOffset,-center.z*scaleZ-.04+zOffset);
-  hair.traverse(o=>{if(o.isMesh){o.material=new THREE.MeshStandardMaterial({color,roughness:.84,metalness:0,side:THREE.DoubleSide});o.castShadow=true;o.receiveShadow=true}});
+  hair.position.set(-center.x*scaleX,fit.top-(center.y+size.y*.5)*scaleY+yOffset,-center.z*scaleZ+.08+zOffset);
+  hair.traverse(o=>{if(o.isMesh){o.material=new THREE.MeshStandardMaterial({color,roughness:.84,metalness:0,side:THREE.DoubleSide});o.castShadow=true;o.receiveShadow=true;o.renderOrder=6}});
   holder.remove(cap);cap.geometry.dispose();cap.material.dispose();holder.add(hair);
  }).catch(err=>{console.warn('Hair asset load failed:',style,err)});
  return holder;
