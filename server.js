@@ -121,7 +121,7 @@ const colors = ['#ff747d','#67d8d1','#f9c463','#a8a0ff','#90dd81','#ff9ce1','#72
 const patterns=['solid','stripe','wide-stripe'];
 const sashes=['none','black','purple','red','green','black-check','red-check'];
 const hats=['none'];
-const hairStyles=['short','bob','long','buns','basic-short','basic-bob'];
+const hairStyles=['short','bob','long','buns','bob2','short2','basic-short','basic-bob'];
 const oldHairMap={wavy:'long',ponytail:'buns',mohawk:'short',spiky:'short',curly:'bob',buzz:'basic-short'};
 const safeHairStyle=v=>hairStyles.includes(v)?v:(oldHairMap[v]||'short');
 const hairColors=['#25222a','#4b3932','#85533e','#edc46b','#d34c53','#4d86d5','#9965c9','#e89bc2'];
