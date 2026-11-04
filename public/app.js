@@ -1,5 +1,6 @@
 import * as THREE from 'https://esm.sh/three@0.160.1';
 import { OrbitControls } from 'https://esm.sh/three@0.160.1/examples/jsm/controls/OrbitControls.js';
+import { GLTFLoader } from 'https://esm.sh/three@0.160.1/examples/jsm/loaders/GLTFLoader.js';
 import { CSS3DRenderer, CSS3DObject } from 'https://esm.sh/three@0.160.1/examples/jsm/renderers/CSS3DRenderer.js';
 const $=id=>document.getElementById(id), palette=['#ff747d','#67d8d1','#f9c463','#a8a0ff','#90dd81','#ff9ce1','#72b5ff','#eeeeee'];
 const mats=[{x:118,y:682,c:'#f5a5a3'},{x:290,y:706,c:'#a7def4'},{x:470,y:690,c:'#f5ce80'},{x:650,y:708,c:'#b3d9a0'},{x:835,y:694,c:'#ceb8f1'},{x:1015,y:710,c:'#ffd2a5'},{x:1185,y:688,c:'#b2d8ff'}];
@@ -7,7 +8,10 @@ const state={id:null,me:null,players:new Map(),keys:new Set(),action:'idle',pose
 let slamMode=false,slam=null,slamCooldownUntil=0,slamMotion=null;
 let rockPlacementMode=null,rockPlay=null,rockCooldowns={circle:0,train:0,mosh:0,row:0,toast:0},rockRunningUntil=0,rockMotion=null;
 let chosenPattern='solid',chosenSash='none',chosenHairStyle='short',chosenHairColor='#4b3932';
-const hairStyles=[['short','숏컷'],['bob','단발'],['long','장발'],['wavy','웨이브'],['ponytail','포니테일'],['mohawk','모히칸'],['spiky','삐죽머리'],['buzz','버즈컷'],['curly','곱슬머리']];
+const hairStyles=[['short','가르마 숏컷'],['bob','짧은 보브'],['long','장발'],['buns','번 헤어'],['buzz','버즈컷']];
+// Older custom styles are converted to the closest available Quaternius asset.
+const legacyHairMap={wavy:'long',ponytail:'buns',mohawk:'short',spiky:'short',curly:'bob'};
+const normalizeHairStyle=style=>hairStyles.some(([id])=>id===style)?style:(legacyHairMap[style]||'short');
 const hairColors=[['검정','#25222a'],['진갈색','#4b3932'],['갈색','#85533e'],['금발','#edc46b'],['빨강','#d34c53'],['파랑','#4d86d5'],['보라','#9965c9'],['분홍','#e89bc2']];
 let chosenColor=palette[0],chosenGender='male',toastTimer;const avatars=new Map();const activeBubbles=new Map();
 // Keep a visitor's own appearance on this browser only (not by shared public IP).
@@ -26,10 +30,10 @@ function getSessionKey(){
 }
 const sessionKey=getSessionKey();
 function readSavedProfile(){try{const p=JSON.parse(localStorage.getItem(PROFILE_STORAGE_KEY)||'null');return p&&typeof p==='object'?p:null}catch{return null}}
-function saveProfile(p){try{localStorage.setItem(PROFILE_STORAGE_KEY,JSON.stringify({name:String(p.name||'ROCKER').slice(0,18),color:p.color,gender:p.gender,pattern:p.pattern||'solid',sash:p.sash||'none',hairStyle:p.hairStyle||'short',hairColor:p.hairColor||'#4b3932'}))}catch{}}
+function saveProfile(p){try{localStorage.setItem(PROFILE_STORAGE_KEY,JSON.stringify({name:String(p.name||'ROCKER').slice(0,18),color:p.color,gender:p.gender,pattern:p.pattern||'solid',sash:p.sash||'none',hairStyle:normalizeHairStyle(p.hairStyle),hairColor:p.hairColor||'#4b3932'}))}catch{}}
 function selectGender(g){chosenGender=g==='female'?'female':'male';document.querySelectorAll('[data-gender]').forEach(b=>b.classList.toggle('selected',b.dataset.gender===chosenGender))}
 const savedProfile=readSavedProfile();
-if(savedProfile){if(typeof savedProfile.name==='string')$('nick').value=savedProfile.name.slice(0,18);if(palette.includes(savedProfile.color))chosenColor=savedProfile.color;if(['male','female'].includes(savedProfile.gender))selectGender(savedProfile.gender);if(['solid','stripe','wide-stripe'].includes(savedProfile.pattern))chosenPattern=savedProfile.pattern;if(['none','black','purple','red','green','black-check','red-check'].includes(savedProfile.sash))chosenSash=savedProfile.sash;if(hairStyles.some(([key])=>key===savedProfile.hairStyle))chosenHairStyle=savedProfile.hairStyle;else chosenHairStyle=savedProfile.gender==='female'?'bob':'short';if(hairColors.some(([,hex])=>hex===savedProfile.hairColor))chosenHairColor=savedProfile.hairColor}
+if(savedProfile){if(typeof savedProfile.name==='string')$('nick').value=savedProfile.name.slice(0,18);if(palette.includes(savedProfile.color))chosenColor=savedProfile.color;if(['male','female'].includes(savedProfile.gender))selectGender(savedProfile.gender);if(['solid','stripe','wide-stripe'].includes(savedProfile.pattern))chosenPattern=savedProfile.pattern;if(['none','black','purple','red','green','black-check','red-check'].includes(savedProfile.sash))chosenSash=savedProfile.sash;chosenHairStyle=normalizeHairStyle(savedProfile.hairStyle||(savedProfile.gender==='female'?'bob':'short'));if(hairColors.some(([,hex])=>hex===savedProfile.hairColor))chosenHairColor=savedProfile.hairColor}
 let editingProfile=false;
 function refreshProfilePreview(){if(!state.me)return;$('profileName').textContent=state.me.name;$('avatarPreview').querySelector('b').style.background=state.me.color}
 
@@ -164,7 +168,7 @@ async function updateProfile(){if(!state.id||!state.me)return;const button=$('jo
  const d=await post('profile',{id:state.id,name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender,pattern:chosenPattern,sash:chosenSash,hairStyle:chosenHairStyle,hairColor:chosenHairColor});
  state.me=d.player;state.players.set(state.id,d.player);saveProfile(d.player);refreshProfilePreview();renderOnlinePlayers();closeProfileEditor();toast('캐릭터 설정을 변경했어요');
  }catch(e){$('joinError').textContent='변경 실패: '+e.message}finally{button.disabled=false}}
-$('editAvatar').onclick=()=>{if(!state.me)return;editingProfile=true;$('nick').value=state.me.name;chosenColor=state.me.color;chosenPattern=state.me.pattern||'solid';chosenSash=state.me.sash||'none';chosenHairStyle=state.me.hairStyle||'short';chosenHairColor=state.me.hairColor||'#4b3932';selectGender(state.me.gender);colorPicker();renderApparelPicker();renderHairPicker();$('joinError').textContent='';$('joinBtn').textContent='변경 사항 저장';$('profileCancel').hidden=false;$('joinModal').classList.remove('hidden');$('nick').focus()};
+$('editAvatar').onclick=()=>{if(!state.me)return;editingProfile=true;$('nick').value=state.me.name;chosenColor=state.me.color;chosenPattern=state.me.pattern||'solid';chosenSash=state.me.sash||'none';chosenHairStyle=normalizeHairStyle(state.me.hairStyle);chosenHairColor=state.me.hairColor||'#4b3932';selectGender(state.me.gender);colorPicker();renderApparelPicker();renderHairPicker();$('joinError').textContent='';$('joinBtn').textContent='변경 사항 저장';$('profileCancel').hidden=false;$('joinModal').classList.remove('hidden');$('nick').focus()};
 $('profileCancel').onclick=closeProfileEditor;
 $('profileToggle').onclick=()=>{if(!state.me)return toast('입장 후 변경할 수 있어요');$('editAvatar').click()};
 ;$('helpBtn').onclick=()=>toast('WASD 이동 · 클릭/터치 이동 · 드래그 시점 회전 · 춤: B/G/V/K · 환호성: H · 담배: C');
@@ -793,6 +797,48 @@ function spawnToastSpark(x,y){
  }
 }
 function animateToastSparks(t){for(let i=toastSparks.length-1;i>=0;i--){const p=toastSparks[i],dt=(t-p.start)/1000;if(dt>1.1){scene.remove(p.obj);p.obj.geometry.dispose();p.obj.material.dispose();toastSparks.splice(i,1);continue}p.obj.position.x+=p.vx*.017;p.obj.position.z+=p.vz*.017;p.obj.position.y+=p.vy*.012-.012;p.obj.material.opacity=Math.max(0,1-dt/1.1)}}
+// Real Quaternius Universal Base Characters glTF hair assets (CC0) supplied by the user.
+// Each geometry is loaded once. Avatar instances clone it and tint the surface locally.
+const hairLoader=new GLTFLoader(),hairAssetCache=new Map();
+const hairFit={
+ short:{width:1.55,height:1.05,depth:1.48,top:1.04},
+ bob:{width:1.57,height:1.06,depth:1.51,top:1.01},
+ long:{width:1.65,height:2.04,depth:1.66,top:1.06},
+ buns:{width:1.63,height:1.33,depth:1.55,top:1.17},
+ buzz:{width:1.54,height:.97,depth:1.45,top:.98}
+};
+function getHairAsset(style){
+ style=normalizeHairStyle(style);
+ if(!hairAssetCache.has(style)){
+  hairAssetCache.set(style,new Promise((resolve,reject)=>{
+   hairLoader.load('/assets/hair/'+style+'.gltf',g=>{
+    g.scene.updateMatrixWorld(true);
+    const bounds=new THREE.Box3().setFromObject(g.scene),size=bounds.getSize(new THREE.Vector3()),center=bounds.getCenter(new THREE.Vector3());
+    resolve({scene:g.scene,size,center});
+   },undefined,reject);
+  }));
+ }
+ return hairAssetCache.get(style);
+}
+function attachImportedHair(neck,style,color){
+ const holder=new THREE.Group();neck.add(holder);
+ const cap=new THREE.Mesh(new THREE.SphereGeometry(.82,24,16,0,Math.PI*2,0,Math.PI*.38),new THREE.MeshStandardMaterial({color,roughness:.9}));
+ cap.position.set(0,.16,-.013);holder.add(cap);
+ getHairAsset(style).then(({scene,size,center})=>{
+  if(!neck.parent)return;
+  const hair=scene.clone(true),fit=hairFit[normalizeHairStyle(style)];
+  const desiredWidth=fit.width,desiredHeight=fit.height,desiredDepth=fit.depth;
+  const scaleX=desiredWidth/Math.max(size.x,.001),scaleY=desiredHeight/Math.max(size.y,.001),scaleZ=desiredDepth/Math.max(size.z,.001);
+  // Geometry lives at original character's world Y; remap to our character's head-local Y.
+  hair.scale.set(scaleX,scaleY,scaleZ);
+  hair.position.set(-center.x*scaleX,fit.top-(center.y+size.y*.5)*scaleY,-center.z*scaleZ-.04);
+  hair.traverse(o=>{if(o.isMesh){o.material=new THREE.MeshStandardMaterial({color,roughness:.84,metalness:0,side:THREE.DoubleSide});o.castShadow=true;o.receiveShadow=true}});
+  holder.remove(cap);cap.geometry.dispose();cap.material.dispose();holder.add(hair);
+ }).catch(err=>{console.warn('Hair asset load failed:',style,err)});
+ return holder;
+}
+// Begin loading the most common styles early for quicker player joins.
+for(const style of ['short','bob','long','buns','buzz'])getHairAsset(style).catch(()=>{});
 // Rounded chibi avatar: larger soft head, painted-on face, short unified hairstyle,
 // surface-colored clothing, and inexpensive shoulder/elbow/hip/knee rig.
 function makeAvatar(p){
@@ -846,178 +892,9 @@ function makeAvatar(p){
  const smile=new THREE.EllipseCurve(0,0,.084,.046,Math.PI*.08,Math.PI*.92,false,0);
  const points=smile.getPoints(15);const smileGeo=new THREE.BufferGeometry().setFromPoints(points.map(v=>new THREE.Vector3(v.x,-v.y,0)));
  const smileLine=new THREE.Line(smileGeo,new THREE.LineBasicMaterial({color:'#533f39'}));smileLine.position.set(0,-.17,.746);neck.add(smileLine);
- // v56: hairstyles use larger clean clumps and unified silhouettes.
- // The focus is on chunky, readable shapes that hug the head cleanly
- // without stray protrusions or strands intersecting the face.
- const hairStyle=hairStyles.some(([id])=>id===p.hairStyle)?p.hairStyle:(female?'bob':'short');
- const hc=new THREE.Color(hairHex);
- const mainHair=mat(hc,.84);
- const shadeHair=mat(hc.clone().multiplyScalar(.77),.89);
- const lightHair=mat(hc.clone().lerp(new THREE.Color('#ffffff'),.16),.83);
- const edgeHair=mat(hc.clone().multiplyScalar(.91),.87);
- for(const hairMaterial of [mainHair,shadeHair,lightHair,edgeHair])hairMaterial.side=THREE.DoubleSide;
- // The head has a radius of ~0.81, and the front faces +Z.
- // Partial scalp shells lie just above the head and cover seams between locks.
- function scalp(cut=.48,scale=[1.018,1.025,1.018],offset=[0,.15,-.025],m=mainHair){
-  const mesh=child(neck,new THREE.SphereGeometry(.836,40,22,0,Math.PI*2,0,Math.PI*cut),m,offset,scale);
-  mesh.castShadow=true;return mesh;
- }
- // A sculpted ribbon: elliptical 3D cross-section, variable thickness, smooth
- // catmull-rom centerline, full caps and tip taper. Not detached flat cones.
- function strand(points,width=.17,material=mainHair,depth=.48){
-  const curve=new THREE.CatmullRomCurve3(points.map(v=>new THREE.Vector3(...v)),false,'centripetal',.45);
-  const steps=22,faces=10,pos=[],normals=[],indices=[];
-  const tangent=new THREE.Vector3(),across=new THREE.Vector3(),thick=new THREE.Vector3();
-  const worldForward=new THREE.Vector3(0,0,1);
-  for(let i=0;i<=steps;i++){
-   const t=i/steps,center=curve.getPoint(t);
-   tangent.copy(curve.getTangent(t)).normalize();
-   across.crossVectors(worldForward,tangent);
-   if(across.lengthSq()<.025)across.set(1,0,0);
-   across.normalize();thick.crossVectors(tangent,across).normalize();
-   const endFactor=Math.pow(Math.sin(Math.PI*(.075+.925*t)),.62);
-   const thickness=width*Math.max(.015,endFactor);
-   for(let j=0;j<faces;j++){
-    const a=j/faces*Math.PI*2,cos=Math.cos(a),sin=Math.sin(a);
-    const v=center.clone().addScaledVector(across,cos*thickness).addScaledVector(thick,sin*thickness*depth);
-    pos.push(v.x,v.y,v.z);
-    const n=across.clone().multiplyScalar(cos).addScaledVector(thick,sin/depth).normalize();
-    normals.push(n.x,n.y,n.z);
-    if(i<steps){const k=i*faces+j,n=i*faces+(j+1)%faces;indices.push(k,k+faces,n,n,k+faces,n+faces)}
-   }
-  }
-  const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
-  geo.setAttribute('normal',new THREE.Float32BufferAttribute(normals,3));geo.setIndex(indices);
-  const mesh=new THREE.Mesh(geo,material);mesh.castShadow=true;neck.add(mesh);return mesh;
- }
- // Smooth rear sheet with a scalloped hem; makes long styles look like one
- // haircut even from behind. Individual locks sculpt detail over the surface.
- function rearSheet(length=-.60,flare=.04,undulation=0,material=mainHair){
-  const cols=28,rows=18,verts=[],uv=[],idx=[];
-  for(let j=0;j<=rows;j++){
-   const t=j/rows,y=.50+(length-.50)*t;
-   for(let i=0;i<=cols;i++){
-    const a=(-.73+1.46*(i/cols))*Math.PI;
-    const hem=Math.sin(a*4.2)*undulation*t*t;
-    const x=Math.sin(a)*(.79+flare*t),z=-.11-Math.cos(a)*(.72+flare*.35*t);
-    verts.push(x,y+hem,z);uv.push(i/cols,t);
-    if(j<rows&&i<cols){const q=j*(cols+1)+i;idx.push(q,q+cols+1,q+1,q+1,q+cols+1,q+cols+2)}
-   }
-  }
-  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));
-  g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));g.setIndex(idx);g.computeVertexNormals();
-  const double=material.clone();double.side=THREE.DoubleSide;
-  const m=new THREE.Mesh(g,double);m.castShadow=true;neck.add(m);return m;
- }
- function sweepFringe(direction=1,amount=.16,part=-.12){
-  // Curved overlapping locks from the parting to the opposite eyebrow.
-  for(let k=0;k<5;k++){
-   const x=part+direction*(-.27+k*.155),tip=x+direction*(.22+amount);
-   const h=.745-.036*k;
-   strand([[x,h,.30],[x+direction*.04,.67,.48],[tip-direction*.07,.51-.025*k,.62],[tip,.405-.035*k,.67]],.115-k*.006,k===1?lightHair:mainHair,.38);
-  }
- }
- function sideLayers(side,yEnd=-.38,fullness=.1,number=3,wave=0){
-  for(let j=0;j<number;j++){
-   const x=side*(.66+j*.057),frontZ=.07+(j===0?.18:-j*.10);
-   const backX=x+side*fullness;
-   strand([[side*.61,.51,frontZ-.05],[x,.28,frontZ],[backX+side*wave*.3,-.01,frontZ+.035],
-    [backX-side*wave*.5,yEnd*.58,frontZ+.025],[backX+side*wave,yEnd-(j%2)*.04,frontZ-.08]],
-    .105+(j===0?.042:0),j===1?edgeHair:mainHair,.62);
-  }
- }
- function hairTip(x,z,tipX,tipZ,peak=1.18,width=.16,material=mainHair){
-  strand([[x,.72,z],[x+(tipX-x)*.30,.91+(peak-.91)*.35,z+(tipZ-z)*.12],
-   [x+(tipX-x)*.77,peak,z+(tipZ-z)*.65],[tipX,peak+.045,tipZ]],width,material,.72);
- }
- function waveLocks(side,length=-.96){
-  for(let j=0;j<4;j++){
-   const x=side*(.65+j*.042),z=.18-j*.19;
-   const shift=side*(.12+j*.011);
-   strand([[side*.56,.53,z],[x,.32,z+.05],[x+shift,.02,z+.09],
-    [x-shift,-.23,z+.07],[x+shift,-.51,z+.04],[x-shift*.85,length,z-.07]],
-    .145-j*.008,j===1?lightHair:mainHair,.69);
-  }
- }
- // Accent grooves run WITH the hair and hug the same silhouette.
- // They are subtle, and inherit the selected hair color.
- if(hairStyle==='buzz'){
-  // Tight cap-like haircut that follows the head silhouette.
-  scalp(.40,[1.002,.97,1.002],[0,.145,-.02],edgeHair);
-  for(const side of [-1,1])strand([[side*.58,.48,.18],[side*.68,.34,.09],[side*.66,.22,.02]],.06,shadeHair,.48);
- }else if(hairStyle==='short'){
-  // Clean rounded short cut with one soft fringe and compact side clumps.
-  scalp(.49,[1.025,1.04,1.02],[0,.15,-.02]);
-  strand([[-.32,.74,.33],[-.16,.68,.54],[.07,.63,.63],[.28,.57,.59]],.16,lightHair,.46);
-  for(const side of [-1,1]){
-   strand([[side*.56,.50,.19],[side*.67,.32,.18],[side*.62,.12,.15]],.16,mainHair,.54);
-   strand([[side*.46,.74,-.01],[side*.63,.76,-.18],[side*.56,.60,-.37]],.13,edgeHair,.48);
-  }
- }else if(hairStyle==='bob'){
-  // One chunky rounded bob: scalp + short back curtain + cheek-length side masses.
-  scalp(.50,[1.025,1.03,1.02],[0,.15,-.03]);
-  rearSheet(-.34,.08,.008,mainHair);
-  strand([[-.48,.74,.30],[-.23,.67,.54],[.02,.62,.61],[.33,.56,.58]],.15,lightHair,.44);
-  for(const side of [-1,1]){
-   strand([[side*.54,.54,.24],[side*.70,.24,.28],[side*.67,-.10,.24],[side*.54,-.34,.18]],.18,mainHair,.62);
-   strand([[side*.44,.48,-.12],[side*.60,.28,-.18],[side*.58,-.02,-.21],[side*.48,-.28,-.16]],.15,shadeHair,.58);
-  }
- }else if(hairStyle==='long'){
-  // Long clean silhouette: front framing clumps + a single fuller back mass.
-  scalp(.48,[1.02,1.03,1.02],[0,.15,-.03]);
-  rearSheet(-1.08,.15,.015,mainHair);
-  strand([[-.30,.74,.31],[-.10,.69,.53],[.14,.63,.60],[.34,.57,.55]],.14,lightHair,.42);
-  for(const side of [-1,1]){
-   strand([[side*.54,.55,.20],[side*.72,.22,.24],[side*.77,-.42,.22],[side*.70,-1.02,.10]],.18,mainHair,.62);
-   strand([[side*.44,.49,-.11],[side*.62,.16,-.16],[side*.66,-.38,-.19],[side*.60,-1.00,-.16]],.16,shadeHair,.58);
-  }
- }else if(hairStyle==='wavy'){
-  // Long hair but with large S-shaped chunky locks, not many thin strands.
-  scalp(.48,[1.02,1.03,1.02],[0,.15,-.03]);
-  rearSheet(-.98,.15,.08,mainHair);
-  strand([[-.28,.74,.32],[-.08,.68,.54],[.13,.62,.61],[.35,.56,.56]],.14,lightHair,.42);
-  for(const side of [-1,1]){
-   strand([[side*.56,.54,.18],[side*.74,.28,.20],[side*.66,-.02,.24],[side*.78,-.36,.20],[side*.66,-.68,.15],[side*.74,-.95,.05]],.19,mainHair,.70);
-   strand([[side*.42,.48,-.10],[side*.58,.20,-.13],[side*.50,-.10,-.18],[side*.64,-.42,-.15],[side*.52,-.72,-.18],[side*.60,-.95,-.12]],.15,shadeHair,.66);
-  }
- }else if(hairStyle==='ponytail'){
-  // Smooth pulled-back top with a chunky ponytail bundle.
-  scalp(.49,[1.02,1.05,1.01],[0,.15,-.03]);
-  strand([[-.20,.74,.22],[-.03,.71,.34],[.17,.70,.24]],.10,lightHair,.34);
-  for(const side of [-1,1]){
-   strand([[side*.52,.58,.20],[side*.62,.56,-.08],[side*.44,.44,-.45],[side*.10,.34,-.76]],.13,mainHair,.46);
-   strand([[side*.43,.50,-.08],[side*.56,.46,-.22],[side*.34,.40,-.54],[side*.08,.33,-.79]],.10,shadeHair,.44);
-  }
-  child(neck,new THREE.TorusGeometry(.14,.042,8,20),shadeHair,[0,.31,-.78]).rotation.x=Math.PI/2;
-  for(const [x,matr] of [[-.08,lightHair],[0,mainHair],[.08,edgeHair]]){
-   strand([[x,.30,-.85],[x*.8,.02,-1.00],[x*.7,-.28,-1.05],[x*.55,-.62,-.98]],.13,matr,.72);
-  }
- }else if(hairStyle==='mohawk'){
-  // Wide clean mohawk ridge with shaved-looking sides.
-  scalp(.39,[1.005,.95,1.005],[0,.15,-.02],shadeHair);
-  for(let j=0;j<7;j++){
-   const z=.56-j*.18,peak=.98+.16*Math.sin(Math.PI*(j+.5)/7);
-   strand([[0,.66,z],[0,.84,z-.02],[0,peak,z-.08],[0,peak+.12,z-.16]],.18,j===3?lightHair:mainHair,.56);
-  }
-  for(const side of [-1,1])strand([[side*.58,.44,.12],[side*.67,.28,.03],[side*.66,.14,-.02]],.06,shadeHair,.48);
- }else if(hairStyle==='spiky'){
-  // Keep the spiky identity, but use fewer large wedges anchored to the scalp.
-  scalp(.455,[1.02,1.01,1.02],[0,.15,-.02]);
-  const spikes=[[-.30,.20,1.02,.20],[-.12,.34,1.14,.28],[0,.38,1.18,.33],[.16,.28,1.08,.26],[.31,.12,1.00,.18],[-.26,-.12,1.02,-.06],[.24,-.10,1.00,-.04]];
-  for(const [x,z,peak,tipz] of spikes){hairTip(x,z,x*1.15,tipz,peak,.16,Math.abs(x)<.05?lightHair:mainHair)}
-  for(const side of [-1,1])strand([[side*.54,.52,.12],[side*.66,.38,.08],[side*.63,.20,.02]],.12,edgeHair,.52);
- }else if(hairStyle==='curly'){
-  // Chunky curl masses: broad curled ribbons around the silhouette.
-  scalp(.49,[1.02,1.03,1.02],[0,.15,-.03]);
-  rearSheet(-.62,.10,.03,mainHair);
-  strand([[-.24,.73,.30],[-.09,.67,.48],[.10,.62,.53],[.28,.58,.46]],.13,lightHair,.40);
-  for(const side of [-1,1]){
-   strand([[side*.54,.52,.18],[side*.72,.34,.22],[side*.58,.16,.30],[side*.73,-.02,.24],[side*.56,-.18,.22]],.17,mainHair,.74);
-   strand([[side*.42,.46,-.10],[side*.60,.28,-.16],[side*.48,.10,-.24],[side*.62,-.06,-.18],[side*.48,-.22,-.16]],.15,shadeHair,.70);
-   strand([[side*.18,.74,-.36],[side*.33,.63,-.50],[side*.16,.50,-.60],[side*.31,.37,-.54]],.13,edgeHair,.64);
-  }
- }
- // No head accessory is rendered.// No head accessory is rendered.
+ // Imported, artist-made glTF model follows the head during all animations.
+ attachImportedHair(neck,p.hairStyle||'short',hairHex);
+ // No head accessory is rendered.
  // The clothing stripes are painted on the torso shader, not separate raised meshes.
 
  if(p.sash&&p.sash!=='none'){
