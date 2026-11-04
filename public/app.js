@@ -662,9 +662,11 @@ function contractWorldZ(z){
 for(const m of mats)m.y=(contractWorldZ(m.worldZ)-8)/.058+500;
 // Extend the ground without changing the stage or audience barrier.
 const floor=cube(104,.4,118,grass,0,-.24,25);floor.receiveShadow=true;
-const promenade=cube(112,.05,3.2,mat('#6a806d'),0,.02,1,false);
-promenade.receiveShadow=true;
-const lawn=cube(100,.06,79,mat('#4f765f'),0,.03,30.5,false);
+// v84: ONE visible audience ground surface, no overlapping coplanar slabs.
+// Previously both lawn and picnic-zone slab had identical upper Y=0.06,
+// causing visible striped Z-fighting across the whole crowd zone.
+// The lawn ends at z=68, where the relocated beach begins, avoiding overlap.
+const lawn=cube(100,.08,77,mat('#4f765f'),0,.03,29.5,false);
 lawn.receiveShadow=true;
 const sandMat=mat('#dec391',.95),wetSandMat=mat('#c9ab74',.94);
 const beach=cube(110,.06,28,sandMat,0,.02,56,false);beach.receiveShadow=true;
@@ -747,8 +749,9 @@ cylinder(1.55,1.55,1.2,mat('#d671c0',.5),0,3.25,-25);for(let x of [-2.2,2.2]){cy
 for(let x of [-8,8]){cylinder(.12,.12,3.2,metal,x,4,-24);sphere(.18,mat('#fcf6d5'),x,5.65,-24)}
 // Crowd barrier
 for(let x=-34;x<=34;x+=3){cube(.11,1.45,.11,metal,x,.9,-13.2);if(x<34)cube(3,.13,.13,metal,x+1.5,1.48,-13.2)}
-// Walkway and picnic area
-cube(96,.05,2.2,mat('#5e705e'),0,.04,10,false);cube(102,.06,38,mat('#486c59'),0,.03,27,false);
+// Walkway and picnic area: use the existing continuous lawn directly.
+// Do not add a second slab at the exact same height; its depth artifacts
+// were responsible for the flashing horizontal stripes in the audience zone.
 // v82: each blanket + food + pillows is one local-coordinate 3D group.
 // Never expandWorldZ() independently for its accessories: it previously
 // pulled the tray, food and pillow away from the blanket by different amounts.
@@ -863,7 +866,7 @@ const pier=cube(7.2,.14,20,mat('#8b6b53'),40,.18,77,false);pier.receiveShadow=tr
 // Move picnic, signage, stalls, trees, benches, shoreline and sea back as
 // one environmental set. Keep the rebuilt static lawn and floor unchanged.
 // All objects are positioned via the same world-space mapping as avatars.
-const fixedGroundSet=new Set([floor,lawn,promenade,...picnicGroups]);
+const fixedGroundSet=new Set([floor,lawn,...picnicGroups]);
 for(const item of scene.children){
  if(fixedGroundSet.has(item))continue;
  if(item.position.z>8 && item.position.y<25){
