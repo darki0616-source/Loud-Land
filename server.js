@@ -28,7 +28,7 @@ const chatChoices=['안녕','뛰어','👍','❤️'];
 let music = {id:'', title:'', startedAt:0, paused:true, position:0, changedBy:'', token:0, duration:0};
 const queue=[]; let nextTrackToken=1;
 // Vote-to-skip is transient: a strict majority of connected members at start is required.
-const SKIP_VOTE_MS=20000, SKIP_VOTE_COOLDOWN_MS=15000;
+const SKIP_VOTE_MS=20000; // Voting lasts up to 20s; no cooldown between votes.
 let skipVote=null, skipVoteCooldownUntil=0,skipVoteTimer=null;
 function publicSkipVote(){if(!skipVote)return null;return {id:skipVote.id,proposer:skipVote.proposer,endAt:skipVote.endAt,yes:[...skipVote.yes].length,no:[...skipVote.no].length,required:Math.floor(skipVote.eligible.size/2)+1,eligible:[...skipVote.eligible],voted:[...new Set([...skipVote.yes,...skipVote.no])]}}
 function broadcastSkipVote(){broadcast({type:'skip-vote',vote:publicSkipVote(),cooldownUntil:skipVoteCooldownUntil,serverNow:Date.now()})}
@@ -236,10 +236,9 @@ const server=http.createServer(async(req,res)=>{
         else if(d.command==='vote-start'){
           if(!music.id)return json(res,409,{error:'재생 중인 곡이 없습니다.'});
           if(skipVote)return json(res,409,{error:'이미 다음 곡 투표가 진행 중입니다.'});
-          if(Date.now()<skipVoteCooldownUntil)return json(res,429,{error:'다음 곡 투표 쿨타임이 남아 있습니다.'});
           const eligible=new Set(players.keys());
           skipVote={id:crypto.randomUUID(),proposer:p.name,eligible,yes:new Set([id]),no:new Set(),endAt:Date.now()+SKIP_VOTE_MS,trackToken:music.token};
-          skipVoteCooldownUntil=Date.now()+SKIP_VOTE_MS+SKIP_VOTE_COOLDOWN_MS;
+          skipVoteCooldownUntil=0;
           broadcastSkipVote();
           skipVoteTimer=setTimeout(()=>{if(skipVote)finishSkipVote(false,'timeout')},SKIP_VOTE_MS);
           if(skipVote.eligible.size===1)checkSkipVote();
