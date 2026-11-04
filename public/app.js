@@ -2,7 +2,7 @@ import * as THREE from 'https://esm.sh/three@0.160.1';
 import { OrbitControls } from 'https://esm.sh/three@0.160.1/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'https://esm.sh/three@0.160.1/examples/jsm/loaders/GLTFLoader.js';
 import { CSS3DRenderer, CSS3DObject } from 'https://esm.sh/three@0.160.1/examples/jsm/renderers/CSS3DRenderer.js';
-const $=id=>document.getElementById(id), palette=['#ff747d','#67d8d1','#f9c463','#a8a0ff','#90dd81','#ff9ce1','#72b5ff','#eeeeee'];
+const $=id=>document.getElementById(id), palette=['#ff747d','#67d8d1','#f9c463','#a8a0ff','#90dd81','#ff9ce1','#72b5ff','#eeeeee','#16171d'];
 const mats=[{x:118,y:682,c:'#f5a5a3'},{x:290,y:706,c:'#a7def4'},{x:470,y:690,c:'#f5ce80'},{x:650,y:708,c:'#b3d9a0'},{x:835,y:694,c:'#ceb8f1'},{x:1015,y:710,c:'#ffd2a5'},{x:1185,y:688,c:'#b2d8ff'}];
 const state={id:null,me:null,players:new Map(),keys:new Set(),action:'idle',pose:'stand',actionUntil:0,lastSent:0,es:null,music:{id:'',paused:true,position:0,startedAt:0,token:0},queue:[],history:[],serverDelta:0,yt:null,ytReady:false,lastTrack:'',audioEnabled:false,skipVote:null,skipVoteCooldownUntil:0,walkTarget:null,benchTarget:null,moving:false};
 let slamMode=false,slam=null,slamCooldownUntil=0,slamMotion=null;
@@ -32,15 +32,16 @@ const sessionKey=getSessionKey();
 function readSavedProfile(){try{const p=JSON.parse(localStorage.getItem(PROFILE_STORAGE_KEY)||'null');return p&&typeof p==='object'?p:null}catch{return null}}
 function saveProfile(p){try{localStorage.setItem(PROFILE_STORAGE_KEY,JSON.stringify({name:String(p.name||'ROCKER').slice(0,18),color:p.color,gender:p.gender,pattern:p.pattern||'solid',sash:p.sash||'none',hairStyle:normalizeHairStyle(p.hairStyle),hairColor:p.hairColor||'#4b3932'}))}catch{}}
 function selectGender(g){chosenGender=g==='female'?'female':'male';document.querySelectorAll('[data-gender]').forEach(b=>b.classList.toggle('selected',b.dataset.gender===chosenGender))}
+const apparelSashIds=['none','black','purple','red','green','black-check','red-check','yellow','blue','blue-check','yellow-check','purple-check','black-dot','red-dot','blue-dot','yellow-dot','purple-dot'];
 const savedProfile=readSavedProfile();
-if(savedProfile){if(typeof savedProfile.name==='string')$('nick').value=savedProfile.name.slice(0,18);if(palette.includes(savedProfile.color))chosenColor=savedProfile.color;if(['male','female'].includes(savedProfile.gender))selectGender(savedProfile.gender);if(['solid','stripe','wide-stripe'].includes(savedProfile.pattern))chosenPattern=savedProfile.pattern;if(['none','black','purple','red','green','black-check','red-check'].includes(savedProfile.sash))chosenSash=savedProfile.sash;chosenHairStyle=normalizeHairStyle(savedProfile.hairStyle||(savedProfile.gender==='female'?'bob':'short'));if(hairColors.some(([,hex])=>hex===savedProfile.hairColor))chosenHairColor=savedProfile.hairColor}
+if(savedProfile){if(typeof savedProfile.name==='string')$('nick').value=savedProfile.name.slice(0,18);if(palette.includes(savedProfile.color))chosenColor=savedProfile.color;if(['male','female'].includes(savedProfile.gender))selectGender(savedProfile.gender);if(['solid','stripe','wide-stripe'].includes(savedProfile.pattern))chosenPattern=savedProfile.pattern;if(apparelSashIds.includes(savedProfile.sash))chosenSash=savedProfile.sash;chosenHairStyle=normalizeHairStyle(savedProfile.hairStyle||(savedProfile.gender==='female'?'bob':'short'));if(hairColors.some(([,hex])=>hex===savedProfile.hairColor))chosenHairColor=savedProfile.hairColor}
 let editingProfile=false;
 function refreshProfilePreview(){if(!state.me)return;$('profileName').textContent=state.me.name;$('avatarPreview').querySelector('b').style.background=state.me.color}
 
 function toast(msg){$('toast').textContent=msg;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('show'),3000)}
 document.querySelectorAll('[data-gender]').forEach(b=>b.onclick=()=>selectGender(b.dataset.gender));
 function colorPicker(){let r=$('colorPicker');r.innerHTML='';palette.forEach(c=>{let b=document.createElement('button');b.style.background=c;b.className=c===chosenColor?'selected':'';b.setAttribute('aria-label','티셔츠 '+c);b.onclick=()=>{chosenColor=c;colorPicker()};r.append(b)})}colorPicker();
-const apparelChoices={pattern:[['solid','단색'],['stripe','가는 줄무늬'],['wide-stripe','넓은 줄무늬']],sash:[['none','없음'],['black','검정'],['purple','보라'],['red','빨강'],['green','초록'],['black-check','검정 체크'],['red-check','빨강 체크']]};
+const apparelChoices={pattern:[['solid','단색'],['stripe','가는 줄무늬'],['wide-stripe','넓은 줄무늬']],sash:[['none','없음'],['black','검정'],['purple','보라'],['red','빨강'],['green','초록'],['black-check','검정 체크'],['red-check','빨강 체크'],['yellow','노랑'],['blue','파랑'],['blue-check','파랑 체크'],['yellow-check','노랑 체크'],['purple-check','보라 체크'],['black-dot','검정 · 흰 땡땡이'],['red-dot','빨강 · 흰 땡땡이'],['blue-dot','파랑 · 흰 땡땡이'],['yellow-dot','노랑 · 흰 땡땡이'],['purple-dot','보라 · 흰 땡땡이']]]};
 function renderApparelPicker(){
  for(const [key,items] of Object.entries(apparelChoices)){
   const parent=$(key+'Picker');if(!parent)continue;parent.replaceChildren();
@@ -994,11 +995,12 @@ function makeAvatar(p){
      '#include <common>\nvarying vec3 vShirtPosition;');
    shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',
      '#include <color_fragment>\n'+
-     'float stripeCoord = mod(vShirtPosition.x + 0.45, '+spacing.toFixed(4)+');\n'+
+     'float stripeCoord = mod(vShirtPosition.y + 0.51, '+spacing.toFixed(4)+');\n'+
      'float stripeEdge = fwidth(stripeCoord) * 0.65;\n'+
      'float stripeInk = 1.0 - smoothstep('+width.toFixed(4)+' - stripeEdge, '+width.toFixed(4)+' + stripeEdge, stripeCoord);\n'+
      'float shirtCoverage = smoothstep(-0.18, -0.08, vShirtPosition.y);\n'+
-     'diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.96, 0.97, 0.95), stripeInk * shirtCoverage * 0.93);');
+     'vec3 stripeColor = dot(diffuseColor.rgb, vec3(0.2126,0.7152,0.0722)) > 0.72 ? vec3(0.18,0.20,0.23) : vec3(0.96,0.97,0.95);\n'+
+     'diffuseColor.rgb = mix(diffuseColor.rgb, stripeColor, stripeInk * shirtCoverage * 0.93);');
   };
  }
  parts.torso=child(upper,bodyGeo,bodyMat,[0,.33,0],[.94,1.12,.88]);
@@ -1045,16 +1047,49 @@ function makeAvatar(p){
  // The clothing stripes are painted on the torso shader, not separate raised meshes.
 
  if(p.sash&&p.sash!=='none'){
-  const sashColors={black:'#20212c',purple:'#793ac8',red:'#d42c42',green:'#2a9a59','black-check':'#20212c','red-check':'#c72b35'};
-  // Restore the previous size/position, then rotate the sash 90 degrees as requested.
-  const fabric=new THREE.Group();fabric.position.set(-.49,1.24,.16);fabric.rotation.y=Math.PI/2;root.add(fabric);parts.sash=fabric;
-  const clothMat=mat(sashColors[p.sash]||'#252535',.97);
-  child(fabric,new THREE.BoxGeometry(.23,1.14,.065),clothMat,[-.025,-.57,0],[1,1,1]);
-  if(p.sash.endsWith('check')){
-   const check=mat(p.sash==='red-check'?'#17181e':'#d5d5d5',.93);
-   for(let y=-.10;y> -1.12;y-=.19)child(fabric,new THREE.BoxGeometry(.246,.028,.074),check,[-.025,y,0]);
-   for(const x of [-.10,.052])child(fabric,new THREE.BoxGeometry(.027,1.13,.073),check,[x,-.56,0]);
+  const sashColors={
+   black:'#20212c',purple:'#793ac8',red:'#d42c42',green:'#2a9a59',
+   yellow:'#f4cf3e',blue:'#287ed0',
+   'black-check':'#20212c','red-check':'#c72b35',
+   'blue-check':'#287ed0','yellow-check':'#f4cf3e','purple-check':'#793ac8',
+   'black-dot':'#20212c','red-dot':'#c72b35','blue-dot':'#287ed0',
+   'yellow-dot':'#f4cf3e','purple-dot':'#793ac8'
+  };
+  // Preserve exactly the original size, left-hip position and requested Y-axis
+  // 90-degree orientation; only the flat fabric colors/pattern change.
+  const fabric=new THREE.Group();fabric.position.set(-.49,1.24,.16);
+  fabric.rotation.y=Math.PI/2;root.add(fabric);parts.sash=fabric;
+  const baseColor=sashColors[p.sash]||'#252535';
+  let clothMaterial=mat(baseColor,.97);
+  if(p.sash.endsWith('-check')||p.sash.endsWith('-dot')){
+   const cvs=document.createElement('canvas');cvs.width=128;cvs.height=512;
+   const ctx=cvs.getContext('2d');
+   ctx.fillStyle=baseColor;ctx.fillRect(0,0,cvs.width,cvs.height);
+   if(p.sash.endsWith('-check')){
+    const accent=p.sash==='yellow-check'?'#674e22':p.sash==='black-check'?'#dcdce0':'#f7e8e4';
+    ctx.fillStyle=accent;
+    // Flat tartan-style check lines, painted into the sash texture.
+    for(let x=8;x<128;x+=32)ctx.fillRect(x,0,6,512);
+    for(let y=8;y<512;y+=44)ctx.fillRect(0,y,128,6);
+    ctx.fillStyle='rgba(0,0,0,.23)';
+    for(let x=22;x<128;x+=32)ctx.fillRect(x,0,3,512);
+    for(let y=28;y<512;y+=44)ctx.fillRect(0,y,128,3);
+   }else{
+    ctx.fillStyle='#ffffff';
+    for(let y=18,row=0;y<512;y+=42,row++){
+     for(let x=16+(row%2)*16;x<128;x+=32){
+      ctx.beginPath();ctx.arc(x,y,6.5,0,Math.PI*2);ctx.fill();
+     }
+    }
+   }
+   const texture=new THREE.CanvasTexture(cvs);
+   texture.colorSpace=THREE.SRGBColorSpace;
+   texture.anisotropy=4;
+   const patterned=mat('#ffffff',.97);patterned.map=texture;
+   // Front and back both carry the print; other faces use the base color.
+   clothMaterial=[patterned,patterned,clothMaterial,clothMaterial,patterned,patterned];
   }
+  child(fabric,new THREE.BoxGeometry(.23,1.14,.065),clothMaterial,[-.025,-.57,0],[1,1,1]);
  }
  // Minimal articulated limbs: smooth joints tucked inside sleeve/leg, not exposed balls.
  function arm(side){
