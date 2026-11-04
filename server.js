@@ -121,13 +121,15 @@ const colors = ['#ff747d','#67d8d1','#f9c463','#a8a0ff','#90dd81','#ff9ce1','#72
 const patterns=['solid','stripe','wide-stripe'];
 const sashes=['none','black','purple','red','green','black-check','red-check'];
 const hats=['none'];
-const hairStyles=['short','bob','long','wavy','ponytail','mohawk','spiky','buzz','curly'];
+const hairStyles=['short','bob','long','buns','buzz'];
+const oldHairMap={wavy:'long',ponytail:'buns',mohawk:'short',spiky:'short',curly:'bob'};
+const safeHairStyle=v=>hairStyles.includes(v)?v:(oldHairMap[v]||'short');
 const hairColors=['#25222a','#4b3932','#85533e','#edc46b','#d34c53','#4d86d5','#9965c9','#e89bc2'];
 function apparel(d,fallback={}){return {
  pattern:patterns.includes(d.pattern)?d.pattern:(fallback.pattern||'solid'),
  sash:sashes.includes(d.sash)?d.sash:(fallback.sash||'none'),
  hat:'none',
- hairStyle:hairStyles.includes(d.hairStyle)?d.hairStyle:(fallback.hairStyle|| (d.gender==='female'?'bob':'short')),
+ hairStyle:safeHairStyle(d.hairStyle||fallback.hairStyle||(d.gender==='female'?'bob':'short')),
  hairColor:hairColors.includes(d.hairColor)?d.hairColor:(fallback.hairColor||'#4b3932')
 }}
 const clean = (s,max=30)=>String(s||'').replace(/[\x00-\x1f<>]/g,'').trim().slice(0,max);
@@ -156,7 +158,7 @@ async function getVideoTitle(id){
   finally{clearTimeout(timer)}
 }
 async function receive(req){let raw='';for await(const chunk of req){raw+=chunk;if(raw.length>4000)throw new Error('too large')}return JSON.parse(raw||'{}')}
-const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.ico':'image/x-icon'};
+const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.ico':'image/x-icon','.gltf':'model/gltf+json','.bin':'application/octet-stream'};
 const server=http.createServer(async(req,res)=>{
   const url=new URL(req.url,'http://localhost');
   if(!restored&&url.pathname.startsWith('/api/'))return json(res,503,{error:'음악 저장소 연결 확인 중입니다. 잠시 뒤 다시 시도해주세요.'});
