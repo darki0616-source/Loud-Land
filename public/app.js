@@ -41,7 +41,7 @@ function refreshProfilePreview(){if(!state.me)return;$('profileName').textConten
 function toast(msg){$('toast').textContent=msg;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('show'),3000)}
 document.querySelectorAll('[data-gender]').forEach(b=>b.onclick=()=>selectGender(b.dataset.gender));
 function colorPicker(){let r=$('colorPicker');r.innerHTML='';palette.forEach(c=>{let b=document.createElement('button');b.style.background=c;b.className=c===chosenColor?'selected':'';b.setAttribute('aria-label','티셔츠 '+c);b.onclick=()=>{chosenColor=c;colorPicker()};r.append(b)})}colorPicker();
-const apparelChoices={pattern:[['solid','단색'],['stripe','가는 줄무늬'],['wide-stripe','넓은 줄무늬']],sash:[['none','없음'],['black','검정'],['purple','보라'],['red','빨강'],['green','초록'],['black-check','검정 체크'],['red-check','빨강 체크'],['yellow','노랑'],['blue','파랑'],['blue-check','파랑 체크'],['yellow-check','노랑 체크'],['purple-check','보라 체크'],['black-dot','검정 · 흰 땡땡이'],['red-dot','빨강 · 흰 땡땡이'],['blue-dot','파랑 · 흰 땡땡이'],['yellow-dot','노랑 · 흰 땡땡이'],['purple-dot','보라 · 흰 땡땡이']]]};
+const apparelChoices={pattern:[['solid','단색'],['stripe','가는 줄무늬'],['wide-stripe','넓은 줄무늬']],sash:[['none','없음'],['black','검정'],['purple','보라'],['red','빨강'],['green','초록'],['black-check','검정 체크'],['red-check','빨강 체크'],['yellow','노랑'],['blue','파랑'],['blue-check','파랑 체크'],['yellow-check','노랑 체크'],['purple-check','보라 체크'],['black-dot','검정 · 흰 땡땡이'],['red-dot','빨강 · 흰 땡땡이'],['blue-dot','파랑 · 흰 땡땡이'],['yellow-dot','노랑 · 흰 땡땡이'],['purple-dot','보라 · 흰 땡땡이']]};
 function renderApparelPicker(){
  for(const [key,items] of Object.entries(apparelChoices)){
   const parent=$(key+'Picker');if(!parent)continue;parent.replaceChildren();
