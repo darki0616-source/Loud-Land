@@ -1712,6 +1712,26 @@ function finishSlamMotion(){
  document.querySelectorAll('[data-action]').forEach(b=>b.classList.remove('active'));
  sendMove();
 }
+// Meshes may use either one material or an array of materials (check/dot sash).
+// Disposing an array as if it were a Material used to throw during profile edits,
+// aborting requestAnimationFrame and freezing the entire festival scene.
+function disposeAvatar(root){
+ scene.remove(root);
+ const geometries=new Set(),materials=new Set(),textures=new Set();
+ root.traverse(object=>{
+  if(object.geometry)geometries.add(object.geometry);
+  for(const material of (Array.isArray(object.material)?object.material:[object.material])){
+   if(!material)continue;
+   materials.add(material);
+   if(material.map)textures.add(material.map);
+  }
+ });
+ // Collect first; a shared material may be referenced by more than one mesh.
+ // Per-avatar resources are created anew, while imported hair geometry is cloned.
+ for(const geometry of geometries)geometry.dispose();
+ for(const material of materials)material.dispose();
+ for(const texture of textures)texture.dispose();
+}
 function tick(t){
  const frameDelta=Math.min(50,Math.max(0,t-(tick.lastFrame??t)));tick.lastFrame=t;
  if(state.me){
@@ -1834,12 +1854,12 @@ function tick(t){
  for(let [id,p] of state.players){
   const current=avatars.get(id);
   if(current&&(current.color!==p.color||current.name!==p.name||current.gender!==p.gender||current.pattern!==(p.pattern||'solid')||current.sash!==(p.sash||'none')||current.hairStyle!==(p.hairStyle||'short')||current.hairColor!==(p.hairColor||'#4b3932'))){
-   scene.remove(current.root);current.root.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material?.map)o.material.map.dispose();if(o.material)o.material.dispose()});avatars.delete(id);
+   disposeAvatar(current.root);avatars.delete(id);
   }
   if(!avatars.has(id)){let a=makeAvatar(p),pos=toWorld(p);a.root.position.set(pos.x,0,pos.z);a.name=p.name;a.gender=p.gender;a.pattern=p.pattern||'solid';a.sash=p.sash||'none';a.hairStyle=p.hairStyle||'short';a.hairColor=p.hairColor||'#4b3932';avatars.set(id,a)}
   animateAvatar(avatars.get(id),p,t)
  }
- for(let [id,a] of avatars)if(!state.players.has(id)){scene.remove(a.root);a.root.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material?.map)o.material.map.dispose();if(o.material)o.material.dispose()});avatars.delete(id)}
+ for(let [id,a] of avatars)if(!state.players.has(id)){disposeAvatar(a.root);avatars.delete(id)}
  if(moveMarker.visible){moveMarker.material.opacity=Math.min(.75,Math.max(0,(moveMarkerUntil-t)/1050)*.75);if(t>moveMarkerUntil)moveMarker.visible=false}
  updateEnvironment();animateSky(t);updateOcean(t);updateSlamDust(t);updateBubbles(t);animateShow(t);updateHourlyFireworks(t);animateToastSparks(t);followLocalAvatar();controls.update();keepCameraInFrontOfStage();updateSlamVisual(t);updateRockPlayVisual(t);renderer.render(scene,camera);cssRenderer.render(scene,camera);renderStageForeground();requestAnimationFrame(tick)
 }
