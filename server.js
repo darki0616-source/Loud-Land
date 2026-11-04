@@ -120,7 +120,7 @@ setInterval(()=>{if(music.id&&!music.paused&&music.duration>0&&(Date.now()-music
 const colors = ['#ff747d','#67d8d1','#f9c463','#a8a0ff','#90dd81','#ff9ce1','#72b5ff','#eeeeee','#262631','#373943','#a5e1f9','#f1d9a7'];
 const patterns=['solid','stripe','wide-stripe'];
 const sashes=['none','black','purple','red','green','black-check','red-check'];
-const hats=['none','black','white','blue','green','yellow'];
+const hats=['none'];
 function apparel(d,fallback={}){return {
  pattern:patterns.includes(d.pattern)?d.pattern:(fallback.pattern||'solid'),
  sash:sashes.includes(d.sash)?d.sash:(fallback.sash||'none'),
