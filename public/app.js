@@ -862,7 +862,7 @@ function makeAvatar(p){
  if(p.sash&&p.sash!=='none'){
   const sashColors={black:'#20212c',purple:'#793ac8',red:'#d42c42',green:'#2a9a59','black-check':'#20212c','red-check':'#c72b35'};
   // Restore the previous size/position, then rotate the sash 90 degrees as requested.
-  const fabric=new THREE.Group();fabric.position.set(-.49,1.24,.16);fabric.rotation.z=Math.PI/2;root.add(fabric);parts.sash=fabric;
+  const fabric=new THREE.Group();fabric.position.set(-.49,1.24,.16);fabric.rotation.y=Math.PI/2;root.add(fabric);parts.sash=fabric;
   const clothMat=mat(sashColors[p.sash]||'#252535',.97);
   child(fabric,new THREE.BoxGeometry(.23,1.14,.065),clothMat,[-.025,-.57,0],[1,1,1]);
   if(p.sash.endsWith('check')){
@@ -1040,7 +1040,7 @@ function animateAvatar(a,p,t){
  const q=(p.id===state.id&&state.me)?state.me:p,wp=toWorld(q),P=a.parts;
  a.root.position.x+=(wp.x-a.root.position.x)*.28;
  a.root.position.z+=(wp.z-a.root.position.z)*.28;
- if(P.sash)P.sash.rotation.z=Math.PI/2+Math.sin(t*.0028)*.055;
+ if(P.sash)P.sash.rotation.y=Math.PI/2+Math.sin(t*.0028)*.055;
  P.toastCup.visible=q.action==='toast-clink';
  const act=q.action||'idle',basePose=q.pose||((act==='sit'||act==='lie')?act:'stand'),sec=t*.001,pose={};
  const keys=['upper','neck','leftShoulder','rightShoulder','leftElbow','rightElbow','leftHip','rightHip','leftKnee','rightKnee'];
