@@ -846,57 +846,131 @@ function makeAvatar(p){
  const smile=new THREE.EllipseCurve(0,0,.084,.046,Math.PI*.08,Math.PI*.92,false,0);
  const points=smile.getPoints(15);const smileGeo=new THREE.BufferGeometry().setFromPoints(points.map(v=>new THREE.Vector3(v.x,-v.y,0)));
  const smileLine=new THREE.Line(smileGeo,new THREE.LineBasicMaterial({color:'#533f39'}));smileLine.position.set(0,-.17,.746);neck.add(smileLine);
- // Hair meshes follow the neck, so the chosen cut is visible while dancing.
+ // Hairstyle v54: a fitted scalp, tapered sculpted locks and curved hair curtains.
+ // Keep the face unobstructed and avoid the disconnected sphere/capsule look.
  const hairStyle=hairStyles.some(([id])=>id===p.hairStyle)?p.hairStyle:(female?'bob':'short');
- const topHair=(scale=[1,1,1],offset=[0,.16,-.01],theta=Math.PI*.46)=>child(neck,new THREE.SphereGeometry(.833,24,18,0,Math.PI*2,0,theta),hair,offset,scale);
- const strands=(length,sideX=.75,forward=.05)=>{
-  for(const side of [-1,1]){
-   const lock=child(neck,new THREE.CapsuleGeometry(.175,length,6,12),hair,[side*sideX,-.17,forward],[.9,1,.92]);
-   lock.rotation.z=side*.08;
+ const hairLight=mat(new THREE.Color(hairHex).lerp(new THREE.Color('#ffffff'),.085),.96);
+ const hairShade=mat(new THREE.Color(hairHex).multiplyScalar(.79),.97);
+ function scalp(height=.46,scale=[1,1,1],offset=[0,.16,-.015]){
+  return child(neck,new THREE.SphereGeometry(.838,32,18,0,Math.PI*2,0,Math.PI*height),hair,offset,scale);
+ }
+ // A continuous tapered 3D strand swept along a spline. Its oval cross-section
+ // gives a soft, sculpted shape rather than the old beads/straight cylinders.
+ function lock(points,radius=.16,material=hair,flatten=1){
+  const curve=new THREE.CatmullRomCurve3(points.map(v=>new THREE.Vector3(...v)));
+  const segments=Math.max(9,points.length*5),sides=7,verts=[],normals=[],indices=[];
+  const tangent=new THREE.Vector3(),axis=new THREE.Vector3(),binormal=new THREE.Vector3();
+  for(let i=0;i<=segments;i++){
+   const t=i/segments,pos=curve.getPoint(t);
+   curve.getTangent(t,tangent).normalize();
+   axis.set(0,0,1).addScaledVector(tangent,-tangent.z).normalize();
+   if(axis.lengthSq()<.01)axis.set(1,0,0);
+   binormal.crossVectors(tangent,axis).normalize();
+   const taper=Math.max(.055,Math.pow(Math.sin(Math.PI*(.12+.88*t)),.66));
+   const r=radius*taper;
+   for(let j=0;j<sides;j++){
+    const ang=j/sides*Math.PI*2,radial=axis.clone().multiplyScalar(Math.cos(ang)).addScaledVector(binormal,Math.sin(ang)*flatten).normalize();
+    const v=pos.clone().addScaledVector(axis,Math.cos(ang)*r).addScaledVector(binormal,Math.sin(ang)*r*flatten);
+    verts.push(v.x,v.y,v.z);normals.push(radial.x,radial.y,radial.z);
+    if(i<segments){let k=i*sides+j,n=i*sides+(j+1)%sides;indices.push(k,k+sides,n,k+sides,n+sides,n)}
+   }
   }
- };
- const bangs=(count=4)=>{for(let i=0;i<count;i++){const x=(i-(count-1)/2)*(.81/Math.max(1,count-1));child(neck,new THREE.SphereGeometry(.205,12,9),hair,[x,.60,.35],[.96,.39,.75])}};
+  const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));geo.setAttribute('normal',new THREE.Float32BufferAttribute(normals,3));geo.setIndex(indices);
+  const mesh=new THREE.Mesh(geo,material);mesh.castShadow=true;neck.add(mesh);return mesh;
+ }
+ function curtain(bottom=-.45,front=false,wave=0){
+  // Curved mesh spanning only the BACK of the head; smooth, rounded hem.
+  const segments=18,rows=7,vertices=[],uv=[],indices=[];
+  for(let row=0;row<=rows;row++){
+   const t=row/rows;
+   for(let j=0;j<=segments;j++){
+    const u=j/segments,x=(u*2-1)*.80;
+    const edge=Math.pow(Math.abs(u*2-1),2.7);
+    const y=.47+((bottom+.12*edge)-.47)*t;
+    const z=-.17-.65*Math.sqrt(Math.max(0,1-(x/.85)**2))+.09*Math.sin(t*Math.PI)+wave*Math.sin(u*12+t*9)*t;
+    vertices.push(x,y,z);uv.push(u,t);
+    if(row<rows&&j<segments){let k=row*(segments+1)+j;indices.push(k,k+1,k+segments+1,k+1,k+segments+2,k+segments+1)}
+   }
+  }
+  const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));geo.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));geo.setIndex(indices);geo.computeVertexNormals();
+  const m=hair.clone();m.side=THREE.DoubleSide;const mesh=new THREE.Mesh(geo,m);mesh.castShadow=true;neck.add(mesh);
+ }
+ function fringe(side=1,length=.25){
+  const x=side*.31;
+  lock([[x,.71,.36],[x-side*.07,.60,.56],[x-side*.14,.45-length*.22,.67],[x-side*.17,.37-length*.28,.675]],.135,hair,.72);
+ }
+ function sideLock(side,length=.5,wave=0,radius=.15){
+  const x=side*.72;
+  lock([[x,.45,.11],[x+side*.03,.13,.20],[x+side*(.05+wave*.1),-.13,.16],[x+side*.025,-length,.13]],radius,hair,.85);
+ }
  if(hairStyle==='buzz'){
-  topHair([.99,.80,.99],[0,.18,-.03],Math.PI*.38);
+  // Clean close-cut silhouette; no locks or fringe.
+  scalp(.39,[1.01,.965,1.01],[0,.16,-.012]);
  }else if(hairStyle==='short'){
-  topHair();bangs(4);
-  strands(.10,.76,-.09);
+  scalp(.49,[1.015,1.04,1.015]);
+  // Directional swept fringe, trimmed temple sides.
+  for(let i=0;i<4;i++){
+   const x=-.52+i*.31;
+   lock([[x,.75,.29],[x+.08,.63,.49],[x+.17,.52-i*.025,.61],[x+.24,.46-i*.025,.59]],.125,i%2?hair:hairLight,.70);
+  }
+  for(const side of [-1,1])sideLock(side,.23,0,.115);
  }else if(hairStyle==='bob'){
-  topHair();bangs(4);
-  child(neck,new THREE.SphereGeometry(.83,20,16),hair,[0,-.10,-.34],[1.03,1.03,.86]);
-  strands(.42,.77,.07);
+  scalp(.52);curtain(-.49);
+  for(const side of [-1,1]){sideLock(side,.51,0,.175);sideLock(side,.39,0,.095)}
+  for(let i=0;i<5;i++){const x=-.54+i*.27;lock([[x,.69,.39],[x,.56,.56],[x,.44,.665]],.113,hair,.66)}
  }else if(hairStyle==='long'){
-  topHair();bangs(4);
-  child(neck,new THREE.CapsuleGeometry(.57,.67,8,20),hair,[0,-.38,-.38],[1.36,1.1,.65]);
-  strands(.90,.77,.12);
+  scalp(.49);curtain(-1.08);
+  for(const side of [-1,1]){
+   sideLock(side,1.00,0,.18);
+   lock([[side*.66,.41,.24],[side*.77,.03,.26],[side*.76,-.49,.28],[side*.7,-.96,.20]],.13,hairLight,.78);
+  }
+  fringe(-1,.19);fringe(1,.18);
  }else if(hairStyle==='wavy'){
-  topHair();bangs(4);
-  for(const side of [-1,1])for(let i=0;i<4;i++){
-    child(neck,new THREE.SphereGeometry(.24,12,10),hair,[side*(.73+.06*Math.sin(i*1.6)),-.11-i*.23,.03+Math.sin(i*2)*.08],[.95,.95,1]);
+  scalp(.48);curtain(-.82,false,.035);
+  for(const side of [-1,1])for(let k=0;k<3;k++){
+   const z=.08-k*.20,x=side*(.67-k*.07);
+   lock([[x,.47,z],[x+side*.10,.12,z+.09],[x-side*.07,-.16,z+.12],[x+side*.13,-.50,z+.03],[x-side*.02,-.84,z]],.135,k===1?hairLight:hair,.89);
   }
-  for(let i=0;i<4;i++)child(neck,new THREE.SphereGeometry(.28,12,10),hair,[(i-1.5)*.35,-.55,-.48]);
+  for(let k=0;k<4;k++)fringe(k%2?1:-1,.12+k*.028);
  }else if(hairStyle==='ponytail'){
-  topHair();bangs(3);
-  child(neck,new THREE.SphereGeometry(.22,14,10),hair,[0,.27,-.81]);
-  const tail=child(neck,new THREE.CapsuleGeometry(.23,.84,8,14),hair,[0,-.31,-.92],[.85,1,.85]);tail.rotation.x=-.15;
-  for(const side of [-1,1])child(neck,new THREE.SphereGeometry(.13,10,9),hair,[side*.73,.06,-.02]);
+  scalp(.49,[1.005,1.01,1.005]);
+  for(const side of [-1,1])sideLock(side,.18,0,.105);
+  // Smooth gathered rear knot, then one thick tapered flowing tail.
+  child(neck,new THREE.SphereGeometry(.17,14,12),hairShade,[0,.27,-.81],[1,.9,1]);
+  lock([[0,.25,-.88],[0,-.03,-.97],[.07,-.47,-1.04],[.14,-.89,-1.02]],.245,hair,.90);
+  for(let j=0;j<3;j++)lock([[.05*(j-1),-.20,-.99],[.06*(j-1)+.07,-.57,-1.045],[.12*(j-1)+.13,-.92,-1.03]],.073,j===1?hairLight:hair,.7);
+  for(let k=0;k<4;k++){let x=-.47+k*.29;lock([[x,.73,.26],[x*.75,.60,.46],[x*.55,.50,.58]],.10,hair,.67)}
  }else if(hairStyle==='mohawk'){
-  topHair([.91,.70,.94],[0,.19,-.02],Math.PI*.32);
-  for(let i=0;i<5;i++){
-   const spike=child(neck,new THREE.ConeGeometry(.19,.52+(i===2?.15:0),8),hair,[0,.83,-.56+i*.28]);spike.rotation.x=(i-2)*.12;
+  scalp(.37,[.995,.88,.995]);
+  // A coherent central ridge with layered tapered blades along front-to-back.
+  for(let k=0;k<7;k++){
+   const z=.64-k*.21,high=k===0?.40:(k<5?.63:.47);
+   lock([[0,.67,z],[0,.96,z-.03],[0,1.15+high*.53,z-.09],[0,1.12+high*.62,z-.18]],.195,k%3===0?hairLight:hair,.7);
   }
+  for(const side of [-1,1])sideLock(side,.13,0,.075);
  }else if(hairStyle==='spiky'){
-  topHair();
-  for(let i=0;i<9;i++){
-   const a=i*2.4,rad=i%3===0?.35:.56;
-   const spike=child(neck,new THREE.ConeGeometry(.15,.38+(i%3)*.08,7),hair,[Math.cos(a)*rad,.83,Math.sin(a)*rad-.02]);spike.rotation.z=-Math.cos(a)*.3;spike.rotation.x=Math.sin(a)*.25;
+  scalp(.46);
+  // Soft asymmetric tufts arising from the scalp instead of detached cones.
+  for(let k=0;k<12;k++){
+   const a=k*2.39996,r=k%3===0?.34:.57,x=Math.cos(a)*r,z=Math.sin(a)*r-.015;
+   const dx=Math.cos(a)*(.20+(k%3)*.04),dz=Math.sin(a)*(.12+(k%2)*.06);
+   lock([[x,.74,z],[x+dx*.30,.95,z+dz*.30],[x+dx,1.12+(k%3)*.08,z+dz]],.125,k%4===0?hairLight:hair,.87);
   }
+  for(let k=0;k<4;k++){let x=-.46+k*.30;lock([[x,.70,.36],[x+.04,.51,.55],[x+.10,.43,.64]],.105,hair,.7)}
  }else if(hairStyle==='curly'){
-  topHair([1.00,.9,1.0]);
-  for(let i=0;i<17;i++){
-   const ring=i%9, a=(ring/9)*Math.PI*2;
-   const y=i<9?.72:.51, r=i<9?.55:.72;
-   child(neck,new THREE.SphereGeometry(.245,10,9),hair,[Math.cos(a)*r,y,Math.sin(a)*r-.06]);
+  scalp(.52,[1.04,1.03,1.05]);
+  // Staggered compact curls with continuous scalp under the ringlets.
+  for(let ring=0;ring<3;ring++){
+   const count=ring===0?11:ring===1?10:7,r=ring===0?.68:ring===1?.46:.22;
+   for(let k=0;k<count;k++){
+    const a=(k+(ring%2)*.5)/count*Math.PI*2;
+    const x=Math.cos(a)*r,z=Math.sin(a)*r-.01;
+    const y=ring===0?.64:ring===1?.88:1.02;
+    child(neck,new THREE.SphereGeometry(.17+(k%3)*.015,11,9),k%5===0?hairLight:hair,[x,y,z],[1,.84,1]);
+   }
+  }
+  for(const side of [-1,1])for(let k=0;k<3;k++){
+   child(neck,new THREE.SphereGeometry(.165,10,9),hair,[side*(.74+(k%2)*.035),.30-k*.20,.06],[1,.96,.90]);
   }
  }
  // No head accessory is rendered.
