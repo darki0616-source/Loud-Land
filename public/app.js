@@ -1043,35 +1043,35 @@ function animateAvatar(a,p,t){
   set('rightKnee',1.28+.06*Math.sin(sec*2.4));
  }
  if(act==='skanking'){
-  // Ska four-beat phrase: 1 right foot forward/up, 2 right foot down,
-  // 3 left foot forward/up, 4 left foot down. Repeat, never double-kick.
+  // Four-count ska step, with a real recoil/preparation on counts 2 and 4:
+  // 1 right leg forward + left arm forward
+  // 2 left leg folds backward + right arm sweeps back
+  // 3 left leg forward + right arm forward
+  // 4 right leg folds backward + left arm sweeps back
   const beat=sec*2.7;
-  const step=Math.floor(beat)%4; // 0=R lift, 1=R land, 2=L lift, 3=L land
-  const pulse=Math.pow(Math.sin(Math.PI*(beat%1)),2); // soft rise/fall within each beat
-  const rightKick=step===0?pulse:0;
-  const leftKick=step===2?pulse:0;
-  const isLift=step===0||step===2;
-  // Match the opposite arm to each leg: count 1 = left arm forward,
-  // count 2 = lower it, count 3 = right arm forward, count 4 = lower it.
-  // A gentle forward/rear swing follows each movement, rather than crossing arms.
-  const leftArmForward=step===0?pulse:0;
-  const rightArmForward=step===2?pulse:0;
-  // Slightly higher bounces on all four counts, landing between each beat.
-  height=-.028+.15*pulse+(isLift?.015:0)*pulse;
-  // Avatar front is +Z. Positive upper X rotates chest toward +Z,
-  // making a genuine forward waist bend (negative leaned backward).
-  set('upper',.27+.022*pulse,0,.024*Math.sin(beat*Math.PI*.5));
+  const step=Math.floor(beat)%4;
+  const pulse=Math.pow(Math.sin(Math.PI*(beat%1)),2);
+  const frontR=step===0?pulse:0;
+  const backL=step===1?pulse:0;
+  const frontL=step===2?pulse:0;
+  const backR=step===3?pulse:0;
+  // Slightly higher, compact hop on every beat. Returns to floor between counts.
+  height=-.028+.205*pulse+((step===0||step===2)?.018:0)*pulse;
+  // Keep torso leaning FORWARD (avatar front is +Z).
+  set('upper',.27+.027*pulse,0,.024*Math.sin(beat*Math.PI*.5));
   set('neck',-.055);
-  set('rightHip',-.08-1.02*rightKick,0,.045);
-  set('leftHip',-.08-1.02*leftKick,0,-.045);
-  set('rightKnee',.17-.13*rightKick);
-  set('leftKnee',.17-.13*leftKick);
-  // Left hand swings forward on count 1, returns down on count 2;
-  // right hand swings forward on count 3, returns down on count 4.
-  set('leftShoulder',-.08-1.12*leftArmForward,0,-.22);
-  set('rightShoulder',-.08-1.12*rightArmForward,0,.22);
-  set('leftElbow',-.30-.16*leftArmForward);
-  set('rightElbow',-.30-.16*rightArmForward);
+  // A forward kick, or a backward tucked heel as the opposing foot recoils.
+  set('rightHip',-.08-1.02*frontR+.46*backR,0,.045);
+  set('leftHip',-.08-1.02*frontL+.46*backL,0,-.045);
+  set('rightKnee',.17-.13*frontR+1.13*backR);
+  set('leftKnee',.17-.13*frontL+1.13*backL);
+  // Hands follow the user-defined rhythmic pattern, including backswing.
+  // Left hand forward on 1, right hand back on 2,
+  // right hand forward on 3, left hand back on 4.
+  set('leftShoulder',-.08-1.12*frontR+.80*backR,0,-.22);
+  set('rightShoulder',-.08+ .80*backL-1.12*frontL,0,.22);
+  set('leftElbow',-.30-.16*frontR+.12*backR);
+  set('rightElbow',-.30-.16*frontL+.12*backL);
  }
  if(act==='smoke'){
   // Small, repeated smoking gesture: right hand approaches the mouth, then lowers.
