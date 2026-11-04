@@ -262,3 +262,12 @@ button,input{touch-action:manipulation}
 .apparel-choice{border:1px solid rgba(255,255,255,.25);border-radius:9px;padding:9px 11px;background:#273248;color:#eaf0fa;cursor:pointer;font:inherit;font-size:12px}
 .apparel-choice.selected{border-color:#d9ff96;background:#405335;color:#f3ffd4;box-shadow:0 0 0 1px #d9ff96 inset}
 .joinbox{max-height:min(90dvh,800px);overflow-y:auto;overscroll-behavior:contain}
+
+/* v53: visible hair picker, readable in compact mobile profile editor */
+.hair-style-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.hair-style-options .apparel-choice{white-space:normal;min-height:38px;padding:8px 4px;text-align:center}
+.hair-colors{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:6px 0 17px}
+.hair-color-choice{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:5px;min-height:63px;padding:7px 3px;border:1px solid #525e70;border-radius:10px;background:#242c40;color:#e9edf8;font-size:10px;font-weight:700}
+.hair-color-choice::before{content:"";display:block;width:25px;height:25px;border-radius:50%;border:1px solid #ffffff66;background:var(--hair-swatch)}
+.hair-color-choice.selected{border-color:#d7ff77;box-shadow:0 0 0 1px #d7ff77 inset}
+@media(max-width:430px){.hair-colors{gap:5px}.hair-color-choice{font-size:9px;min-height:60px}}

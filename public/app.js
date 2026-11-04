@@ -6,7 +6,9 @@ const mats=[{x:118,y:682,c:'#f5a5a3'},{x:290,y:706,c:'#a7def4'},{x:470,y:690,c:'
 const state={id:null,me:null,players:new Map(),keys:new Set(),action:'idle',pose:'stand',actionUntil:0,lastSent:0,es:null,music:{id:'',paused:true,position:0,startedAt:0,token:0},queue:[],history:[],serverDelta:0,yt:null,ytReady:false,lastTrack:'',audioEnabled:false,skipVote:null,skipVoteCooldownUntil:0,walkTarget:null,benchTarget:null,moving:false};
 let slamMode=false,slam=null,slamCooldownUntil=0,slamMotion=null;
 let rockPlacementMode=null,rockPlay=null,rockCooldowns={circle:0,train:0,mosh:0,row:0,toast:0},rockRunningUntil=0,rockMotion=null;
-let chosenPattern='solid',chosenSash='none';
+let chosenPattern='solid',chosenSash='none',chosenHairStyle='short',chosenHairColor='#4b3932';
+const hairStyles=[['short','숏컷'],['bob','단발'],['long','장발'],['wavy','웨이브'],['ponytail','포니테일'],['mohawk','모히칸'],['spiky','삐죽머리'],['buzz','버즈컷'],['curly','곱슬머리']];
+const hairColors=[['검정','#25222a'],['진갈색','#4b3932'],['갈색','#85533e'],['금발','#edc46b'],['빨강','#d34c53'],['파랑','#4d86d5'],['보라','#9965c9'],['분홍','#e89bc2']];
 let chosenColor=palette[0],chosenGender='male',toastTimer;const avatars=new Map();const activeBubbles=new Map();
 // Keep a visitor's own appearance on this browser only (not by shared public IP).
 const PROFILE_STORAGE_KEY='oneseason-profile-v1';
@@ -24,10 +26,10 @@ function getSessionKey(){
 }
 const sessionKey=getSessionKey();
 function readSavedProfile(){try{const p=JSON.parse(localStorage.getItem(PROFILE_STORAGE_KEY)||'null');return p&&typeof p==='object'?p:null}catch{return null}}
-function saveProfile(p){try{localStorage.setItem(PROFILE_STORAGE_KEY,JSON.stringify({name:String(p.name||'ROCKER').slice(0,18),color:p.color,gender:p.gender,pattern:p.pattern||'solid',sash:p.sash||'none'}))}catch{}}
+function saveProfile(p){try{localStorage.setItem(PROFILE_STORAGE_KEY,JSON.stringify({name:String(p.name||'ROCKER').slice(0,18),color:p.color,gender:p.gender,pattern:p.pattern||'solid',sash:p.sash||'none',hairStyle:p.hairStyle||'short',hairColor:p.hairColor||'#4b3932'}))}catch{}}
 function selectGender(g){chosenGender=g==='female'?'female':'male';document.querySelectorAll('[data-gender]').forEach(b=>b.classList.toggle('selected',b.dataset.gender===chosenGender))}
 const savedProfile=readSavedProfile();
-if(savedProfile){if(typeof savedProfile.name==='string')$('nick').value=savedProfile.name.slice(0,18);if(palette.includes(savedProfile.color))chosenColor=savedProfile.color;if(['male','female'].includes(savedProfile.gender))selectGender(savedProfile.gender);if(['solid','stripe','wide-stripe'].includes(savedProfile.pattern))chosenPattern=savedProfile.pattern;if(['none','black','purple','red','green','black-check','red-check'].includes(savedProfile.sash))chosenSash=savedProfile.sash}
+if(savedProfile){if(typeof savedProfile.name==='string')$('nick').value=savedProfile.name.slice(0,18);if(palette.includes(savedProfile.color))chosenColor=savedProfile.color;if(['male','female'].includes(savedProfile.gender))selectGender(savedProfile.gender);if(['solid','stripe','wide-stripe'].includes(savedProfile.pattern))chosenPattern=savedProfile.pattern;if(['none','black','purple','red','green','black-check','red-check'].includes(savedProfile.sash))chosenSash=savedProfile.sash;if(hairStyles.some(([key])=>key===savedProfile.hairStyle))chosenHairStyle=savedProfile.hairStyle;else chosenHairStyle=savedProfile.gender==='female'?'bob':'short';if(hairColors.some(([,hex])=>hex===savedProfile.hairColor))chosenHairColor=savedProfile.hairColor}
 let editingProfile=false;
 function refreshProfilePreview(){if(!state.me)return;$('profileName').textContent=state.me.name;$('avatarPreview').querySelector('b').style.background=state.me.color}
 
@@ -43,6 +45,13 @@ function renderApparelPicker(){
  }
 }
 renderApparelPicker();
+function renderHairPicker(){
+ const styles=$('hairStylePicker'),colors=$('hairColorPicker');if(!styles||!colors)return;
+ styles.replaceChildren();colors.replaceChildren();
+ for(const [value,label] of hairStyles){const b=document.createElement('button');b.type='button';b.className='apparel-choice'+(chosenHairStyle===value?' selected':'');b.textContent=label;b.setAttribute('aria-pressed',String(chosenHairStyle===value));b.onclick=()=>{chosenHairStyle=value;renderHairPicker()};styles.append(b)}
+ for(const [label,value] of hairColors){const b=document.createElement('button');b.type='button';b.className='hair-color-choice'+(chosenHairColor===value?' selected':'');b.style.setProperty('--hair-swatch',value);b.textContent=label;b.setAttribute('aria-label','머리색 '+label);b.setAttribute('aria-pressed',String(chosenHairColor===value));b.onclick=()=>{chosenHairColor=value;renderHairPicker()};colors.append(b)}
+}
+renderHairPicker();
 let rejoining=null,manualExit=false;
 async function post(ep,data){
  const r=await fetch('/api/'+ep,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(data)});
@@ -56,7 +65,7 @@ async function restoreSession(){
  if(rejoining)return rejoining;
  rejoining=(async()=>{
   try{
-   const r=await fetch('/api/join',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sessionKey,pageId,name:state.me?.name||$('nick').value||'ROCKER',color:state.me?.color||chosenColor,gender:state.me?.gender||chosenGender,pattern:state.me?.pattern||chosenPattern,sash:state.me?.sash||chosenSash})});
+   const r=await fetch('/api/join',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sessionKey,pageId,name:state.me?.name||$('nick').value||'ROCKER',color:state.me?.color||chosenColor,gender:state.me?.gender||chosenGender,pattern:state.me?.pattern||chosenPattern,sash:state.me?.sash||chosenSash,hairStyle:state.me?.hairStyle||chosenHairStyle,hairColor:state.me?.hairColor||chosenHairColor})});
    if(!r.ok)throw Error('재접속 실패');const d=await r.json();
    const old=state.me;state.id=d.id;state.me=d.players.find(x=>x.id===d.id);
    if(old){state.me.x=old.x;state.me.y=old.y;state.me.facing=old.facing;state.me.action=old.action;state.me.pose=old.pose;}
@@ -149,13 +158,13 @@ function updateSkipVoteUI(){
 async function castSkipVote(choice){const vote=state.skipVote;if(!vote||!state.id)return;try{await post('music',{id:state.id,command:'vote-cast',voteId:vote.id,choice})}catch(e){toast(e.message)}}
 function showSkipVoteResult(d){applySkipVote(null,state.skipVoteCooldownUntil);let msg=d.passed?'✅ 과반수 찬성! 요청한 곡으로 이동합니다':d.reason==='timeout'?'투표 시간이 종료되어 현재 곡을 유지합니다':'투표가 부결되어 현재 곡을 유지합니다';notice(msg)}
 setInterval(()=>{updateSkipVoteUI();updateSharedMusicButtons()},500);
-let joining=false;async function join(){if(editingProfile)return updateProfile();if(joining)return;joining=true;manualExit=false;try{let d=await post('join',{sessionKey,pageId,name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender,pattern:chosenPattern,sash:chosenSash});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);state.pose=state.me?.pose||'stand';cameraFollowInitialized=false;state.players=new Map(d.players.map(p=>[p.id,p]));renderOnlinePlayers();$('joinModal').classList.add('hidden');$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='페스티벌 참가 중';$('avatarPreview').querySelector('b').style.background=chosenColor;saveProfile(state.me);applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);listen();$('audioModal').classList.remove('hidden');showMovementGuide();toast('ONEseason에 오신 것을 환영합니다!')}catch(e){$('joinError').textContent='입장 실패: '+(e?.message||'연결을 확인해주세요');console.error('ONEseason join error:',e)}finally{joining=false}}
+let joining=false;async function join(){if(editingProfile)return updateProfile();if(joining)return;joining=true;manualExit=false;try{let d=await post('join',{sessionKey,pageId,name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender,pattern:chosenPattern,sash:chosenSash,hairStyle:chosenHairStyle,hairColor:chosenHairColor});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);state.pose=state.me?.pose||'stand';cameraFollowInitialized=false;state.players=new Map(d.players.map(p=>[p.id,p]));renderOnlinePlayers();$('joinModal').classList.add('hidden');$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='페스티벌 참가 중';$('avatarPreview').querySelector('b').style.background=chosenColor;saveProfile(state.me);applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);listen();$('audioModal').classList.remove('hidden');showMovementGuide();toast('ONEseason에 오신 것을 환영합니다!')}catch(e){$('joinError').textContent='입장 실패: '+(e?.message||'연결을 확인해주세요');console.error('ONEseason join error:',e)}finally{joining=false}}
 $('audioYes').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(true);toast(state.music.id?'음악 재생을 허용했어요':'음악이 등록되면 바로 재생돼요')};$('audioNo').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(false);toast('내 소리를 끈 상태로 입장했어요')};$('joinBtn').onclick=join;$('nick').onkeydown=e=>{if(e.key==='Enter')join()};function closeProfileEditor(){editingProfile=false;$('joinModal').classList.add('hidden');$('joinBtn').innerHTML='페스티벌 입장하기 <span>↗</span>';$('profileCancel').hidden=true;$('joinError').textContent=''}
 async function updateProfile(){if(!state.id||!state.me)return;const button=$('joinBtn');button.disabled=true;try{
- const d=await post('profile',{id:state.id,name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender,pattern:chosenPattern,sash:chosenSash});
- state.me=d.player;state.players.set(state.id,d.player);saveProfile(d.player);refreshProfilePreview();renderOnlinePlayers();closeProfileEditor();toast('닉네임과 옷 색상을 변경했어요');
+ const d=await post('profile',{id:state.id,name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender,pattern:chosenPattern,sash:chosenSash,hairStyle:chosenHairStyle,hairColor:chosenHairColor});
+ state.me=d.player;state.players.set(state.id,d.player);saveProfile(d.player);refreshProfilePreview();renderOnlinePlayers();closeProfileEditor();toast('캐릭터 설정을 변경했어요');
  }catch(e){$('joinError').textContent='변경 실패: '+e.message}finally{button.disabled=false}}
-$('editAvatar').onclick=()=>{if(!state.me)return;editingProfile=true;$('nick').value=state.me.name;chosenColor=state.me.color;chosenPattern=state.me.pattern||'solid';chosenSash=state.me.sash||'none';selectGender(state.me.gender);colorPicker();renderApparelPicker();$('joinError').textContent='';$('joinBtn').textContent='변경 사항 저장';$('profileCancel').hidden=false;$('joinModal').classList.remove('hidden');$('nick').focus()};
+$('editAvatar').onclick=()=>{if(!state.me)return;editingProfile=true;$('nick').value=state.me.name;chosenColor=state.me.color;chosenPattern=state.me.pattern||'solid';chosenSash=state.me.sash||'none';chosenHairStyle=state.me.hairStyle||'short';chosenHairColor=state.me.hairColor||'#4b3932';selectGender(state.me.gender);colorPicker();renderApparelPicker();renderHairPicker();$('joinError').textContent='';$('joinBtn').textContent='변경 사항 저장';$('profileCancel').hidden=false;$('joinModal').classList.remove('hidden');$('nick').focus()};
 $('profileCancel').onclick=closeProfileEditor;
 $('profileToggle').onclick=()=>{if(!state.me)return toast('입장 후 변경할 수 있어요');$('editAvatar').click()};
 ;$('helpBtn').onclick=()=>toast('WASD 이동 · 클릭/터치 이동 · 드래그 시점 회전 · 춤: B/G/V/K · 환호성: H · 담배: C');
@@ -789,7 +798,8 @@ function animateToastSparks(t){for(let i=toastSparks.length-1;i>=0;i--){const p=
 function makeAvatar(p){
  const root=new THREE.Group();scene.add(root);
  const parts={}, female=p.gender==='female';
- const skinMat=mat('#f3d6c2',.96),hair=mat(female?'#685046':'#4b3932',.97);
+ const hairHex=hairColors.some(([,hex])=>hex===p.hairColor)?p.hairColor:'#4b3932';
+ const skinMat=mat('#f3d6c2',.96),hair=mat(hairHex,.97);
  const shirtMat=mat(p.color,.88),bottomColor=female?'#ad816c':'#6c7891';
  const pantsMat=mat(bottomColor,.9),shoeMat=mat('#f6f3e9',.9);
  function child(g,geo,m,pos,sc){let o=new THREE.Mesh(geo,m);o.position.set(...pos);if(sc)o.scale.set(...sc);o.castShadow=true;g.add(o);return o}
@@ -836,25 +846,58 @@ function makeAvatar(p){
  const smile=new THREE.EllipseCurve(0,0,.084,.046,Math.PI*.08,Math.PI*.92,false,0);
  const points=smile.getPoints(15);const smileGeo=new THREE.BufferGeometry().setFromPoints(points.map(v=>new THREE.Vector3(v.x,-v.y,0)));
  const smileLine=new THREE.Line(smileGeo,new THREE.LineBasicMaterial({color:'#533f39'}));smileLine.position.set(0,-.17,.746);neck.add(smileLine);
- // Smooth hair cap with a few surface-shaped bangs (not a hat).
- child(neck,new THREE.SphereGeometry(.833,24,18,0,Math.PI*2,0,Math.PI*.46),hair,[0,.16,-.01],[1,1.0,1]);
- for(const x of [-.39,-.12,.16,.39]){
-   const bang=child(neck,new THREE.SphereGeometry(.20,12,9),hair,[x,.615,.33],[1,.40,.70]);
- }
- if(female){
-   // A visible bob silhouette: the original rear hair was buried inside the larger head.
-   // Keep a rear layer BEHIND the skull, then place the two tips outside the cheek contour.
-   child(neck,new THREE.SphereGeometry(.855,24,18),hair,[0,.02,-.28],[1.04,1.05,.92]);
-   for(const side of [-1,1]){
-     // Lift side locks beside the cheeks rather than below the jaw.
-     // Keep them outside the skull for an obvious bob outline from the front.
-     const lock=child(neck,new THREE.CapsuleGeometry(.18,.41,7,12),hair,[side*.78,-.015,.205],[.92,1.02,.91]);
-     lock.rotation.z=side*.12;
-     child(neck,new THREE.SphereGeometry(.19,12,9),hair,[side*.79,-.275,.205],[.91,.86,.92]);
-   }
- }else{
-   // Close-fitting side hair visible near ears.
-   for(const side of [-1,1])child(neck,new THREE.SphereGeometry(.22,12,10),hair,[side*.66,.22,-.10],[.72,1.03,.78]);
+ // Hair meshes follow the neck, so the chosen cut is visible while dancing.
+ const hairStyle=hairStyles.some(([id])=>id===p.hairStyle)?p.hairStyle:(female?'bob':'short');
+ const topHair=(scale=[1,1,1],offset=[0,.16,-.01],theta=Math.PI*.46)=>child(neck,new THREE.SphereGeometry(.833,24,18,0,Math.PI*2,0,theta),hair,offset,scale);
+ const strands=(length,sideX=.75,forward=.05)=>{
+  for(const side of [-1,1]){
+   const lock=child(neck,new THREE.CapsuleGeometry(.175,length,6,12),hair,[side*sideX,-.17,forward],[.9,1,.92]);
+   lock.rotation.z=side*.08;
+  }
+ };
+ const bangs=(count=4)=>{for(let i=0;i<count;i++){const x=(i-(count-1)/2)*(.81/Math.max(1,count-1));child(neck,new THREE.SphereGeometry(.205,12,9),hair,[x,.60,.35],[.96,.39,.75])}};
+ if(hairStyle==='buzz'){
+  topHair([.99,.80,.99],[0,.18,-.03],Math.PI*.38);
+ }else if(hairStyle==='short'){
+  topHair();bangs(4);
+  strands(.10,.76,-.09);
+ }else if(hairStyle==='bob'){
+  topHair();bangs(4);
+  child(neck,new THREE.SphereGeometry(.83,20,16),hair,[0,-.10,-.34],[1.03,1.03,.86]);
+  strands(.42,.77,.07);
+ }else if(hairStyle==='long'){
+  topHair();bangs(4);
+  child(neck,new THREE.CapsuleGeometry(.57,.67,8,20),hair,[0,-.38,-.38],[1.36,1.1,.65]);
+  strands(.90,.77,.12);
+ }else if(hairStyle==='wavy'){
+  topHair();bangs(4);
+  for(const side of [-1,1])for(let i=0;i<4;i++){
+    child(neck,new THREE.SphereGeometry(.24,12,10),hair,[side*(.73+.06*Math.sin(i*1.6)),-.11-i*.23,.03+Math.sin(i*2)*.08],[.95,.95,1]);
+  }
+  for(let i=0;i<4;i++)child(neck,new THREE.SphereGeometry(.28,12,10),hair,[(i-1.5)*.35,-.55,-.48]);
+ }else if(hairStyle==='ponytail'){
+  topHair();bangs(3);
+  child(neck,new THREE.SphereGeometry(.22,14,10),hair,[0,.27,-.81]);
+  const tail=child(neck,new THREE.CapsuleGeometry(.23,.84,8,14),hair,[0,-.31,-.92],[.85,1,.85]);tail.rotation.x=-.15;
+  for(const side of [-1,1])child(neck,new THREE.SphereGeometry(.13,10,9),hair,[side*.73,.06,-.02]);
+ }else if(hairStyle==='mohawk'){
+  topHair([.91,.70,.94],[0,.19,-.02],Math.PI*.32);
+  for(let i=0;i<5;i++){
+   const spike=child(neck,new THREE.ConeGeometry(.19,.52+(i===2?.15:0),8),hair,[0,.83,-.56+i*.28]);spike.rotation.x=(i-2)*.12;
+  }
+ }else if(hairStyle==='spiky'){
+  topHair();
+  for(let i=0;i<9;i++){
+   const a=i*2.4,rad=i%3===0?.35:.56;
+   const spike=child(neck,new THREE.ConeGeometry(.15,.38+(i%3)*.08,7),hair,[Math.cos(a)*rad,.83,Math.sin(a)*rad-.02]);spike.rotation.z=-Math.cos(a)*.3;spike.rotation.x=Math.sin(a)*.25;
+  }
+ }else if(hairStyle==='curly'){
+  topHair([1.00,.9,1.0]);
+  for(let i=0;i<17;i++){
+   const ring=i%9, a=(ring/9)*Math.PI*2;
+   const y=i<9?.72:.51, r=i<9?.55:.72;
+   child(neck,new THREE.SphereGeometry(.245,10,9),hair,[Math.cos(a)*r,y,Math.sin(a)*r-.06]);
+  }
  }
  // No head accessory is rendered.
  // The clothing stripes are painted on the torso shader, not separate raised meshes.
@@ -1613,10 +1656,10 @@ function tick(t){
 
  for(let [id,p] of state.players){
   const current=avatars.get(id);
-  if(current&&(current.color!==p.color||current.name!==p.name||current.gender!==p.gender||current.pattern!==(p.pattern||'solid')||current.sash!==(p.sash||'none')||current.hat!==(p.hat||'none'))){
+  if(current&&(current.color!==p.color||current.name!==p.name||current.gender!==p.gender||current.pattern!==(p.pattern||'solid')||current.sash!==(p.sash||'none')||current.hairStyle!==(p.hairStyle||'short')||current.hairColor!==(p.hairColor||'#4b3932'))){
    scene.remove(current.root);current.root.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material?.map)o.material.map.dispose();if(o.material)o.material.dispose()});avatars.delete(id);
   }
-  if(!avatars.has(id)){let a=makeAvatar(p),pos=toWorld(p);a.root.position.set(pos.x,0,pos.z);a.name=p.name;a.gender=p.gender;a.pattern=p.pattern||'solid';a.sash=p.sash||'none';avatars.set(id,a)}
+  if(!avatars.has(id)){let a=makeAvatar(p),pos=toWorld(p);a.root.position.set(pos.x,0,pos.z);a.name=p.name;a.gender=p.gender;a.pattern=p.pattern||'solid';a.sash=p.sash||'none';a.hairStyle=p.hairStyle||'short';a.hairColor=p.hairColor||'#4b3932';avatars.set(id,a)}
   animateAvatar(avatars.get(id),p,t)
  }
  for(let [id,a] of avatars)if(!state.players.has(id)){scene.remove(a.root);a.root.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material?.map)o.material.map.dispose();if(o.material)o.material.dispose()});avatars.delete(id)}
