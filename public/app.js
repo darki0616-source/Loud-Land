@@ -8,7 +8,7 @@ const state={id:null,me:null,players:new Map(),keys:new Set(),action:'idle',pose
 let slamMode=false,slam=null,slamCooldownUntil=0,slamMotion=null;
 let rockPlacementMode=null,rockPlay=null,rockCooldowns={circle:0,train:0,mosh:0,row:0,toast:0},rockRunningUntil=0,rockMotion=null;
 let chosenPattern='solid',chosenSash='none',chosenHairStyle='short',chosenHairColor='#4b3932';
-const hairStyles=[['short','가르마 숏컷'],['bob','짧은 보브'],['long','장발'],['buns','번 헤어'],['bob2','레이어드 단발'],['short2','사이드 숏컷'],['basic-short','기본 숏컷'],['basic-bob','기본 단발']];
+const hairStyles=[['short','가르마 숏컷'],['bob','짧은 보브'],['long','장발'],['buns','번 헤어'],['bob2','레이어드 단발'],['short2','더 짧은 사이드 숏컷'],['basic-short','기본 숏컷'],['basic-bob','기본 단발']];
 // Older custom styles are converted to the closest available Quaternius asset.
 const legacyHairMap={wavy:'long',ponytail:'buns',mohawk:'short',spiky:'short',curly:'bob',buzz:'basic-short'};
 const normalizeHairStyle=style=>hairStyles.some(([id])=>id===style)?style:(legacyHairMap[style]||'short');
@@ -808,13 +808,13 @@ const hairFit={
  // The original bob's open, arch-like edge floats above the forehead. Lower
  // and shorten that specific asset; use the scalp liner to close its opening.
  short:{width:1.95,height:1.31,depth:1.85,top:.970,forward:.020},
- bob:{width:1.94,height:1.16,depth:1.88,top:.795,forward:.005},
+ bob:{width:1.82,height:1.13,depth:1.76,top:.785,forward:.000},
  long:{width:2.16,height:2.30,depth:2.04,top:.915,forward:.030},
  buns:{width:2.36,height:1.62,depth:2.17,top:1.005,forward:.020},
  // Two distinct shape variations made from the licensed Quaternius assets.
  // bob2 uses compressed long-hair layers; short2 mirrors the parted cut.
  bob2:{width:2.11,height:1.53,depth:2.06,top:.925,forward:.015},
- short2:{width:2.03,height:1.33,depth:1.88,top:.965,forward:.020}
+ short2:{width:1.78,height:1.08,depth:1.58,top:.900,forward:.010}
 };
 const hairAssetSources={bob2:'long',short2:'short'};
 function getHairAsset(style){
@@ -863,22 +863,21 @@ function makeScalpLiner(color){
 // The avatar head is an ellipsoid: center (0,.12,0), radii (.81,.7776,.7533).
 // Fitting only the crown and temple vertices preserves the original artist-made
 // hairstyle silhouette, fringe, buns and long tails below the hairline.
-function fitImportedHairToHead(hair,holder){
- // IMPORTANT: glTF hair arrives asynchronously. Its world matrices must be
- // updated AFTER attaching it to the animated head, before vertex fitting.
- // Earlier versions used stale mesh.matrixWorld and calculated in the WRONG
- // coordinate system, making the intended scalp correction almost invisible.
+function fitImportedHairToHead(hair,holder,style){
+ // Fit imported hair against the actual chibi head shell in holder space.
+ // v65 only pushed embedded vertices outward; bob hair still floated at the
+ // temples because side vertices were already OUTSIDE the head shell. This
+ // version can also pull selected bob vertices inward so the hairstyle sits
+ // flush on the spherical head without a separate scalp cap.
  holder.updateWorldMatrix(true,true);
  hair.updateWorldMatrix(true,true);
  const holderInverse=holder.matrixWorld.clone().invert();
  const source=new THREE.Vector3(),local=new THREE.Vector3(),relative=new THREE.Vector3();
  const headCenter=new THREE.Vector3(0,.12,0);
  const headRadii=new THREE.Vector3(.81,.7776,.7533);
- const targetRadius=1.085; // small visible gap from the actual face mesh
  let correctedVertices=0;
  hair.traverse(mesh=>{
   if(!mesh.isMesh || !mesh.geometry?.attributes?.position)return;
-  // NEVER alter cached geometry shared by other avatars.
   mesh.geometry=mesh.geometry.clone();
   const pos=mesh.geometry.attributes.position;
   const toHolder=holderInverse.clone().multiply(mesh.matrixWorld);
@@ -892,15 +891,29 @@ function fitImportedHairToHead(hair,holder){
     (relative.y/headRadii.y)**2+
     (relative.z/headRadii.z)**2
    );
-   // Only correct geometry inside the head in the crown/face region.
-   // Long hair hanging below the cheek, buns and outer tips stay unchanged.
-   if(local.y>-.28 && local.y<1.04 &&
-      Math.abs(local.x)<.96 && Math.abs(local.z)<.92 &&
-      ellipsoidRadius>0.06 && ellipsoidRadius<targetRadius){
-    // Fully project embedded vertices to the outer head surface (not a
-    // partial 0.68-strength adjustment as in v63). Retain their direction.
-    const projected=targetRadius/ellipsoidRadius;
-    local.copy(headCenter).addScaledVector(relative,projected);
+   let targetRadius=null;
+   // Common crown/temple fit: push any penetrations outside the head.
+   if(local.y>-.26 && local.y<1.02 && Math.abs(local.x)<.96 && Math.abs(local.z)<.92 && ellipsoidRadius>.06 && ellipsoidRadius<1.03){
+    targetRadius=1.035;
+   }
+   // Bob-specific cling fit: bring side/crown verts ONTO the head shell so
+   // the hairstyle no longer hovers away from the cheeks and temples.
+   if(style==='bob'){
+    const inBobBand = local.y>-.02 && local.y<.92 && Math.abs(local.x)<.95 && Math.abs(local.z)<.82;
+    const isTempleOrCrown = Math.abs(local.x)>.24 || local.y>.36;
+    if(inBobBand && isTempleOrCrown && ellipsoidRadius>.78 && ellipsoidRadius<1.25){
+      targetRadius=1.025;
+    }
+   }
+   // Short side cut should read as a tighter, shorter haircut.
+   if(style==='short2'){
+    const inShortShell = local.y>.12 && local.y<.98 && Math.abs(local.x)<.90 && Math.abs(local.z)<.82;
+    if(inShortShell && ellipsoidRadius>.84 && ellipsoidRadius<1.16){
+      targetRadius=1.02;
+    }
+   }
+   if(targetRadius!==null && ellipsoidRadius>0.0001){
+    local.copy(headCenter).addScaledVector(relative,targetRadius/ellipsoidRadius);
     correctedVertices++;
    }
    source.copy(local).applyMatrix4(fromHolder);
@@ -916,8 +929,6 @@ function fitImportedHairToHead(hair,holder){
 function attachImportedHair(neck,style,color){
  const holder=new THREE.Group();neck.add(holder);
  if(stageForeground)holder.layers.set(1);
- const scalp=makeScalpLiner(color);holder.add(scalp);
- if(stageForeground)scalp.layers.set(1);
  getHairAsset(style).then(({scene,size,center})=>{
   if(!neck.parent)return;
   const hair=scene.clone(true),fit=hairFit[style];
@@ -941,7 +952,7 @@ function attachImportedHair(neck,style,color){
   holder.add(hair);
   // Transform hierarchy must be current before fitting model-space vertices.
   holder.updateWorldMatrix(true,true);
-  const corrected=fitImportedHairToHead(hair,holder);
+  const corrected=fitImportedHairToHead(hair,holder,style);
   if(stageForeground)addForegroundLayer(hair); // async children need explicit layer setup
   if(corrected===0)console.warn('Hair fit adjusted no vertices:',style);
  }).catch(err=>{console.warn('Hair asset load failed:',style,err)});
