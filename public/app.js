@@ -1051,9 +1051,13 @@ function animateAvatar(a,p,t){
   const rightKick=step===0?pulse:0;
   const leftKick=step===2?pulse:0;
   const isLift=step===0||step===2;
-  const swing=Math.sin(Math.PI*beat); // continuous front/back arm rhythm
-  // A compact hop on *every* beat (lift and landing alike), not only kicks.
-  height=-.028+.095*pulse+(isLift?.012:0)*pulse;
+  // Match the opposite arm to each leg: count 1 = left arm forward,
+  // count 2 = lower it, count 3 = right arm forward, count 4 = lower it.
+  // A gentle forward/rear swing follows each movement, rather than crossing arms.
+  const leftArmForward=step===0?pulse:0;
+  const rightArmForward=step===2?pulse:0;
+  // Slightly higher bounces on all four counts, landing between each beat.
+  height=-.028+.15*pulse+(isLift?.015:0)*pulse;
   // Avatar front is +Z. Positive upper X rotates chest toward +Z,
   // making a genuine forward waist bend (negative leaned backward).
   set('upper',.27+.022*pulse,0,.024*Math.sin(beat*Math.PI*.5));
@@ -1062,10 +1066,12 @@ function animateAvatar(a,p,t){
   set('leftHip',-.08-1.02*leftKick,0,-.045);
   set('rightKnee',.17-.13*rightKick);
   set('leftKnee',.17-.13*leftKick);
-  // The arms pump alternately forward/back on every beat.
-  set('leftShoulder',-.25+.76*swing,0,-.32);
-  set('rightShoulder',-.25-.76*swing,0,.32);
-  set('leftElbow',-.46);set('rightElbow',-.46);
+  // Left hand swings forward on count 1, returns down on count 2;
+  // right hand swings forward on count 3, returns down on count 4.
+  set('leftShoulder',-.08-1.12*leftArmForward,0,-.22);
+  set('rightShoulder',-.08-1.12*rightArmForward,0,.22);
+  set('leftElbow',-.30-.16*leftArmForward);
+  set('rightElbow',-.30-.16*rightArmForward);
  }
  if(act==='smoke'){
   // Small, repeated smoking gesture: right hand approaches the mouth, then lowers.
