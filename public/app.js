@@ -3,10 +3,19 @@ import { OrbitControls } from 'https://esm.sh/three@0.160.1/examples/jsm/control
 import { GLTFLoader } from 'https://esm.sh/three@0.160.1/examples/jsm/loaders/GLTFLoader.js';
 import { CSS3DRenderer, CSS3DObject } from 'https://esm.sh/three@0.160.1/examples/jsm/renderers/CSS3DRenderer.js';
 const $=id=>document.getElementById(id), palette=['#ff747d','#67d8d1','#f9c463','#a8a0ff','#90dd81','#ff9ce1','#72b5ff','#eeeeee','#16171d'];
-// Regular physical layout positions: 9.5 world units between 6.1-unit mats.
-const picnicWorldZ=[3,12.5,22,31.5,41,50.5,60];
+// Picnic zone layout tuned for mobile: keep the main standing/stage area
+// compact, and place the picnic blankets cleanly in the side rest zone.
+const picnicSlots=[
+ {worldX:30,worldZ:16},
+ {worldX:39,worldZ:20},
+ {worldX:30,worldZ:28},
+ {worldX:39,worldZ:32},
+ {worldX:30,worldZ:40},
+ {worldX:39,worldZ:44},
+ {worldX:30,worldZ:52}
+];
 const picnicMatColors=['#f5a5a3','#a7def4','#f5ce80','#b3d9a0','#ceb8f1','#ffd2a5','#b2d8ff'];
-const mats=picnicWorldZ.map((worldZ,i)=>({x:35/.058+600,y:500,c:picnicMatColors[i],worldZ}));
+const mats=picnicSlots.map((slot,i)=>({x:slot.worldX/.058+600,y:500,c:picnicMatColors[i],worldX:slot.worldX,worldZ:slot.worldZ}));
 const state={id:null,me:null,players:new Map(),keys:new Set(),action:'idle',pose:'stand',actionUntil:0,lastSent:0,es:null,music:{id:'',paused:true,position:0,startedAt:0,token:0},queue:[],history:[],serverDelta:0,yt:null,ytReady:false,lastTrack:'',audioEnabled:false,skipVote:null,skipVoteCooldownUntil:0,walkTarget:null,benchTarget:null,moving:false};
 let slamMode=false,slam=null,slamCooldownUntil=0,slamMotion=null;
 let rockPlacementMode=null,rockPlay=null,rockCooldowns={circle:0,train:0,mosh:0,row:0,toast:0},rockRunningUntil=0,rockMotion=null;
@@ -641,7 +650,7 @@ function label(str,size=100,color='#ffffff',bg='#22283b'){let cv=document.create
 // v78: Widen the free standing area ahead of the picnic zone. The stage
 // itself is unchanged. A smooth piecewise coordinate transform keeps all
 // players on the same server coordinates while shifting the rest area back.
-const AUDIENCE_REAR_SHIFT=26;
+const AUDIENCE_REAR_SHIFT=18;
 function expandWorldZ(z){
  if(z<=8)return z;
  if(z>=14)return z+AUDIENCE_REAR_SHIFT;
@@ -771,7 +780,7 @@ function addPicnicSphere(group,r,material,x,y,z){
 }
 mats.forEach((matData,i)=>{
  const picnicGroup=new THREE.Group();
- picnicGroup.position.set(35,0,matData.worldZ);
+ picnicGroup.position.set(matData.worldX,0,matData.worldZ);
  scene.add(picnicGroup);picnicGroups.push(picnicGroup);
  // All accessory coordinates below are intentionally LOCAL to this group.
  const m={x:0,z:0,c:matData.c};
