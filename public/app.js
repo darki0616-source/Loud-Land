@@ -8,9 +8,9 @@ const state={id:null,me:null,players:new Map(),keys:new Set(),action:'idle',pose
 let slamMode=false,slam=null,slamCooldownUntil=0,slamMotion=null;
 let rockPlacementMode=null,rockPlay=null,rockCooldowns={circle:0,train:0,mosh:0,row:0,toast:0},rockRunningUntil=0,rockMotion=null;
 let chosenPattern='solid',chosenSash='none',chosenHairStyle='short',chosenHairColor='#4b3932';
-const hairStyles=[['short','가르마 숏컷'],['bob','짧은 보브'],['long','장발'],['buns','번 헤어'],['buzz','버즈컷']];
+const hairStyles=[['short','가르마 숏컷'],['bob','짧은 보브'],['long','장발'],['buns','번 헤어'],['basic-short','기본 숏컷'],['basic-bob','기본 단발']];
 // Older custom styles are converted to the closest available Quaternius asset.
-const legacyHairMap={wavy:'long',ponytail:'buns',mohawk:'short',spiky:'short',curly:'bob'};
+const legacyHairMap={wavy:'long',ponytail:'buns',mohawk:'short',spiky:'short',curly:'bob',buzz:'basic-short'};
 const normalizeHairStyle=style=>hairStyles.some(([id])=>id===style)?style:(legacyHairMap[style]||'short');
 const hairColors=[['검정','#25222a'],['진갈색','#4b3932'],['갈색','#85533e'],['금발','#edc46b'],['빨강','#d34c53'],['파랑','#4d86d5'],['보라','#9965c9'],['분홍','#e89bc2']];
 let chosenColor=palette[0],chosenGender='male',toastTimer;const avatars=new Map();const activeBubbles=new Map();
@@ -804,11 +804,12 @@ const hairLoader=new GLTFLoader(),hairAssetCache=new Map();
 // top is the local height of the hair bounding box, not an extra offset.
 // Keep X/Z fairly close to the skull, with a slight forward shift for the fringe.
 const hairFit={
- short:{width:1.91,height:1.32,depth:1.82,top:1.045,forward:.055},
- bob:{width:1.94,height:1.34,depth:1.86,top:1.055,forward:.060},
- long:{width:2.00,height:2.30,depth:1.92,top:1.065,forward:.065},
- buns:{width:2.18,height:1.56,depth:2.03,top:1.145,forward:.055},
- buzz:{width:1.77,height:1.03,depth:1.69,top:.975,forward:.035}
+ // Per-asset fit against the chibi head (head centre Y=.12, radii X=.81 Y=.778 Z=.753).
+ // Tighter Y placement and a color-matched scalp shell avoid floating wigs and exposed bald spots.
+ short:{width:1.95,height:1.31,depth:1.85,top:.970,forward:.020},
+ bob:{width:1.95,height:1.27,depth:1.89,top:.895,forward:.015},
+ long:{width:2.16,height:2.30,depth:2.04,top:.915,forward:.030},
+ buns:{width:2.36,height:1.62,depth:2.17,top:1.005,forward:.020}
 };
 function getHairAsset(style){
  style=normalizeHairStyle(style);
@@ -823,47 +824,64 @@ function getHairAsset(style){
  }
  return hairAssetCache.get(style);
 }
+// A fitted scalp liner closes the large open crown of the imported Quaternius hair.
+// Its front boundary follows the natural hairline and stays ABOVE the eyebrows.
+// The back wraps lower so rear hair cannot reveal a bald top at oblique camera angles.
+function makeScalpLiner(color){
+ const geometry=new THREE.BufferGeometry(), vertices=[],normals=[],indices=[];
+ const radial=48,vertical=18,rx=.835,ry=.792,rz=.778;
+ for(let j=0;j<=vertical;j++){
+  const t=j/vertical;
+  for(let i=0;i<=radial;i++){
+   const a=i/radial*Math.PI*2;
+   // +Z is the front; .35 PI in front, .58 PI in back, .48 PI at sides.
+   const frontWeight=(Math.sin(a)+1)*.5;
+   const maxTheta=Math.PI*(.58-.23*frontWeight);
+   const theta=t*maxTheta,st=Math.sin(theta),ct=Math.cos(theta);
+   const x=rx*st*Math.cos(a),y=.12+ry*ct,z=-.012+rz*st*Math.sin(a);
+   vertices.push(x,y,z);
+   const n=new THREE.Vector3(x/rx**2,(y-.12)/ry**2,(z+.012)/rz**2).normalize();
+   normals.push(n.x,n.y,n.z);
+   if(j<vertical&&i<radial){let q=j*(radial+1)+i;indices.push(q,q+radial+1,q+1,q+1,q+radial+1,q+radial+2)}
+  }
+ }
+ geometry.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));
+ geometry.setAttribute('normal',new THREE.Float32BufferAttribute(normals,3));
+ geometry.setIndex(indices);
+ const mesh=new THREE.Mesh(geometry,new THREE.MeshStandardMaterial({color,roughness:.92,side:THREE.DoubleSide}));
+ mesh.castShadow=true;mesh.receiveShadow=true;
+ return mesh;
+}
 function attachImportedHair(neck,style,color){
- // Keep the hair mount anchored to the head itself. Never accumulate independent
- // Y/Z offsets on both a holder and the imported geometry.
  const holder=new THREE.Group();neck.add(holder);
  if(stageForeground)holder.layers.set(1);
- // A small fallback shell appears only until the external mesh has loaded.
- const cap=new THREE.Mesh(
-  new THREE.SphereGeometry(.835,24,16,0,Math.PI*2,0,Math.PI*.41),
-  new THREE.MeshStandardMaterial({color,roughness:.9})
- );
- cap.position.set(0,.16,-.015);holder.add(cap);
- if(stageForeground)cap.layers.set(1);
+ const scalp=makeScalpLiner(color);holder.add(scalp);
+ if(stageForeground)scalp.layers.set(1);
+ // Keep the fitted scalp visible after loading: imported meshes are open on top.
  getHairAsset(style).then(({scene,size,center})=>{
   if(!neck.parent)return;
-  const hair=scene.clone(true),fit=hairFit[normalizeHairStyle(style)];
+  const hair=scene.clone(true),fit=hairFit[style];
   const sx=fit.width/Math.max(size.x,.001);
   const sy=fit.height/Math.max(size.y,.001);
   const sz=fit.depth/Math.max(size.z,.001);
   hair.scale.set(sx,sy,sz);
-  // Top-align against the skull, while the model's own deep/long portions
-  // extend down the side and back instead of floating above the forehead.
+  // Single placement only: no nested Y/Z offset and no forced render overlay.
   hair.position.set(-center.x*sx,
    fit.top-(center.y+size.y/2)*sy,
    -center.z*sz+fit.forward);
   hair.traverse(o=>{
    if(!o.isMesh)return;
-   // Clone materials per avatar for independently selectable hair colors.
-   o.material=new THREE.MeshStandardMaterial({color,roughness:.84,metalness:0,side:THREE.DoubleSide});
+   o.material=new THREE.MeshStandardMaterial({color,roughness:.86,metalness:0,side:THREE.DoubleSide});
    o.castShadow=true;o.receiveShadow=true;
-   // Hair that resolves asynchronously must join the same foreground layer as
-   // the body, otherwise the CSS3D YouTube stage can cover only the hairstyle.
    if(stageForeground)o.layers.set(1);
   });
   if(stageForeground)addForegroundLayer(hair);
-  holder.remove(cap);cap.geometry.dispose();cap.material.dispose();
   holder.add(hair);
  }).catch(err=>{console.warn('Hair asset load failed:',style,err)});
  return holder;
 }
-// Begin loading the most common styles early for quicker player joins.
-for(const style of ['short','bob','long','buns','buzz'])getHairAsset(style).catch(()=>{});
+// Only the four externally supplied hairstyles are loaded; buzzcut is removed.
+for(const style of ['short','bob','long','buns'])getHairAsset(style).catch(()=>{});
 // Rounded chibi avatar: larger soft head, painted-on face, short unified hairstyle,
 // surface-colored clothing, and inexpensive shoulder/elbow/hip/knee rig.
 function makeAvatar(p){
@@ -918,7 +936,31 @@ function makeAvatar(p){
  const points=smile.getPoints(15);const smileGeo=new THREE.BufferGeometry().setFromPoints(points.map(v=>new THREE.Vector3(v.x,-v.y,0)));
  const smileLine=new THREE.Line(smileGeo,new THREE.LineBasicMaterial({color:'#533f39'}));smileLine.position.set(0,-.17,.746);neck.add(smileLine);
  // Imported, artist-made glTF model follows the head during all animations.
- attachImportedHair(neck,p.hairStyle||'short',hairHex);
+ const hairStyle=normalizeHairStyle(p.hairStyle||'short');
+ if(hairStyle==='basic-short'||hairStyle==='basic-bob'){
+ // Smooth hair cap with a few surface-shaped bangs (not a hat).
+ child(neck,new THREE.SphereGeometry(.833,24,18,0,Math.PI*2,0,Math.PI*.46),hair,[0,.16,-.01],[1,1.0,1]);
+ for(const x of [-.39,-.12,.16,.39]){
+   const bang=child(neck,new THREE.SphereGeometry(.20,12,9),hair,[x,.615,.33],[1,.40,.70]);
+ }
+ if(hairStyle==='basic-bob'){
+   // A visible bob silhouette: the original rear hair was buried inside the larger head.
+   // Keep a rear layer BEHIND the skull, then place the two tips outside the cheek contour.
+   child(neck,new THREE.SphereGeometry(.855,24,18),hair,[0,.02,-.28],[1.04,1.05,.92]);
+   for(const side of [-1,1]){
+     // Lift side locks beside the cheeks rather than below the jaw.
+     // Keep them outside the skull for an obvious bob outline from the front.
+     const lock=child(neck,new THREE.CapsuleGeometry(.18,.41,7,12),hair,[side*.78,-.015,.205],[.92,1.02,.91]);
+     lock.rotation.z=side*.12;
+     child(neck,new THREE.SphereGeometry(.19,12,9),hair,[side*.79,-.275,.205],[.91,.86,.92]);
+   }
+ }else{
+   // Close-fitting side hair visible near ears.
+   for(const side of [-1,1])child(neck,new THREE.SphereGeometry(.22,12,10),hair,[side*.66,.22,-.10],[.72,1.03,.78]);
+ }
+ }else{
+  attachImportedHair(neck,hairStyle,hairHex);
+ }
  // No head accessory is rendered.
  // The clothing stripes are painted on the torso shader, not separate raised meshes.
 
