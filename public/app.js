@@ -8,7 +8,7 @@ const state={id:null,me:null,players:new Map(),keys:new Set(),action:'idle',pose
 let slamMode=false,slam=null,slamCooldownUntil=0,slamMotion=null;
 let rockPlacementMode=null,rockPlay=null,rockCooldowns={circle:0,train:0,mosh:0,row:0,toast:0},rockRunningUntil=0,rockMotion=null;
 let chosenPattern='solid',chosenSash='none',chosenHairStyle='short',chosenHairColor='#4b3932';
-const hairStyles=[['short','가르마 숏컷'],['bob','짧은 보브'],['long','장발'],['buns','번 헤어'],['basic-short','기본 숏컷'],['basic-bob','기본 단발']];
+const hairStyles=[['short','가르마 숏컷'],['bob','짧은 보브'],['long','장발'],['buns','번 헤어'],['bob2','레이어드 단발'],['short2','사이드 숏컷'],['basic-short','기본 숏컷'],['basic-bob','기본 단발']];
 // Older custom styles are converted to the closest available Quaternius asset.
 const legacyHairMap={wavy:'long',ponytail:'buns',mohawk:'short',spiky:'short',curly:'bob',buzz:'basic-short'};
 const normalizeHairStyle=style=>hairStyles.some(([id])=>id===style)?style:(legacyHairMap[style]||'short');
@@ -804,25 +804,32 @@ const hairLoader=new GLTFLoader(),hairAssetCache=new Map();
 // top is the local height of the hair bounding box, not an extra offset.
 // Keep X/Z fairly close to the skull, with a slight forward shift for the fringe.
 const hairFit={
- // Per-asset fit against the chibi head (head centre Y=.12, radii X=.81 Y=.778 Z=.753).
- // Tighter Y placement and a color-matched scalp shell avoid floating wigs and exposed bald spots.
+ // Fit each external asset to the existing chibi skull (head centre y=.12).
+ // The original bob's open, arch-like edge floats above the forehead. Lower
+ // and shorten that specific asset; use the scalp liner to close its opening.
  short:{width:1.95,height:1.31,depth:1.85,top:.970,forward:.020},
- bob:{width:1.95,height:1.27,depth:1.89,top:.895,forward:.015},
+ bob:{width:1.94,height:1.16,depth:1.88,top:.795,forward:.005},
  long:{width:2.16,height:2.30,depth:2.04,top:.915,forward:.030},
- buns:{width:2.36,height:1.62,depth:2.17,top:1.005,forward:.020}
+ buns:{width:2.36,height:1.62,depth:2.17,top:1.005,forward:.020},
+ // Two distinct shape variations made from the licensed Quaternius assets.
+ // bob2 uses compressed long-hair layers; short2 mirrors the parted cut.
+ bob2:{width:2.11,height:1.53,depth:2.06,top:.925,forward:.015},
+ short2:{width:2.03,height:1.33,depth:1.88,top:.965,forward:.020}
 };
+const hairAssetSources={bob2:'long',short2:'short'};
 function getHairAsset(style){
  style=normalizeHairStyle(style);
- if(!hairAssetCache.has(style)){
-  hairAssetCache.set(style,new Promise((resolve,reject)=>{
-   hairLoader.load('/assets/hair/'+style+'.gltf',g=>{
+ const source=hairAssetSources[style]||style;
+ if(!hairAssetCache.has(source)){
+  hairAssetCache.set(source,new Promise((resolve,reject)=>{
+   hairLoader.load('/assets/hair/'+source+'.gltf',g=>{
     g.scene.updateMatrixWorld(true);
     const bounds=new THREE.Box3().setFromObject(g.scene),size=bounds.getSize(new THREE.Vector3()),center=bounds.getCenter(new THREE.Vector3());
     resolve({scene:g.scene,size,center});
    },undefined,reject);
   }));
  }
- return hairAssetCache.get(style);
+ return hairAssetCache.get(source);
 }
 // A fitted scalp liner closes the large open crown of the imported Quaternius hair.
 // Its front boundary follows the natural hairline and stays ABOVE the eyebrows.
@@ -917,10 +924,14 @@ function attachImportedHair(neck,style,color){
   const sx=fit.width/Math.max(size.x,.001);
   const sy=fit.height/Math.max(size.y,.001);
   const sz=fit.depth/Math.max(size.z,.001);
-  hair.scale.set(sx,sy,sz);
-  hair.position.set(-center.x*sx,
+  // Alternate men's style uses a mirrored side part; this remains an actual
+  // Quaternius mesh rather than procedurally generated hair primitives.
+  const mirrored=style==='short2';
+  hair.scale.set(mirrored?-sx:sx,sy,sz);
+  hair.position.set(-center.x*(mirrored?-sx:sx),
    fit.top-(center.y+size.y/2)*sy,
    -center.z*sz+fit.forward);
+  if(mirrored)hair.rotation.y=-.12;
   hair.traverse(mesh=>{
    if(!mesh.isMesh)return;
    mesh.material=new THREE.MeshStandardMaterial({color,roughness:.86,metalness:0,side:THREE.DoubleSide});
@@ -936,7 +947,8 @@ function attachImportedHair(neck,style,color){
  }).catch(err=>{console.warn('Hair asset load failed:',style,err)});
  return holder;
 }
-// Only the four externally supplied hairstyles are loaded; buzzcut is removed.
+// The original four external assets are preloaded; new options reuse and
+// remap two of these source files, so there are no new asset dependencies.
 for(const style of ['short','bob','long','buns'])getHairAsset(style).catch(()=>{});
 // Rounded chibi avatar: larger soft head, painted-on face, short unified hairstyle,
 // surface-colored clothing, and inexpensive shoulder/elbow/hip/knee rig.
