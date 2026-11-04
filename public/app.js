@@ -1024,31 +1024,28 @@ function animateAvatar(a,p,t){
   set('rightKnee',1.28+.06*Math.sin(sec*2.4));
  }
  if(act==='skanking'){
-  // Four-count ska-punk groove: 1-2 RIGHT, 1-2 LEFT, repeat.
-  // Each foot makes two forward kicks before switching sides; no backward heel kick.
-  const count=sec*2.7;
-  const step=count%4;
-  const rightFoot=step<2;
-  // One forward extension for each count, returning to the floor between counts.
-  const kick=Math.pow(Math.sin(Math.PI*(count%1)),2);
-  const rightKick=rightFoot ? kick : 0;
-  const leftKick=rightFoot ? 0 : kick;
-  const swing=Math.sin(Math.PI*count); // arms swing forward/back once per count
-  const side=rightFoot?1:-1;
-  height=-.028+.053*kick;
-  // Lean from the waist throughout, with a small rhythm-driven body sway.
-  set('upper',-.24+.025*kick,.025*side,.045*Math.sin(Math.PI*count*.5));
-  set('neck',.08);
-  // Extend the active leg toward the front, knee nearly straight at the peak.
-  set('rightHip',-.13-1.03*rightKick,0,.045);
-  set('leftHip',-.13-1.03*leftKick,0,-.045);
-  set('rightKnee',.15-.10*rightKick);
-  set('leftKnee',.15-.10*leftKick);
-  // Broad rhythmic opposing arm pumps: one forward, one backward.
-  // Small arm-to-side spread keeps the arms clear of the torso.
-  set('leftShoulder',-.26+.77*swing,0,-.30);
-  set('rightShoulder',-.26-.77*swing,0,.30);
-  set('leftElbow',-.48);set('rightElbow',-.48);
+  // Ska four-beat phrase: 1 right foot forward/up, 2 right foot down,
+  // 3 left foot forward/up, 4 left foot down. Repeat, never double-kick.
+  const beat=sec*2.7;
+  const step=Math.floor(beat)%4; // 0=R lift, 1=R land, 2=L lift, 3=L land
+  const pulse=Math.pow(Math.sin(Math.PI*(beat%1)),2); // soft rise/fall within each beat
+  const rightKick=step===0?pulse:0;
+  const leftKick=step===2?pulse:0;
+  const isLift=step===0||step===2;
+  const swing=Math.sin(Math.PI*beat); // continuous front/back arm rhythm
+  height=-.028+(isLift?.042:.014)*pulse;
+  // Avatar front is +Z. Positive upper X rotates chest toward +Z,
+  // making a genuine forward waist bend (negative leaned backward).
+  set('upper',.27+.022*pulse,0,.024*Math.sin(beat*Math.PI*.5));
+  set('neck',-.055);
+  set('rightHip',-.08-1.02*rightKick,0,.045);
+  set('leftHip',-.08-1.02*leftKick,0,-.045);
+  set('rightKnee',.17-.13*rightKick);
+  set('leftKnee',.17-.13*leftKick);
+  // The arms pump alternately forward/back on every beat.
+  set('leftShoulder',-.25+.76*swing,0,-.32);
+  set('rightShoulder',-.25-.76*swing,0,.32);
+  set('leftElbow',-.46);set('rightElbow',-.46);
  }
  if(act==='cheer'){
   const lift=Math.max(0,Math.sin(sec*10));height=lift*.75;
