@@ -117,8 +117,8 @@ async function castSkipVote(choice){const vote=state.skipVote;if(!vote||!state.i
 function showSkipVoteResult(d){applySkipVote(null,state.skipVoteCooldownUntil);let msg=d.passed?'✅ 과반수 찬성! 요청한 곡으로 이동합니다':d.reason==='timeout'?'투표 시간이 종료되어 현재 곡을 유지합니다':'투표가 부결되어 현재 곡을 유지합니다';notice(msg)}
 setInterval(()=>{updateSkipVoteUI();updateSharedMusicButtons()},500);
 async function join(){manualExit=false;try{let d=await post('join',{name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);state.pose=state.me?.pose||'stand';cameraFollowInitialized=false;state.players=new Map(d.players.map(p=>[p.id,p]));renderOnlinePlayers();$('joinModal').classList.add('hidden');$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='페스티벌 참가 중';$('avatarPreview').querySelector('b').style.background=chosenColor;applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);listen();$('audioModal').classList.remove('hidden');showMovementGuide();toast('ONEseason에 오신 것을 환영합니다!')}catch(e){$('joinError').textContent='입장 실패: '+(e?.message||'연결을 확인해주세요');console.error('ONEseason join error:',e)}}
-$('audioYes').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(true);toast(state.music.id?'음악 재생을 허용했어요':'음악이 등록되면 바로 재생돼요')};$('audioNo').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(false);toast('내 소리를 끈 상태로 입장했어요')};$('joinBtn').onclick=join;$('nick').onkeydown=e=>{if(e.key==='Enter')join()};$('editAvatar').onclick=()=>{manualExit=true;if(state.id){post('leave',{id:state.id}).catch(()=>{});state.es?.close();state.id=null;state.me=null;cameraFollowInitialized=false;state.players.clear();state.skipVote=null;applySkipVote(null,state.skipVoteCooldownUntil);state.pose='stand';slam=null;slamMode=false;slamMotion=null;rockPlay=null;rockMotion=null;rockPlacementMode=null;refreshSlamUI();refreshRockUI()}$('joinModal').classList.remove('hidden')};$('helpBtn').onclick=()=>toast('WASD 이동 · 클릭/터치 이동 · 드래그 시점 회전 · 춤: B/G/V/K · 환호성: H');
-const sustainedReactions=new Set(['jump','run','headbang','buriburi','groove','windmill','skanking','cheer']);
+$('audioYes').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(true);toast(state.music.id?'음악 재생을 허용했어요':'음악이 등록되면 바로 재생돼요')};$('audioNo').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(false);toast('내 소리를 끈 상태로 입장했어요')};$('joinBtn').onclick=join;$('nick').onkeydown=e=>{if(e.key==='Enter')join()};$('editAvatar').onclick=()=>{manualExit=true;if(state.id){post('leave',{id:state.id}).catch(()=>{});state.es?.close();state.id=null;state.me=null;cameraFollowInitialized=false;state.players.clear();state.skipVote=null;applySkipVote(null,state.skipVoteCooldownUntil);state.pose='stand';slam=null;slamMode=false;slamMotion=null;rockPlay=null;rockMotion=null;rockPlacementMode=null;refreshSlamUI();refreshRockUI()}$('joinModal').classList.remove('hidden')};$('helpBtn').onclick=()=>toast('WASD 이동 · 클릭/터치 이동 · 드래그 시점 회전 · 춤: B/G/V/K · 환호성: H · 담배: C');
+const sustainedReactions=new Set(['jump','run','headbang','buriburi','groove','windmill','skanking','cheer','smoke']);
 document.querySelectorAll('[data-action-menu]').forEach(button=>button.addEventListener('click',()=>{const dance=button.dataset.actionMenu==='dance';$('danceActions').classList.toggle('hidden',!dance);$('reactionActions').classList.toggle('hidden',dance);document.querySelectorAll('[data-action-menu]').forEach(b=>b.classList.toggle('active',b===button))}));
 function updateActionButtons(){
  document.querySelectorAll('[data-action]').forEach(b=>{
@@ -145,7 +145,7 @@ function react(a){
  if(state.action===a&&sustainedReactions.has(a)){
   state.action='idle';state.actionUntil=0;state.me.action='idle';
  }else{
-  if((a==='jump'||a==='run'||a==='buriburi'||a==='groove'||a==='windmill'||a==='skanking'||a==='cheer')&&state.pose!=='stand'){
+  if((a==='jump'||a==='run'||a==='buriburi'||a==='groove'||a==='windmill'||a==='skanking'||a==='cheer'||a==='smoke')&&state.pose!=='stand'){
    state.pose='stand';state.me.pose='stand';
   }
   state.action=a;state.me.action=a;if(a==='cheer')playCheer();
@@ -154,7 +154,7 @@ function react(a){
  updateActionButtons();sendMove();
 }
 document.querySelectorAll('[data-action]').forEach(b=>b.onclick=()=>react(b.dataset.action));
-document.addEventListener('keydown',e=>{if(e.target instanceof HTMLInputElement||e.target instanceof HTMLTextAreaElement||e.target?.isContentEditable)return;let k=e.key.toLowerCase();if(k.startsWith('arrow')||k===' ')e.preventDefault();state.keys.add(k);let acts={'1':'peace','2':'jump','3':'run','4':'wave','5':'clap','6':'sit','7':'lie','8':'drink','9':'snack','0':'headbang','b':'buriburi','g':'groove','v':'windmill','k':'skanking','h':'cheer'};if(acts[k]&&!e.repeat)react(acts[k])});document.addEventListener('keyup',e=>state.keys.delete(e.key.toLowerCase()));window.addEventListener('blur',()=>state.keys.clear());
+document.addEventListener('keydown',e=>{if(e.target instanceof HTMLInputElement||e.target instanceof HTMLTextAreaElement||e.target?.isContentEditable)return;let k=e.key.toLowerCase();if(k.startsWith('arrow')||k===' ')e.preventDefault();state.keys.add(k);let acts={'1':'peace','2':'jump','3':'run','4':'wave','5':'clap','6':'sit','7':'lie','8':'drink','9':'snack','0':'headbang','b':'buriburi','g':'groove','v':'windmill','k':'skanking','h':'cheer','c':'smoke'};if(acts[k]&&!e.repeat)react(acts[k])});document.addEventListener('keyup',e=>state.keys.delete(e.key.toLowerCase()));window.addEventListener('blur',()=>state.keys.clear());
 // CC0 crowd cheering by SFXMint; play only for listeners who enabled audio.
 // The URL is hotlink-permitted by the creator (https://sfxmint.com/sounds/crowd-cheer).
 const cheerAudioUrl='https://sfxmint.com/dl/crowd-cheer-44.mp3';
@@ -831,6 +831,21 @@ function makeAvatar(p){
  child(bottle,new THREE.CylinderGeometry(.045,.065,.19,10),glass,[0,.13,0]);
  child(bottle,new THREE.CylinderGeometry(.06,.06,.055,10),mat('#f3ca82'),[0,.25,0]);
  child(bottle,new THREE.CylinderGeometry(.127,.127,.12,12),mat('#f2e1bd'),[0,-.14,0]);
+ // Simple cigarette attached to the right hand. No purchased/remote assets.
+ const cigarette=new THREE.Group();parts.rightHand.add(cigarette);parts.cigarette=cigarette;
+ cigarette.position.set(0,.008,.18);
+ const paper=new THREE.MeshBasicMaterial({color:'#f3f0e4'});
+ const filter=new THREE.MeshBasicMaterial({color:'#c69d65'});
+ const ember=new THREE.MeshBasicMaterial({color:'#ef6945'});
+ const stick=child(cigarette,new THREE.CylinderGeometry(.021,.021,.28,8),paper,[0,0,.14]);stick.rotation.x=Math.PI/2;
+ const tip=child(cigarette,new THREE.CylinderGeometry(.022,.022,.085,8),filter,[0,0,.035]);tip.rotation.x=Math.PI/2;
+ child(cigarette,new THREE.SphereGeometry(.024,8,6),ember,[0,0,.295]);
+ cigarette.visible=false;
+ parts.smokePuffs=[];
+ for(let i=0;i<6;i++){
+  const puff=new THREE.Mesh(new THREE.SphereGeometry(1,8,6),new THREE.MeshBasicMaterial({color:'#dbe1e5',transparent:true,opacity:0,depthWrite:false}));
+  puff.visible=false;puff.renderOrder=21;upper.add(puff);parts.smokePuffs.push(puff);
+ }
  // Always-white bold nickname with no background.
  const cv=document.createElement('canvas');cv.width=512;cv.height=128;const ctx=cv.getContext('2d');
  ctx.fillStyle='#fff';ctx.font='900 52px Arial, sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText((p.name||'ROCKER').slice(0,18),256,64,490);
@@ -1033,7 +1048,8 @@ function animateAvatar(a,p,t){
   const leftKick=step===2?pulse:0;
   const isLift=step===0||step===2;
   const swing=Math.sin(Math.PI*beat); // continuous front/back arm rhythm
-  height=-.028+(isLift?.042:.014)*pulse;
+  // A compact hop on *every* beat (lift and landing alike), not only kicks.
+  height=-.028+.095*pulse+(isLift?.012:0)*pulse;
   // Avatar front is +Z. Positive upper X rotates chest toward +Z,
   // making a genuine forward waist bend (negative leaned backward).
   set('upper',.27+.022*pulse,0,.024*Math.sin(beat*Math.PI*.5));
@@ -1046,6 +1062,17 @@ function animateAvatar(a,p,t){
   set('leftShoulder',-.25+.76*swing,0,-.32);
   set('rightShoulder',-.25-.76*swing,0,.32);
   set('leftElbow',-.46);set('rightElbow',-.46);
+ }
+ if(act==='smoke'){
+  // Small, repeated smoking gesture: right hand approaches the mouth, then lowers.
+  const cycle=(sec*0.58)%1;
+  const inhale=THREE.MathUtils.smoothstep(cycle,.10,.31)*(1-THREE.MathUtils.smoothstep(cycle,.59,.78));
+  rightHandTarget=new THREE.Vector3(.35-.07*inhale,.30+.55*inhale,.43+.23*inhale);
+  ikMode='smoke';
+  set('rightShoulder',-.42,0,.16);
+  set('rightElbow',-.85);
+  set('upper',.025,0,.017*Math.sin(sec*2.2));
+  set('neck',-.03-.03*inhale);
  }
  if(act==='cheer'){
   const lift=Math.max(0,Math.sin(sec*10));height=lift*.75;
@@ -1149,7 +1176,7 @@ function animateAvatar(a,p,t){
  const alpha=act===a.lastAction?.25:.17;
  for(const k of keys){
   if(ikMode==='clap'&&['leftShoulder','leftElbow','rightShoulder','rightElbow'].includes(k))continue;
-  if((ikMode==='drink'||ikMode==='wave'||ikMode==='snack')&&['rightShoulder','rightElbow'].includes(k))continue;
+  if((ikMode==='drink'||ikMode==='wave'||ikMode==='snack'||ikMode==='smoke')&&['rightShoulder','rightElbow'].includes(k))continue;
   const target=pose[k],o=P[k];
   o.rotation.x+=(target[0]-o.rotation.x)*alpha;
   o.rotation.y+=(target[1]-o.rotation.y)*alpha;
@@ -1161,6 +1188,7 @@ function animateAvatar(a,p,t){
  }else if(ikMode==='drink')placeHandIK(P,'right',rightHandTarget,.58);
  else if(ikMode==='wave')placeHandIK(P,'right',rightHandTarget,.64);
  else if(ikMode==='snack')placeHandIK(P,'right',rightHandTarget,.56);
+ else if(ikMode==='smoke')placeHandIK(P,'right',rightHandTarget,.66);
  // Seat is higher than the grass; raise the seated avatar to the bench cushion.
  if(basePose==='sit'&&benchSeats.some(seat=>Math.hypot(q.x-seat.x,q.y-seat.y)<24))height+=.46;
  a.root.position.y+=(height-a.root.position.y)*.28;
@@ -1176,6 +1204,17 @@ function animateAvatar(a,p,t){
   crumb.position.set(Math.cos(theta)*ring,-.15-Math.pow(phase,1.6)*.48,.77+Math.sin(theta)*ring*.65);
   crumb.rotation.set(sec*5+i,sec*7+i,phase*8);
   crumb.scale.setScalar(Math.max(.12,1-phase)*(.75+i%3*.15));
+ });
+ // Low-poly cigarette and drifting smoke belong to each player's rig, so
+ // remote players see the same reaction without transmitting particle events.
+ P.cigarette.visible=act==='smoke';
+ P.smokePuffs.forEach((puff,i)=>{
+  if(act!=='smoke'){puff.visible=false;return}
+  const phase=(sec*.39+i/6)%1;
+  puff.visible=true;
+  puff.position.set(.08+.14*Math.sin(phase*5+i*.7),.93+phase*.95,.77+phase*.16);
+  puff.scale.setScalar(.08+phase*.22);
+  puff.material.opacity=Math.sin(Math.PI*phase)*.26;
  });
  P.rockBubble.visible=act==='peace'||act==='slam-retreat'||act==='slam-celebrate';P.bottle.visible=act==='drink';
  if(P.rockBubble.visible)P.rockBubble.position.y=4.34+Math.sin(sec*7)*.075;
@@ -1395,7 +1434,7 @@ function tick(t){
    }
   }
   state.moving=!!(dx||dy);
-  if(state.moving && (state.action==='buriburi'||state.action==='groove'||state.action==='windmill'||state.action==='skanking'||state.action==='cheer') && !slamMotion && !rockMotion){
+  if(state.moving && (state.action==='buriburi'||state.action==='groove'||state.action==='windmill'||state.action==='skanking'||state.action==='cheer'||state.action==='smoke') && !slamMotion && !rockMotion){
    state.action='idle';state.me.action='walk';state.actionUntil=0;updateActionButtons();
   }
   if(state.moving){
