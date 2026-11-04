@@ -297,3 +297,24 @@ html,body{height:100%;height:100dvh;overflow:hidden!important}
  .music-open .controlbar{pointer-events:none}
  .chat-panel{z-index:48!important}
 }
+
+
+/* v72: two independently scrollable music lists.
+   Current + queued songs always appear above previously played songs. */
+.sidebar .music-library{display:flex;flex-direction:column;gap:10px;min-width:0;margin-top:13px}
+.sidebar .music-library .queuebox{margin:0;min-width:0;display:flex;flex-direction:column;overflow:hidden}
+.sidebar .music-list-heading{display:flex;flex-direction:column;gap:4px;flex:0 0 auto}
+.sidebar .music-list-heading strong{color:#e9ffad;font-size:13px;letter-spacing:0}
+.sidebar .music-list-heading small{font-size:10px;color:#b5c0d6;line-height:1.4}
+.sidebar .music-upcoming-box{min-height:126px}
+.sidebar .music-upcoming-box #queueList{max-height:min(37dvh,310px);overflow-y:auto;overscroll-behavior:contain}
+.sidebar .music-history-box #historyList{max-height:min(24dvh,200px);overflow-y:auto;overscroll-behavior:contain}
+.sidebar .music-library ol{margin:9px 0 0;min-width:0;padding-left:18px;list-style:none}
+.sidebar .music-library li{padding:3px 0;min-width:0}
+.sidebar .music-library li button{display:block;width:100%;text-align:left;white-space:normal;overflow-wrap:anywhere}
+.sidebar .music-library .track-empty{font-size:11px;color:#9ca9c0;padding:9px 0}
+.sidebar .music-library .track-section{font-size:10px;font-weight:800;color:#a5b2c9;padding-top:12px}
+@media(max-width:700px){
+ .sidebar .music-upcoming-box #queueList{max-height:min(35dvh,275px)}
+ .sidebar .music-history-box #historyList{max-height:min(24dvh,180px)}
+}

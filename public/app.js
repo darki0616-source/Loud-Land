@@ -91,18 +91,41 @@ function updateSharedMusicButtons(){const side=$('skipMusic');if(side)side.disab
 
 function updateFestivalBoard(){let m=state.music||{};const title=document.getElementById('boardCurrent');const next=document.getElementById('boardNext');const status=document.getElementById('boardStatus');if(title)title.textContent=m.title||'현재 재생 중인 곡 없음';if(next)next.textContent=state.queue?.length?state.queue[0].title:'예약된 곡 없음';if(status)status.textContent=m.id?(m.paused?'일시정지':'공연 중'):'공연 대기 중';}
 function renderQueue(){
- updateFestivalBoard();const el=$('queueList');if(!el)return;el.replaceChildren();
- const section=(title,items,source)=>{
-  const header=document.createElement('li');header.className='track-section';header.textContent=title;el.append(header);
-  items.forEach((track,index)=>{const li=document.createElement('li');li.className='track-item '+(source==='now'?'track-current':'track-muted');
-   const b=document.createElement('button');b.type='button';b.textContent=(source==='now'?'▶ ':source==='history'?'↶ ':'♫ ')+track.title+' · '+(track.addedBy||'');
-   if(source!=='now'){b.title='이 곡을 재생할지 접속자 투표를 시작합니다';b.onclick=()=>musicCommand('vote-select',{source,index,videoId:track.id})}else b.disabled=true;
-   li.append(b);el.append(li);
-  });
+ updateFestivalBoard();
+ const upcoming=$('queueList'),history=$('historyList');
+ if(!upcoming||!history)return;
+ // Separate lists: top is always current + upcoming; replay history stays below.
+ // Re-render from state without mutating the original queue or vote indices.
+ upcoming.replaceChildren();history.replaceChildren();
+ const addTrack=(container,track,index,source)=>{
+  const li=document.createElement('li');
+  li.className='track-item '+(source==='now'?'track-current':'track-muted');
+  const button=document.createElement('button');
+  button.type='button';
+  button.textContent=(source==='now'?'▶ ':source==='history'?'↶ ':'♫ ')+(track.title||'제목 없는 곡')+(track.addedBy?' · '+track.addedBy:'');
+  if(source!=='now'){
+   button.title='이 곡을 재생할지 접속자 투표를 시작합니다';
+   button.onclick=()=>musicCommand('vote-select',{source,index,videoId:track.id});
+  }else{
+   button.disabled=true;
+   button.title='현재 재생 중';
+  }
+  li.append(button);container.append(li);
  };
- section('지난 곡',state.history,'history');
- if(state.music?.id)section('현재 재생 중',[{title:state.music.title,addedBy:state.music.changedBy}],'now');
- section('예약곡',state.queue,'queue');
+ if(state.music?.id)addTrack(upcoming,{id:state.music.id,title:state.music.title,addedBy:state.music.changedBy},0,'now');
+ else{
+  const li=document.createElement('li');li.className='track-empty';li.textContent='현재 재생 중인 곡이 없습니다';upcoming.append(li);
+ }
+ if(state.queue.length){
+  const label=document.createElement('li');label.className='track-section';label.textContent='다음 예약곡';upcoming.append(label);
+  state.queue.forEach((track,index)=>addTrack(upcoming,track,index,'queue'));
+ }else{
+  const li=document.createElement('li');li.className='track-empty';li.textContent='예약된 곡이 없습니다';upcoming.append(li);
+ }
+ if(state.history.length)state.history.forEach((track,index)=>addTrack(history,track,index,'history'));
+ else{
+  const li=document.createElement('li');li.className='track-empty';li.textContent='이전 재생 기록이 없습니다';history.append(li);
+ }
 }
 let reportedToken=0;
 function reportDuration(){if(!state.id||!state.ytReady||!state.music.id)return;const duration=state.yt.getDuration();if(duration>1&&reportedToken!==state.music.token){reportedToken=state.music.token;post('music',{id:state.id,command:'duration',token:state.music.token,duration}).catch(()=>{})}}
