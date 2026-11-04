@@ -42,11 +42,47 @@ function toast(msg){$('toast').textContent=msg;$('toast').classList.add('show');
 document.querySelectorAll('[data-gender]').forEach(b=>b.onclick=()=>selectGender(b.dataset.gender));
 function colorPicker(){let r=$('colorPicker');r.innerHTML='';palette.forEach(c=>{let b=document.createElement('button');b.style.background=c;b.className=c===chosenColor?'selected':'';b.setAttribute('aria-label','티셔츠 '+c);b.onclick=()=>{chosenColor=c;colorPicker()};r.append(b)})}colorPicker();
 const apparelChoices={pattern:[['solid','단색'],['stripe','가는 줄무늬'],['wide-stripe','넓은 줄무늬']],sash:[['none','없음'],['black','검정'],['purple','보라'],['red','빨강'],['green','초록'],['black-check','검정 체크'],['red-check','빨강 체크'],['yellow','노랑'],['blue','파랑'],['blue-check','파랑 체크'],['yellow-check','노랑 체크'],['purple-check','보라 체크'],['black-dot','검정 · 흰 땡땡이'],['red-dot','빨강 · 흰 땡땡이'],['blue-dot','파랑 · 흰 땡땡이'],['yellow-dot','노랑 · 흰 땡땡이'],['purple-dot','보라 · 흰 땡땡이']]};
+const sashSwatchColors={
+ black:'#20212c',purple:'#793ac8',red:'#d42c42',green:'#2a9a59',
+ 'black-check':'#20212c','red-check':'#c72b35',
+ yellow:'#f4cf3e',blue:'#287ed0','blue-check':'#287ed0',
+ 'yellow-check':'#f4cf3e','purple-check':'#793ac8',
+ 'black-dot':'#20212c','red-dot':'#c72b35','blue-dot':'#287ed0',
+ 'yellow-dot':'#f4cf3e','purple-dot':'#793ac8'
+};
+function sashPreviewBackground(value){
+ const base=sashSwatchColors[value]||'#263247';
+ if(value.endsWith('-dot'))return `radial-gradient(circle, #fff 0 3px, transparent 3.3px) 0 0 / 22px 22px, ${base}`;
+ if(value.endsWith('-check')){
+  const accent=value==='yellow-check'?'#674e22':value==='black-check'?'#dcdce0':'#f7e8e4';
+  return `linear-gradient(0deg,transparent 41%,${accent} 41% 53%,transparent 53%) 0 0 / 23px 23px,linear-gradient(90deg,transparent 41%,${accent} 41% 53%,transparent 53%) 0 0 / 23px 23px,${base}`;
+ }
+ return base;
+}
 function renderApparelPicker(){
  for(const [key,items] of Object.entries(apparelChoices)){
   const parent=$(key+'Picker');if(!parent)continue;parent.replaceChildren();
   const current=key==='pattern'?chosenPattern:chosenSash;
-  for(const [value,label] of items){const b=document.createElement('button');b.type='button';b.className='apparel-choice'+(value===current?' selected':'');b.textContent=label;b.onclick=()=>{if(key==='pattern')chosenPattern=value;else if(key==='sash')chosenSash=value;renderApparelPicker()};parent.append(b)}
+  for(const [value,label] of items){
+   const b=document.createElement('button');b.type='button';
+   b.className='apparel-choice'+(value===current?' selected':'');
+   b.setAttribute('aria-pressed',String(value===current));
+   if(key==='sash'){
+    b.classList.add('sash-option');
+    const sample=document.createElement('span');sample.className='sash-swatch';
+    if(value==='none'){
+     sample.classList.add('sash-none');sample.textContent='×';
+    }else{
+     sample.style.background=sashPreviewBackground(value);
+    }
+    sample.setAttribute('aria-hidden','true');
+    const caption=document.createElement('span');caption.className='sash-label';caption.textContent=label;
+    b.append(sample,caption);
+    b.setAttribute('aria-label','슬로건 '+label);
+   }else b.textContent=label;
+   b.onclick=()=>{if(key==='pattern')chosenPattern=value;else if(key==='sash')chosenSash=value;renderApparelPicker()};
+   parent.append(b);
+  }
  }
 }
 renderApparelPicker();
