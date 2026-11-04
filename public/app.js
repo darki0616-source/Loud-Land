@@ -34,7 +34,7 @@ function refreshProfilePreview(){if(!state.me)return;$('profileName').textConten
 function toast(msg){$('toast').textContent=msg;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('show'),3000)}
 document.querySelectorAll('[data-gender]').forEach(b=>b.onclick=()=>selectGender(b.dataset.gender));
 function colorPicker(){let r=$('colorPicker');r.innerHTML='';palette.forEach(c=>{let b=document.createElement('button');b.style.background=c;b.className=c===chosenColor?'selected':'';b.setAttribute('aria-label','티셔츠 '+c);b.onclick=()=>{chosenColor=c;colorPicker()};r.append(b)})}colorPicker();
-const apparelChoices={pattern:[['solid','단색'],['stripe','가는 줄무늬'],['wide-stripe','넓은 줄무늬']],sash:[['none','없음'],['black','검정'],['purple','보라'],['red','빨강'],['green','초록'],['black-check','검정 체크'],['red-check','빨강 체크']],hat:[['none','없음'],['black','검정'],['white','흰색'],['blue','파랑'],['green','초록'],['yellow','노랑']]};
+const apparelChoices={pattern:[['solid','단색'],['stripe','가는 줄무늬'],['wide-stripe','넓은 줄무늬']],sash:[['none','없음'],['black','검정'],['purple','보라'],['red','빨강'],['green','초록'],['black-check','검정 체크'],['red-check','빨강 체크']],hat:[['none','없음']]};
 function renderApparelPicker(){
  for(const [key,items] of Object.entries(apparelChoices)){
   const parent=$(key+'Picker');if(!parent)continue;parent.replaceChildren();
@@ -836,22 +836,7 @@ function makeAvatar(p){
    // Close-fitting side hair visible near ears.
    for(const side of [-1,1])child(neck,new THREE.SphereGeometry(.22,12,10),hair,[side*.66,.22,-.10],[.72,1.03,.78]);
  }
- // Headband replaces the old cap: thin cloth ribbon around the forehead,
- // never a crown or a brim. Keep existing profile 'hat' keys for compatibility.
- const hatShades={black:'#1d2030',white:'#f9f8ed',blue:'#3e8eea',green:'#4cb57c',yellow:'#f7d345'};
- if(p.hat&&hatShades[p.hat]){
-  const bandMat=mat(hatShades[p.hat],.91);
-  // Head faces +Z; place this thin curved ribbon on the brow, just outside the hair.
-  // Arc spans the front and sides without covering the top of the head.
-  const frontBand=new THREE.Mesh(new THREE.TorusGeometry(.775,.068,8,42,Math.PI*1.24),bandMat);
-  frontBand.rotation.z=-Math.PI*.12;
-  frontBand.rotation.x=Math.PI/2;
-  frontBand.position.set(0,.415,.055);
-  frontBand.scale.set(1.04,.96,1);
-  neck.add(frontBand);
-  // Front-facing flat section for legibility even from the stage camera angle.
-  child(neck,new THREE.BoxGeometry(.90,.115,.072),bandMat,[0,.575,.678],[1,1,1]);
- }
+ // Head accessory removed on request. Keep profile 'hat' key only for backward compatibility; no visual item is rendered.
  if(p.pattern==='stripe'||p.pattern==='wide-stripe'){
   const stripeMat=mat('#f7f8f2',.83),spacing=p.pattern==='stripe'?.16:.31,stripWidth=p.pattern==='stripe'?.045:.105;
   for(let x=-.34;x<=.35;x+=spacing){
@@ -861,18 +846,14 @@ function makeAvatar(p){
  }
  if(p.sash&&p.sash!=='none'){
   const sashColors={black:'#20212c',purple:'#793ac8',red:'#d42c42',green:'#2a9a59','black-check':'#20212c','red-check':'#c72b35'};
-  // Vertical hanging sash: pinned at the character's LEFT hip, visible from
-  // the front (+Z), dropping straight down toward the ankle (world Y axis).
-  const fabric=new THREE.Group();fabric.position.set(-.48,1.10,.43);root.add(fabric);parts.sash=fabric;
+  // Restore the previous size/position, then rotate the sash 90 degrees as requested.
+  const fabric=new THREE.Group();fabric.position.set(-.49,1.24,.16);fabric.rotation.z=Math.PI/2;root.add(fabric);parts.sash=fabric;
   const clothMat=mat(sashColors[p.sash]||'#252535',.97);
-  child(fabric,new THREE.BoxGeometry(.21,.92,.055),clothMat,[0,-.46,0]);
-  // Vertical stitched edges emphasize top-to-bottom, not a diagonal sash.
-  const edging=mat(p.sash.endsWith('check')?'#ddd7c9':'#eee4ce',.93);
-  for(const x of [-.088,.088])child(fabric,new THREE.BoxGeometry(.012,.89,.061),edging,[x,-.46,0]);
+  child(fabric,new THREE.BoxGeometry(.23,1.14,.065),clothMat,[-.025,-.57,0],[1,1,1]);
   if(p.sash.endsWith('check')){
    const check=mat(p.sash==='red-check'?'#17181e':'#d5d5d5',.93);
-   for(let y=-.09;y>-.90;y-=.145)child(fabric,new THREE.BoxGeometry(.193,.021,.067),check,[0,y,0]);
-   for(const x of [-.039,.039])child(fabric,new THREE.BoxGeometry(.021,.90,.067),check,[x,-.46,0]);
+   for(let y=-.10;y> -1.12;y-=.19)child(fabric,new THREE.BoxGeometry(.246,.028,.074),check,[-.025,y,0]);
+   for(const x of [-.10,.052])child(fabric,new THREE.BoxGeometry(.027,1.13,.073),check,[x,-.56,0]);
   }
  }
  // Minimal articulated limbs: smooth joints tucked inside sleeve/leg, not exposed balls.
