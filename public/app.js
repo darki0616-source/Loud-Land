@@ -5,7 +5,8 @@ const $=id=>document.getElementById(id), palette=['#ff747d','#67d8d1','#f9c463',
 const mats=[{x:118,y:682,c:'#f5a5a3'},{x:290,y:706,c:'#a7def4'},{x:470,y:690,c:'#f5ce80'},{x:650,y:708,c:'#b3d9a0'},{x:835,y:694,c:'#ceb8f1'},{x:1015,y:710,c:'#ffd2a5'},{x:1185,y:688,c:'#b2d8ff'}];
 const state={id:null,me:null,players:new Map(),keys:new Set(),action:'idle',pose:'stand',actionUntil:0,lastSent:0,es:null,music:{id:'',paused:true,position:0,startedAt:0,token:0},queue:[],history:[],serverDelta:0,yt:null,ytReady:false,lastTrack:'',audioEnabled:false,skipVote:null,skipVoteCooldownUntil:0,walkTarget:null,benchTarget:null,moving:false};
 let slamMode=false,slam=null,slamCooldownUntil=0,slamMotion=null;
-let rockPlacementMode=null,rockPlay=null,rockCooldowns={circle:0,train:0,mosh:0},rockRunningUntil=0,rockMotion=null;
+let rockPlacementMode=null,rockPlay=null,rockCooldowns={circle:0,train:0,mosh:0,row:0,toast:0},rockRunningUntil=0,rockMotion=null;
+let chosenPattern='solid',chosenSash='none',chosenHat='none';
 let chosenColor=palette[0],chosenGender='male',toastTimer;const avatars=new Map();const activeBubbles=new Map();
 // Keep a visitor's own appearance on this browser only (not by shared public IP).
 const PROFILE_STORAGE_KEY='oneseason-profile-v1';
@@ -23,16 +24,25 @@ function getSessionKey(){
 }
 const sessionKey=getSessionKey();
 function readSavedProfile(){try{const p=JSON.parse(localStorage.getItem(PROFILE_STORAGE_KEY)||'null');return p&&typeof p==='object'?p:null}catch{return null}}
-function saveProfile(p){try{localStorage.setItem(PROFILE_STORAGE_KEY,JSON.stringify({name:String(p.name||'ROCKER').slice(0,18),color:p.color,gender:p.gender}))}catch{}}
+function saveProfile(p){try{localStorage.setItem(PROFILE_STORAGE_KEY,JSON.stringify({name:String(p.name||'ROCKER').slice(0,18),color:p.color,gender:p.gender,pattern:p.pattern||'solid',sash:p.sash||'none',hat:p.hat||'none'}))}catch{}}
 function selectGender(g){chosenGender=g==='female'?'female':'male';document.querySelectorAll('[data-gender]').forEach(b=>b.classList.toggle('selected',b.dataset.gender===chosenGender))}
 const savedProfile=readSavedProfile();
-if(savedProfile){if(typeof savedProfile.name==='string')$('nick').value=savedProfile.name.slice(0,18);if(palette.includes(savedProfile.color))chosenColor=savedProfile.color;if(['male','female'].includes(savedProfile.gender))selectGender(savedProfile.gender)}
+if(savedProfile){if(typeof savedProfile.name==='string')$('nick').value=savedProfile.name.slice(0,18);if(palette.includes(savedProfile.color))chosenColor=savedProfile.color;if(['male','female'].includes(savedProfile.gender))selectGender(savedProfile.gender);if(['solid','stripe','wide-stripe'].includes(savedProfile.pattern))chosenPattern=savedProfile.pattern;if(['none','black','purple','red','green','black-check','red-check'].includes(savedProfile.sash))chosenSash=savedProfile.sash;if(['none','black','white','blue','green','yellow'].includes(savedProfile.hat))chosenHat=savedProfile.hat}
 let editingProfile=false;
 function refreshProfilePreview(){if(!state.me)return;$('profileName').textContent=state.me.name;$('avatarPreview').querySelector('b').style.background=state.me.color}
 
 function toast(msg){$('toast').textContent=msg;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('show'),3000)}
 document.querySelectorAll('[data-gender]').forEach(b=>b.onclick=()=>selectGender(b.dataset.gender));
 function colorPicker(){let r=$('colorPicker');r.innerHTML='';palette.forEach(c=>{let b=document.createElement('button');b.style.background=c;b.className=c===chosenColor?'selected':'';b.setAttribute('aria-label','티셔츠 '+c);b.onclick=()=>{chosenColor=c;colorPicker()};r.append(b)})}colorPicker();
+const apparelChoices={pattern:[['solid','단색'],['stripe','가는 줄무늬'],['wide-stripe','넓은 줄무늬']],sash:[['none','없음'],['black','검정'],['purple','보라'],['red','빨강'],['green','초록'],['black-check','검정 체크'],['red-check','빨강 체크']],hat:[['none','없음'],['black','검정'],['white','흰색'],['blue','파랑'],['green','초록'],['yellow','노랑']]};
+function renderApparelPicker(){
+ for(const [key,items] of Object.entries(apparelChoices)){
+  const parent=$(key+'Picker');if(!parent)continue;parent.replaceChildren();
+  const current=key==='pattern'?chosenPattern:key==='sash'?chosenSash:chosenHat;
+  for(const [value,label] of items){const b=document.createElement('button');b.type='button';b.className='apparel-choice'+(value===current?' selected':'');b.textContent=label;b.onclick=()=>{if(key==='pattern')chosenPattern=value;else if(key==='sash')chosenSash=value;else chosenHat=value;renderApparelPicker()};parent.append(b)}
+ }
+}
+renderApparelPicker();
 let rejoining=null,manualExit=false;
 async function post(ep,data){
  const r=await fetch('/api/'+ep,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(data)});
@@ -46,7 +56,7 @@ async function restoreSession(){
  if(rejoining)return rejoining;
  rejoining=(async()=>{
   try{
-   const r=await fetch('/api/join',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sessionKey,pageId,name:state.me?.name||$('nick').value||'ROCKER',color:state.me?.color||chosenColor,gender:state.me?.gender||chosenGender})});
+   const r=await fetch('/api/join',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sessionKey,pageId,name:state.me?.name||$('nick').value||'ROCKER',color:state.me?.color||chosenColor,gender:state.me?.gender||chosenGender,pattern:state.me?.pattern||chosenPattern,sash:state.me?.sash||chosenSash,hat:state.me?.hat||chosenHat})});
    if(!r.ok)throw Error('재접속 실패');const d=await r.json();
    const old=state.me;state.id=d.id;state.me=d.players.find(x=>x.id===d.id);
    if(old){state.me.x=old.x;state.me.y=old.y;state.me.facing=old.facing;state.me.action=old.action;state.me.pose=old.pose;}
@@ -118,7 +128,7 @@ function showBookingNotice(name,title){
  setTimeout(()=>el.remove(),5200);
 }
 
-function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='snapshot'){state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);if(Array.isArray(d.chat)){$('chatMessages').replaceChildren();d.chat.forEach(appendChat)}}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){appendChat(d.entry);showBubble(d.entry)}else if(d.type==='move'){state.players.set(d.player.id,d.player)}else if(d.type==='profile'){state.players.set(d.player.id,d.player);if(d.player.id===state.id){state.me=d.player;refreshProfilePreview()}renderOnlinePlayers()}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers()}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue,d.history);else if(d.type==='slam')applySlam(d.slam,d.cooldownUntil);else if(d.type==='slam-go')onSlamGo(d);else if(d.type==='slam-impact')spawnSlamDust(d.x,d.y);else if(d.type==='cheer'&&d.playerId!==state.id&&state.audioEnabled)playCheer();else if(d.type==='rockplay')applyRockPlay(d.event,d.rockCooldowns,d.rockRunningUntil);else if(d.type==='rockplay-go')onRockPlayGo(d);else if(d.type==='music-booked')showBookingNotice(d.name,d.title);else if(d.type==='music-control')showMusicControlNotice(d.name,d.command);else if(d.type==='skip-vote')applySkipVote(d.vote,d.cooldownUntil);else if(d.type==='skip-vote-result')showSkipVoteResult(d)};state.es.onerror=()=>{ /* EventSource retries automatically; heartbeat repairs an expired session. */ }}
+function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='snapshot'){state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);if(Array.isArray(d.chat)){$('chatMessages').replaceChildren();d.chat.forEach(appendChat)}}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){appendChat(d.entry);showBubble(d.entry)}else if(d.type==='move'){state.players.set(d.player.id,d.player)}else if(d.type==='profile'){state.players.set(d.player.id,d.player);if(d.player.id===state.id){state.me=d.player;refreshProfilePreview()}renderOnlinePlayers()}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers()}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue,d.history);else if(d.type==='slam')applySlam(d.slam,d.cooldownUntil);else if(d.type==='slam-go')onSlamGo(d);else if(d.type==='slam-impact')spawnSlamDust(d.x,d.y);else if(d.type==='toast-spark')spawnToastSpark(d.x,d.y);else if(d.type==='cheer'&&d.playerId!==state.id&&state.audioEnabled)playCheer();else if(d.type==='rockplay')applyRockPlay(d.event,d.rockCooldowns,d.rockRunningUntil);else if(d.type==='rockplay-go')onRockPlayGo(d);else if(d.type==='music-booked')showBookingNotice(d.name,d.title);else if(d.type==='music-control')showMusicControlNotice(d.name,d.command);else if(d.type==='skip-vote')applySkipVote(d.vote,d.cooldownUntil);else if(d.type==='skip-vote-result')showSkipVoteResult(d)};state.es.onerror=()=>{ /* EventSource retries automatically; heartbeat repairs an expired session. */ }}
 function applySkipVote(vote,cooldownUntil){
  state.skipVote=vote||null;if(Number.isFinite(Number(cooldownUntil)))state.skipVoteCooldownUntil=Number(cooldownUntil);
  const overlay=$('skipVoteOverlay');overlay.hidden=!vote;updateSkipVoteUI();updateSharedMusicButtons();
@@ -139,13 +149,13 @@ function updateSkipVoteUI(){
 async function castSkipVote(choice){const vote=state.skipVote;if(!vote||!state.id)return;try{await post('music',{id:state.id,command:'vote-cast',voteId:vote.id,choice})}catch(e){toast(e.message)}}
 function showSkipVoteResult(d){applySkipVote(null,state.skipVoteCooldownUntil);let msg=d.passed?'✅ 과반수 찬성! 요청한 곡으로 이동합니다':d.reason==='timeout'?'투표 시간이 종료되어 현재 곡을 유지합니다':'투표가 부결되어 현재 곡을 유지합니다';notice(msg)}
 setInterval(()=>{updateSkipVoteUI();updateSharedMusicButtons()},500);
-let joining=false;async function join(){if(editingProfile)return updateProfile();if(joining)return;joining=true;manualExit=false;try{let d=await post('join',{sessionKey,pageId,name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);state.pose=state.me?.pose||'stand';cameraFollowInitialized=false;state.players=new Map(d.players.map(p=>[p.id,p]));renderOnlinePlayers();$('joinModal').classList.add('hidden');$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='페스티벌 참가 중';$('avatarPreview').querySelector('b').style.background=chosenColor;saveProfile(state.me);applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);listen();$('audioModal').classList.remove('hidden');showMovementGuide();toast('ONEseason에 오신 것을 환영합니다!')}catch(e){$('joinError').textContent='입장 실패: '+(e?.message||'연결을 확인해주세요');console.error('ONEseason join error:',e)}finally{joining=false}}
+let joining=false;async function join(){if(editingProfile)return updateProfile();if(joining)return;joining=true;manualExit=false;try{let d=await post('join',{sessionKey,pageId,name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender,pattern:chosenPattern,sash:chosenSash,hat:chosenHat});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);state.pose=state.me?.pose||'stand';cameraFollowInitialized=false;state.players=new Map(d.players.map(p=>[p.id,p]));renderOnlinePlayers();$('joinModal').classList.add('hidden');$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='페스티벌 참가 중';$('avatarPreview').querySelector('b').style.background=chosenColor;saveProfile(state.me);applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);listen();$('audioModal').classList.remove('hidden');showMovementGuide();toast('ONEseason에 오신 것을 환영합니다!')}catch(e){$('joinError').textContent='입장 실패: '+(e?.message||'연결을 확인해주세요');console.error('ONEseason join error:',e)}finally{joining=false}}
 $('audioYes').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(true);toast(state.music.id?'음악 재생을 허용했어요':'음악이 등록되면 바로 재생돼요')};$('audioNo').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(false);toast('내 소리를 끈 상태로 입장했어요')};$('joinBtn').onclick=join;$('nick').onkeydown=e=>{if(e.key==='Enter')join()};function closeProfileEditor(){editingProfile=false;$('joinModal').classList.add('hidden');$('joinBtn').innerHTML='페스티벌 입장하기 <span>↗</span>';$('profileCancel').hidden=true;$('joinError').textContent=''}
 async function updateProfile(){if(!state.id||!state.me)return;const button=$('joinBtn');button.disabled=true;try{
- const d=await post('profile',{id:state.id,name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender});
+ const d=await post('profile',{id:state.id,name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender,pattern:chosenPattern,sash:chosenSash,hat:chosenHat});
  state.me=d.player;state.players.set(state.id,d.player);saveProfile(d.player);refreshProfilePreview();renderOnlinePlayers();closeProfileEditor();toast('닉네임과 옷 색상을 변경했어요');
  }catch(e){$('joinError').textContent='변경 실패: '+e.message}finally{button.disabled=false}}
-$('editAvatar').onclick=()=>{if(!state.me)return;editingProfile=true;$('nick').value=state.me.name;chosenColor=state.me.color;selectGender(state.me.gender);colorPicker();$('joinError').textContent='';$('joinBtn').textContent='변경 사항 저장';$('profileCancel').hidden=false;$('joinModal').classList.remove('hidden');$('nick').focus()};
+$('editAvatar').onclick=()=>{if(!state.me)return;editingProfile=true;$('nick').value=state.me.name;chosenColor=state.me.color;chosenPattern=state.me.pattern||'solid';chosenSash=state.me.sash||'none';chosenHat=state.me.hat||'none';selectGender(state.me.gender);colorPicker();renderApparelPicker();$('joinError').textContent='';$('joinBtn').textContent='변경 사항 저장';$('profileCancel').hidden=false;$('joinModal').classList.remove('hidden');$('nick').focus()};
 $('profileCancel').onclick=closeProfileEditor;
 $('profileToggle').onclick=()=>{if(!state.me)return toast('입장 후 변경할 수 있어요');$('editAvatar').click()};
 ;$('helpBtn').onclick=()=>toast('WASD 이동 · 클릭/터치 이동 · 드래그 시점 회전 · 춤: B/G/V/K · 환호성: H · 담배: C');
@@ -208,7 +218,7 @@ function refreshSlamUI(){
  slamButton.disabled=!state.id||!!slam||!!rockPlay||slamNow()<rockRunningUntil||remain>0;
  slamButton.classList.toggle('placing',slamMode);
  slamButton.textContent=slamMode?'📍 바닥을 터치하세요':slam?'🔥 슬램 진행 중':remain?`🔥 슬램 ${remain}초`:'🔥 슬램 만들기';
- slamInfo.textContent=rockPlacementMode?(rockPlacementMode==='circle'?'써클핏 위치를 터치하세요':rockPlacementMode==='mosh'?'모싱 위치를 터치하세요':'기차놀이 위치를 터치하세요'):rockPlay?(rockPlay.kind==='circle'?'써클핏 참가자를 모집 중이에요':rockPlay.kind==='mosh'?'모싱 참가자를 모집 중이에요':'기차놀이 참가자를 모집 중이에요'):slamMode?'슬램 위치를 터치하세요':slam?'슬램 참가자를 모집 중이에요':remain?`다음 슬램까지 ${remain}초`:'락놀이 메뉴에서 슬램·써클핏·기차놀이 선택';
+ slamInfo.textContent=rockPlacementMode?(rockPlacementMode==='circle'?'써클핏 위치를 터치하세요':rockPlacementMode==='mosh'?'모싱 위치를 터치하세요':rockPlacementMode==='row'?'노젓기 위치를 터치하세요':'기차놀이 위치를 터치하세요'):rockPlay?(rockPlay.kind==='circle'?'써클핏 참가자를 모집 중이에요':rockPlay.kind==='mosh'?'모싱 참가자를 모집 중이에요':rockPlay.kind==='row'?'노젓기 참가자를 모집 중이에요':rockPlay.kind==='toast'?'짠하기 참가자를 모집 중이에요':'기차놀이 참가자를 모집 중이에요'):slamMode?'슬램 위치를 터치하세요':slam?'슬램 참가자를 모집 중이에요':remain?`다음 슬램까지 ${remain}초`:'락놀이 메뉴에서 슬램·써클핏·기차놀이·모싱·노젓기 선택';
  slamInfo.classList.toggle('is-active',!!(rockPlacementMode||rockPlay||slamMode||slam));
 }
 function applySlam(event,cooldown){
@@ -241,21 +251,21 @@ function onSlamGo(event){
  }
  slam=null;refreshSlamUI();
 }
-const rockMenuButton=$('rockMenuButton'),rockMenuPanel=$('rockMenuPanel'),circleButton=$('circleButton'),trainButton=$('trainButton'),moshButton=$('moshButton');
+const rockMenuButton=$('rockMenuButton'),rockMenuPanel=$('rockMenuPanel'),circleButton=$('circleButton'),trainButton=$('trainButton'),moshButton=$('moshButton'),rowButton=$('rowButton');
 rockMenuButton.onclick=()=>{const show=rockMenuPanel.classList.contains('hidden');rockMenuPanel.classList.toggle('hidden',!show);rockMenuButton.setAttribute('aria-expanded',String(show))};
 function closeRockMenu(){rockMenuPanel.classList.add('hidden');rockMenuButton.setAttribute('aria-expanded','false')}
 function refreshRockUI(){
  const now=slamNow(),occupied=!!rockPlay||!!slam||now<rockRunningUntil;
- for(const [button,kind,name] of [[circleButton,'circle','써클핏'],[trainButton,'train','기차놀이'],[moshButton,'mosh','모싱']]){
+ for(const [button,kind,name] of [[circleButton,'circle','써클핏'],[trainButton,'train','기차놀이'],[moshButton,'mosh','모싱'],[rowButton,'row','노젓기']]){
    const remaining=Math.max(0,Math.ceil((rockCooldowns[kind]-now)/1000));
    button.disabled=!state.id||occupied||remaining>0;
    button.classList.toggle('placing',rockPlacementMode===kind);
-   button.textContent=rockPlacementMode===kind?'📍 '+name+' 위치 선택':remaining?`⏱ ${name} ${remaining}초`:`${kind==='circle'?'🔄':kind==='mosh'?'🥊':'🚂'} ${name} 만들기`;
+   button.textContent=rockPlacementMode===kind?'📍 '+name+' 위치 선택':remaining?`⏱ ${name} ${remaining}초`:`${kind==='circle'?'🔄':kind==='mosh'?'🥊':kind==='row'?'🚣':'🚂'} ${name} 만들기`;
  }
 }
 function applyRockPlay(event,cooldowns,runningUntil){
  if(cooldowns&&typeof cooldowns==='object'){
-  for(const kind of ['circle','train','mosh'])if(Number.isFinite(Number(cooldowns[kind])))rockCooldowns[kind]=Number(cooldowns[kind]);
+  for(const kind of ['circle','train','mosh','row','toast'])if(Number.isFinite(Number(cooldowns[kind])))rockCooldowns[kind]=Number(cooldowns[kind]);
  }
  if(Number.isFinite(Number(runningUntil)))rockRunningUntil=Number(runningUntil);
  rockPlay=event||null;
@@ -268,18 +278,20 @@ function onRockPlayGo(event){
  if(index!==-1&&state.me){
    rockMotion={id:event.id,kind:event.kind,x:event.x,y:event.y,startAt:event.startAt,duration:event.duration,index,count:participants.length};
    slamMotion=null;state.walkTarget=null;state.benchTarget=null;
-   state.pose='stand';state.me.pose='stand';state.action=event.kind==='mosh'?'mosh-charge':event.kind==='circle'?'circle-run':'train-run';state.me.action=state.action;
+   state.pose='stand';state.me.pose='stand';state.action=event.kind==='mosh'?'mosh-charge':event.kind==='circle'?'circle-run':event.kind==='row'?'row-paddle':event.kind==='toast'?'toast-clink':'train-run';state.me.action=state.action;
+   if(event.kind==='row'||event.kind==='toast'){rockMotion.gatherFrom={x:state.me.x,y:state.me.y};}
    if(event.kind==='mosh'){const start={x:state.me.x,y:state.me.y};rockMotion.moshStart=start;rockMotion.moshDestination={x:event.x+(index-participants.length/2)*7,y:event.y};rockMotion.dustA=false;rockMotion.dustB=false;}
    state.actionUntil=Infinity;updateActionButtons();sendMove();
  }
  rockPlay=null;refreshRockUI();refreshSlamUI();
 }
-for(const [button,kind] of [[circleButton,'circle'],[trainButton,'train'],[moshButton,'mosh']]){
+$('toastStart').onclick=async()=>{if(!state.id||!state.me)return toast('먼저 입장해 주세요');try{const d=await post('rockplay',{id:state.id,command:'start',kind:'toast',x:Math.max(25,Math.min(1375,state.me.x)),y:Math.max(255,Math.min(875,state.me.y))});applyRockPlay(d.event,d.rockCooldowns,d.rockRunningUntil);toast('🥂 짠하기! 5초 동안 참가자를 모집합니다')}catch(e){toast(e.message)}};
+for(const [button,kind] of [[circleButton,'circle'],[trainButton,'train'],[moshButton,'mosh'],[rowButton,'row']]){
  button.onclick=()=>{
    if(!state.id||rockPlay||slam||rockRunningUntil>slamNow()||rockCooldowns[kind]>slamNow())return;
    rockPlacementMode=rockPlacementMode===kind?null:kind;slamMode=false;
    closeRockMenu();refreshRockUI();refreshSlamUI();
-   slamInfo.textContent=rockPlacementMode?`${kind==='circle'?'써클핏':kind==='mosh'?'모싱':'기차놀이'} 장소를 터치하세요`:'락놀이 메뉴에서 선택해 주세요';
+   slamInfo.textContent=rockPlacementMode?`${kind==='circle'?'써클핏':kind==='mosh'?'모싱':kind==='row'?'노젓기':'기차놀이'} 장소를 터치하세요`:'락놀이 메뉴에서 선택해 주세요';
  };
 }
 function moshPathAt(m,elapsed){
@@ -295,6 +307,8 @@ function moshPathAt(m,elapsed){
 }
 function rockPathAt(m,elapsed){
  const elapsedFraction=Math.min(1,Math.max(0,elapsed/m.duration));
+ if(m.kind==='row'){return {x:m.x+(m.index%2===0?-21:21),y:m.y+Math.floor(m.index/2)*28-22,dx:0,dy:1}}
+ if(m.kind==='toast'){const angle=2*Math.PI*m.index/Math.max(1,m.count);return {x:m.x+Math.sin(angle)*22,y:m.y+Math.cos(angle)*22,dx:-Math.sin(angle),dy:-Math.cos(angle)}}
  if(m.kind==='circle'){
    const angle=elapsedFraction*Math.PI*10 + m.index*2*Math.PI/Math.max(1,m.count);
    return {x:m.x+Math.cos(angle)*115,y:m.y+Math.sin(angle)*115,dx:-Math.sin(angle),dy:Math.cos(angle)};
@@ -329,11 +343,11 @@ function updateRockPlayVisual(t){
  const world=toWorld(rockPlay),pos=new THREE.Vector3(world.x,3.6,world.z).project(camera);
  rockFloorPath.visible=true;rockFloorPath.position.set(world.x,.09,world.z);
  rockFloorPath.rotation.y=0;
- rockFloorPath.geometry=rockPlay.kind==='circle'||rockPlay.kind==='mosh'?rockCircleGeometry:rockTrainGeometry;
+ rockFloorPath.geometry=rockPlay.kind==='row'?rockRowGeometry:rockPlay.kind==='circle'||rockPlay.kind==='mosh'||rockPlay.kind==='toast'?rockCircleGeometry:rockTrainGeometry;
  if(pos.z>=1||pos.z<=-1){slamMarker.hidden=true;return}
  slamMarker.hidden=false;
  slamCount.textContent=String(Math.max(1,Math.ceil(remaining/1000)));
- slamMembers.textContent=`${rockPlay.kind==='circle'?'써클핏':rockPlay.kind==='mosh'?'모싱':'기차놀이'} · ${rockPlay.participants.length}명 참가`;
+ slamMembers.textContent=`${rockPlay.kind==='circle'?'써클핏':rockPlay.kind==='mosh'?'모싱':rockPlay.kind==='row'?'노젓기':rockPlay.kind==='toast'?'짠하기':'기차놀이'} · ${rockPlay.participants.length}명 참가`;
  const joined=rockPlay.participants.includes(state.id);
  slamJoin.disabled=joined;slamJoin.textContent=joined?'✓ 참가 완료':'참가하기';
  slamMarker.style.left=Math.max(72,Math.min(host.clientWidth-72,(pos.x+1)*.5*host.clientWidth))+'px';
@@ -758,6 +772,18 @@ for(const light of [hemi,sunLight,moonLight])light.layers.enable(1);
 updateEnvironment(true);
 
 
+// Golden impact spark: visible to every attendee when the synchronized clink lands.
+const toastSparks=[];
+function spawnToastSpark(x,y){
+ const wp=toWorld({x,y});
+ for(let i=0;i<24;i++){
+  const angle=i*Math.PI*2/24;
+  const obj=new THREE.Mesh(new THREE.SphereGeometry(.065,6,6),new THREE.MeshBasicMaterial({color:i%3?'#ffcb3b':'#fff5b1',transparent:true,opacity:.95,depthWrite:false}));
+  obj.position.set(wp.x,1.35,wp.z);scene.add(obj);
+  toastSparks.push({obj,start:performance.now(),vx:Math.cos(angle)*(1.0+Math.random()*.8),vz:Math.sin(angle)*(1.0+Math.random()*.8),vy:Math.random()*1.2});
+ }
+}
+function animateToastSparks(t){for(let i=toastSparks.length-1;i>=0;i--){const p=toastSparks[i],dt=(t-p.start)/1000;if(dt>1.1){scene.remove(p.obj);p.obj.geometry.dispose();p.obj.material.dispose();toastSparks.splice(i,1);continue}p.obj.position.x+=p.vx*.017;p.obj.position.z+=p.vz*.017;p.obj.position.y+=p.vy*.012-.012;p.obj.material.opacity=Math.max(0,1-dt/1.1)}}
 // Rounded chibi avatar: larger soft head, painted-on face, short unified hairstyle,
 // surface-colored clothing, and inexpensive shoulder/elbow/hip/knee rig.
 function makeAvatar(p){
@@ -809,6 +835,31 @@ function makeAvatar(p){
  }else{
    // Close-fitting side hair visible near ears.
    for(const side of [-1,1])child(neck,new THREE.SphereGeometry(.22,12,10),hair,[side*.66,.22,-.10],[.72,1.03,.78]);
+ }
+ // Selectable hat, stripes and a long left-waist festival sash.
+ const hatShades={black:'#1d2030',white:'#f9f8ed',blue:'#3e8eea',green:'#4cb57c',yellow:'#f7d345'};
+ if(p.hat&&hatShades[p.hat]){
+  const capMat=mat(hatShades[p.hat],.87);
+  child(neck,new THREE.SphereGeometry(.85,24,14,0,Math.PI*2,0,Math.PI*.42),capMat,[0,.26,-.04],[1.04,.63,1.04]);
+  child(neck,new THREE.BoxGeometry(.89,.065,.34),capMat,[0,.72,.65],[1,1,1]);
+ }
+ if(p.pattern==='stripe'||p.pattern==='wide-stripe'){
+  const stripeMat=mat('#f7f8f2',.83),spacing=p.pattern==='stripe'?.16:.31,stripWidth=p.pattern==='stripe'?.045:.105;
+  for(let x=-.34;x<=.35;x+=spacing){
+   // Raised forward strips read clearly on the chibi torso without affecting the base shirt.
+   child(upper,new THREE.BoxGeometry(stripWidth,.51,.035),stripeMat,[x,.41,.425],[1,1,1]);
+  }
+ }
+ if(p.sash&&p.sash!=='none'){
+  const sashColors={black:'#20212c',purple:'#793ac8',red:'#d42c42',green:'#2a9a59','black-check':'#20212c','red-check':'#c72b35'};
+  const fabric=new THREE.Group();fabric.position.set(-.49,1.24,.16);root.add(fabric);parts.sash=fabric;
+  const clothMat=mat(sashColors[p.sash]||'#252535',.97);
+  child(fabric,new THREE.BoxGeometry(.23,1.14,.065),clothMat,[-.025,-.57,0],[1,1,1]);
+  if(p.sash.endsWith('check')){
+   const check=mat(p.sash==='red-check'?'#17181e':'#d5d5d5',.93);
+   for(let y=-.10;y> -1.12;y-=.19)child(fabric,new THREE.BoxGeometry(.246,.028,.074),check,[-.025,y,0]);
+   for(const x of [-.10,.052])child(fabric,new THREE.BoxGeometry(.027,1.13,.073),check,[x,-.56,0]);
+  }
  }
  // Minimal articulated limbs: smooth joints tucked inside sleeve/leg, not exposed balls.
  function arm(side){
@@ -862,6 +913,10 @@ function makeAvatar(p){
  child(bottle,new THREE.CylinderGeometry(.045,.065,.19,10),glass,[0,.13,0]);
  child(bottle,new THREE.CylinderGeometry(.06,.06,.055,10),mat('#f3ca82'),[0,.25,0]);
  child(bottle,new THREE.CylinderGeometry(.127,.127,.12,12),mat('#f2e1bd'),[0,-.14,0]);
+ const toastCup=new THREE.Group();parts.rightElbow.add(toastCup);toastCup.position.set(0,-.58,.08);parts.toastCup=toastCup;
+ child(toastCup,new THREE.CylinderGeometry(.12,.09,.23,12),mat('#ffc977',.5),[0,0,0]);
+ child(toastCup,new THREE.TorusGeometry(.11,.015,6,12),mat('#fff2b4',.45),[0,.12,0]).rotation.x=Math.PI/2;
+ toastCup.visible=false;
  // The cigarette faces outward (+Z is the front of the avatar).
  // Anchor it to the upper torso instead of the rotating hand bone: arm IK can
  // rotate the hand so far that a hand-attached cigarette points into the mouth.
@@ -973,6 +1028,8 @@ function animateAvatar(a,p,t){
  const q=(p.id===state.id&&state.me)?state.me:p,wp=toWorld(q),P=a.parts;
  a.root.position.x+=(wp.x-a.root.position.x)*.28;
  a.root.position.z+=(wp.z-a.root.position.z)*.28;
+ if(P.sash)P.sash.rotation.z=Math.sin(t*.0028)*.055;
+ P.toastCup.visible=q.action==='toast-clink';
  const act=q.action||'idle',basePose=q.pose||((act==='sit'||act==='lie')?act:'stand'),sec=t*.001,pose={};
  const keys=['upper','neck','leftShoulder','rightShoulder','leftElbow','rightElbow','leftHip','rightHip','leftKnee','rightKnee'];
  for(const key of keys)pose[key]=[0,0,0];
@@ -1039,6 +1096,20 @@ function animateAvatar(a,p,t){
   set('leftKnee',.22+.055*Math.max(0,shake));
   set('rightKnee',.22+.055*Math.max(0,-shake));
   height=-.035+rebound;
+ }
+ if(act==='row-paddle'){
+  // Two seated files, paddling together on each beat.
+  set('upper',.17+.20*Math.sin(sec*5.5),0,0);
+  set('leftShoulder',-.95-.46*Math.sin(sec*5.5),0,-.33);
+  set('rightShoulder',-.95-.46*Math.sin(sec*5.5),0,.33);
+  set('leftElbow',-.53);set('rightElbow',-.53);
+  set('leftHip',-1.25);set('rightHip',-1.25);set('leftKnee',1.55);set('rightKnee',1.55);
+  height=-.38;
+ }
+ if(act==='toast-clink'){
+  const reach=Math.min(1,Math.max(0,(Math.sin(sec*3.5)+1)*.5));
+  set('rightShoulder',-1.2-.55*reach,0,.10);set('rightElbow',-.45);
+  set('leftShoulder',-.22);set('upper',-.04,0,0);
  }
  if(act==='groove'){
   // Relaxed festival groove: low-impact alternating knee dips, loose elbows,
@@ -1294,6 +1365,9 @@ const rockCircleGeometry=new THREE.BufferGeometry().setFromPoints(Array.from({le
 const rockTrainGeometry=new THREE.BufferGeometry().setFromPoints(Array.from({length:225},(_,i)=>{
  const th=i/224*Math.PI*2;return new THREE.Vector3(Math.sin(th)*180*.058,0,Math.sin(th*2)*90*.058);
 }));
+const rockRowGeometry=new THREE.BufferGeometry().setFromPoints([
+ new THREE.Vector3(-2.4,0,-3.8),new THREE.Vector3(2.4,0,-3.8),new THREE.Vector3(2.4,0,3.8),new THREE.Vector3(-2.4,0,3.8)
+]);
 const rockFloorPath=new THREE.LineLoop(rockCircleGeometry,new THREE.LineBasicMaterial({color:'#fce084',transparent:true,opacity:.91,depthWrite:false}));
 rockFloorPath.visible=false;rockFloorPath.renderOrder=38;scene.add(rockFloorPath);
 
@@ -1444,8 +1518,10 @@ function tick(t){
   }
   if(!dx&&!dy&&rockMotion){
    const m=rockMotion,elapsed=Math.max(0,slamNow()-m.startAt);
-   if(!m.phase&&elapsed>=m.duration)beginRockCelebration(m);
-   if(m.phase==='scatter'){
+   if(!m.phase&&elapsed>=m.duration){if(m.kind==='toast'){m.phase='done';rockMotion=null;state.action='idle';state.me.action='idle';state.actionUntil=0;sendMove()}else beginRockCelebration(m)}
+   if(m.phase==='done'){
+    // Group cheers has finished; do not restart this turn.
+   }else if(m.phase==='scatter'){
     const target=m.scatterTarget;
     const tx=target.x-state.me.x,ty=target.y-state.me.y;
     const distance=Math.hypot(tx,ty);
@@ -1468,10 +1544,13 @@ function tick(t){
     state.actionUntil=Infinity;
    }else{
     const p=m.kind==='mosh'?moshPathAt(m,elapsed):rockPathAt(m,elapsed);
-    state.me.x=Math.max(20,Math.min(1380,p.x));
-    state.me.y=Math.max(220,Math.min(1100,p.y));
-    state.me.facing=Math.atan2(p.dx,p.dy);
-    state.me.action=m.kind==='mosh'?'mosh-charge':m.kind==='circle'?'circle-run':'train-run';state.action=state.me.action;
+    // Gather into rows/circle with a short smooth approach, then perform in place.
+    const gather=(m.kind==='row'||m.kind==='toast')?Math.min(1,elapsed/1400):1;
+    const from=m.gatherFrom||p;
+    state.me.x=Math.max(20,Math.min(1380,from.x+(p.x-from.x)*gather));
+    state.me.y=Math.max(220,Math.min(1100,from.y+(p.y-from.y)*gather));
+    state.me.facing=m.kind==='toast'?Math.atan2(m.x-p.x,m.y-p.y):m.kind==='row'?0:Math.atan2(p.dx,p.dy);
+    state.me.action=m.kind==='mosh'?'mosh-charge':m.kind==='circle'?'circle-run':m.kind==='row'?'row-paddle':m.kind==='toast'?'toast-clink':'train-run';state.action=state.me.action;
     if(m.kind==='mosh'){if(elapsed>=m.duration*.30&&!m.dustA){m.dustA=true;post('rockplay',{id:state.id,command:'impact',eventId:m.id,phase:1,x:state.me.x,y:state.me.y}).catch(()=>{})}if(elapsed>=m.duration*.96&&!m.dustB){m.dustB=true;post('rockplay',{id:state.id,command:'impact',eventId:m.id,phase:2,x:state.me.x,y:state.me.y}).catch(()=>{})}}
     state.moving=true;
     if(t-state.lastSent>70){state.lastSent=t;sendMove()}
@@ -1514,15 +1593,15 @@ function tick(t){
 
  for(let [id,p] of state.players){
   const current=avatars.get(id);
-  if(current&&(current.color!==p.color||current.name!==p.name||current.gender!==p.gender)){
+  if(current&&(current.color!==p.color||current.name!==p.name||current.gender!==p.gender||current.pattern!==(p.pattern||'solid')||current.sash!==(p.sash||'none')||current.hat!==(p.hat||'none'))){
    scene.remove(current.root);current.root.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material?.map)o.material.map.dispose();if(o.material)o.material.dispose()});avatars.delete(id);
   }
-  if(!avatars.has(id)){let a=makeAvatar(p),pos=toWorld(p);a.root.position.set(pos.x,0,pos.z);a.name=p.name;a.gender=p.gender;avatars.set(id,a)}
+  if(!avatars.has(id)){let a=makeAvatar(p),pos=toWorld(p);a.root.position.set(pos.x,0,pos.z);a.name=p.name;a.gender=p.gender;a.pattern=p.pattern||'solid';a.sash=p.sash||'none';a.hat=p.hat||'none';avatars.set(id,a)}
   animateAvatar(avatars.get(id),p,t)
  }
  for(let [id,a] of avatars)if(!state.players.has(id)){scene.remove(a.root);a.root.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material?.map)o.material.map.dispose();if(o.material)o.material.dispose()});avatars.delete(id)}
  if(moveMarker.visible){moveMarker.material.opacity=Math.min(.75,Math.max(0,(moveMarkerUntil-t)/1050)*.75);if(t>moveMarkerUntil)moveMarker.visible=false}
- updateEnvironment();animateSky(t);updateOcean(t);updateSlamDust(t);updateBubbles(t);animateShow(t);updateHourlyFireworks(t);followLocalAvatar();controls.update();keepCameraInFrontOfStage();updateSlamVisual(t);updateRockPlayVisual(t);renderer.render(scene,camera);cssRenderer.render(scene,camera);renderStageForeground();requestAnimationFrame(tick)
+ updateEnvironment();animateSky(t);updateOcean(t);updateSlamDust(t);updateBubbles(t);animateShow(t);updateHourlyFireworks(t);animateToastSparks(t);followLocalAvatar();controls.update();keepCameraInFrontOfStage();updateSlamVisual(t);updateRockPlayVisual(t);renderer.render(scene,camera);cssRenderer.render(scene,camera);renderStageForeground();requestAnimationFrame(tick)
 }
 function resize(){let w=host.clientWidth,h=host.clientHeight;if(!w||!h)return;camera.aspect=w/h;camera.updateProjectionMatrix();renderer.setSize(w,h,false);cssRenderer.setSize(w,h);if(stageForeground)stageForeground.setSize(w,h,false)}new ResizeObserver(resize).observe(host);resize();requestAnimationFrame(tick);
 setInterval(()=>{syncVideo();reportDuration();let m=state.music;if(!m.id)return;let sec=m.paused?m.position:(Date.now()+state.serverDelta-m.startedAt)/1000;let dur=state.ytReady?state.yt.getDuration():0;$('progressFill').style.width=dur?Math.min(100,sec/dur*100)+'%':'0%'},5000);

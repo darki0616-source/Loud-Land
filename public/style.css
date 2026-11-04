@@ -256,3 +256,9 @@ button,input{touch-action:manipulation}
 #profileCancel:not([hidden]){display:block;width:100%;margin-top:10px;padding:12px;border:1px solid #6d7792;border-radius:10px;background:#293248;color:#f7f8ff;font-weight:800}
 
 #profileToggle{padding:10px 12px;min-width:40px} @media(max-width:700px){#profileToggle{padding:8px 7px;min-width:31px}}
+
+/* v46 wardrobe: responsive selectable apparel */
+.apparel-options{display:flex;gap:7px;flex-wrap:wrap;margin:8px 0 14px}
+.apparel-choice{border:1px solid rgba(255,255,255,.25);border-radius:9px;padding:9px 11px;background:#273248;color:#eaf0fa;cursor:pointer;font:inherit;font-size:12px}
+.apparel-choice.selected{border-color:#d9ff96;background:#405335;color:#f3ffd4;box-shadow:0 0 0 1px #d9ff96 inset}
+.joinbox{max-height:min(90dvh,800px);overflow-y:auto;overscroll-behavior:contain}
