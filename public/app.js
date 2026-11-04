@@ -6,15 +6,13 @@ const $=id=>document.getElementById(id), palette=['#ff747d','#67d8d1','#f9c463',
 // Picnic zone layout tuned for mobile: keep the main standing/stage area
 // compact, and place the picnic blankets cleanly in the side rest zone.
 const picnicSlots=[
- // Picnic zone: keep all blankets below the red stage boundary,
- // inside the lower yellow-marked rest area.
- {worldX:30,worldZ:32},
- {worldX:41,worldZ:34},
- {worldX:30,worldZ:41},
- {worldX:41,worldZ:43},
- {worldX:30,worldZ:50},
- {worldX:41,worldZ:52},
- {worldX:41,worldZ:60}
+ {worldX:-39,worldZ:28},
+ {worldX:-26,worldZ:28},
+ {worldX:-13,worldZ:28},
+ {worldX:0,worldZ:28},
+ {worldX:13,worldZ:28},
+ {worldX:26,worldZ:28},
+ {worldX:39,worldZ:28},
 ];
 const picnicMatColors=['#f5a5a3','#a7def4','#f5ce80','#b3d9a0','#ceb8f1','#ffd2a5','#b2d8ff'];
 const mats=picnicSlots.map((slot,i)=>({x:slot.worldX/.058+600,y:500,c:picnicMatColors[i],worldX:slot.worldX,worldZ:slot.worldZ}));
@@ -649,36 +647,23 @@ function sphere(r,m,x,y,z){let o=new THREE.Mesh(new THREE.SphereGeometry(r,12,10
 function cylinder(rt,rb,h,m,x,y,z){let o=new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,h,14),m);o.position.set(x,y,z);o.castShadow=true;scene.add(o);return o}
 function label(str,size=100,color='#ffffff',bg='#22283b'){let cv=document.createElement('canvas');cv.width=512;cv.height=128;let c=cv.getContext('2d');c.fillStyle=bg;c.fillRect(0,0,512,128);c.fillStyle=color;c.font=`900 ${size}px Arial`;c.textAlign='center';c.textBaseline='middle';c.fillText(str,256,67);let tex=new THREE.CanvasTexture(cv);tex.colorSpace=THREE.SRGBColorSpace;return new THREE.MeshBasicMaterial({map:tex,transparent:true,side:THREE.DoubleSide})}
 
-// v78: Widen the free standing area ahead of the picnic zone. The stage
-// itself is unchanged. A smooth piecewise coordinate transform keeps all
-// players on the same server coordinates while shifting the rest area back.
-const AUDIENCE_REAR_SHIFT=18;
-function expandWorldZ(z){
- if(z<=8)return z;
- if(z>=14)return z+AUDIENCE_REAR_SHIFT;
- const t=(z-8)/6;
- return z+AUDIENCE_REAR_SHIFT*t*t*(3-2*t);
-}
-function contractWorldZ(z){
- if(z<=8)return z;
- if(z>=14+AUDIENCE_REAR_SHIFT)return z-AUDIENCE_REAR_SHIFT;
- let lo=8,hi=14;
- for(let i=0;i<24;i++){
-  const mid=(lo+hi)*.5;
-  if(expandWorldZ(mid)<z)lo=mid;else hi=mid;
- }
- return (lo+hi)*.5;
-}
+// v87: The red line is the end of the STAGE/AUDIENCE area, not a cue
+// to make the entire map longer. Stop applying the old 18-26 unit rear warp.
+// Use a 1:1 world/server coordinate mapping: prevents speed distortion too.
+const STAGE_REAR_EDGE_Z=18;
+function expandWorldZ(z){return z;}
+function contractWorldZ(z){return z;}
 // Input and render coordinates remain compatible with the extended-world map.
 for(const m of mats)m.y=(contractWorldZ(m.worldZ)-8)/.058+500;
 // Extend the ground without changing the stage or audience barrier.
 const floor=cube(104,.4,118,grass,0,-.24,25);floor.receiveShadow=true;
-// v84: ONE visible audience ground surface, no overlapping coplanar slabs.
-// Previously both lawn and picnic-zone slab had identical upper Y=0.06,
-// causing visible striped Z-fighting across the whole crowd zone.
-// The lawn ends at z=68, where the relocated beach begins, avoiding overlap.
-const lawn=cube(100,.08,77,mat('#4f765f'),0,.03,29.5,false);
+// Stage/audience grass ends EXACTLY at the red boundary z=18.
+// Below it, the rest/picnic grass starts in the yellow zone.
+// Both surfaces meet edge-to-edge (not overlapping), preventing Z-fighting.
+const lawn=cube(100,.08,27,mat('#4f765f'),0,.03,4.5,false); // z -9 .. 18
 lawn.receiveShadow=true;
+const picnicLawn=cube(100,.08,32,mat('#536f5c'),0,.03,34,false); // z 18 .. 50
+picnicLawn.receiveShadow=true;
 const sandMat=mat('#dec391',.95),wetSandMat=mat('#c9ab74',.94);
 const beach=cube(110,.06,28,sandMat,0,.02,56,false);beach.receiveShadow=true;
 const wetBand=cube(110,.045,6.5,wetSandMat,0,.03,67,false);
@@ -850,24 +835,23 @@ function umbrella(x,z,c){const pole=cylinder(.08,.08,2.2,metal,x,1.1,z);const to
 // 3D performance information board with real shared playlist rendered as HTML in the world.
 const boardElement=document.createElement('div');
 boardElement.className='festival-board';boardElement.innerHTML='<div class="board-brand">ONEseason · 공연 안내</div><div class="board-row"><small>● <span id="boardStatus">공연 대기 중</span></small><strong id="boardCurrent">현재 재생 중인 곡 없음</strong></div><div class="board-row"><small>다음 공연</small><strong id="boardNext">예약된 곡 없음</strong></div><div class="board-foot">현재 관객 <b id="boardVisitors">0</b>명</div>';
-const boardObject=new CSS3DObject(boardElement);boardObject.position.set(-43,4.6,24);boardObject.rotation.y=.25;boardObject.scale.set(.017,.017,.017);scene.add(boardObject);
-cube(8,.5,.8,wood,-43,.4,23.95);for(let x of [-46.4,-39.6])cube(.22,6,.22,metal,x,3,24);
+const boardObject=new CSS3DObject(boardElement);boardObject.position.set(-45.6,4.6,12);boardObject.rotation.y=.25;boardObject.scale.set(.017,.017,.017);scene.add(boardObject);
+cube(8,.5,.8,wood,-45.6,.4,11.95);for(let x of [-49,-42.2])cube(.22,6,.22,metal,x,3,12);
 // trees, lanterns, food stalls
 for(let x of [-46,48])for(let z of [-9,9,23]){cylinder(.45,.65,5,wood,x,2.5,z);sphere(2.7,mat('#477f63'),x,6,z);sphere(1.7,mat('#5a9a70'),x+1.7,5.7,z-1)}
 for(let x of [-46,47]){cube(5,2.8,3,mat('#bc7097'),x,1.6,15);cube(5.8,.35,4.1,mat('#f4c783'),x,3.2,15);let banner=new THREE.Mesh(new THREE.PlaneGeometry(4,1.1),label(x<0?'SNACKS':'MERCH',70,'#fbe9dc','#9e446f'));banner.position.set(x,2.2,16.56);scene.add(banner)}
 
 for(let x of [-46,47]){cube(5.5,2.9,3.4,mat('#6b8ac7'),x,1.65,22);cube(6.4,.35,4.5,mat('#f4c783'),x,3.28,22);let banner=new THREE.Mesh(new THREE.PlaneGeometry(4.5,1.1),label(x<0?'FOOD':'REST',68,'#fef7e6','#4c6588'));banner.position.set(x,2.2,23.86);scene.add(banner)}
-// Boundary lights run lengthwise beside the picnic mats, along the red-marked side.
-// They stay a single line, not a fence crossing the open rock-play floor.
-const audienceLightX=24.6;
+// Subtle festival bulbs across the red line: the end of the rock-play zone.
+// Positioned at z=18, NOT along or through the picnic row at z=28.
 const audienceLightBulbColors=['#ffdb8a','#fca5b5','#a8ecff','#c7f591'];
-for(let z=-11;z<=39;z+=5){
- const post=cylinder(.085,.085,3.8,metal,audienceLightX,1.9,z);
- post.castShadow=false;
+for(let x=-44;x<=44;x+=8){
+ const pole=cylinder(.07,.07,2.6,metal,x,1.3,STAGE_REAR_EDGE_Z);
+ pole.castShadow=false;
  for(let j=0;j<4;j++){
-  const bz=z+j*1.25;
-  const c=audienceLightBulbColors[(Math.round(z+11)/5+j)%4];
-  const bulb=sphere(.12,new THREE.MeshStandardMaterial({color:c,emissive:c,emissiveIntensity:.85,roughness:.4}),audienceLightX,3.8+Math.sin(j/3*Math.PI)*.17,bz);
+  const bx=x+j*2;
+  const color=audienceLightBulbColors[(Math.round((x+44)/8)+j)%4];
+  const bulb=sphere(.105,new THREE.MeshStandardMaterial({color,emissive:color,emissiveIntensity:.8,roughness:.4}),bx,2.6+Math.sin(j/3*Math.PI)*.1,STAGE_REAR_EDGE_Z);
   bulb.castShadow=false;
  }
 }
@@ -877,7 +861,7 @@ const pier=cube(7.2,.14,20,mat('#8b6b53'),40,.18,77,false);pier.receiveShadow=tr
 // Move picnic, signage, stalls, trees, benches, shoreline and sea back as
 // one environmental set. Keep the rebuilt static lawn and floor unchanged.
 // All objects are positioned via the same world-space mapping as avatars.
-const fixedGroundSet=new Set([floor,lawn,...picnicGroups]);
+const fixedGroundSet=new Set([floor,lawn,picnicLawn,...picnicGroups]);
 for(const item of scene.children){
  if(fixedGroundSet.has(item))continue;
  if(item.position.z>8 && item.position.y<25){
