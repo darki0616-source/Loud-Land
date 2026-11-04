@@ -1024,19 +1024,31 @@ function animateAvatar(a,p,t){
   set('rightKnee',1.28+.06*Math.sin(sec*2.4));
  }
  if(act==='skanking'){
-  // Ska-punk skank: alternate a forward kick, planted leg, opposing arm swing.
-  // No backward heel kick or curled trailing foot on the active leg.
-  const beat=sec*7.2,foot=Math.sin(beat),other=-foot;
-  const left=Math.max(0,foot),right=Math.max(0,other);
-  height=.025+.105*Math.abs(foot);
-  set('upper',-.10,0,.09*Math.sin(beat*.5));
-  set('leftHip',-.10-1.05*left,0,-.05);
-  set('rightHip',-.10-1.05*right,0,.05);
-  set('leftKnee',.08+.10*left);
-  set('rightKnee',.08+.10*right);
-  set('leftShoulder',-.45-.65*right,0,-.27);
-  set('rightShoulder',-.45-.65*left,0,.27);
-  set('leftElbow',-.46);set('rightElbow',-.46);
+  // Four-count ska-punk groove: 1-2 RIGHT, 1-2 LEFT, repeat.
+  // Each foot makes two forward kicks before switching sides; no backward heel kick.
+  const count=sec*2.7;
+  const step=count%4;
+  const rightFoot=step<2;
+  // One forward extension for each count, returning to the floor between counts.
+  const kick=Math.pow(Math.sin(Math.PI*(count%1)),2);
+  const rightKick=rightFoot ? kick : 0;
+  const leftKick=rightFoot ? 0 : kick;
+  const swing=Math.sin(Math.PI*count); // arms swing forward/back once per count
+  const side=rightFoot?1:-1;
+  height=-.028+.053*kick;
+  // Lean from the waist throughout, with a small rhythm-driven body sway.
+  set('upper',-.24+.025*kick,.025*side,.045*Math.sin(Math.PI*count*.5));
+  set('neck',.08);
+  // Extend the active leg toward the front, knee nearly straight at the peak.
+  set('rightHip',-.13-1.03*rightKick,0,.045);
+  set('leftHip',-.13-1.03*leftKick,0,-.045);
+  set('rightKnee',.15-.10*rightKick);
+  set('leftKnee',.15-.10*leftKick);
+  // Broad rhythmic opposing arm pumps: one forward, one backward.
+  // Small arm-to-side spread keeps the arms clear of the torso.
+  set('leftShoulder',-.26+.77*swing,0,-.30);
+  set('rightShoulder',-.26-.77*swing,0,.30);
+  set('leftElbow',-.48);set('rightElbow',-.48);
  }
  if(act==='cheer'){
   const lift=Math.max(0,Math.sin(sec*10));height=lift*.75;
