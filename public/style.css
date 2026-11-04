@@ -271,3 +271,29 @@ button,input{touch-action:manipulation}
 .hair-color-choice::before{content:"";display:block;width:25px;height:25px;border-radius:50%;border:1px solid #ffffff66;background:var(--hair-swatch)}
 .hair-color-choice.selected{border-color:#d7ff77;box-shadow:0 0 0 1px #d7ff77 inset}
 @media(max-width:430px){.hair-colors{gap:5px}.hair-color-choice{font-size:9px;min-height:60px}}
+
+/* v71: stable mobile viewport, music drawer above bottom actions */
+html,body{height:100%;height:100dvh;overflow:hidden!important}
+.app{height:var(--app-height,100dvh)!important;min-height:0!important;overflow:hidden!important}
+.layout,.gamepanel,.gamewrap{height:100%!important;min-height:0!important}
+/* The older shared skip strip has been removed from markup. */
+.shared-music-bar{display:none!important}
+/* Place the drawer above both the canvas, chat, and bottom action controls. */
+.sidebar{position:fixed!important;inset:0 0 0 auto!important;top:0!important;bottom:0!important;
+ height:var(--app-height,100dvh)!important;max-height:var(--app-height,100dvh)!important;
+ z-index:105!important;box-sizing:border-box!important;overflow-x:hidden!important;
+ overflow-y:auto!important;overscroll-behavior:contain!important;
+ visibility:hidden!important;pointer-events:none!important;
+ transform:translateX(105%)!important;transition:transform .22s,visibility .22s!important}
+.music-open .sidebar{visibility:visible!important;pointer-events:auto!important;transform:translateX(0)!important}
+.sidebar .musicbox{min-width:0!important;max-width:100%!important}
+.sidebar .queuebox,.sidebar .urlrow,.sidebar .musiccontrols{min-width:0!important;max-width:100%!important}
+/* Explicitly avoid body reflow when playlist text grows. */
+#songTitle,.track-item button,.queuebox{overflow-wrap:anywhere}
+#queueList{max-width:100%;overflow-x:hidden}
+#chatClose{position:relative;z-index:3;touch-action:manipulation;min-width:36px;min-height:36px}
+@media(max-width:700px){
+ .sidebar{width:min(370px,100vw)!important;padding:calc(env(safe-area-inset-top) + 60px) 12px calc(env(safe-area-inset-bottom) + 18px)!important}
+ .music-open .controlbar{pointer-events:none}
+ .chat-panel{z-index:48!important}
+}

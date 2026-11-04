@@ -87,7 +87,7 @@ window.addEventListener('online',()=>{if(state.id&&!manualExit)restoreConnection
 function restoreConnection(){if(!state.id)return;listen();fetch('/api/heartbeat',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id:state.id})}).then(r=>{if(r.status===401)return restoreSession()}).catch(()=>{})}
 
 function applyMusic(m,serverNow,queue,history){state.music=m;if(Array.isArray(queue))state.queue=queue;if(Array.isArray(history))state.history=history;updateFestivalBoard();renderQueue();if(serverNow)state.serverDelta=serverNow-Date.now();$('songTitle').textContent=m.id?m.title||'유튜브 영상':'등록된 음악 없음';$('songCredit').textContent=m.id?`DJ ${m.changedBy||'알 수 없음'} · ${m.paused?'일시정지':'재생 중'}`:'첫 번째 DJ가 되어보세요';$('screenPlaceholder').style.display=m.id?'none':'flex';updateSharedMusicButtons();syncVideo(true)}
-function updateSharedMusicButtons(){const m=state.music||{};const status=$('sharedMusicStatus');if(status)status.textContent=!m.id?'음악 대기 중':'재생 중 · '+(m.title||'유튜브 음악');const btn=$('sharedSkip');if(btn){btn.disabled=!m.id;btn.textContent='⏭ 다음 곡 바로 재생'}const side=$('skipMusic');if(side)side.disabled=btn?.disabled??true}
+function updateSharedMusicButtons(){const side=$('skipMusic');if(side)side.disabled=!state.music?.id}
 
 function updateFestivalBoard(){let m=state.music||{};const title=document.getElementById('boardCurrent');const next=document.getElementById('boardNext');const status=document.getElementById('boardStatus');if(title)title.textContent=m.title||'현재 재생 중인 곡 없음';if(next)next.textContent=state.queue?.length?state.queue[0].title:'예약된 곡 없음';if(status)status.textContent=m.id?(m.paused?'일시정지':'공연 중'):'공연 대기 중';}
 function renderQueue(){
@@ -109,7 +109,7 @@ function reportDuration(){if(!state.id||!state.ytReady||!state.music.id)return;c
 function syncVideo(force=false){let m=state.music;if(!m.id||!state.ytReady)return;let sec=m.paused?m.position:Math.max(0,(Date.now()+state.serverDelta-m.startedAt)/1000);try{if(state.lastTrack!==String(m.token)+':'+m.id){state.lastTrack=String(m.token)+':'+m.id;reportedToken=0;if(state.audioEnabled&&!m.paused){state.yt.unMute();state.yt.loadVideoById({videoId:m.id,startSeconds:sec})}else{state.yt.mute();state.yt.loadVideoById({videoId:m.id,startSeconds:sec})}return}if(force||Math.abs(state.yt.getCurrentTime()-sec)>3)state.yt.seekTo(sec,true);if(state.audioEnabled)state.yt.unMute();else state.yt.mute();if(m.paused)state.yt.pauseVideo();else if(state.yt.getPlayerState()!==1)state.yt.playVideo()}catch(e){console.warn(e)}}
 window.onYouTubeIframeAPIReady=()=>{state.yt=new YT.Player('youtubePlayer',{height:'100%',width:'100%',playerVars:{playsinline:1,controls:1,rel:0,origin:location.origin},events:{onReady:()=>{state.ytReady=true;syncVideo(true)},onStateChange:e=>{if(e.data===YT.PlayerState.PLAYING||e.data===YT.PlayerState.CUED)reportDuration();if(e.data===YT.PlayerState.ENDED&&state.id&&state.music.id)post('music',{id:state.id,command:'ended',token:state.music.token}).catch(()=>{})},onError:()=>toast('영상이 임베드 재생을 허용하지 않습니다')}})};
 async function musicCommand(command,extra={}){if(!state.id)return toast('먼저 입장해주세요');try{let d=await post('music',{id:state.id,command,...extra});applyMusic(d.music,d.serverNow,d.queue,d.history);toast('공유 음악이 업데이트되었습니다')}catch(e){toast(e.message)}}
-$('playLink').onclick=()=>musicCommand('enqueue',{url:$('videoUrl').value});$('skipMusic').onclick=()=>musicCommand('skip');$('sharedSkip').onclick=()=>musicCommand('skip');$('skipVoteYes').onclick=()=>castSkipVote('yes');$('skipVoteNo').onclick=()=>castSkipVote('no');function updatePersonalAudioButton(){const btn=$('enableAudio');if(!btn)return;btn.textContent=state.audioEnabled?'🔇 내 소리 끄기':'🔊 내 소리 켜기';btn.setAttribute('aria-pressed',String(state.audioEnabled));btn.title=state.audioEnabled?'내 기기에서만 소리를 끕니다':'내 기기에서만 소리를 켭니다'}
+$('playLink').onclick=()=>musicCommand('enqueue',{url:$('videoUrl').value});$('skipMusic').onclick=()=>musicCommand('skip');$('skipVoteYes').onclick=()=>castSkipVote('yes');$('skipVoteNo').onclick=()=>castSkipVote('no');function updatePersonalAudioButton(){const btn=$('enableAudio');if(!btn)return;btn.textContent=state.audioEnabled?'🔇 내 소리 끄기':'🔊 내 소리 켜기';btn.setAttribute('aria-pressed',String(state.audioEnabled));btn.title=state.audioEnabled?'내 기기에서만 소리를 끕니다':'내 기기에서만 소리를 켭니다'}
 function setPersonalAudio(enabled){state.audioEnabled=Boolean(enabled);try{if(state.ytReady){if(enabled){state.yt.unMute();state.yt.setVolume(75)}else state.yt.mute()}}catch(e){}syncVideo(true);updatePersonalAudioButton()}
 $('enableAudio').onclick=()=>{setPersonalAudio(!state.audioEnabled);toast(state.audioEnabled?'이 기기의 소리를 켰어요':'이 기기의 소리를 껐어요 (다른 사람 음악은 계속 재생돼요)')};updatePersonalAudioButton();$('videoUrl').addEventListener('keydown',e=>{if(e.key==='Enter')$('playLink').click()});
 function updateCrowdCount(n){const el=document.getElementById('boardVisitors');if(el)el.textContent=String(n)}
@@ -163,8 +163,8 @@ function updateSkipVoteUI(){
 async function castSkipVote(choice){const vote=state.skipVote;if(!vote||!state.id)return;try{await post('music',{id:state.id,command:'vote-cast',voteId:vote.id,choice})}catch(e){toast(e.message)}}
 function showSkipVoteResult(d){applySkipVote(null,state.skipVoteCooldownUntil);let msg=d.passed?'✅ 과반수 찬성! 요청한 곡으로 이동합니다':d.reason==='timeout'?'투표 시간이 종료되어 현재 곡을 유지합니다':'투표가 부결되어 현재 곡을 유지합니다';notice(msg)}
 setInterval(()=>{updateSkipVoteUI();updateSharedMusicButtons()},500);
-let joining=false;async function join(){if(editingProfile)return updateProfile();if(joining)return;joining=true;manualExit=false;try{let d=await post('join',{sessionKey,pageId,name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender,pattern:chosenPattern,sash:chosenSash,hairStyle:chosenHairStyle,hairColor:chosenHairColor});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);state.pose=state.me?.pose||'stand';cameraFollowInitialized=false;state.players=new Map(d.players.map(p=>[p.id,p]));renderOnlinePlayers();$('joinModal').classList.add('hidden');$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='페스티벌 참가 중';$('avatarPreview').querySelector('b').style.background=chosenColor;saveProfile(state.me);applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);listen();$('audioModal').classList.remove('hidden');showMovementGuide();toast('ONEseason에 오신 것을 환영합니다!')}catch(e){$('joinError').textContent='입장 실패: '+(e?.message||'연결을 확인해주세요');console.error('ONEseason join error:',e)}finally{joining=false}}
-$('audioYes').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(true);toast(state.music.id?'음악 재생을 허용했어요':'음악이 등록되면 바로 재생돼요')};$('audioNo').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(false);toast('내 소리를 끈 상태로 입장했어요')};$('joinBtn').onclick=join;$('nick').onkeydown=e=>{if(e.key==='Enter')join()};function closeProfileEditor(){editingProfile=false;$('joinModal').classList.add('hidden');$('joinBtn').innerHTML='페스티벌 입장하기 <span>↗</span>';$('profileCancel').hidden=true;$('joinError').textContent=''}
+let joining=false;async function join(options={}){const auto=Boolean(options?.auto);if(editingProfile)return updateProfile();if(joining)return;joining=true;manualExit=false;try{let d=await post('join',{sessionKey,pageId,name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender,pattern:chosenPattern,sash:chosenSash,hairStyle:chosenHairStyle,hairColor:chosenHairColor});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);state.pose=state.me?.pose||'stand';cameraFollowInitialized=false;state.players=new Map(d.players.map(p=>[p.id,p]));renderOnlinePlayers();$('joinModal').classList.add('hidden');$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='페스티벌 참가 중';$('avatarPreview').querySelector('b').style.background=chosenColor;saveProfile(state.me);applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);listen();if(!auto)$('audioModal').classList.remove('hidden');showMovementGuide();if(!auto)toast('ONEseason에 오신 것을 환영합니다!')}catch(e){if(auto)$('joinModal').classList.remove('hidden');$('joinError').textContent='입장 실패: '+(e?.message||'연결을 확인해주세요');console.error('ONEseason join error:',e)}finally{joining=false}}
+$('audioYes').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(true);toast(state.music.id?'음악 재생을 허용했어요':'음악이 등록되면 바로 재생돼요')};$('audioNo').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(false);toast('내 소리를 끈 상태로 입장했어요')};$('joinBtn').onclick=()=>join();$('nick').onkeydown=e=>{if(e.key==='Enter')join()};function closeProfileEditor(){editingProfile=false;$('joinModal').classList.add('hidden');$('joinBtn').innerHTML='페스티벌 입장하기 <span>↗</span>';$('profileCancel').hidden=true;$('joinError').textContent=''}
 async function updateProfile(){if(!state.id||!state.me)return;const button=$('joinBtn');button.disabled=true;try{
  const d=await post('profile',{id:state.id,name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender,pattern:chosenPattern,sash:chosenSash,hairStyle:chosenHairStyle,hairColor:chosenHairColor});
  state.me=d.player;state.players.set(state.id,d.player);saveProfile(d.player);refreshProfilePreview();renderOnlinePlayers();closeProfileEditor();toast('캐릭터 설정을 변경했어요');
@@ -1869,13 +1869,15 @@ window.addEventListener('pagehide',()=>{if(state.id)navigator.sendBeacon('/api/l
 
 const ytScript=document.createElement('script');ytScript.src='https://www.youtube.com/iframe_api';document.head.appendChild(ytScript);
 
-$('musicToggle').onclick=()=>document.body.classList.toggle('music-open');$('musicClose').onclick=()=>document.body.classList.remove('music-open');
+$('musicToggle').onclick=()=>{document.body.classList.toggle('music-open');if(document.body.classList.contains('music-open'))$('chatPanel').classList.add('hidden')};$('musicClose').onclick=()=>document.body.classList.remove('music-open');
 
 function showMusicControlNotice(name,command){const messages={pause:'일시정지했습니다',resume:'다시 재생했습니다',skip:'다음 곡으로 넘겼습니다'};if(messages[command])notice((name||'참가자')+'님이 음악을 '+messages[command])}
 function notice(message){const host=$('joinNotices');const el=document.createElement('div');el.textContent=message;host.append(el);setTimeout(()=>el.remove(),4400)}
 function appendChat(entry){const el=document.createElement('div');el.className='chat-line';const who=document.createElement('b');who.textContent=entry.name+' : ';const value=document.createElement('span');value.textContent=entry.message;el.append(who,value);$('chatMessages').append(el);while($('chatMessages').children.length>35)$('chatMessages').firstChild.remove();$('chatMessages').scrollTop=$('chatMessages').scrollHeight}
 $('chatToggle').onclick=()=>$('chatPanel').classList.toggle('hidden');
-$('chatClose').onclick=()=>$('chatPanel').classList.add('hidden');
+function closeChatPanel(){const field=$('chatInput');if(document.activeElement===field)field.blur();$('chatPanel').classList.add('hidden')}
+$('chatClose').addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();closeChatPanel()});
+$('chatClose').onclick=e=>{e.stopPropagation();closeChatPanel()};
 async function sendChatMessage(message){
  if(!state.id)return toast('먼저 입장해 주세요');
  const text=String(message||'').trim();if(!text)return;
@@ -1893,16 +1895,21 @@ $('chatForm').addEventListener('submit',async e=>{
  if(sent){input.value='';input.focus()}
 });
 
-// Keep the in-game HUD inside the actual visible iOS/Android viewport.
-function updateVisibleViewport(){
- const viewport=window.visualViewport;
- const height=viewport ? viewport.height : window.innerHeight;
- document.documentElement.style.setProperty('--app-height',Math.round(height)+'px');
+// Keep the festival canvas at a stable layout viewport height. The mobile
+// visualViewport can shrink when the keyboard, URL bar or YouTube player UI
+// changes; using it as the whole app height caused visible letterboxing.
+let viewportLayoutWidth=window.innerWidth;
+function updateVisibleViewport(force=false){
+ const width=window.innerWidth;
+ if(force||Math.abs(width-viewportLayoutWidth)>25){
+  viewportLayoutWidth=width;
+  document.documentElement.style.setProperty('--app-height',Math.round(window.innerHeight)+'px');
+ }
 }
-updateVisibleViewport();
-window.addEventListener('resize',updateVisibleViewport,{passive:true});
-window.addEventListener('orientationchange',updateVisibleViewport,{passive:true});
-if(window.visualViewport){window.visualViewport.addEventListener('resize',updateVisibleViewport,{passive:true});}
+updateVisibleViewport(true);
+window.addEventListener('resize',()=>updateVisibleViewport(),{passive:true});
+window.addEventListener('orientationchange',()=>{viewportLayoutWidth=-1;updateVisibleViewport(true)},{passive:true});
+// Deliberately do not resize the game when visualViewport height alone changes.
 
 // Teach touch-to-move without covering the map permanently.
 function showMovementGuide(){
@@ -1911,3 +1918,9 @@ function showMovementGuide(){
  showMovementGuide.timer=setTimeout(()=>guide.classList.remove('visible'),9000);
 }
 document.getElementById('movementGuideDismiss')?.addEventListener('click',()=>document.getElementById('movementGuide').classList.remove('visible'));
+
+// Auto-enter with saved character settings; a failed request leaves the editor open.
+if(savedProfile && typeof savedProfile.name==='string' && savedProfile.name.trim()){
+  document.getElementById('joinModal')?.classList.add('hidden');
+  join({auto:true}).then(()=>{if(!state.id)document.getElementById('joinModal')?.classList.remove('hidden')}).catch(()=>{document.getElementById('joinModal')?.classList.remove('hidden')});
+}
