@@ -3,24 +3,65 @@ import { OrbitControls } from 'https://esm.sh/three@0.160.1/examples/jsm/control
 import { CSS3DRenderer, CSS3DObject } from 'https://esm.sh/three@0.160.1/examples/jsm/renderers/CSS3DRenderer.js';
 const $=id=>document.getElementById(id), palette=['#ff747d','#67d8d1','#f9c463','#a8a0ff','#90dd81','#ff9ce1','#72b5ff','#eeeeee'];
 const mats=[{x:118,y:682,c:'#f5a5a3'},{x:290,y:706,c:'#a7def4'},{x:470,y:690,c:'#f5ce80'},{x:650,y:708,c:'#b3d9a0'},{x:835,y:694,c:'#ceb8f1'},{x:1015,y:710,c:'#ffd2a5'},{x:1185,y:688,c:'#b2d8ff'}];
-const state={id:null,me:null,players:new Map(),keys:new Set(),action:'idle',pose:'stand',actionUntil:0,lastSent:0,es:null,music:{id:'',paused:true,position:0,startedAt:0,token:0},queue:[],serverDelta:0,yt:null,ytReady:false,lastTrack:'',audioEnabled:false,skipVote:null,skipVoteCooldownUntil:0,walkTarget:null,benchTarget:null,moving:false};
+const state={id:null,me:null,players:new Map(),keys:new Set(),action:'idle',pose:'stand',actionUntil:0,lastSent:0,es:null,music:{id:'',paused:true,position:0,startedAt:0,token:0},queue:[],history:[],serverDelta:0,yt:null,ytReady:false,lastTrack:'',audioEnabled:false,skipVote:null,skipVoteCooldownUntil:0,walkTarget:null,benchTarget:null,moving:false};
 let slamMode=false,slam=null,slamCooldownUntil=0,slamMotion=null;
-let rockPlacementMode=null,rockPlay=null,rockCooldowns={circle:0,train:0},rockRunningUntil=0,rockMotion=null;
+let rockPlacementMode=null,rockPlay=null,rockCooldowns={circle:0,train:0,mosh:0},rockRunningUntil=0,rockMotion=null;
 let chosenColor=palette[0],chosenGender='male',toastTimer;const avatars=new Map();const activeBubbles=new Map();
 function toast(msg){$('toast').textContent=msg;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('show'),3000)}
 document.querySelectorAll('[data-gender]').forEach(b=>b.onclick=()=>{chosenGender=b.dataset.gender;document.querySelectorAll('[data-gender]').forEach(x=>x.classList.toggle('selected',x===b))});
 function colorPicker(){let r=$('colorPicker');r.innerHTML='';palette.forEach(c=>{let b=document.createElement('button');b.style.background=c;b.className=c===chosenColor?'selected':'';b.setAttribute('aria-label','티셔츠 '+c);b.onclick=()=>{chosenColor=c;colorPicker()};r.append(b)})}colorPicker();
-async function post(ep,data){let r=await fetch('/api/'+ep,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(data)});let d=await r.json();if(!r.ok)throw Error(d.error||'서버 오류');return d}
-function applyMusic(m,serverNow,queue){state.music=m;updateFestivalBoard();if(Array.isArray(queue))state.queue=queue;renderQueue();if(serverNow)state.serverDelta=serverNow-Date.now();$('songTitle').textContent=m.id?m.title||'유튜브 영상':'등록된 음악 없음';$('songCredit').textContent=m.id?`DJ ${m.changedBy||'알 수 없음'} · ${m.paused?'일시정지':'재생 중'}`:'첫 번째 DJ가 되어보세요';$('screenPlaceholder').style.display=m.id?'none':'flex';updateSharedMusicButtons();syncVideo(true)}
+let rejoining=null,manualExit=false;
+async function post(ep,data){
+ const r=await fetch('/api/'+ep,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(data)});
+ const d=await r.json();
+ if(r.status===401&&state.id&&!manualExit&&ep!=='join'&&ep!=='leave'){
+  await restoreSession();throw Error('서버 연결이 복구되었습니다. 다시 시도해 주세요.');
+ }
+ if(!r.ok)throw Error(d.error||'서버 오류');return d;
+}
+async function restoreSession(){
+ if(rejoining)return rejoining;
+ rejoining=(async()=>{
+  try{
+   const r=await fetch('/api/join',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:state.me?.name||$('nick').value||'ROCKER',color:state.me?.color||chosenColor,gender:state.me?.gender||chosenGender})});
+   if(!r.ok)throw Error('재접속 실패');const d=await r.json();
+   const old=state.me;state.id=d.id;state.me=d.players.find(x=>x.id===d.id);
+   if(old){state.me.x=old.x;state.me.y=old.y;state.me.facing=old.facing;state.me.action=old.action;state.me.pose=old.pose;}
+   state.players=new Map(d.players.map(x=>[x.id,x]));renderOnlinePlayers();listen();
+   applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);
+   applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);
+   sendMove();toast('서버 연결이 자동 복구됐어요');
+  }catch(err){console.warn('Automatic rejoin:',err)}
+ })().finally(()=>{rejoining=null});return rejoining;
+}
+// Session heartbeat independent of 3D animation; survives inactive tabs where timers still run.
+setInterval(async()=>{if(!state.id||manualExit)return;try{const r=await fetch('/api/heartbeat',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id:state.id})});if(r.status===401)await restoreSession()}catch{}},18000);
+window.addEventListener('online',()=>{if(state.id&&!manualExit)restoreConnection()});
+function restoreConnection(){if(!state.id)return;listen();fetch('/api/heartbeat',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id:state.id})}).then(r=>{if(r.status===401)return restoreSession()}).catch(()=>{})}
+
+function applyMusic(m,serverNow,queue,history){state.music=m;if(Array.isArray(queue))state.queue=queue;if(Array.isArray(history))state.history=history;updateFestivalBoard();renderQueue();if(serverNow)state.serverDelta=serverNow-Date.now();$('songTitle').textContent=m.id?m.title||'유튜브 영상':'등록된 음악 없음';$('songCredit').textContent=m.id?`DJ ${m.changedBy||'알 수 없음'} · ${m.paused?'일시정지':'재생 중'}`:'첫 번째 DJ가 되어보세요';$('screenPlaceholder').style.display=m.id?'none':'flex';updateSharedMusicButtons();syncVideo(true)}
 function updateSharedMusicButtons(){const m=state.music||{};const status=$('sharedMusicStatus');if(status)status.textContent=!m.id?'음악 대기 중':'재생 중 · '+(m.title||'유튜브 음악');const btn=$('sharedSkip');if(btn){btn.disabled=!m.id||!!state.skipVote||Date.now()<state.skipVoteCooldownUntil;btn.textContent=state.skipVote?'🗳️ 투표 진행 중':'⏭ 다음 곡 투표'}const side=$('skipMusic');if(side)side.disabled=btn?.disabled??true}
 
 function updateFestivalBoard(){let m=state.music||{};const title=document.getElementById('boardCurrent');const next=document.getElementById('boardNext');const status=document.getElementById('boardStatus');if(title)title.textContent=m.title||'현재 재생 중인 곡 없음';if(next)next.textContent=state.queue?.length?state.queue[0].title:'예약된 곡 없음';if(status)status.textContent=m.id?(m.paused?'일시정지':'공연 중'):'공연 대기 중';}
-function renderQueue(){updateFestivalBoard();let el=$('queueList');if(!el)return;el.replaceChildren();if(!state.queue.length){let item=document.createElement('li');item.textContent='대기 중인 곡이 없습니다';el.append(item);return}state.queue.forEach((track,index)=>{let li=document.createElement('li');li.textContent=`${index+1}. ${track.title} · ${track.addedBy}`;el.append(li)})}
+function renderQueue(){
+ updateFestivalBoard();const el=$('queueList');if(!el)return;el.replaceChildren();
+ const section=(title,items,source)=>{
+  const header=document.createElement('li');header.className='track-section';header.textContent=title;el.append(header);
+  items.forEach((track,index)=>{const li=document.createElement('li');li.className='track-item '+(source==='now'?'track-current':'track-muted');
+   const b=document.createElement('button');b.type='button';b.textContent=(source==='now'?'▶ ':source==='history'?'↶ ':'♫ ')+track.title+' · '+(track.addedBy||'');
+   if(source!=='now'){b.title='이 곡을 재생할지 접속자 투표를 시작합니다';b.onclick=()=>musicCommand('vote-select',{source,index,videoId:track.id})}else b.disabled=true;
+   li.append(b);el.append(li);
+  });
+ };
+ section('지난 곡',state.history,'history');
+ if(state.music?.id)section('현재 재생 중',[{title:state.music.title,addedBy:state.music.changedBy}],'now');
+ section('예약곡',state.queue,'queue');
+}
 let reportedToken=0;
 function reportDuration(){if(!state.id||!state.ytReady||!state.music.id)return;const duration=state.yt.getDuration();if(duration>1&&reportedToken!==state.music.token){reportedToken=state.music.token;post('music',{id:state.id,command:'duration',token:state.music.token,duration}).catch(()=>{})}}
 function syncVideo(force=false){let m=state.music;if(!m.id||!state.ytReady)return;let sec=m.paused?m.position:Math.max(0,(Date.now()+state.serverDelta-m.startedAt)/1000);try{if(state.lastTrack!==String(m.token)+':'+m.id){state.lastTrack=String(m.token)+':'+m.id;reportedToken=0;if(state.audioEnabled&&!m.paused){state.yt.loadVideoById({videoId:m.id,startSeconds:sec});state.yt.unMute()}else state.yt.cueVideoById({videoId:m.id,startSeconds:sec});return}if(force||Math.abs(state.yt.getCurrentTime()-sec)>3)state.yt.seekTo(sec,true);if(state.audioEnabled){if(m.paused)state.yt.pauseVideo();else if(state.yt.getPlayerState()!==1)state.yt.playVideo()}else state.yt.pauseVideo()}catch(e){console.warn(e)}}
 window.onYouTubeIframeAPIReady=()=>{state.yt=new YT.Player('youtubePlayer',{height:'100%',width:'100%',playerVars:{playsinline:1,controls:1,rel:0,origin:location.origin},events:{onReady:()=>{state.ytReady=true;syncVideo(true)},onStateChange:e=>{if(e.data===YT.PlayerState.PLAYING||e.data===YT.PlayerState.CUED)reportDuration();if(e.data===YT.PlayerState.ENDED&&state.id&&state.music.id)post('music',{id:state.id,command:'ended',token:state.music.token}).catch(()=>{})},onError:()=>toast('영상이 임베드 재생을 허용하지 않습니다')}})};
-async function musicCommand(command,extra={}){if(!state.id)return toast('먼저 입장해주세요');try{let d=await post('music',{id:state.id,command,...extra});applyMusic(d.music,d.serverNow,d.queue);toast('공유 음악이 업데이트되었습니다')}catch(e){toast(e.message)}}
+async function musicCommand(command,extra={}){if(!state.id)return toast('먼저 입장해주세요');try{let d=await post('music',{id:state.id,command,...extra});applyMusic(d.music,d.serverNow,d.queue,d.history);toast('공유 음악이 업데이트되었습니다')}catch(e){toast(e.message)}}
 $('playLink').onclick=()=>musicCommand('enqueue',{url:$('videoUrl').value});$('skipMusic').onclick=()=>musicCommand('vote-start');$('sharedSkip').onclick=()=>musicCommand('vote-start');$('skipVoteYes').onclick=()=>castSkipVote('yes');$('skipVoteNo').onclick=()=>castSkipVote('no');$('enableAudio').onclick=()=>{state.audioEnabled=true;try{state.yt?.unMute()}catch(e){}syncVideo(true);toast('이 기기의 소리를 켰어요')};$('videoUrl').addEventListener('keydown',e=>{if(e.key==='Enter')$('playLink').click()});
 function updateCrowdCount(n){const el=document.getElementById('boardVisitors');if(el)el.textContent=String(n)}
 // Local UI renders names from the authoritative SSE player set (not from DOM HTML).
@@ -52,7 +93,7 @@ function showBookingNotice(name,title){
  setTimeout(()=>el.remove(),5200);
 }
 
-function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='snapshot'){state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();applyMusic(d.music,d.serverNow,d.queue);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);if(Array.isArray(d.chat)){$('chatMessages').replaceChildren();d.chat.forEach(appendChat)}}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){appendChat(d.entry);showBubble(d.entry)}else if(d.type==='move'){state.players.set(d.player.id,d.player)}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers()}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue);else if(d.type==='slam')applySlam(d.slam,d.cooldownUntil);else if(d.type==='slam-go')onSlamGo(d);else if(d.type==='slam-impact')spawnSlamDust(d.x,d.y);else if(d.type==='rockplay')applyRockPlay(d.event,d.rockCooldowns,d.rockRunningUntil);else if(d.type==='rockplay-go')onRockPlayGo(d);else if(d.type==='music-booked')showBookingNotice(d.name,d.title);else if(d.type==='music-control')showMusicControlNotice(d.name,d.command);else if(d.type==='skip-vote')applySkipVote(d.vote,d.cooldownUntil);else if(d.type==='skip-vote-result')showSkipVoteResult(d)}}
+function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='snapshot'){state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);if(Array.isArray(d.chat)){$('chatMessages').replaceChildren();d.chat.forEach(appendChat)}}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){appendChat(d.entry);showBubble(d.entry)}else if(d.type==='move'){state.players.set(d.player.id,d.player)}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers()}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue,d.history);else if(d.type==='slam')applySlam(d.slam,d.cooldownUntil);else if(d.type==='slam-go')onSlamGo(d);else if(d.type==='slam-impact')spawnSlamDust(d.x,d.y);else if(d.type==='cheer'&&d.playerId!==state.id&&state.audioEnabled)playCheer();else if(d.type==='rockplay')applyRockPlay(d.event,d.rockCooldowns,d.rockRunningUntil);else if(d.type==='rockplay-go')onRockPlayGo(d);else if(d.type==='music-booked')showBookingNotice(d.name,d.title);else if(d.type==='music-control')showMusicControlNotice(d.name,d.command);else if(d.type==='skip-vote')applySkipVote(d.vote,d.cooldownUntil);else if(d.type==='skip-vote-result')showSkipVoteResult(d)};state.es.onerror=()=>{ /* EventSource retries automatically; heartbeat repairs an expired session. */ }}
 function applySkipVote(vote,cooldownUntil){
  state.skipVote=vote||null;if(Number.isFinite(Number(cooldownUntil)))state.skipVoteCooldownUntil=Number(cooldownUntil);
  const overlay=$('skipVoteOverlay');overlay.hidden=!vote;updateSkipVoteUI();updateSharedMusicButtons();
@@ -62,8 +103,8 @@ function updateSkipVoteUI(){
  const eligible=Array.isArray(vote.eligible)?vote.eligible:[];
  const voted=Array.isArray(vote.voted)?vote.voted:[];
  const canVote=eligible.includes(state.id)&&!voted.includes(state.id);
- $('skipVoteHeading').textContent=vote.proposer+'님의 다음 곡 투표';
- $('skipVoteDetails').textContent='찬성 '+vote.required+'명 이상이면 다음 곡으로 이동합니다. (투표 대상 '+eligible.length+'명)';
+ $('skipVoteHeading').textContent=vote.proposer+'님의 '+(vote.kind==='select'?'선택곡 재생':'다음 곡')+' 투표';
+ $('skipVoteDetails').textContent=(vote.kind==='select'?'🎵 '+vote.target?.title+' · ':'')+'찬성 '+vote.required+'명 이상이면 '+(vote.kind==='select'?'선택곡을 재생합니다.':'다음 곡으로 이동합니다.')+' (투표 대상 '+eligible.length+'명)';
  $('skipVoteTally').textContent='찬성 '+vote.yes+'명 · 반대 '+vote.no+'명 · 필요 '+vote.required+'명';
  $('skipVoteProgress').style.width=(eligible.length?(vote.yes/eligible.length)*100:0)+'%';
  $('skipVoteTimer').textContent=Math.max(0,Math.ceil((vote.endAt-(Date.now()+state.serverDelta))/1000))+'초';
@@ -71,11 +112,12 @@ function updateSkipVoteUI(){
  $('skipVoteHint').textContent=!eligible.includes(state.id)?'투표가 시작된 뒤 입장해 이번 투표는 관전만 할 수 있어요.':canVote?'찬성이나 반대를 선택하세요.':'투표 완료 · 결과를 기다리는 중';
 }
 async function castSkipVote(choice){const vote=state.skipVote;if(!vote||!state.id)return;try{await post('music',{id:state.id,command:'vote-cast',voteId:vote.id,choice})}catch(e){toast(e.message)}}
-function showSkipVoteResult(d){applySkipVote(null,state.skipVoteCooldownUntil);let msg=d.passed?'✅ 과반수 찬성! 다음 곡으로 이동합니다':d.reason==='timeout'?'투표 시간이 종료되어 현재 곡을 유지합니다':'투표가 부결되어 현재 곡을 유지합니다';notice(msg)}
+function showSkipVoteResult(d){applySkipVote(null,state.skipVoteCooldownUntil);let msg=d.passed?'✅ 과반수 찬성! 요청한 곡으로 이동합니다':d.reason==='timeout'?'투표 시간이 종료되어 현재 곡을 유지합니다':'투표가 부결되어 현재 곡을 유지합니다';notice(msg)}
 setInterval(()=>{updateSkipVoteUI();updateSharedMusicButtons()},500);
-async function join(){try{let d=await post('join',{name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);state.pose=state.me?.pose||'stand';cameraFollowInitialized=false;state.players=new Map(d.players.map(p=>[p.id,p]));renderOnlinePlayers();$('joinModal').classList.add('hidden');$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='페스티벌 참가 중';$('avatarPreview').querySelector('b').style.background=chosenColor;applyMusic(d.music,d.serverNow,d.queue);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);listen();$('audioModal').classList.remove('hidden');showMovementGuide();toast('ONEseason에 오신 것을 환영합니다!')}catch(e){$('joinError').textContent='입장 실패: '+(e?.message||'연결을 확인해주세요');console.error('ONEseason join error:',e)}}
-$('audioYes').onclick=()=>{state.audioEnabled=true;$('audioModal').classList.add('hidden');if(state.ytReady){try{state.yt.unMute();state.yt.setVolume(75)}catch(e){}}syncVideo(true);toast(state.music.id?'음악 재생을 허용했어요':'음악이 등록되면 바로 재생돼요')};$('audioNo').onclick=()=>{state.audioEnabled=false;$('audioModal').classList.add('hidden');try{state.yt?.pauseVideo()}catch(e){}toast('음악을 끈 상태로 입장했어요')};$('joinBtn').onclick=join;$('nick').onkeydown=e=>{if(e.key==='Enter')join()};$('editAvatar').onclick=()=>{if(state.id){post('leave',{id:state.id}).catch(()=>{});state.es?.close();state.id=null;state.me=null;cameraFollowInitialized=false;state.players.clear();state.skipVote=null;applySkipVote(null,state.skipVoteCooldownUntil);state.pose='stand';slam=null;slamMode=false;slamMotion=null;rockPlay=null;rockMotion=null;rockPlacementMode=null;refreshSlamUI();refreshRockUI()}$('joinModal').classList.remove('hidden')};$('helpBtn').onclick=()=>toast('WASD 이동 · 클릭/터치 이동 · 드래그 시점 회전 · 1~9 / 0 / B / G 리액션');
-const sustainedReactions=new Set(['jump','run','headbang','buriburi','groove']);
+async function join(){manualExit=false;try{let d=await post('join',{name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);state.pose=state.me?.pose||'stand';cameraFollowInitialized=false;state.players=new Map(d.players.map(p=>[p.id,p]));renderOnlinePlayers();$('joinModal').classList.add('hidden');$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='페스티벌 참가 중';$('avatarPreview').querySelector('b').style.background=chosenColor;applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);listen();$('audioModal').classList.remove('hidden');showMovementGuide();toast('ONEseason에 오신 것을 환영합니다!')}catch(e){$('joinError').textContent='입장 실패: '+(e?.message||'연결을 확인해주세요');console.error('ONEseason join error:',e)}}
+$('audioYes').onclick=()=>{state.audioEnabled=true;$('audioModal').classList.add('hidden');if(state.ytReady){try{state.yt.unMute();state.yt.setVolume(75)}catch(e){}}syncVideo(true);toast(state.music.id?'음악 재생을 허용했어요':'음악이 등록되면 바로 재생돼요')};$('audioNo').onclick=()=>{state.audioEnabled=false;$('audioModal').classList.add('hidden');try{state.yt?.pauseVideo()}catch(e){}toast('음악을 끈 상태로 입장했어요')};$('joinBtn').onclick=join;$('nick').onkeydown=e=>{if(e.key==='Enter')join()};$('editAvatar').onclick=()=>{manualExit=true;if(state.id){post('leave',{id:state.id}).catch(()=>{});state.es?.close();state.id=null;state.me=null;cameraFollowInitialized=false;state.players.clear();state.skipVote=null;applySkipVote(null,state.skipVoteCooldownUntil);state.pose='stand';slam=null;slamMode=false;slamMotion=null;rockPlay=null;rockMotion=null;rockPlacementMode=null;refreshSlamUI();refreshRockUI()}$('joinModal').classList.remove('hidden')};$('helpBtn').onclick=()=>toast('WASD 이동 · 클릭/터치 이동 · 드래그 시점 회전 · 춤: B/G/V/K · 환호성: H');
+const sustainedReactions=new Set(['jump','run','headbang','buriburi','groove','windmill','skanking','cheer']);
+document.querySelectorAll('[data-action-menu]').forEach(button=>button.addEventListener('click',()=>{const dance=button.dataset.actionMenu==='dance';$('danceActions').classList.toggle('hidden',!dance);$('reactionActions').classList.toggle('hidden',dance);document.querySelectorAll('[data-action-menu]').forEach(b=>b.classList.toggle('active',b===button))}));
 function updateActionButtons(){
  document.querySelectorAll('[data-action]').forEach(b=>{
   const a=b.dataset.action;
@@ -101,16 +143,23 @@ function react(a){
  if(state.action===a&&sustainedReactions.has(a)){
   state.action='idle';state.actionUntil=0;state.me.action='idle';
  }else{
-  if((a==='jump'||a==='run'||a==='buriburi'||a==='groove')&&state.pose!=='stand'){
+  if((a==='jump'||a==='run'||a==='buriburi'||a==='groove'||a==='windmill'||a==='skanking'||a==='cheer')&&state.pose!=='stand'){
    state.pose='stand';state.me.pose='stand';
   }
-  state.action=a;state.me.action=a;
+  state.action=a;state.me.action=a;if(a==='cheer')playCheer();
   state.actionUntil=sustainedReactions.has(a)?Infinity:performance.now()+(a==='peace'?2200:a==='snack'?3300:1750);
  }
  updateActionButtons();sendMove();
 }
 document.querySelectorAll('[data-action]').forEach(b=>b.onclick=()=>react(b.dataset.action));
-document.addEventListener('keydown',e=>{if(e.target instanceof HTMLInputElement)return;let k=e.key.toLowerCase();if(k.startsWith('arrow')||k===' ')e.preventDefault();state.keys.add(k);let acts={'1':'peace','2':'jump','3':'run','4':'wave','5':'clap','6':'sit','7':'lie','8':'drink','9':'snack','0':'headbang','b':'buriburi','g':'groove'};if(acts[k]&&!e.repeat)react(acts[k])});document.addEventListener('keyup',e=>state.keys.delete(e.key.toLowerCase()));window.addEventListener('blur',()=>state.keys.clear());
+document.addEventListener('keydown',e=>{if(e.target instanceof HTMLInputElement||e.target instanceof HTMLTextAreaElement||e.target?.isContentEditable)return;let k=e.key.toLowerCase();if(k.startsWith('arrow')||k===' ')e.preventDefault();state.keys.add(k);let acts={'1':'peace','2':'jump','3':'run','4':'wave','5':'clap','6':'sit','7':'lie','8':'drink','9':'snack','0':'headbang','b':'buriburi','g':'groove','v':'windmill','k':'skanking','h':'cheer'};if(acts[k]&&!e.repeat)react(acts[k])});document.addEventListener('keyup',e=>state.keys.delete(e.key.toLowerCase()));window.addEventListener('blur',()=>state.keys.clear());
+function playCheer(){
+ try{const Ctx=window.AudioContext||window.webkitAudioContext;if(!Ctx)return;const context=new Ctx();
+  const length=Math.floor(context.sampleRate*.75),buffer=context.createBuffer(1,length,context.sampleRate),data=buffer.getChannelData(0);
+  for(let i=0;i<length;i++){const t=i/context.sampleRate;const envelope=Math.pow(Math.sin(Math.PI*i/length),.8);data[i]=(Math.random()*2-1)*envelope*.13*(.65+.35*Math.sin(t*26));}
+  const source=context.createBufferSource();source.buffer=buffer;const filter=context.createBiquadFilter();filter.type='bandpass';filter.frequency.value=780;filter.Q.value=.6;source.connect(filter);filter.connect(context.destination);source.start();source.onended=()=>context.close();
+ }catch(e){console.warn('Cheer audio not available',e)}
+}
 function sendMove(){if(!state.id||!state.me)return;let p=state.me;post('move',{id:state.id,x:Math.round(p.x),y:Math.round(p.y),facing:p.facing,action:p.action,pose:p.pose||'stand'}).catch(()=>{})}
 // Shared SLAM countdown (server timestamps, 15 s global launch cooldown).
 const slamButton=$('slamButton'),slamInfo=$('slamInfo'),slamMarker=$('slamMarker'),slamCount=$('slamCount'),slamMembers=$('slamMembers'),slamJoin=$('slamJoin');
@@ -120,7 +169,7 @@ function refreshSlamUI(){
  slamButton.disabled=!state.id||!!slam||!!rockPlay||slamNow()<rockRunningUntil||remain>0;
  slamButton.classList.toggle('placing',slamMode);
  slamButton.textContent=slamMode?'📍 바닥을 터치하세요':slam?'🔥 슬램 진행 중':remain?`🔥 슬램 ${remain}초`:'🔥 슬램 만들기';
- slamInfo.textContent=rockPlacementMode?(rockPlacementMode==='circle'?'써클핏 위치를 터치하세요':'기차놀이 위치를 터치하세요'):rockPlay?(rockPlay.kind==='circle'?'써클핏 참가자를 모집 중이에요':'기차놀이 참가자를 모집 중이에요'):slamMode?'슬램 위치를 터치하세요':slam?'슬램 참가자를 모집 중이에요':remain?`다음 슬램까지 ${remain}초`:'락놀이 메뉴에서 슬램·써클핏·기차놀이 선택';
+ slamInfo.textContent=rockPlacementMode?(rockPlacementMode==='circle'?'써클핏 위치를 터치하세요':rockPlacementMode==='mosh'?'모싱 위치를 터치하세요':'기차놀이 위치를 터치하세요'):rockPlay?(rockPlay.kind==='circle'?'써클핏 참가자를 모집 중이에요':rockPlay.kind==='mosh'?'모싱 참가자를 모집 중이에요':'기차놀이 참가자를 모집 중이에요'):slamMode?'슬램 위치를 터치하세요':slam?'슬램 참가자를 모집 중이에요':remain?`다음 슬램까지 ${remain}초`:'락놀이 메뉴에서 슬램·써클핏·기차놀이 선택';
 }
 function applySlam(event,cooldown){
  if(Number.isFinite(cooldown))slamCooldownUntil=cooldown;
@@ -152,21 +201,21 @@ function onSlamGo(event){
  }
  slam=null;refreshSlamUI();
 }
-const rockMenuButton=$('rockMenuButton'),rockMenuPanel=$('rockMenuPanel'),circleButton=$('circleButton'),trainButton=$('trainButton');
+const rockMenuButton=$('rockMenuButton'),rockMenuPanel=$('rockMenuPanel'),circleButton=$('circleButton'),trainButton=$('trainButton'),moshButton=$('moshButton');
 rockMenuButton.onclick=()=>{const show=rockMenuPanel.classList.contains('hidden');rockMenuPanel.classList.toggle('hidden',!show);rockMenuButton.setAttribute('aria-expanded',String(show))};
 function closeRockMenu(){rockMenuPanel.classList.add('hidden');rockMenuButton.setAttribute('aria-expanded','false')}
 function refreshRockUI(){
  const now=slamNow(),occupied=!!rockPlay||!!slam||now<rockRunningUntil;
- for(const [button,kind,name] of [[circleButton,'circle','써클핏'],[trainButton,'train','기차놀이']]){
+ for(const [button,kind,name] of [[circleButton,'circle','써클핏'],[trainButton,'train','기차놀이'],[moshButton,'mosh','모싱']]){
    const remaining=Math.max(0,Math.ceil((rockCooldowns[kind]-now)/1000));
    button.disabled=!state.id||occupied||remaining>0;
    button.classList.toggle('placing',rockPlacementMode===kind);
-   button.textContent=rockPlacementMode===kind?'📍 '+name+' 위치 선택':remaining?`⏱ ${name} ${remaining}초`:`${kind==='circle'?'🔄':'🚂'} ${name} 만들기`;
+   button.textContent=rockPlacementMode===kind?'📍 '+name+' 위치 선택':remaining?`⏱ ${name} ${remaining}초`:`${kind==='circle'?'🔄':kind==='mosh'?'🥊':'🚂'} ${name} 만들기`;
  }
 }
 function applyRockPlay(event,cooldowns,runningUntil){
  if(cooldowns&&typeof cooldowns==='object'){
-  for(const kind of ['circle','train'])if(Number.isFinite(Number(cooldowns[kind])))rockCooldowns[kind]=Number(cooldowns[kind]);
+  for(const kind of ['circle','train','mosh'])if(Number.isFinite(Number(cooldowns[kind])))rockCooldowns[kind]=Number(cooldowns[kind]);
  }
  if(Number.isFinite(Number(runningUntil)))rockRunningUntil=Number(runningUntil);
  rockPlay=event||null;
@@ -177,20 +226,32 @@ function onRockPlayGo(event){
  const participants=Array.isArray(event.participants)?event.participants:[];
  const index=participants.indexOf(state.id);
  if(index!==-1&&state.me){
-   rockMotion={kind:event.kind,x:event.x,y:event.y,startAt:event.startAt,duration:event.duration,index,count:participants.length};
+   rockMotion={id:event.id,kind:event.kind,x:event.x,y:event.y,startAt:event.startAt,duration:event.duration,index,count:participants.length};
    slamMotion=null;state.walkTarget=null;state.benchTarget=null;
-   state.pose='stand';state.me.pose='stand';state.action=event.kind==='circle'?'circle-run':'train-run';state.me.action=state.action;
+   state.pose='stand';state.me.pose='stand';state.action=event.kind==='mosh'?'mosh-charge':event.kind==='circle'?'circle-run':'train-run';state.me.action=state.action;
+   if(event.kind==='mosh'){const start={x:state.me.x,y:state.me.y};rockMotion.moshStart=start;rockMotion.moshDestination={x:event.x+(index-participants.length/2)*7,y:event.y};rockMotion.dustA=false;rockMotion.dustB=false;}
    state.actionUntil=Infinity;updateActionButtons();sendMove();
  }
  rockPlay=null;refreshRockUI();refreshSlamUI();
 }
-for(const [button,kind] of [[circleButton,'circle'],[trainButton,'train']]){
+for(const [button,kind] of [[circleButton,'circle'],[trainButton,'train'],[moshButton,'mosh']]){
  button.onclick=()=>{
    if(!state.id||rockPlay||slam||rockRunningUntil>slamNow()||rockCooldowns[kind]>slamNow())return;
    rockPlacementMode=rockPlacementMode===kind?null:kind;slamMode=false;
    closeRockMenu();refreshRockUI();refreshSlamUI();
-   slamInfo.textContent=rockPlacementMode?`${kind==='circle'?'써클핏':'기차놀이'} 장소를 터치하세요`:'락놀이 메뉴에서 선택해 주세요';
+   slamInfo.textContent=rockPlacementMode?`${kind==='circle'?'써클핏':kind==='mosh'?'모싱':'기차놀이'} 장소를 터치하세요`:'락놀이 메뉴에서 선택해 주세요';
  };
+}
+function moshPathAt(m,elapsed){
+ const fraction=Math.min(1,Math.max(0,elapsed/m.duration));
+ const from=m.moshStart||{x:state.me.x,y:state.me.y};const dest=m.moshDestination||{x:m.x,y:m.y};
+ const half={x:from.x+(dest.x-from.x)*.5,y:from.y+(dest.y-from.y)*.5};
+ let a,b,t;
+ if(fraction<.30){a=from;b=dest;t=fraction/.30}
+ else if(fraction<.65){a=dest;b=half;t=(fraction-.30)/.35}
+ else {a=half;b=dest;t=Math.min(1,(fraction-.65)/.31)}
+ const u=t*t*(3-2*t);const x=a.x+(b.x-a.x)*u,y=a.y+(b.y-a.y)*u;
+ return {x,y,dx:b.x-a.x,dy:b.y-a.y};
 }
 function rockPathAt(m,elapsed){
  const elapsedFraction=Math.min(1,Math.max(0,elapsed/m.duration));
@@ -228,11 +289,11 @@ function updateRockPlayVisual(t){
  const world=toWorld(rockPlay),pos=new THREE.Vector3(world.x,3.6,world.z).project(camera);
  rockFloorPath.visible=true;rockFloorPath.position.set(world.x,.09,world.z);
  rockFloorPath.rotation.y=0;
- rockFloorPath.geometry=rockPlay.kind==='circle'?rockCircleGeometry:rockTrainGeometry;
+ rockFloorPath.geometry=rockPlay.kind==='circle'||rockPlay.kind==='mosh'?rockCircleGeometry:rockTrainGeometry;
  if(pos.z>=1||pos.z<=-1){slamMarker.hidden=true;return}
  slamMarker.hidden=false;
  slamCount.textContent=String(Math.max(1,Math.ceil(remaining/1000)));
- slamMembers.textContent=`${rockPlay.kind==='circle'?'써클핏':'기차놀이'} · ${rockPlay.participants.length}명 참가`;
+ slamMembers.textContent=`${rockPlay.kind==='circle'?'써클핏':rockPlay.kind==='mosh'?'모싱':'기차놀이'} · ${rockPlay.participants.length}명 참가`;
  const joined=rockPlay.participants.includes(state.id);
  slamJoin.disabled=joined;slamJoin.textContent=joined?'✓ 참가 완료':'참가하기';
  slamMarker.style.left=Math.max(72,Math.min(host.clientWidth-72,(pos.x+1)*.5*host.clientWidth))+'px';
@@ -781,12 +842,22 @@ function makeAvatar(p){
 
 // Chat bubbles are true 3D sprites anchored in world coordinates, independent of avatar pose.
 function bubbleTexture(message){
- const canvas=document.createElement('canvas');canvas.width=512;canvas.height=224;
- const ctx=canvas.getContext('2d');ctx.clearRect(0,0,512,224);
+ const canvas=document.createElement('canvas');canvas.width=768;canvas.height=320;
+ const ctx=canvas.getContext('2d');ctx.clearRect(0,0,768,320);
  ctx.fillStyle='rgba(255,255,255,.98)';ctx.strokeStyle='#283044';ctx.lineWidth=7;
- ctx.beginPath();ctx.roundRect(15,15,482,165,32);ctx.fill();ctx.stroke();
- ctx.beginPath();ctx.moveTo(238,180);ctx.lineTo(256,211);ctx.lineTo(278,180);ctx.closePath();ctx.fill();ctx.stroke();
- ctx.fillStyle='#171d31';ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='bold 70px system-ui, sans-serif';ctx.fillText(message,256,99,445);
+ ctx.beginPath();ctx.roundRect(15,14,738,248,30);ctx.fill();ctx.stroke();
+ ctx.beginPath();ctx.moveTo(368,263);ctx.lineTo(384,302);ctx.lineTo(408,263);ctx.closePath();ctx.fill();ctx.stroke();
+ ctx.fillStyle='#171d31';ctx.textAlign='center';ctx.textBaseline='middle';
+ const chars=Array.from(String(message||''));let lines=[],line='';
+ // Wrap by rendered width, not raw character count (Korean/emoji/Latin all supported).
+ ctx.font='bold 44px system-ui, sans-serif';
+ for(const ch of chars){if(ctx.measureText(line+ch).width>670&&line){lines.push(line);line=ch}else line+=ch}
+ if(line)lines.push(line);
+ if(lines.length>3){lines=lines.slice(0,3);let last=lines[2];while(ctx.measureText(last+'…').width>670&&last.length)last=last.slice(0,-1);lines[2]=last+'…'}
+ const fontSize=lines.length===1?55:lines.length===2?48:43;
+ ctx.font=`bold ${fontSize}px system-ui, sans-serif`;
+ const lineHeight=fontSize*1.25,top=130-(lines.length-1)*lineHeight/2;
+ lines.forEach((l,i)=>ctx.fillText(l,384,top+i*lineHeight,670));
  const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;return texture;
 }
 function showBubble(entry){
@@ -794,7 +865,7 @@ function showBubble(entry){
  const old=activeBubbles.get(entry.playerId);
  if(old){scene.remove(old.sprite);old.sprite.material.map.dispose();old.sprite.material.dispose()}
  const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:bubbleTexture(entry.message),transparent:true,depthTest:false,depthWrite:false}));
- sprite.scale.set(3.4,1.49,1);sprite.renderOrder=150;scene.add(sprite);if(stageForeground)sprite.layers.set(1);
+ sprite.scale.set(4.2,1.75,1);sprite.renderOrder=150;scene.add(sprite);if(stageForeground)sprite.layers.set(1);
  activeBubbles.set(entry.playerId,{sprite,expires:performance.now()+3800});
 }
 
@@ -848,7 +919,7 @@ function animateAvatar(a,p,t){
  for(const key of keys)pose[key]=[0,0,0];
  let height=0,lean=0,ikMode=null,leftHandTarget=null,rightHandTarget=null;
  const set=(key,x=0,y=0,z=0)=>{pose[key]=[x,y,z]};
- if(act==='walk'||act==='run'||act==='slam-charge'||act==='slam-retreat'||act==='circle-run'||act==='train-run'){
+ if(act==='walk'||act==='run'||act==='slam-charge'||act==='slam-retreat'||act==='circle-run'||act==='train-run'||act==='mosh-charge'){
   const fast=act!=='walk',pace=fast?11.6:7.4,amp=fast?.66:.39;
   const wave=Math.sin(sec*pace),opp=Math.sin(sec*pace+Math.PI);
   set('leftHip',wave*amp);set('rightHip',opp*amp);
@@ -858,6 +929,11 @@ function animateAvatar(a,p,t){
   set('leftElbow',-.12);set('rightElbow',-.12);
   set('upper',fast?-.14:-.035,0,Math.sin(sec*pace)*.035);
   height=Math.abs(Math.sin(sec*pace))*(fast?.12:.048);
+  if(act==='mosh-charge'){
+    // Alternating wide arm swings, as if punching through the air (no actual collision).
+    set('leftShoulder',-.9+Math.sin(sec*10)*.95,0,-.42);set('rightShoulder',-.9-Math.sin(sec*10)*.95,0,.42);
+    set('leftElbow',-.65);set('rightElbow',-.65);set('upper',-.20,Math.sin(sec*9)*.13);height=Math.abs(Math.sin(sec*11))*.13;
+   }
   if(act==='train-run'){
     // Hands reach forward toward the next person's shoulders, making a line of linked runners.
     set('leftShoulder',-1.05,-.16,-.24);
@@ -917,6 +993,30 @@ function animateAvatar(a,p,t){
   set('rightShoulder',-.22-.18*side,0,.32+.09*side);
   set('leftElbow',-.42-.10*side);
   set('rightElbow',-.42+.10*side);
+ }
+ if(act==='windmill'){
+  // Windmill: upper-back/shoulder rolling with V-shaped legs circling in the air.
+  // Root is tilted to horizontal, torso spins via yaw; articulated legs extend apart.
+  lean=-Math.PI/2; height=-.10+Math.sin(sec*10)*.08;
+  set('upper',Math.sin(sec*10)*.18,sec*7.4,0);
+  set('leftHip',-1.0+.20*Math.sin(sec*7.4),.13*Math.cos(sec*7.4),-.82);set('rightHip',-1.0-.20*Math.sin(sec*7.4),-.13*Math.cos(sec*7.4),.82);
+  set('leftKnee',-.12);set('rightKnee',-.12);
+  set('leftShoulder',-.64,0,-.3);set('rightShoulder',-.64,0,.3);
+ }
+ if(act==='skanking'){
+  const beat=sec*8.6,foot=Math.sin(beat),other=Math.sin(beat+Math.PI);
+  height=Math.abs(foot)*.11;set('upper',-.18,0,Math.sin(beat*.5)*.14);
+  set('leftHip',Math.max(0,foot)*.86);set('rightHip',Math.max(0,other)*.86);
+  set('leftKnee',.22+.5*Math.max(0,foot));set('rightKnee',.22+.5*Math.max(0,other));
+  set('leftShoulder',-.55-Math.max(0,other)*.50,0,-.24);set('rightShoulder',-.55-Math.max(0,foot)*.50,0,.24);
+  set('leftElbow',-.68);set('rightElbow',-.68);
+ }
+ if(act==='cheer'){
+  const lift=Math.max(0,Math.sin(sec*10));height=lift*.75;
+  set('leftShoulder',-2.65,0,-.26);set('rightShoulder',-2.65,0,.26);
+  set('leftElbow',-.12);set('rightElbow',-.12);
+  set('leftHip',-.22*(1-lift));set('rightHip',-.22*(1-lift));
+  set('leftKnee',.45*(1-lift));set('rightKnee',.45*(1-lift));
  }
  if(act==='jump'){
   const phase=Math.sin(sec*10.6);const lift=Math.max(0,phase);
@@ -1029,6 +1129,8 @@ function animateAvatar(a,p,t){
  if(basePose==='sit'&&benchSeats.some(seat=>Math.hypot(q.x-seat.x,q.y-seat.y)<24))height+=.46;
  a.root.position.y+=(height-a.root.position.y)*.28;
  a.root.rotation.x+=(lean-a.root.rotation.x)*.22;
+ // While breakdancing, rotate the whole prone body around its center, not just its chest.
+ if(act==='windmill'){const roll=sec*7.4;a.root.rotation.z+=(((roll-a.root.rotation.z+Math.PI*3)%(Math.PI*2))-Math.PI)*.25}else a.root.rotation.z+=(0-a.root.rotation.z)*.24;
  P.snackCrumbs.forEach((crumb,i)=>{
   if(act!=='snack'){crumb.visible=false;return}
   const phase=(sec*3.8+i*.19)%1,ring=.08+phase*.47,theta=i*2.39996;
@@ -1232,11 +1334,12 @@ function tick(t){
     state.action='slam-celebrate';state.me.action='slam-celebrate';
     state.actionUntil=Infinity;
    }else{
-    const p=rockPathAt(m,elapsed);
+    const p=m.kind==='mosh'?moshPathAt(m,elapsed):rockPathAt(m,elapsed);
     state.me.x=Math.max(20,Math.min(1380,p.x));
     state.me.y=Math.max(220,Math.min(1100,p.y));
     state.me.facing=Math.atan2(p.dx,p.dy);
-    state.me.action=m.kind==='circle'?'circle-run':'train-run';state.action=state.me.action;
+    state.me.action=m.kind==='mosh'?'mosh-charge':m.kind==='circle'?'circle-run':'train-run';state.action=state.me.action;
+    if(m.kind==='mosh'){if(elapsed>=m.duration*.30&&!m.dustA){m.dustA=true;post('rockplay',{id:state.id,command:'impact',eventId:m.id,phase:1,x:state.me.x,y:state.me.y}).catch(()=>{})}if(elapsed>=m.duration*.96&&!m.dustB){m.dustB=true;post('rockplay',{id:state.id,command:'impact',eventId:m.id,phase:2,x:state.me.x,y:state.me.y}).catch(()=>{})}}
     state.moving=true;
     if(t-state.lastSent>70){state.lastSent=t;sendMove()}
    }
@@ -1254,7 +1357,7 @@ function tick(t){
    }
   }
   state.moving=!!(dx||dy);
-  if(state.moving && (state.action==='buriburi'||state.action==='groove') && !slamMotion && !rockMotion){
+  if(state.moving && (state.action==='buriburi'||state.action==='groove'||state.action==='windmill'||state.action==='skanking'||state.action==='cheer') && !slamMotion && !rockMotion){
    state.action='idle';state.me.action='walk';state.actionUntil=0;updateActionButtons();
   }
   if(state.moving){
@@ -1292,7 +1395,22 @@ function notice(message){const host=$('joinNotices');const el=document.createEle
 function appendChat(entry){const el=document.createElement('div');el.className='chat-line';const who=document.createElement('b');who.textContent=entry.name+' : ';const value=document.createElement('span');value.textContent=entry.message;el.append(who,value);$('chatMessages').append(el);while($('chatMessages').children.length>35)$('chatMessages').firstChild.remove();$('chatMessages').scrollTop=$('chatMessages').scrollHeight}
 $('chatToggle').onclick=()=>$('chatPanel').classList.toggle('hidden');
 $('chatClose').onclick=()=>$('chatPanel').classList.add('hidden');
-document.querySelectorAll('[data-chat]').forEach(b=>b.onclick=async()=>{if(!state.id)return toast('먼저 입장해 주세요');try{await post('chat',{id:state.id,message:b.dataset.chat})}catch(e){toast(e.message)}});
+async function sendChatMessage(message){
+ if(!state.id)return toast('먼저 입장해 주세요');
+ const text=String(message||'').trim();if(!text)return;
+ if(text.length>80)return toast('메시지는 80자까지 입력할 수 있어요');
+ try{await post('chat',{id:state.id,message:text});return true}catch(e){toast(e.message);return false}
+}
+document.querySelectorAll('[data-chat]').forEach(b=>b.onclick=()=>sendChatMessage(b.dataset.chat));
+$('chatForm').addEventListener('submit',async e=>{
+ e.preventDefault();const input=$('chatInput');const button=$('chatSend');
+ if(button.disabled)return;
+ const message=input.value.trim();if(!message)return;
+ button.disabled=true;
+ const sent=await sendChatMessage(message);
+ button.disabled=false;
+ if(sent){input.value='';input.focus()}
+});
 
 // Keep the in-game HUD inside the actual visible iOS/Android viewport.
 function updateVisibleViewport(){
