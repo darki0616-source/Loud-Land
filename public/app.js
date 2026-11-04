@@ -155,12 +155,18 @@ function react(a){
 }
 document.querySelectorAll('[data-action]').forEach(b=>b.onclick=()=>react(b.dataset.action));
 document.addEventListener('keydown',e=>{if(e.target instanceof HTMLInputElement||e.target instanceof HTMLTextAreaElement||e.target?.isContentEditable)return;let k=e.key.toLowerCase();if(k.startsWith('arrow')||k===' ')e.preventDefault();state.keys.add(k);let acts={'1':'peace','2':'jump','3':'run','4':'wave','5':'clap','6':'sit','7':'lie','8':'drink','9':'snack','0':'headbang','b':'buriburi','g':'groove','v':'windmill','k':'skanking','h':'cheer'};if(acts[k]&&!e.repeat)react(acts[k])});document.addEventListener('keyup',e=>state.keys.delete(e.key.toLowerCase()));window.addEventListener('blur',()=>state.keys.clear());
+// CC0 crowd cheering by SFXMint; play only for listeners who enabled audio.
+// The URL is hotlink-permitted by the creator (https://sfxmint.com/sounds/crowd-cheer).
+const cheerAudioUrl='https://sfxmint.com/dl/crowd-cheer-44.mp3';
+let lastCheerSound=0;
 function playCheer(){
- try{const Ctx=window.AudioContext||window.webkitAudioContext;if(!Ctx)return;const context=new Ctx();
-  const length=Math.floor(context.sampleRate*.75),buffer=context.createBuffer(1,length,context.sampleRate),data=buffer.getChannelData(0);
-  for(let i=0;i<length;i++){const t=i/context.sampleRate;const envelope=Math.pow(Math.sin(Math.PI*i/length),.8);data[i]=(Math.random()*2-1)*envelope*.13*(.65+.35*Math.sin(t*26));}
-  const source=context.createBufferSource();source.buffer=buffer;const filter=context.createBiquadFilter();filter.type='bandpass';filter.frequency.value=780;filter.Q.value=.6;source.connect(filter);filter.connect(context.destination);source.start();source.onended=()=>context.close();
- }catch(e){console.warn('Cheer audio not available',e)}
+ if(!state.audioEnabled||Date.now()-lastCheerSound<1900)return;
+ lastCheerSound=Date.now();
+ try{
+  const audio=new Audio(cheerAudioUrl);
+  audio.volume=.38;
+  audio.play().catch(error=>console.warn('Cheer sound could not play',error));
+ }catch(error){console.warn('Cheer sound unavailable',error)}
 }
 function sendMove(){if(!state.id||!state.me)return;let p=state.me;post('move',{id:state.id,x:Math.round(p.x),y:Math.round(p.y),facing:p.facing,action:p.action,pose:p.pose||'stand'}).catch(()=>{})}
 // Shared SLAM countdown (server timestamps, 15 s global launch cooldown).
@@ -172,6 +178,7 @@ function refreshSlamUI(){
  slamButton.classList.toggle('placing',slamMode);
  slamButton.textContent=slamMode?'📍 바닥을 터치하세요':slam?'🔥 슬램 진행 중':remain?`🔥 슬램 ${remain}초`:'🔥 슬램 만들기';
  slamInfo.textContent=rockPlacementMode?(rockPlacementMode==='circle'?'써클핏 위치를 터치하세요':rockPlacementMode==='mosh'?'모싱 위치를 터치하세요':'기차놀이 위치를 터치하세요'):rockPlay?(rockPlay.kind==='circle'?'써클핏 참가자를 모집 중이에요':rockPlay.kind==='mosh'?'모싱 참가자를 모집 중이에요':'기차놀이 참가자를 모집 중이에요'):slamMode?'슬램 위치를 터치하세요':slam?'슬램 참가자를 모집 중이에요':remain?`다음 슬램까지 ${remain}초`:'락놀이 메뉴에서 슬램·써클핏·기차놀이 선택';
+ slamInfo.classList.toggle('is-active',!!(rockPlacementMode||rockPlay||slamMode||slam));
 }
 function applySlam(event,cooldown){
  if(Number.isFinite(cooldown))slamCooldownUntil=cooldown;
@@ -997,21 +1004,39 @@ function animateAvatar(a,p,t){
   set('rightElbow',-.42+.10*side);
  }
  if(act==='windmill'){
-  // Windmill: upper-back/shoulder rolling with V-shaped legs circling in the air.
-  // Root is tilted to horizontal, torso spins via yaw; articulated legs extend apart.
-  lean=-Math.PI/2; height=-.10+Math.sin(sec*10)*.08;
-  set('upper',Math.sin(sec*10)*.18,sec*7.4,0);
-  set('leftHip',-1.0+.20*Math.sin(sec*7.4),.13*Math.cos(sec*7.4),-.82);set('rightHip',-1.0-.20*Math.sin(sec*7.4),-.13*Math.cos(sec*7.4),.82);
-  set('leftKnee',-.12);set('rightKnee',-.12);
-  set('leftShoulder',-.64,0,-.3);set('rightShoulder',-.64,0,.3);
+  // One-handed B-boy freeze: tilted inversion, planted left arm, right arm
+  // stretched out to the side, scissored legs (one straight, one bent).
+  // Shift the whole avatar upward while inverting so the head approaches ground.
+  height=2.10+.055*Math.sin(sec*3.1);
+  lean=.07*Math.sin(sec*2.2);
+  set('upper',-.12,.035*Math.sin(sec*2.2),.05);
+  set('neck',.08);
+  // In the inverted body frame this arm reaches toward the floor.
+  set('leftShoulder',-2.95,0,-.18);
+  set('leftElbow',.07);
+  // Opposite arm held perpendicular for balance.
+  set('rightShoulder',-.15,0,1.43);
+  set('rightElbow',0);
+  // Straight leg extended up/side; other leg remains visibly bent.
+  set('leftHip',-.32,0,-.63);
+  set('leftKnee',.04);
+  set('rightHip',.47,0,.72);
+  set('rightKnee',1.28+.06*Math.sin(sec*2.4));
  }
  if(act==='skanking'){
-  const beat=sec*8.6,foot=Math.sin(beat),other=Math.sin(beat+Math.PI);
-  height=Math.abs(foot)*.11;set('upper',-.18,0,Math.sin(beat*.5)*.14);
-  set('leftHip',Math.max(0,foot)*.86);set('rightHip',Math.max(0,other)*.86);
-  set('leftKnee',.22+.5*Math.max(0,foot));set('rightKnee',.22+.5*Math.max(0,other));
-  set('leftShoulder',-.55-Math.max(0,other)*.50,0,-.24);set('rightShoulder',-.55-Math.max(0,foot)*.50,0,.24);
-  set('leftElbow',-.68);set('rightElbow',-.68);
+  // Ska-punk skank: alternate a forward kick, planted leg, opposing arm swing.
+  // No backward heel kick or curled trailing foot on the active leg.
+  const beat=sec*7.2,foot=Math.sin(beat),other=-foot;
+  const left=Math.max(0,foot),right=Math.max(0,other);
+  height=.025+.105*Math.abs(foot);
+  set('upper',-.10,0,.09*Math.sin(beat*.5));
+  set('leftHip',-.10-1.05*left,0,-.05);
+  set('rightHip',-.10-1.05*right,0,.05);
+  set('leftKnee',.08+.10*left);
+  set('rightKnee',.08+.10*right);
+  set('leftShoulder',-.45-.65*right,0,-.27);
+  set('rightShoulder',-.45-.65*left,0,.27);
+  set('leftElbow',-.46);set('rightElbow',-.46);
  }
  if(act==='cheer'){
   const lift=Math.max(0,Math.sin(sec*10));height=lift*.75;
@@ -1132,7 +1157,9 @@ function animateAvatar(a,p,t){
  a.root.position.y+=(height-a.root.position.y)*.28;
  a.root.rotation.x+=(lean-a.root.rotation.x)*.22;
  // While breakdancing, rotate the whole prone body around its center, not just its chest.
- if(act==='windmill'){const roll=sec*7.4;a.root.rotation.z+=(((roll-a.root.rotation.z+Math.PI*3)%(Math.PI*2))-Math.PI)*.25}else a.root.rotation.z+=(0-a.root.rotation.z)*.24;
+ // B-boy freeze tilts into a stable one-handed inversion rather than continuous windmill spinning.
+ const zTarget=act==='windmill'?2.80+.055*Math.sin(sec*2.5):0;
+ a.root.rotation.z+=(zTarget-a.root.rotation.z)*.17;
  P.snackCrumbs.forEach((crumb,i)=>{
   if(act!=='snack'){crumb.visible=false;return}
   const phase=(sec*3.8+i*.19)%1,ring=.08+phase*.47,theta=i*2.39996;
