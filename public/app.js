@@ -831,15 +831,19 @@ function makeAvatar(p){
  child(bottle,new THREE.CylinderGeometry(.045,.065,.19,10),glass,[0,.13,0]);
  child(bottle,new THREE.CylinderGeometry(.06,.06,.055,10),mat('#f3ca82'),[0,.25,0]);
  child(bottle,new THREE.CylinderGeometry(.127,.127,.12,12),mat('#f2e1bd'),[0,-.14,0]);
- // Simple cigarette attached to the right hand. No purchased/remote assets.
- const cigarette=new THREE.Group();parts.rightHand.add(cigarette);parts.cigarette=cigarette;
- cigarette.position.set(0,.008,.18);
+ // The cigarette faces outward (+Z is the front of the avatar).
+ // Anchor it to the upper torso instead of the rotating hand bone: arm IK can
+ // rotate the hand so far that a hand-attached cigarette points into the mouth.
+ const cigarette=new THREE.Group();upper.add(cigarette);parts.cigarette=cigarette;
+ cigarette.rotation.y=-.22; // from right side of the mouth toward the centre
+ cigarette.position.set(.35,.30,.53);
  const paper=new THREE.MeshBasicMaterial({color:'#f3f0e4'});
  const filter=new THREE.MeshBasicMaterial({color:'#c69d65'});
  const ember=new THREE.MeshBasicMaterial({color:'#ef6945'});
- const stick=child(cigarette,new THREE.CylinderGeometry(.021,.021,.28,8),paper,[0,0,.14]);stick.rotation.x=Math.PI/2;
- const tip=child(cigarette,new THREE.CylinderGeometry(.022,.022,.085,8),filter,[0,0,.035]);tip.rotation.x=Math.PI/2;
- child(cigarette,new THREE.SphereGeometry(.024,8,6),ember,[0,0,.295]);
+ // Filter by the fingers, white barrel extending visibly OUT in front of the face.
+ const filterMesh=child(cigarette,new THREE.CylinderGeometry(.025,.025,.10,8),filter,[0,0,.05]);filterMesh.rotation.x=Math.PI/2;
+ const stick=child(cigarette,new THREE.CylinderGeometry(.024,.024,.44,8),paper,[0,0,.32]);stick.rotation.x=Math.PI/2;
+ child(cigarette,new THREE.SphereGeometry(.028,8,6),ember,[0,0,.55]);
  cigarette.visible=false;
  parts.smokePuffs=[];
  for(let i=0;i<6;i++){
@@ -1208,11 +1212,19 @@ function animateAvatar(a,p,t){
  // Low-poly cigarette and drifting smoke belong to each player's rig, so
  // remote players see the same reaction without transmitting particle events.
  P.cigarette.visible=act==='smoke';
+ if(act==='smoke'){
+  // Keep the cigarette pointing forward even while the right arm bends.
+  const phase=(sec*.58)%1;
+  const inhale=THREE.MathUtils.smoothstep(phase,.10,.31)*(1-THREE.MathUtils.smoothstep(phase,.59,.78));
+  P.cigarette.position.set(.35-.07*inhale,.30+.55*inhale,.53+.18*inhale);
+ }
  P.smokePuffs.forEach((puff,i)=>{
   if(act!=='smoke'){puff.visible=false;return}
   const phase=(sec*.39+i/6)%1;
   puff.visible=true;
-  puff.position.set(.08+.14*Math.sin(phase*5+i*.7),.93+phase*.95,.77+phase*.16);
+  // Smoke starts near the burning tip, not inside the avatar's face.
+  const c=P.cigarette.position;
+  puff.position.set(c.x-.12+.10*Math.sin(phase*5+i*.7),c.y+.08+phase*.90,c.z+.54+phase*.09);
   puff.scale.setScalar(.08+phase*.22);
   puff.material.opacity=Math.sin(Math.PI*phase)*.26;
  });
