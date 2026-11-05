@@ -219,6 +219,7 @@ function renderOnlinePlayers(){
   const swatch=document.createElement('span');swatch.className='players-swatch';swatch.style.background=palette.includes(p.color)?p.color:'#d7fa81';
   const name=document.createElement('span');name.className='players-name';name.textContent=p.name||'ROCKER';
   li.append(swatch,name);
+  if(p.id!==state.id){li.classList.add('duo-select-player');li.title='상호작용 요청하기';li.style.cursor='pointer';li.onclick=()=>chooseDuoTarget(p.id)}
   if(p.id===state.id){const me=document.createElement('small');me.textContent='나';li.append(me)}
   list.append(li);
  }
@@ -235,7 +236,7 @@ function showBookingNotice(name,title){
  setTimeout(()=>el.remove(),5200);
 }
 
-function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='snapshot'){state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);if(Array.isArray(d.chat)){$('chatMessages').replaceChildren();d.chat.forEach(appendChat)}}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){appendChat(d.entry);showBubble(d.entry)}else if(d.type==='move'){state.players.set(d.player.id,d.player)}else if(d.type==='profile'){state.players.set(d.player.id,d.player);if(d.player.id===state.id){state.me=d.player;refreshProfilePreview()}renderOnlinePlayers()}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers()}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue,d.history);else if(d.type==='slam')applySlam(d.slam,d.cooldownUntil);else if(d.type==='slam-go')onSlamGo(d);else if(d.type==='slam-impact')spawnSlamDust(d.x,d.y);else if(d.type==='toast-spark')spawnToastSpark(d.x,d.y);else if(d.type==='cheer'&&d.playerId!==state.id&&state.audioEnabled)playCheer();else if(d.type==='rockplay')applyRockPlay(d.event,d.rockCooldowns,d.rockRunningUntil);else if(d.type==='rockplay-go')onRockPlayGo(d);else if(d.type==='music-booked')showBookingNotice(d.name,d.title);else if(d.type==='music-control')showMusicControlNotice(d.name,d.command);else if(d.type==='skip-vote')applySkipVote(d.vote,d.cooldownUntil);else if(d.type==='skip-vote-result')showSkipVoteResult(d)};state.es.onerror=()=>{ /* EventSource retries automatically; heartbeat repairs an expired session. */ }}
+function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='snapshot'){state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);if(Array.isArray(d.chat)){$('chatMessages').replaceChildren();d.chat.forEach(appendChat)};activeDuos.clear();for(const duo of d.interactions||[])activeDuos.set(duo.id,duo);syncDuoStatus()}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){appendChat(d.entry);showBubble(d.entry)}else if(d.type==='move'){state.players.set(d.player.id,d.player);if(d.player.id===state.id&&currentDuo())state.me={...d.player}}else if(d.type==='profile'){state.players.set(d.player.id,d.player);if(d.player.id===state.id){state.me=d.player;refreshProfilePreview()}renderOnlinePlayers()}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers()}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue,d.history);else if(d.type==='slam')applySlam(d.slam,d.cooldownUntil);else if(d.type==='slam-go')onSlamGo(d);else if(d.type==='slam-impact')spawnSlamDust(d.x,d.y);else if(d.type==='toast-spark')spawnToastSpark(d.x,d.y);else if(d.type==='cheer'&&d.playerId!==state.id&&state.audioEnabled)playCheer();else if(d.type==='rockplay')applyRockPlay(d.event,d.rockCooldowns,d.rockRunningUntil);else if(d.type==='rockplay-go')onRockPlayGo(d);else if(d.type==='music-booked')showBookingNotice(d.name,d.title);else if(d.type==='music-control')showMusicControlNotice(d.name,d.command);else if(d.type==='skip-vote')applySkipVote(d.vote,d.cooldownUntil);else if(d.type==='skip-vote-result')showSkipVoteResult(d);else if(d.type.startsWith('duo-'))handleDuoEvent(d)};state.es.onerror=()=>{ /* EventSource retries automatically; heartbeat repairs an expired session. */ }}
 function applySkipVote(vote,cooldownUntil){
  state.skipVote=vote||null;if(Number.isFinite(Number(cooldownUntil)))state.skipVoteCooldownUntil=Number(cooldownUntil);
  const overlay=$('skipVoteOverlay');overlay.hidden=!vote;updateSkipVoteUI();updateSharedMusicButtons();
@@ -281,6 +282,65 @@ $('editAvatar').onclick=()=>{if(!state.me)return;editingProfile=true;$('nick').v
 $('profileCancel').onclick=closeProfileEditor;
 $('profileToggle').onclick=()=>{if(!state.me)return toast('입장 후 변경할 수 있어요');$('editAvatar').click()};
 ;$('helpBtn').onclick=()=>toast('WASD 이동 · 클릭/터치 이동 · 드래그 시점 회전 · 춤: B/G/V/K · 환호성: H · 담배: C');
+// Real-time paired interactions: invitations are opt-in, synced by server timestamp.
+const activeDuos=new Map();let selectedDuoTarget=null,pendingDuoInvite=null;
+const duoNames={highfive:'하이파이브',handshake:'악수',hug:'포옹',dance:'함께 춤추기'};
+function currentDuo(playerId=state.id){return [...activeDuos.values()].find(d=>d.endAt>Date.now()+state.serverDelta&&(d.a===playerId||d.b===playerId))}
+function duoPose(playerId){const d=currentDuo(playerId);return d?{action:'duo-'+d.kind,duo:d}:null}
+function closeDuoMenu(){selectedDuoTarget=null;$('duoMenu').classList.add('hidden')}
+function chooseDuoTarget(targetId){
+ if(!state.id||targetId===state.id)return;
+ if(currentDuo())return toast('함께 동작하는 동안에는 다른 유저를 선택할 수 없어요.');
+ const target=state.players.get(targetId);if(!target)return toast('접속자가 떠났어요.');
+ if(!state.me||Math.hypot(state.me.x-target.x,state.me.y-target.y)>88)return toast('상대 캐릭터에게 가까이 다가간 후 선택해 주세요.');
+ selectedDuoTarget=targetId;$('duoTargetName').textContent='🎸 '+target.name;$('duoMenu').classList.remove('hidden');
+}
+$('duoMenuClose').onclick=closeDuoMenu;
+document.querySelectorAll('[data-duo]').forEach(btn=>btn.onclick=async()=>{
+ const targetId=selectedDuoTarget,kind=btn.dataset.duo;closeDuoMenu();if(!targetId||!state.id)return;
+ try{await post('duo',{id:state.id,command:'invite',targetId,kind});toast('요청을 보냈어요. 상대의 수락을 기다려 주세요.')}catch(e){toast(e.message)}
+});
+$('duoAccept').onclick=async()=>{const invite=pendingDuoInvite;pendingDuoInvite=null;$('duoRequest').classList.add('hidden');if(!invite)return;try{await post('duo',{id:state.id,command:'accept',inviteId:invite.id})}catch(e){toast(e.message)}};
+$('duoDecline').onclick=async()=>{const invite=pendingDuoInvite;pendingDuoInvite=null;$('duoRequest').classList.add('hidden');if(invite)try{await post('duo',{id:state.id,command:'decline',inviteId:invite.id})}catch(e){toast(e.message)}};
+$('duoCancel').onclick=()=>{if(state.id)post('duo',{id:state.id,command:'cancel'}).catch(e=>toast(e.message))};
+function syncDuoStatus(){
+ const duo=currentDuo(),status=$('duoStatus');status.classList.toggle('hidden',!duo);
+ if(duo)$('duoStatusText').textContent='🤝 '+duoNames[duo.kind]+' · '+Math.max(0,Math.ceil((duo.endAt-Date.now()-state.serverDelta)/1000))+'초';
+}
+function startDuo(duo){
+ activeDuos.set(duo.id,duo);
+ if(duo.a===state.id||duo.b===state.id){
+  const authoritative=state.players.get(state.id);if(authoritative){state.me={...authoritative};state.pose='stand'}
+  state.action='idle';state.actionUntil=0;state.walkTarget=null;state.benchTarget=null;state.keys.clear();
+  if(slamMotion)finishSlamMotion();if(rockMotion)finishRockMotion();
+  closeDuoMenu();$('duoRequest').classList.add('hidden');pendingDuoInvite=null;updateActionButtons();
+  toast('함께 '+duoNames[duo.kind]+' 시작!');
+ }
+ syncDuoStatus();
+}
+function finishDuo(duoId){
+ const duo=activeDuos.get(duoId);activeDuos.delete(duoId);
+ if(duo&&(duo.a===state.id||duo.b===state.id)){
+  const p=state.players.get(state.id);if(p){state.me={...p};state.action='idle';state.actionUntil=0;state.pose='stand';updateActionButtons()}
+ }
+ syncDuoStatus();
+}
+function handleDuoEvent(d){
+ if(d.type==='duo-invite'){
+  const invite=d.invite;if(invite.to!==state.id)return;
+  pendingDuoInvite=invite;
+  $('duoRequestText').textContent=invite.name+'님이 '+duoNames[invite.kind]+'를 요청했어요.';
+  $('duoRequest').classList.remove('hidden');return;
+ }
+ if(d.type==='duo-invite-ended'){
+  if(pendingDuoInvite?.id===d.id){pendingDuoInvite=null;$('duoRequest').classList.add('hidden')}
+  return;
+ }
+ if(d.type==='duo-declined'&&d.to===state.id){toast(d.by+'님이 요청을 거절했어요.');return}
+ if(d.type==='duo-start'){startDuo(d.duo);return}
+ if(d.type==='duo-end'){finishDuo(d.id);return}
+}
+setInterval(syncDuoStatus,250);
 const sustainedReactions=new Set(['jump','run','headbang','buriburi','groove','windmill','skanking','airguitar','headspin','cheer','smoke']);
 // One shared bottom tab group: reactions / dances / chat.
 // Chat stays inside the dock instead of floating over the 3D world.
@@ -311,6 +371,7 @@ function updateActionButtons(){
 }
 function react(a){
  if(!state.me)return;
+ if(currentDuo())return toast('상호작용을 종료한 후 다른 동작을 사용해 주세요.');
  if(slamMotion){slamMotion=null;state.walkTarget=null}if(rockMotion){rockMotion=null;state.walkTarget=null}state.benchTarget=null;
  if(a==='sit'||a==='lie'){
   const near=mats.some(m=>Math.hypot(state.me.x-m.x,state.me.y-m.y)<105)||benchSeats.some(b=>Math.hypot(state.me.x-b.x,state.me.y-b.y)<75);
@@ -350,7 +411,7 @@ function playCheer(){
   audio.play().catch(error=>console.warn('Cheer sound could not play',error));
  }catch(error){console.warn('Cheer sound unavailable',error)}
 }
-function sendMove(){if(!state.id||!state.me)return;let p=state.me;post('move',{id:state.id,x:Math.round(p.x),y:Math.round(p.y),facing:p.facing,action:p.action,pose:p.pose||'stand'}).catch(()=>{})}
+function sendMove(){if(!state.id||!state.me||currentDuo())return;let p=state.me;post('move',{id:state.id,x:Math.round(p.x),y:Math.round(p.y),facing:p.facing,action:p.action,pose:p.pose||'stand'}).catch(()=>{})}
 // Shared SLAM countdown (server timestamps, 15 s global launch cooldown).
 const slamButton=$('slamButton'),slamInfo=$('slamInfo'),slamMarker=$('slamMarker'),slamCount=$('slamCount'),slamMembers=$('slamMembers'),slamJoin=$('slamJoin');
 function slamNow(){return Date.now()+state.serverDelta}
@@ -1643,7 +1704,8 @@ function animateAvatar(a,p,t){
  a.root.position.z+=(wp.z-a.root.position.z)*.28;
  if(P.sash)P.sash.rotation.y=Math.PI/2+Math.sin(t*.0028)*.055;
  P.toastCup.visible=q.action==='toast-clink';
- const act=q.action||'idle',basePose=q.pose||((act==='sit'||act==='lie')?act:'stand'),sec=t*.001,pose={};
+ const duoContext=duoPose(q.id),act=duoContext?.action||(q.action||'idle'),basePose=duoContext?'stand':(q.pose||((act==='sit'||act==='lie')?act:'stand'));
+ const sec=duoContext?(Date.now()+state.serverDelta-duoContext.duo.startAt)/1000:t*.001,pose={};
  // Leaving headspin must clear its WORLD-ROOT spin, inversion and height.
  // Otherwise a huge sec*8.2 yaw leaks into walk/other dance interpolation.
  if(a.lastAction==='headspin'&&act!=='headspin'){
@@ -1926,6 +1988,28 @@ function animateAvatar(a,p,t){
   height=.52;lean=-Math.PI/2;
   set('leftShoulder',.13);set('rightShoulder',.13);set('leftHip',.11);set('rightHip',.11);
  }
+ // Paired poses are synchronised to the server start time and blended by the same IK rig.
+ if(duoContext){
+  const beat=Math.sin(sec*8),side=duoContext.duo.a===q.id?-1:1;
+  if(act==='duo-highfive'){
+   const lift=Math.max(0,Math.sin(Math.min(1,Math.max(0,sec/1.0))*Math.PI));
+   rightHandTarget=new THREE.Vector3(.35,1.00+.14*lift,.56);
+   ikMode='duo-right';set('upper',-.08);set('neck',Math.sin(sec*4)*.045);
+  }else if(act==='duo-handshake'){
+   rightHandTarget=new THREE.Vector3(.15,.24+.07*beat,.65);
+   ikMode='duo-right';set('upper',-.10);set('neck',.03);
+  }else if(act==='duo-hug'){
+   leftHandTarget=new THREE.Vector3(-.42,.15,.64);rightHandTarget=new THREE.Vector3(.42,.15,.64);
+   ikMode='duo-both';set('upper',-.19);set('neck',.08,0,side*.04);
+  }else if(act==='duo-dance'){
+   height=Math.abs(Math.sin(sec*6.8+side*.5))*.20;
+   set('upper',0,Math.sin(sec*3.5)*.24,Math.sin(sec*5.8)*.10);
+   set('neck',Math.sin(sec*7)*.14);
+   set('leftShoulder',-1.3+beat*.5,0,-.55);
+   set('rightShoulder',-1.3-beat*.5,0,.55);
+   set('leftHip',beat*.26);set('rightHip',-beat*.26);
+  }
+ }
  // Persistent seated / lying base pose. Upper-body reactions run on top.
  if(basePose==='sit'&&act!=='sit'){
   height=-.24;
@@ -1944,6 +2028,7 @@ function animateAvatar(a,p,t){
  P.upper.position.x+=(hipSlide-P.upper.position.x)*.38;
  const alpha=act===a.lastAction?.25:.17;
  for(const k of keys){
+  if((ikMode==='duo-both'&&['leftShoulder','leftElbow','rightShoulder','rightElbow'].includes(k))||(ikMode==='duo-right'&&['rightShoulder','rightElbow'].includes(k)))continue;
   if(ikMode==='clap'&&['leftShoulder','leftElbow','rightShoulder','rightElbow'].includes(k))continue;
   if((ikMode==='drink'||ikMode==='wave'||ikMode==='snack'||ikMode==='smoke')&&['rightShoulder','rightElbow'].includes(k))continue;
   const target=pose[k],o=P[k];
@@ -1951,7 +2036,10 @@ function animateAvatar(a,p,t){
   o.rotation.y+=(target[1]-o.rotation.y)*alpha;
   o.rotation.z+=(target[2]-o.rotation.z)*alpha;
  }
- if(ikMode==='airguitar'){
+ if(ikMode==='duo-both'){
+  placeHandIK(P,'left',leftHandTarget,.58);placeHandIK(P,'right',rightHandTarget,.58);
+ }else if(ikMode==='duo-right')placeHandIK(P,'right',rightHandTarget,.68);
+ else if(ikMode==='airguitar'){
   placeHandIK(P,'left',leftHandTarget,.68);
   placeHandIK(P,'right',rightHandTarget,.78);
  }else if(ikMode==='clap'){
@@ -2088,6 +2176,20 @@ gameTouchSurface.addEventListener('pointerup',e=>{
  if(!pointerStart||!state.me)return;
  const dist=Math.hypot(e.clientX-pointerStart.x,e.clientY-pointerStart.y);pointerStart=null;
  if(dist>9)return;
+ // Prefer an actual avatar hit over ground movement; keep drag/pinch controls unchanged.
+ if(!rockPlacementMode&&!slamMode&&!currentDuo()){
+  const bounds=renderer.domElement.getBoundingClientRect();let bestId=null,bestDistance=58;
+  for(const [id,avatar] of avatars){
+   if(id===state.id)continue;
+   const characterTop=avatar.root.position.clone().add(new THREE.Vector3(0,2.0,0));
+   const screen=characterTop.project(camera);if(screen.z<0||screen.z>1)continue;
+   const px=bounds.left+(screen.x+1)*bounds.width*.5,py=bounds.top+(1-screen.y)*bounds.height*.5;
+   const distance=Math.hypot(px-e.clientX,py-e.clientY);
+   if(distance<bestDistance){bestId=id;bestDistance=distance}
+  }
+  if(bestId){if(!$('chatPanel').classList.contains('hidden'))selectBottomMenu('reaction');chooseDuoTarget(bestId);return}
+ }
+ closeDuoMenu();
  // A genuine tap on the 3D map closes the chat tab and returns to reactions.
  // Leave the dance tab untouched; dragging/orbiting and pinch gestures do not
  // change tabs. Do not intercept the ground click: walking still works.
@@ -2163,7 +2265,7 @@ function disposeAvatar(root){
 }
 function tick(t){
  const frameDelta=Math.min(50,Math.max(0,t-(tick.lastFrame??t)));tick.lastFrame=t;
- if(state.me){
+ if(state.me&&!currentDuo()){
   let dx=0,dy=0,speed=3.2,k=state.keys;
   dx+=+(k.has('d')||k.has('arrowright'))-+(k.has('a')||k.has('arrowleft'));
   dy+=+(k.has('s')||k.has('arrowdown'))-+(k.has('w')||k.has('arrowup'));

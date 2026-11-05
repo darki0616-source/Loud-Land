@@ -478,3 +478,12 @@ html,body{height:100%;height:100dvh;overflow:hidden!important}
  .controlbar.chat-tab-open .chat-messages{height:min(13vh,110px)}
  .controlbar.chat-tab-open .chat-compose input{font-size:16px}
 }
+
+/* v97: two-person interactions appear inside the fullscreen game overlay. */
+.duo-menu,.duo-request,.duo-status{position:absolute;z-index:92;left:50%;transform:translateX(-50%);width:min(420px,calc(100% - 28px));color:#fff;background:rgba(20,26,44,.96);border:1px solid rgba(220,244,255,.32);border-radius:16px;padding:13px;box-shadow:0 10px 36px #0008;box-sizing:border-box}
+.duo-menu{bottom:85px}.duo-request{top:74px}.duo-status{top:75px;display:flex;align-items:center;justify-content:space-between;gap:9px}
+.duo-menu.hidden,.duo-request.hidden,.duo-status.hidden{display:none!important}
+.duo-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:9px}.duo-title button,.duo-status button,.duo-request button,.duo-choices button{cursor:pointer;border:1px solid #b8d1e455;border-radius:11px;background:#36485e;color:#fff;font-weight:700;padding:9px;font-size:13px}
+.duo-choices{display:grid;grid-template-columns:1fr 1fr;gap:7px}.duo-choices button{min-height:39px}.duo-choices button:active,.duo-choices button:hover{background:#516883}.duo-menu small{display:block;color:#bdcfda;font-size:11px;margin-top:8px}
+.duo-request strong{display:block;margin-bottom:10px;font-size:13px}.duo-request>div{display:flex;gap:9px}.duo-request button{flex:1}.duo-request button:first-child{background:#53795d}
+@media(max-width:700px){.duo-menu{bottom:82px}.duo-request,.duo-status{top:62px}}
