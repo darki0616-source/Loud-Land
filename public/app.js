@@ -257,12 +257,27 @@ async function castSkipVote(choice){const vote=state.skipVote;if(!vote||!state.i
 function showSkipVoteResult(d){applySkipVote(null,state.skipVoteCooldownUntil);let msg=d.passed?'✅ 과반수 찬성! 요청한 곡으로 이동합니다':d.reason==='timeout'?'투표 시간이 종료되어 현재 곡을 유지합니다':'투표가 부결되어 현재 곡을 유지합니다';notice(msg)}
 setInterval(()=>{updateSkipVoteUI();updateSharedMusicButtons()},500);
 let joining=false;async function join(options={}){const auto=Boolean(options?.auto);if(editingProfile)return updateProfile();if(joining)return;joining=true;manualExit=false;try{let d=await post('join',{sessionKey,pageId,name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender,pattern:chosenPattern,sash:chosenSash,hairStyle:chosenHairStyle,hairColor:chosenHairColor});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);state.pose=state.me?.pose||'stand';cameraFollowInitialized=false;state.players=new Map(d.players.map(p=>[p.id,p]));renderOnlinePlayers();$('joinModal').classList.add('hidden');$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='페스티벌 참가 중';$('avatarPreview').querySelector('b').style.background=chosenColor;saveProfile(state.me);applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);listen();if(!auto)$('audioModal').classList.remove('hidden');showMovementGuide();if(!auto)toast('ONEseason에 오신 것을 환영합니다!')}catch(e){if(auto)$('joinModal').classList.remove('hidden');$('joinError').textContent='입장 실패: '+(e?.message||'연결을 확인해주세요');console.error('ONEseason join error:',e)}finally{joining=false}}
-$('audioYes').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(true);toast(state.music.id?'음악 재생을 허용했어요':'음악이 등록되면 바로 재생돼요')};$('audioNo').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(false);toast('내 소리를 끈 상태로 입장했어요')};$('joinBtn').onclick=()=>join();$('nick').onkeydown=e=>{if(e.key==='Enter')join()};function closeProfileEditor(){editingProfile=false;$('joinModal').classList.add('hidden');$('joinBtn').innerHTML='페스티벌 입장하기 <span>↗</span>';$('profileCancel').hidden=true;$('joinError').textContent=''}
-async function updateProfile(){if(!state.id||!state.me)return;const button=$('joinBtn');button.disabled=true;try{
+$('audioYes').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(true);toast(state.music.id?'음악 재생을 허용했어요':'음악이 등록되면 바로 재생돼요')};$('audioNo').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(false);toast('내 소리를 끈 상태로 입장했어요')};// First tap must save even if the nickname field currently has keyboard focus.
+// A pointerdown listener runs BEFORE Safari's keyboard dismissal can consume
+// the subsequent click. De-duplicate that click and block duplicate requests.
+let profileSavePointerAt=-Infinity;
+$('joinBtn').addEventListener('pointerdown',event=>{
+ if(!editingProfile||event.button!==0)return;
+ event.preventDefault();
+ event.stopPropagation();
+ profileSavePointerAt=performance.now();
+ if(document.activeElement instanceof HTMLElement)document.activeElement.blur();
+ updateProfile();
+});
+$('joinBtn').onclick=event=>{
+ if(performance.now()-profileSavePointerAt<800){event.preventDefault();return}
+ join();
+};$('nick').onkeydown=e=>{if(e.key==='Enter')join()};function closeProfileEditor(){editingProfile=false;$('joinModal').classList.add('hidden');$('joinBtn').innerHTML='페스티벌 입장하기 <span>↗</span>';$('profileCancel').hidden=true;$('joinError').textContent=''}
+async function updateProfile(){if(!state.id||!state.me)return;const button=$('joinBtn');if(button.disabled)return;button.disabled=true;button.textContent='저장 중…';try{
  const d=await post('profile',{id:state.id,name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender,pattern:chosenPattern,sash:chosenSash,hairStyle:chosenHairStyle,hairColor:chosenHairColor});
  state.me=d.player;state.players.set(state.id,d.player);saveProfile(d.player);refreshProfilePreview();renderOnlinePlayers();closeProfileEditor();toast('캐릭터 설정을 변경했어요');
- }catch(e){$('joinError').textContent='변경 실패: '+e.message}finally{button.disabled=false}}
-$('editAvatar').onclick=()=>{if(!state.me)return;editingProfile=true;$('nick').value=state.me.name;chosenColor=state.me.color;chosenPattern=state.me.pattern||'solid';chosenSash=state.me.sash||'none';chosenHairStyle=normalizeHairStyle(state.me.hairStyle);chosenHairColor=state.me.hairColor||'#4b3932';selectGender(state.me.gender);colorPicker();renderApparelPicker();renderHairPicker();$('joinError').textContent='';$('joinBtn').textContent='변경 사항 저장';$('profileCancel').hidden=false;$('joinModal').classList.remove('hidden');$('nick').focus()};
+ }catch(e){$('joinError').textContent='변경 실패: '+e.message}finally{button.disabled=false;if(editingProfile)button.textContent='변경 사항 저장'}}
+$('editAvatar').onclick=()=>{if(!state.me)return;editingProfile=true;$('nick').value=state.me.name;chosenColor=state.me.color;chosenPattern=state.me.pattern||'solid';chosenSash=state.me.sash||'none';chosenHairStyle=normalizeHairStyle(state.me.hairStyle);chosenHairColor=state.me.hairColor||'#4b3932';selectGender(state.me.gender);colorPicker();renderApparelPicker();renderHairPicker();$('joinError').textContent='';$('joinBtn').textContent='변경 사항 저장';$('profileCancel').hidden=false;$('joinModal').classList.remove('hidden');if(!matchMedia('(pointer:coarse)').matches)$('nick').focus()};
 $('profileCancel').onclick=closeProfileEditor;
 $('profileToggle').onclick=()=>{if(!state.me)return toast('입장 후 변경할 수 있어요');$('editAvatar').click()};
 ;$('helpBtn').onclick=()=>toast('WASD 이동 · 클릭/터치 이동 · 드래그 시점 회전 · 춤: B/G/V/K · 환호성: H · 담배: C');
@@ -646,6 +661,38 @@ function cube(w,h,d,m,x,y,z,cast=true){let o=new THREE.Mesh(new THREE.BoxGeometr
 function sphere(r,m,x,y,z){let o=new THREE.Mesh(new THREE.SphereGeometry(r,12,10),m);o.position.set(x,y,z);o.castShadow=true;scene.add(o);return o}
 function cylinder(rt,rb,h,m,x,y,z){let o=new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,h,14),m);o.position.set(x,y,z);o.castShadow=true;scene.add(o);return o}
 function label(str,size=100,color='#ffffff',bg='#22283b'){let cv=document.createElement('canvas');cv.width=512;cv.height=128;let c=cv.getContext('2d');c.fillStyle=bg;c.fillRect(0,0,512,128);c.fillStyle=color;c.font=`900 ${size}px Arial`;c.textAlign='center';c.textBaseline='middle';c.fillText(str,256,67);let tex=new THREE.CanvasTexture(cv);tex.colorSpace=THREE.SRGBColorSpace;return new THREE.MeshBasicMaterial({map:tex,transparent:true,side:THREE.DoubleSide})}
+const backdropGroup=new THREE.Group();scene.add(backdropGroup);
+const buildingBodyMats=[],buildingRoofMats=[],buildingWindowMats=[],mountainMats=[];
+function addBackdropMesh(parent,geo,material,x,y,z,rx=0,ry=0,rz=0,sx=1,sy=1,sz=1){
+ const mesh=new THREE.Mesh(geo,material);mesh.position.set(x,y,z);mesh.rotation.set(rx,ry,rz);mesh.scale.set(sx,sy,sz);mesh.castShadow=false;mesh.receiveShadow=false;parent.add(mesh);return mesh;
+}
+function makeWindowTexture(cols=3,rows=6){
+ const canvas=document.createElement('canvas');canvas.width=256;canvas.height=512;
+ const c=canvas.getContext('2d');c.clearRect(0,0,canvas.width,canvas.height);
+ const marginX=26,gapX=18,gapY=18,winW=(canvas.width-marginX*2-gapX*(cols-1))/cols,winH=(canvas.height-52-gapY*(rows-1))/rows;
+ c.fillStyle='rgba(255,244,209,.92)';
+ for(let row=0;row<rows;row++)for(let col=0;col<cols;col++)c.fillRect(marginX+col*(winW+gapX),26+row*(winH+gapY),winW,winH);
+ const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;return texture;
+}
+function createBackdropBuilding(x,z,w,h,d,windowCols=3,windowRows=6,rotY=0){
+ const group=new THREE.Group();group.position.set(x,0,z);group.rotation.y=rotY;backdropGroup.add(group);
+ const bodyMat=new THREE.MeshStandardMaterial({color:'#667287',roughness:.92,metalness:.02});
+ const roofMat=new THREE.MeshStandardMaterial({color:'#4a5568',roughness:.95,metalness:.02});
+ const windowMat=new THREE.MeshBasicMaterial({map:makeWindowTexture(windowCols,windowRows),transparent:true,opacity:.16,depthWrite:false,toneMapped:false,side:THREE.DoubleSide,color:'#dfe7f0'});
+ buildingBodyMats.push(bodyMat);buildingRoofMats.push(roofMat);buildingWindowMats.push(windowMat);
+ addBackdropMesh(group,new THREE.BoxGeometry(w,h,d),bodyMat,0,h/2,0);
+ const roofH=Math.max(.7,h*.06);
+ addBackdropMesh(group,new THREE.BoxGeometry(w*.58,roofH,d*.58),roofMat,0,h+roofH*.5,0);
+ addBackdropMesh(group,new THREE.PlaneGeometry(w*.64,h*.6),windowMat,0,h*.54,d*.5+.03,0,0,0);
+ addBackdropMesh(group,new THREE.PlaneGeometry(d*.42,h*.52),windowMat,w*.5+.03,h*.52,0,0,Math.PI/2,0);
+ return group;
+}
+function createMountain(x,z,sx,sy,sz,rotY=0){
+ const material=new THREE.MeshStandardMaterial({color:'#8fa6ba',roughness:.98,metalness:0,flatShading:true});
+ mountainMats.push(material);
+ const peak=new THREE.Mesh(new THREE.ConeGeometry(1.8,3.1,5,1),material);peak.position.set(x,sy*1.45,z);peak.scale.set(sx,sy,sz);peak.rotation.y=rotY;peak.castShadow=false;peak.receiveShadow=false;backdropGroup.add(peak);
+ const shoulder=new THREE.Mesh(new THREE.ConeGeometry(2.5,2.2,5,1),material);shoulder.position.set(x+(sx>0?1.2:-1.2),sy*.85,z+.8);shoulder.scale.set(sx*1.25,sy*.62,sz*1.15);shoulder.rotation.y=rotY+.35;shoulder.castShadow=false;shoulder.receiveShadow=false;backdropGroup.add(shoulder);
+}
 
 // v87: The red line is the end of the STAGE/AUDIENCE area, not a cue
 // to make the entire map longer. Stop applying the old 18-26 unit rear warp.
@@ -677,6 +724,20 @@ const horizonGlow=new THREE.Mesh(new THREE.PlaneGeometry(200,38),new THREE.MeshB
 for(const x of [-40,-28,-15,16,31,45]){const rock=new THREE.Mesh(new THREE.DodecahedronGeometry(1.2+Math.abs(x)%3*.22),mat('#6f6d75'));rock.position.set(x,.85,70+Math.abs(x)%3*2.5);rock.rotation.set(.25,.3,0);rock.castShadow=true;rock.receiveShadow=true;scene.add(rock)}
 function dune(x,z,sx,sz,sy=.8){const d=new THREE.Mesh(new THREE.SphereGeometry(1.9,18,14),sandMat);d.scale.set(sx,sy,sz);d.position.set(x,.7,z);d.castShadow=false;d.receiveShadow=true;scene.add(d)}
 [[-36,48,4.6,1.5,.95],[-18,52,5.5,1.8,1.05],[8,49,6.6,2.0,.92],[28,53,5.1,1.7,1.0],[44,49,3.8,1.3,.8]].forEach(v=>dune(...v));
+// Background skyline + distant mountains: decorative only, always behind the live stage.
+[
+ [-104,-74,10,16,10,2,4,.08],[-92,-66,8,12,8,2,4,.04],[-80,-78,11,18,10,3,5,.06],
+ [-68,-70,9,14,9,2,4,.03],[-56,-82,8,11,8,2,4,.05],[-44,-74,10,15,10,3,5,.02],
+ [44,-74,10,15,10,3,5,-.02],[56,-82,8,11,8,2,4,-.05],[68,-70,9,14,9,2,4,-.03],
+ [80,-78,11,18,10,3,5,-.06],[92,-66,8,12,8,2,4,-.04],[104,-74,10,16,10,2,4,-.08],
+ [-118,-32,10,13,11,3,4,.18],[-116,-6,8,10,8,2,3,.24],[-112,18,9,12,9,2,3,.22],
+ [118,-34,10,13,11,3,4,-.18],[116,-6,8,10,8,2,3,-.24],[112,18,9,12,9,2,3,-.22]
+].forEach(v=>createBackdropBuilding(...v));
+[
+ [-120,-118,14,18,12,.3],[-92,-126,22,28,18,.14],[-58,-134,28,38,21,-.08],[-14,-130,24,31,20,.11],
+ [30,-136,26,35,22,-.18],[74,-128,20,27,17,.09],[112,-120,15,20,12,-.22],
+ [-146,-26,18,25,16,.24],[146,-24,18,25,16,-.24]
+].forEach(v=>createMountain(...v));
 // Main stage faces the audience: far north = negative z.
 cube(45,1.7,14,dark,0,1,-25);cube(47,1.2,1,metal,0,2.05,-17.3);cube(46,1.5,1,dark,0,13.8,-31);cube(1,13.8,1,metal,-22,7.8,-31);cube(1,13.8,1,metal,22,7.8,-31);cube(46,11.8,.6,dark,0,7.2,-31);
 const sign=new THREE.Mesh(new THREE.PlaneGeometry(24,1.6),label('ONEseason',78,'#dcfd8b','#18172e'));sign.position.set(0,13.9,-29.85);scene.add(sign);
@@ -995,10 +1056,10 @@ function updateEnvironment(force=false){
  else if(hour>=19||hour<4)phase='night';
  else if(hour>=4&&hour<6)phase='dawn';
  const themes={
-  day:{bg:'#86c8ff',fog:'#86c8ff',sky:'#8ecfff',hemiSky:'#e4f6ff',ground:'#58745c',hemi:2.45,grass:'#4a7b60',sand:'#e0c896',wet:'#d5b57c',ocean:'#4098d0',sunColor:'#fff0c0',sunLight:'#fff4cd',sun:2.95,moon:0.15,badge:'☀️ &nbsp; 낮 공연 <span>✦</span>',glow:'#f6d0a8',stage:.42},
-  sunset:{bg:'#f39b7e',fog:'#f0a184',sky:'#ffad93',hemiSky:'#ffd8c6',ground:'#6a5755',hemi:1.95,grass:'#56715c',sand:'#ebc28d',wet:'#d3a46d',ocean:'#4c87c2',sunColor:'#ff9855',sunLight:'#ffcb95',sun:2.45,moon:0.25,badge:'🌇 &nbsp; 석양 공연 <span>✦</span>',glow:'#ff8b66',stage:.85},
-  night:{bg:'#091326',fog:'#091326',sky:'#0f1b39',hemiSky:'#45608f',ground:'#243330',hemi:1.15,grass:'#2d5244',sand:'#a98d67',wet:'#907558',ocean:'#1f4e86',sunColor:'#ffcf88',sunLight:'#b5c8ff',sun:0.0,moon:1.75,badge:'🌙 &nbsp; 달빛 공연 <span>✦</span>',glow:'#6d84a8',stage:1.12},
-  dawn:{bg:'#efab8d',fog:'#efab8d',sky:'#ffb79e',hemiSky:'#ffd9cb',ground:'#655a58',hemi:1.75,grass:'#4d6858',sand:'#e6c08f',wet:'#cda06e',ocean:'#4a82be',sunColor:'#ff9b68',sunLight:'#ffd0a1',sun:1.65,moon:0.55,badge:'🌄 &nbsp; 새벽 석양 <span>✦</span>',glow:'#ff9d76',stage:.72}
+  day:{bg:'#86c8ff',fog:'#86c8ff',sky:'#8ecfff',hemiSky:'#e4f6ff',ground:'#58745c',hemi:2.45,grass:'#4a7b60',sand:'#e0c896',wet:'#d5b57c',ocean:'#4098d0',sunColor:'#fff0c0',sunLight:'#fff4cd',sun:2.95,moon:0.15,badge:'☀️ &nbsp; 낮 공연 <span>✦</span>',glow:'#f6d0a8',stage:.42,building:'#71839c',roof:'#4d5f78',window:'#dce5ef',windowOpacity:.12,mountain:'#9fb6c8'},
+  sunset:{bg:'#f39b7e',fog:'#f0a184',sky:'#ffad93',hemiSky:'#ffd8c6',ground:'#6a5755',hemi:1.95,grass:'#56715c',sand:'#ebc28d',wet:'#d3a46d',ocean:'#4c87c2',sunColor:'#ff9855',sunLight:'#ffcb95',sun:2.45,moon:0.25,badge:'🌇 &nbsp; 석양 공연 <span>✦</span>',glow:'#ff8b66',stage:.85,building:'#6a6479',roof:'#4e4457',window:'#ffd4b5',windowOpacity:.18,mountain:'#a68896'},
+  night:{bg:'#091326',fog:'#091326',sky:'#0f1b39',hemiSky:'#45608f',ground:'#243330',hemi:1.15,grass:'#2d5244',sand:'#a98d67',wet:'#907558',ocean:'#1f4e86',sunColor:'#ffcf88',sunLight:'#b5c8ff',sun:0.0,moon:1.75,badge:'🌙 &nbsp; 달빛 공연 <span>✦</span>',glow:'#6d84a8',stage:1.12,building:'#303e58',roof:'#222d42',window:'#ffe7ac',windowOpacity:.34,mountain:'#536887'},
+  dawn:{bg:'#efab8d',fog:'#efab8d',sky:'#ffb79e',hemiSky:'#ffd9cb',ground:'#655a58',hemi:1.75,grass:'#4d6858',sand:'#e6c08f',wet:'#cda06e',ocean:'#4a82be',sunColor:'#ff9b68',sunLight:'#ffd0a1',sun:1.65,moon:0.55,badge:'🌄 &nbsp; 새벽 석양 <span>✦</span>',glow:'#ff9d76',stage:.72,building:'#6d6b84',roof:'#4f4d63',window:'#ffd8bc',windowOpacity:.16,mountain:'#9f8491'}
  };
  const p=themes[phase];
  skyPeriod=phase;clouds.visible=phase==='day'||phase==='sunset'||phase==='dawn';stars.visible=phase==='night';
@@ -1006,6 +1067,7 @@ function updateEnvironment(force=false){
  scene.background.set(p.bg);scene.fog.color.set(p.fog);skyDome.material.color.set(p.sky);horizonGlow.material.color.set(p.glow);
  hemi.color.set(p.hemiSky);hemi.groundColor.set(p.ground);hemi.intensity=p.hemi;
  grass.color.set(p.grass);sandMat.color.set(p.sand);wetSandMat.color.set(p.wet);oceanMat.color.set(p.ocean);oceanMat.emissive.set(p.ocean);oceanMat.emissive.multiplyScalar(phase==='night'?0.18:.05);
+ buildingBodyMats.forEach(m=>m.color.set(p.building));buildingRoofMats.forEach(m=>m.color.set(p.roof));buildingWindowMats.forEach(m=>{m.color.set(p.window);m.opacity=p.windowOpacity});mountainMats.forEach(m=>m.color.set(p.mountain));
  sunOrb.material.color.set(p.sunColor);sunLight.color.set(p.sunLight);sunLight.intensity=p.sun;moonLight.intensity=p.moon;stageAccentFactor=p.stage;
  if(weatherBadge)weatherBadge.innerHTML=p.badge;
  let sunProgress=null;
@@ -2144,7 +2206,22 @@ window.addEventListener('pagehide',()=>{if(state.id)navigator.sendBeacon('/api/l
 
 const ytScript=document.createElement('script');ytScript.src='https://www.youtube.com/iframe_api';document.head.appendChild(ytScript);
 
-$('musicToggle').onclick=()=>{document.body.classList.toggle('music-open');if(document.body.classList.contains('music-open'))$('chatPanel').classList.add('hidden')};$('musicClose').onclick=()=>document.body.classList.remove('music-open');
+function closeMusicPanel(){
+ // Blurring the URL input also closes the on-screen keyboard on mobile.
+ const input=$('videoUrl');
+ if(document.activeElement===input)input.blur();
+ document.body.classList.remove('music-open');
+}
+$('musicToggle').onclick=()=>{
+ if(document.body.classList.contains('music-open'))closeMusicPanel();
+ else{document.body.classList.add('music-open');$('chatPanel').classList.add('hidden')}
+};
+// Close on the first pointer contact; the normal click remains a fallback for
+// keyboard accessibility and desktop browsers.
+$('musicClose').addEventListener('pointerdown',event=>{
+ event.preventDefault();event.stopPropagation();closeMusicPanel();
+});
+$('musicClose').onclick=event=>{event.preventDefault();event.stopPropagation();closeMusicPanel()};
 
 function showMusicControlNotice(name,command){const messages={pause:'일시정지했습니다',resume:'다시 재생했습니다',skip:'다음 곡으로 넘겼습니다'};if(messages[command])notice((name||'참가자')+'님이 음악을 '+messages[command])}
 function notice(message){const host=$('joinNotices');const el=document.createElement('div');el.textContent=message;host.append(el);setTimeout(()=>el.remove(),4400)}
