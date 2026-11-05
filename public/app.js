@@ -827,7 +827,6 @@ try{
  stageForeground.domElement.setAttribute('aria-hidden','true');
  host.appendChild(stageForeground.domElement);
 }catch(error){console.warn('Foreground WebGL disabled:',error);stageForeground=null}
-const foregroundCamera=camera.clone();
 let perfTargetFrame=1000/effectivePerfPreset().fps;
 let perfLastCheck=0,perfFrameSamples=0,perfFrameTotal=0,perfLastFrameTime=0;
 function updatePerformanceButton(){
