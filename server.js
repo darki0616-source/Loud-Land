@@ -136,9 +136,18 @@ const clean = (s,max=30)=>String(s||'').replace(/[\x00-\x1f<>]/g,'').trim().slic
 const send=(res,obj)=>{res.write('data: '+JSON.stringify(obj)+'\n\n');};
 const broadcast=obj=>{for(const res of clients.values()) {try {send(res,obj);}catch{}}};
 const json=(res,status,obj)=>{res.writeHead(status,{'content-type':'application/json; charset=utf-8','cache-control':'no-store','access-control-allow-origin':'*'});res.end(JSON.stringify(obj));};
-const snapshot=()=>({type:'snapshot',players:[...players.values()],chat:chatHistory,...musicState(),skipVote:publicSkipVote(),skipVoteCooldownUntil,slam:publicSlam(),slamCooldownUntil,rockPlay:publicRock(),rockCooldowns:{...rockCooldowns},rockRunningUntil,count:players.size});
+// Consent-based two-player interactions. The server owns distance, invitations and timing.
+const duoInvites=new Map(),activeDuos=new Map();
+const DUO_LABELS={highfive:'하이파이브',handshake:'악수',hug:'포옹',dance:'함께 춤추기'};
+const DUO_DURATION=5600,DUO_INVITE_TTL=15000,DUO_DISTANCE=88; // server coordinate (~5.1 world units)
+function duoFor(playerId){return [...activeDuos.values()].find(d=>d.endAt>Date.now()&&(d.a===playerId||d.b===playerId))}
+function endDuo(duo){if(!duo||!activeDuos.has(duo.id))return;activeDuos.delete(duo.id);for(const id of [duo.a,duo.b]){const p=players.get(id);if(p){p.action='idle';p.pose='stand';broadcast({type:'move',player:p})}}broadcast({type:'duo-end',id:duo.id,a:duo.a,b:duo.b})}
+function clearDuosFor(id){for(const duo of [...activeDuos.values()])if(duo.a===id||duo.b===id)endDuo(duo);for(const [inviteId,invite] of duoInvites)if(invite.from===id||invite.to===id){duoInvites.delete(inviteId);broadcast({type:'duo-invite-ended',id:inviteId,to:invite.to})}}
+function duoDistance(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
+setInterval(()=>{const now=Date.now();for(const duo of [...activeDuos.values()])if(duo.endAt<=now)endDuo(duo);for(const [key,invite] of duoInvites)if(invite.expiresAt<=now){duoInvites.delete(key);broadcast({type:'duo-invite-ended',id:key,to:invite.to})}},700).unref();
+const snapshot=()=>({type:'snapshot',interactions:[...activeDuos.values()].filter(x=>x.endAt>Date.now()),players:[...players.values()],chat:chatHistory,...musicState(),skipVote:publicSkipVote(),skipVoteCooldownUntil,slam:publicSlam(),slamCooldownUntil,rockPlay:publicRock(),rockCooldowns:{...rockCooldowns},rockRunningUntil,count:players.size});
 const clamp=(n,min,max)=>Math.min(max,Math.max(min,Number(n)||0));
-function cleanup(){const now=Date.now();for(const [id,p] of players)if(now-p.seen>180000){players.delete(id);forgetSession(id);voterLeaves(id);if(activeSlam?.participants.delete(id))slamUpdate();rockMemberLeaves(id);pauseForEmpty();const r=clients.get(id);if(r){r.end();clients.delete(id)}broadcast({type:'leave',id,count:players.size})}}
+function cleanup(){const now=Date.now();for(const [id,p] of players)if(now-p.seen>180000){clearDuosFor(id);players.delete(id);forgetSession(id);voterLeaves(id);if(activeSlam?.participants.delete(id))slamUpdate();rockMemberLeaves(id);pauseForEmpty();const r=clients.get(id);if(r){r.end();clients.delete(id)}broadcast({type:'leave',id,count:players.size})}}
 setInterval(cleanup,7000).unref();
 function videoId(input){const v=String(input||'').trim();if(/^[\w-]{11}$/.test(v))return v;try{const u=new URL(v);const host=u.hostname.replace(/^www\./,'');if(host==='youtu.be')return /^[\w-]{11}$/.test(u.pathname.slice(1))?u.pathname.slice(1):null;if(['youtube.com','m.youtube.com','music.youtube.com','youtube-nocookie.com'].includes(host)){const id=u.searchParams.get('v')||u.pathname.match(/\/(?:embed|shorts|live)\/([\w-]{11})/)?.[1];return /^[\w-]{11}$/.test(id||'')?id:null}}catch{}return null}
 // Read the actual public YouTube title server-side; never trust a user-submitted title.
@@ -196,7 +205,45 @@ const server=http.createServer(async(req,res)=>{
       const id=clean(d.id,80),p=players.get(id);if(!p)return json(res,401,{error:'Session expired. Please rejoin.'});p.seen=Date.now();
       if(url.pathname==='/api/heartbeat'){return json(res,200,{ok:true})}
       if(url.pathname==='/api/profile'){p.name=clean(d.name,18)||'ROCKER';p.color=colors.includes(d.color)?d.color:p.color;p.gender=d.gender==='female'?'female':'male';Object.assign(p,apparel(d,p));broadcast({type:'profile',player:p});return json(res,200,{ok:true,player:p})}
+      if(url.pathname==='/api/duo'){
+        const command=clean(d.command,20),now=Date.now();
+        if(command==='invite'){
+          const targetId=clean(d.targetId,80),kind=clean(d.kind,20),target=players.get(targetId);
+          if(!DUO_LABELS[kind])return json(res,400,{error:'지원하지 않는 상호작용입니다.'});
+          if(!target||targetId===id)return json(res,400,{error:'상대를 다시 선택해 주세요.'});
+          if(duoFor(id)||duoFor(targetId))return json(res,409,{error:'이미 상호작용 중인 유저가 있어요.'});
+          if(duoDistance(p,target)>DUO_DISTANCE)return json(res,400,{error:'상대에게 조금 더 가까이 이동해 주세요.'});
+          if([...duoInvites.values()].some(i=>i.expiresAt>now&&(i.from===id||i.to===id||i.from===targetId||i.to===targetId)))return json(res,429,{error:'진행 중인 상호작용 요청이 있어요.'});
+          const invite={id:crypto.randomUUID(),from:id,to:targetId,kind,name:p.name,expiresAt:now+DUO_INVITE_TTL};duoInvites.set(invite.id,invite);
+          broadcast({type:'duo-invite',invite});return json(res,200,{ok:true,inviteId:invite.id});
+        }
+        if(command==='accept'||command==='decline'){
+          const inviteId=clean(d.inviteId,80),invite=duoInvites.get(inviteId);
+          if(!invite||invite.to!==id||invite.expiresAt<=now)return json(res,404,{error:'요청이 만료되었습니다.'});
+          duoInvites.delete(inviteId);broadcast({type:'duo-invite-ended',id:inviteId,to:id});
+          if(command==='decline'){broadcast({type:'duo-declined',to:invite.from,by:p.name});return json(res,200,{ok:true})}
+          const source=players.get(invite.from);
+          if(!source||duoFor(id)||duoFor(source.id)||duoDistance(p,source)>DUO_DISTANCE)return json(res,400,{error:'상대가 멀어졌거나 이미 다른 동작 중이에요.'});
+          // Face each other at a safe 2.2 world-unit gap, within the existing playfield.
+          const centerX=(source.x+p.x)*.5,centerY=(source.y+p.y)*.5;
+          const dx=p.x-source.x,dy=p.y-source.y,distance=Math.hypot(dx,dy),nx=distance>1?dx/distance:1,ny=distance>1?dy/distance:0;
+          const gap=19;source.x=clamp(centerX-nx*gap,20,1380);source.y=clamp(centerY-ny*gap,220,1100);
+          p.x=clamp(centerX+nx*gap,20,1380);p.y=clamp(centerY+ny*gap,220,1100);
+          source.facing=Math.atan2(nx,ny);p.facing=Math.atan2(-nx,-ny);
+          source.action='idle';p.action='idle';source.pose='stand';p.pose='stand';
+          const duo={id:crypto.randomUUID(),a:source.id,b:id,kind:invite.kind,startAt:now+300,endAt:now+300+DUO_DURATION};
+          activeDuos.set(duo.id,duo);
+          broadcast({type:'move',player:source});broadcast({type:'move',player:p});broadcast({type:'duo-start',duo});
+          return json(res,200,{ok:true});
+        }
+        if(command==='cancel'){
+          const duo=duoFor(id);if(duo)endDuo(duo);return json(res,200,{ok:true});
+        }
+        return json(res,400,{error:'지원하지 않는 상호작용 명령입니다.'});
+      }
       if(url.pathname==='/api/move'){
+        // Ignore stale movement packets while server-authoritative paired poses play.
+        if(duoFor(id))return json(res,200,{ok:true,paired:true});
         const previousAction=p.action;
         p.x=clamp(d.x,20,1380);p.y=clamp(d.y,220,1100);p.facing=clamp(d.facing,-Math.PI,Math.PI);
         p.pose=['stand','sit','lie'].includes(d.pose)?d.pose:'stand';
@@ -338,7 +385,7 @@ const server=http.createServer(async(req,res)=>{
         // A late pagehide beacon from a previous page must not kick the newer page.
         const owner=pageOwners.get(id);
         if(owner&&d.pageId!==owner)return json(res,200,{ok:true,ignored:'stale-page'});
-        players.delete(id);forgetSession(id);voterLeaves(id);
+        clearDuosFor(id);players.delete(id);forgetSession(id);voterLeaves(id);
         if(activeSlam?.participants.delete(id))slamUpdate();rockMemberLeaves(id);pauseForEmpty();
         clients.get(id)?.end();clients.delete(id);broadcast({type:'leave',id,count:players.size});return json(res,200,{ok:true})
       }
