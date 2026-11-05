@@ -668,14 +668,53 @@ function syncCrowdSurf(event){
  if(!event||event.kind!=='surf'||slamNow()>event.startAt+event.duration){crowdSurfScene=null;return}
  crowdSurfScene=event;
 }
+// Crowd surfing is a standalone choreography, NEVER a train/circle path.
+// All clients derive the same position from a server-stamped start and participant origins.
+const SURF_APPROACH_MS=3500, SURF_MOUNT_MS=500, SURF_RIDE_MS=10000;
+function surfPoseAt(event,playerId,now=slamNow()){
+ if(!event||event.kind!=='surf'||!event.participants?.includes(playerId))return null;
+ const elapsed=Math.max(0,Math.min(event.duration,now-event.startAt));
+ const supporters=event.participants.filter(pid=>pid!==event.riderId);
+ const isRider=playerId===event.riderId;
+ const index=supporters.indexOf(playerId);
+ const columns=Math.min(4,supporters.length);
+ const row=Math.floor(Math.max(0,index)/Math.max(1,columns));
+ const col=Math.max(0,index)%Math.max(1,columns);
+ const rows=Math.ceil(supporters.length/Math.max(1,columns));
+ const rowCount=Math.min(columns,supporters.length-row*columns);
+ // Each supporter is fixed to a single spot for the entire ride.
+ const goal=isRider?{x:event.x,y:event.y+22}:{
+  x:event.x+(col-(rowCount-1)/2)*17,
+  y:event.y+(row-(rows-1)/2)*16
+ };
+ const origin=event.origins?.[playerId]||{x:goal.x,y:goal.y};
+ const travel=Math.min(1,elapsed/SURF_APPROACH_MS);
+ // Slow ease-out still approaches on foot, with no altitude in this phase.
+ const approach=travel*travel*(3-2*travel);
+ let x=origin.x+(goal.x-origin.x)*approach;
+ let y=origin.y+(goal.y-origin.y)*approach;
+ const mounted=isRider&&elapsed>=SURF_APPROACH_MS;
+ let mount=0,roll=0,rideProgress=0;
+ if(mounted){
+  mount=Math.min(1,(elapsed-SURF_APPROACH_MS)/SURF_MOUNT_MS);
+  mount=mount*mount*(3-2*mount);
+  rideProgress=Math.max(0,Math.min(1,(elapsed-SURF_APPROACH_MS-SURF_MOUNT_MS)/SURF_RIDE_MS));
+  // Rider only: 2 complete back-and-forth trips over 10 seconds.
+  const wave=Math.sin(rideProgress*Math.PI*4);
+  x=event.x+wave*18; y=event.y;
+  roll=rideProgress*Math.PI*8;
+ }
+ return {x,y,isRider,mounted,mount,rideProgress,roll,
+  running:elapsed<SURF_APPROACH_MS,
+  action:elapsed<SURF_APPROACH_MS?'run':isRider?'surf-rider':'surf-support',
+  facing:isRider?0:Math.atan2(event.x-x,event.y-y)};
+}
 function onRockPlayGo(event){
  if(event.kind==='surf')syncCrowdSurf(event);
  const participants=Array.isArray(event.participants)?event.participants:[];
  const index=participants.indexOf(state.id);
  if(index!==-1&&state.me){
-   rockMotion={id:event.id,kind:event.kind,x:event.x,y:event.y,startAt:event.startAt,duration:event.duration,index,count:participants.length,riderId:event.riderId||participants[0],
-    riderIndex:participants.indexOf(event.riderId||participants[0]),
-    isSurfRider:event.kind==='surf'&&state.id===(event.riderId||participants[0])};
+   rockMotion={id:event.id,kind:event.kind,x:event.x,y:event.y,startAt:event.startAt,duration:event.duration,index,count:participants.length,riderId:event.riderId||participants[0]};
    slamMotion=null;state.walkTarget=null;state.benchTarget=null;
    state.pose='stand';state.me.pose='stand';state.action=event.kind==='surf'?(state.id===event.riderId?'surf-rider':'surf-support'):event.kind==='mosh'?'mosh-charge':event.kind==='circle'?'circle-run':event.kind==='row'?'row-paddle':event.kind==='toast'?'toast-clink':'train-run';state.me.action=state.action;
    // Every moving group action now gathers smoothly, instead of teleporting
@@ -735,28 +774,6 @@ function moshPathAt(m,elapsed){
  return {...p,dx:wb.x-wa.x,dy:wb.z-wa.z};
 }
 function rockPathAt(m,elapsed){
- if(m.kind==='surf'){
-  // The creator is the surfer regardless of the order users joined.
-  // All other participants remain in a COMPACT, STATIONARY support line,
-  // not on the legacy figure-eight train route.
-  const supporterIndex=m.index-(m.index>m.riderIndex?1:0);
-  const supportCount=Math.max(1,m.count-1);
-  if(m.isSurfRider){
-   // Only the raised surfer moves. Four changes of direction in 10 seconds.
-   const phase=Math.max(0,(elapsed-1400))/Math.max(1,m.duration-1400);
-   const wave=Math.sin(phase*Math.PI*4);
-   return groupWorldPathPoint(m,{x:m.x+wave*16,y:m.y,dx:Math.cos(phase*Math.PI*4),dy:0});
-  }
-  const columns=Math.min(4,supportCount);
-  const row=Math.floor(supporterIndex/columns);
-  const col=supporterIndex%columns;
-  const rowCount=Math.min(columns,supportCount-row*columns);
-  return groupWorldPathPoint(m,{
-   x:m.x+(col-(rowCount-1)/2)*12,
-   y:m.y+(row-(Math.ceil(supportCount/columns)-1)/2)*13,
-   dx:0,dy:-1
-  });
- }
  const elapsedFraction=Math.min(1,Math.max(0,elapsed/m.duration));
  if(m.kind==='row'){return groupWorldPathPoint(m,{x:m.x+(m.index%2===0?-21:21),y:m.y+Math.floor(m.index/2)*28-22,dx:0,dy:1})}
  if(m.kind==='toast'){const angle=2*Math.PI*m.index/Math.max(1,m.count);return groupWorldPathPoint(m,{x:m.x+Math.sin(angle)*22,y:m.y+Math.cos(angle)*22,dx:-Math.sin(angle),dy:-Math.cos(angle)})}
@@ -2261,9 +2278,13 @@ function placeHandIK(P,side,handTarget,smooth=.48){
 // Smooth motion blending for the upgraded chibi rig. All poses share the same joints.
 function animateAvatar(a,p,t){
  const q=(p.id===state.id&&state.me)?state.me:p,wp=toWorld(q),P=a.parts;
- const duoContext=duoPose(q.id),act=duoContext?.action||(q.action||'idle'),basePose=duoContext?'stand':(q.pose||((act==='sit'||act==='lie')?act:'stand'));
+ const duoContext=duoPose(q.id),surfPose=crowdSurfScene&&slamNow()<crowdSurfScene.startAt+crowdSurfScene.duration?surfPoseAt(crowdSurfScene,q.id):null;
+ const act=surfPose?.action||duoContext?.action||(q.action||'idle'),basePose=surfPose||duoContext?'stand':(q.pose||((act==='sit'||act==='lie')?act:'stand'));
+ const surfEvent=crowdSurfScene&&slamNow()<crowdSurfScene.startAt+crowdSurfScene.duration?crowdSurfScene:null;
+ const surfView=surfPose;
  const sec=duoContext?(Date.now()+state.serverDelta-duoContext.duo.startAt)/1000:t*.001,pose={};
  let targetX=wp.x,targetZ=wp.z,duoYaw=null;
+ if(surfView){const visual=toWorld(surfView);targetX=visual.x;targetZ=visual.z;}
  if(duoContext?.duo.anchor){
   const duo=duoContext.duo,first=q.id===duo.a;
   const own=toWorld(first?duo.anchor.a:duo.anchor.b);
@@ -2302,7 +2323,7 @@ function animateAvatar(a,p,t){
  }
  // Paired choreography is deterministic and authoritative per server time.
  // Movement returns to ordinary world positions after the duo ends.
- const follow=duoContext?.duo.anchor?.kind==='dance'?.85:duoContext?.duo.anchor?.kind==='hug'?.36:.28;
+ const follow=surfView?1:duoContext?.duo.anchor?.kind==='dance'?.85:duoContext?.duo.anchor?.kind==='hug'?.36:.28;
  a.root.position.x+=(targetX-a.root.position.x)*follow;
  a.root.position.z+=(targetZ-a.root.position.z)*follow;
  if(P.sash)P.sash.rotation.y=Math.PI/2+Math.sin(t*.0028)*.055;
@@ -2687,13 +2708,13 @@ function animateAvatar(a,p,t){
  if(basePose==='sit'&&benchSeats.some(seat=>Math.hypot(q.x-seat.x,q.y-seat.y)<24))height+=.46;
  // Only the initiating surfer rides above the other participants. The avatar
  // remains visible to spectators even though Y is not transmitted by /api/move.
- const surfing=crowdSurfScene&&crowdSurfScene.riderId===q.id&&slamNow()<crowdSurfScene.startAt+crowdSurfScene.duration;
- if(surfing)height=2.6+Math.sin(sec*6)*.10;
- a.root.position.y+=(height-a.root.position.y)*(surfing?.35:.28);
+ const surfing=Boolean(surfView?.mounted);
+ if(surfing)height=2.35*surfView.mount+Math.sin(sec*6)*.055;
+ a.root.position.y+=(height-a.root.position.y)*(surfView?1:.28);
  a.root.rotation.x+=(lean-a.root.rotation.x)*.22;
  // While breakdancing, rotate the whole prone body around its center, not just its chest.
  // B-boy freeze tilts into a stable one-handed inversion rather than continuous windmill spinning.
- const zTarget=surfing?-Math.PI/2:act==='headspin'?Math.PI:(act==='windmill'?2.80+.055*Math.sin(sec*2.5):0);
+ const zTarget=surfing?(-Math.PI/2)*surfView.mount:act==='headspin'?Math.PI:(act==='windmill'?2.80+.055*Math.sin(sec*2.5):0);
  a.root.rotation.z+=(zTarget-a.root.rotation.z)*.17;
  if(act==='toast-clink'){
   // Track the hand even when both shoulder and elbow move during the clink.
@@ -2740,6 +2761,15 @@ function animateAvatar(a,p,t){
   a.root.rotation.y=((a.root.rotation.y%(Math.PI*2))+Math.PI*2)%(Math.PI*2);
   const delta=Math.atan2(Math.sin(yaw-a.root.rotation.y),Math.cos(yaw-a.root.rotation.y));
   a.root.rotation.y+=delta*.2;
+ }
+ if(surfView?.mounted){
+  // A sideways, rolling body along the crowd; not floating upright.
+  const yaw=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),Math.PI/2);
+  const sideways=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1),-Math.PI/2*surfView.mount);
+  const tumble=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),surfView.roll);
+  a.root.quaternion.copy(yaw).multiply(sideways).multiply(tumble);
+ }else if(surfView){
+  a.root.rotation.x=0;a.root.rotation.z=0;
  }
  a.lastAction=act;
 }
@@ -2986,6 +3016,17 @@ function tick(t){
    }else if(m.phase==='celebrate'){
     state.action='slam-celebrate';state.me.action='slam-celebrate';
     state.actionUntil=Infinity;
+   }else if(m.kind==='surf'){
+    // Fully separate from generic rock paths, including their 8-shaped train loop.
+    const surf=surfPoseAt(crowdSurfScene||m,state.id);
+    if(surf){
+     state.me.x=Math.max(20,Math.min(1380,surf.x));
+     state.me.y=Math.max(220,Math.min(1100,surf.y));
+     state.me.facing=surf.facing;
+     state.me.action=surf.action;state.action=surf.action;
+     state.moving=surf.running;
+     if(t-state.lastSent>110){state.lastSent=t;sendMove()}
+    }
    }else{
     const p=m.kind==='mosh'?moshPathAt(m,elapsed):rockPathAt(m,elapsed);
     // Gather into rows/circle with a short smooth approach, then perform in place.
