@@ -1837,11 +1837,12 @@ function makeAvatar(p){
     shader.uniforms.mdPrintTexture={value:mdPrintTexture};
     shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',
       '#include <color_fragment>\n'+
-      // Torso capsule center region is +Z; top chest is around local y 0.0..0.67.
-      'vec2 printUV = vec2(vShirtPosition.x / 0.79 + 0.5, (vShirtPosition.y - 0.02) / 0.64);\n'+
+      // Place artwork at the torso center rather than high near the neckline.
+      // The capsule shader uses the torso's LOCAL vertex coordinates.
+      'vec2 printUV = vec2(vShirtPosition.x / 0.79 + 0.5, (vShirtPosition.y + 0.30) / 0.82);\n'+
       'float printBounds = step(0.0, printUV.x) * step(printUV.x, 1.0) * step(0.0, printUV.y) * step(printUV.y, 1.0);\n'+
       'float chestFront = smoothstep(0.12, 0.31, vShirtPosition.z);\n'+
-      'float shirtArea = smoothstep(-0.10, 0.04, vShirtPosition.y);\n'+
+      'float shirtArea = smoothstep(-0.24, -0.12, vShirtPosition.y);\n'+
       'vec4 ink = texture2D(mdPrintTexture, clamp(printUV,0.0,1.0));\n'+
       'diffuseColor.rgb = mix(diffuseColor.rgb, ink.rgb, ink.a * printBounds * chestFront * shirtArea);');
    }else{
@@ -1946,10 +1947,15 @@ function makeAvatar(p){
  }
  // MD shirt ink is painted on the capsule itself above (no front-plane patch).
  if(['horns','spike-band'].includes(look.head)){
-  const band=child(neck,new THREE.TorusGeometry(.69,.064,6,20,Math.PI),mat('#20212b'),[0,.51,0]);band.rotation.x=Math.PI/2;
+  // Upright headband: TorusGeometry's half-ring lies in XY, following the
+  // hair/head arch. Do NOT rotate it onto the horizontal XZ plane.
+  const band=child(neck,new THREE.TorusGeometry(.73,.069,8,32,Math.PI),mat('#20212b'),[0,.30,.27]);
   for(const side of [-1,1]){
-   const spike=child(neck,new THREE.ConeGeometry(look.head==='horns'?.19:.11,look.head==='horns'?.63:.37,9),mat(look.head==='horns'?'#d43747':'#a9aebd',.48),[side*.48,look.head==='horns'?1.03:.85,.02]);
-   spike.rotation.z=look.head==='horns'?side*.24:0;
+   const isHorn=look.head==='horns';
+   const spike=child(neck,new THREE.ConeGeometry(isHorn?.19:.11,isHorn?.63:.37,9),
+     mat(isHorn?'#d43747':'#a9aebd',.48),
+     [side*.50,isHorn?1.12:.99,.24]);
+   spike.rotation.z=isHorn?side*.19:0;
   }
  }
  if(['chain','choker'].includes(look.neck)){
