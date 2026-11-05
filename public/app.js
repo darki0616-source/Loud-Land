@@ -300,7 +300,7 @@ function showBookingNotice(name,title){
  setTimeout(()=>el.remove(),5200);
 }
 
-function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='snapshot'){state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);if(Array.isArray(d.chat)){$('chatMessages').replaceChildren();d.chat.forEach(appendChat)};for(const id of duoVfx.keys())removeDuoVfx(id);activeDuos.clear();for(const duo of d.interactions||[])activeDuos.set(duo.id,duo);syncDuoStatus()}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){appendChat(d.entry);showBubble(d.entry)}else if(d.type==='move'){state.players.set(d.player.id,d.player);if(d.player.id===state.id&&currentDuo())state.me={...d.player}}else if(d.type==='flag'){const player=state.players.get(d.id);if(player){player.flagText=d.flagText;player.flagImage=d.flagImage||'';}if(d.id===state.id&&state.me){state.me.flagText=d.flagText;state.me.flagImage=d.flagImage||'';currentFlagText=d.flagText;currentFlagImageId=d.flagImage||'';refreshFlagButton();}}else if(d.type==='badge'){const person=state.players.get(d.id);if(person){person.badgeTier=d.badgeTier;person.badgeSeconds=d.badgeSeconds;if(d.id===state.id&&state.me){state.me.badgeTier=d.badgeTier;state.me.badgeSeconds=d.badgeSeconds;}renderOnlinePlayers();}}else if(d.type==='profile'){state.players.set(d.player.id,d.player);if(d.player.id===state.id){state.me=d.player;refreshProfilePreview();if(!$('punkShop').classList.contains('hidden')||!$('mdWardrobe').hidden)refreshPunkShop()}renderOnlinePlayers()}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers()}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue,d.history);else if(d.type==='slam')applySlam(d.slam,d.cooldownUntil);else if(d.type==='slam-go')onSlamGo(d);else if(d.type==='slam-impact')spawnSlamDust(d.x,d.y);else if(d.type==='toast-spark')spawnToastSpark(d.x,d.y);else if(d.type==='cheer'&&d.playerId!==state.id&&state.audioEnabled)playCheer();else if(d.type==='rockplay')applyRockPlay(d.event,d.rockCooldowns,d.rockRunningUntil);else if(d.type==='rockplay-go')onRockPlayGo(d);else if(d.type==='music-booked')showBookingNotice(d.name,d.title);else if(d.type==='music-control')showMusicControlNotice(d.name,d.command);else if(d.type==='skip-vote')applySkipVote(d.vote,d.cooldownUntil);else if(d.type==='skip-vote-result')showSkipVoteResult(d);else if(d.type.startsWith('duo-'))handleDuoEvent(d)};state.es.onerror=()=>{ /* EventSource retries automatically; heartbeat repairs an expired session. */ }}
+function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='snapshot'){state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);if(Array.isArray(d.chat)){$('chatMessages').replaceChildren();d.chat.forEach(appendChat)};for(const id of duoVfx.keys())removeDuoVfx(id);activeDuos.clear();for(const duo of d.interactions||[])activeDuos.set(duo.id,duo);syncDuoStatus()}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){appendChat(d.entry);showBubble(d.entry)}else if(d.type==='move'){state.players.set(d.player.id,d.player);if(d.player.id===state.id&&currentDuo())state.me={...d.player}}else if(d.type==='flag'){const player=state.players.get(d.id);if(player){player.flagText=d.flagText;player.flagImage=d.flagImage||'';}if(d.id===state.id&&state.me){state.me.flagText=d.flagText;state.me.flagImage=d.flagImage||'';currentFlagText=d.flagText;currentFlagImageId=d.flagImage||'';refreshFlagButton();}}else if(d.type==='badge'){const person=state.players.get(d.id);if(person){person.badgeTier=d.badgeTier;person.badgeSeconds=d.badgeSeconds;if(d.id===state.id&&state.me){state.me.badgeTier=d.badgeTier;state.me.badgeSeconds=d.badgeSeconds;}renderOnlinePlayers();}}else if(d.type==='profile'){state.players.set(d.player.id,d.player);if(d.player.id===state.id){state.me=d.player;refreshProfilePreview();if(!$('punkShop').classList.contains('hidden')||!$('mdWardrobe').hidden)refreshPunkShop()}renderOnlinePlayers()}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers()}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue,d.history);else if(d.type==='slam')applySlam(d.slam,d.cooldownUntil);else if(d.type==='slam-go')onSlamGo(d);else if(d.type==='slam-impact')spawnSlamDust(d.x,d.y);else if(d.type==='toast-spark')spawnToastSpark(d.x,d.y);else if(d.type==='cheer'&&d.playerId!==state.id&&state.audioEnabled)playCheer();else if(d.type==='rockplay')applyRockPlay(d.event,d.rockCooldowns,d.rockRunningUntil);else if(d.type==='rockplay-go')onRockPlayGo(d);else if(d.type==='md-catalog')syncMdCatalog(d.items);else if(d.type==='music-booked')showBookingNotice(d.name,d.title);else if(d.type==='music-control')showMusicControlNotice(d.name,d.command);else if(d.type==='skip-vote')applySkipVote(d.vote,d.cooldownUntil);else if(d.type==='skip-vote-result')showSkipVoteResult(d);else if(d.type.startsWith('duo-'))handleDuoEvent(d)};state.es.onerror=()=>{ /* EventSource retries automatically; heartbeat repairs an expired session. */ }}
 function applySkipVote(vote,cooldownUntil){
  state.skipVote=vote||null;if(Number.isFinite(Number(cooldownUntil)))state.skipVoteCooldownUntil=Number(cooldownUntil);
  const overlay=$('skipVoteOverlay');overlay.hidden=!vote;updateSkipVoteUI();updateSharedMusicButtons();
@@ -904,7 +904,7 @@ function renderStageForeground(){
 }
 
 // Simple same-browser punk wardrobe: server owns points, inventory and equipment.
-const PUNK_SHOP_ITEMS=[
+let PUNK_SHOP_ITEMS=[
  ['tee-skull','💀','스컬 프린트 티셔츠',30,'shirt'],
  ['tee-lightning','⚡','번개 펑크 티셔츠',45,'shirt'],
  ['tee-anarchy','Ⓐ','언더그라운드 티셔츠',65,'shirt'],
@@ -913,29 +913,41 @@ const PUNK_SHOP_ITEMS=[
  ['chain','⛓️','실버 체인 목걸이',55,'neck'],
  ['choker','🖤','스파이크 초커',95,'neck']
 ];
+let mdCatalog={}, mdCatalogSignature='';
+function syncMdCatalog(items){
+ if(!items)return;
+ const signature=JSON.stringify(items);
+ if(mdCatalogSignature===signature)return;
+ mdCatalogSignature=signature;mdCatalog=items;
+ // Rebuild existing avatar shirt meshes only when the catalog really changes.
+ for(const avatar of avatars.values())disposeAvatar(avatar.root);
+ avatars.clear();
+ PUNK_SHOP_ITEMS=Object.entries(items).map(([id,item])=>[id,item.slot==='shirt'?'👕':item.slot==='head'?'😈':'⛓️',item.name,item.cost,item.slot]);
+ drawPunkShop();drawMdWardrobe();
+}
 let punkWallet=null,punkShopBusy=false,povEnabled=false,povYaw=0,povPitch=0;
 async function refreshPunkShop(){
  if(!state.id)return;
- try{const r=await post('shop',{id:state.id,command:'status'});punkWallet=r.shop;drawPunkShop();drawMdWardrobe()}
+ try{const r=await post('shop',{id:state.id,command:'status'});punkWallet=r.shop;syncMdCatalog(r.shop.items);drawPunkShop();drawMdWardrobe()}
  catch(e){toast('상점 정보를 불러오지 못했습니다: '+e.message)}
 }
 function drawPunkShop(){
  const root=$('punkShopGrid');if(!root)return;root.replaceChildren();
  const wallet=punkWallet||{points:0,earned:0,owned:[],equipped:{}};
- $('punkPoints').textContent=wallet.points.toLocaleString()+' P';$('punkEarned').textContent='누적 '+wallet.earned.toLocaleString()+' P';
+ $('punkPoints').textContent=wallet.points.toLocaleString()+' P';$('punkEarned').textContent='누적 '+wallet.earned.toLocaleString()+' P · 구매 포인트 환불 적용';
  for(const [id,emoji,title,cost] of PUNK_SHOP_ITEMS){
   const owned=wallet.owned.includes(id);
   const card=document.createElement('article');card.className='punk-item';
-  const visual=document.createElement('div');visual.className='punk-item-visual';visual.textContent=emoji;
+  const visual=document.createElement('div');visual.className='punk-item-visual';if(mdCatalog[id]?.imageUrl){const im=document.createElement('img');im.src=mdCatalog[id].imageUrl;im.alt=title;im.loading='lazy';visual.append(im)}else visual.textContent=emoji;
   const name=document.createElement('strong');name.textContent=title;
-  const price=document.createElement('small');price.textContent=owned?'보유 중':cost+' P';
-  const button=document.createElement('button');button.type='button';button.disabled=punkShopBusy||owned||wallet.points<cost;
-  button.textContent=owned?'구매 완료':'교환하기';
+  const price=document.createElement('small');price.textContent='테스트 무료 · '+(owned?'착용 가능':cost+' P 상품');
+  const button=document.createElement('button');button.type='button';button.disabled=punkShopBusy;
+  button.textContent='무료 체험 · 착용은 꾸미기에서';
   button.onclick=async()=>{
-   if(punkShopBusy||owned||!state.id)return;
+   if(punkShopBusy||!state.id)return;
    punkShopBusy=true;drawPunkShop();
    try{const d=await post('shop',{id:state.id,command:'buy',item:id});punkWallet=d.shop;
-    toast(title+' 교환 완료! 내 설정 → MD 사용하기에서 장착하세요.');
+    toast(title+' 테스트 이용 가능! 내 설정 → MD 사용하기에서 장착하세요.');
    }catch(e){toast(e.message)}finally{punkShopBusy=false;drawPunkShop()}
   };
   card.append(visual,name,price,button);root.append(card);
@@ -944,8 +956,8 @@ function drawPunkShop(){
 function drawMdWardrobe(){
  const container=$('mdWardrobeGrid');if(!container)return;container.replaceChildren();
  const wallet=punkWallet||{owned:[],equipped:{}};
- const ownedItems=PUNK_SHOP_ITEMS.filter(([id])=>wallet.owned.includes(id));
- if(!ownedItems.length){const empty=document.createElement('p');empty.textContent='보유한 MD 아이템이 없어요. 무대 왼쪽 MD샵에서 교환할 수 있어요.';container.append(empty);return}
+ const ownedItems=PUNK_SHOP_ITEMS; // v114: all items usable during testing
+ if(!ownedItems.length){const empty=document.createElement('p');empty.textContent='등록된 MD 아이템이 없습니다.';container.append(empty);return}
  for(const [id,emoji,name,cost,slot] of ownedItems){
   const wearing=wallet.equipped?.[slot]===id;
   const card=document.createElement('div');card.className='md-wardrobe-entry';
@@ -960,6 +972,10 @@ function drawMdWardrobe(){
   card.append(title,line,btn);container.append(card);
  }
 }
+async function bootstrapMdCatalog(){
+ try{const r=await fetch('/api/md-catalog');if(r.ok){const d=await r.json();syncMdCatalog(d.items)}}catch{}
+}
+bootstrapMdCatalog();
 function openPunkShop(){if(!state.id)return toast('입장 후 MD샵을 이용할 수 있어요');$('punkShop').classList.remove('hidden');refreshPunkShop()}
 $('punkShopClose').onclick=()=>$('punkShop').classList.add('hidden');
 $('punkShop').addEventListener('click',e=>{if(e.target===$('punkShop'))$('punkShop').classList.add('hidden')});
@@ -1775,8 +1791,8 @@ function makeAvatar(p){
  const skinMat=mat('#f3d6c2',.96),hair=mat(hairHex,.97);
  const look=p.equipped||{};
  const mdShirtColors={'tee-skull':'#17191f','tee-lightning':'#292139','tee-anarchy':'#191d25'};
- const activeMdShirt=Object.prototype.hasOwnProperty.call(mdShirtColors,look.shirt)?look.shirt:null;
- const activeShirtColor=activeMdShirt?mdShirtColors[activeMdShirt]:p.color;
+ const activeMdShirt=Object.prototype.hasOwnProperty.call(mdShirtColors,look.shirt)||mdCatalog[look.shirt]?.custom?look.shirt:null;
+ const activeShirtColor=activeMdShirt?(mdCatalog[activeMdShirt]?.shirtColor||mdShirtColors[activeMdShirt]||'#17191f'):p.color;
  const shirtMat=mat(activeShirtColor,.88),bottomColor=female?'#ad816c':'#6c7891';
  const pantsMat=mat(bottomColor,.9),shoeMat=mat('#f6f3e9',.9);
  function child(g,geo,m,pos,sc){let o=new THREE.Mesh(geo,m);o.position.set(...pos);if(sc)o.scale.set(...sc);o.castShadow=true;g.add(o);return o}
@@ -1798,7 +1814,12 @@ function makeAvatar(p){
   ctx.clearRect(0,0,512,512);
   ctx.fillStyle=activeMdShirt==='tee-lightning'?'#ffeb5c':'#f9f6ed';
   ctx.strokeStyle='#17191f';ctx.lineWidth=12;ctx.lineJoin='round';
-  if(activeMdShirt==='tee-skull'){
+  if(mdCatalog[activeMdShirt]?.custom){
+   // Custom art loads asynchronously onto the existing torso shader texture.
+   const path=mdCatalog[activeMdShirt].imageUrl;
+   const image=new Image();image.onload=()=>{ctx.clearRect(0,0,512,512);ctx.drawImage(image,0,0,512,512);if(mdPrintTexture)mdPrintTexture.needsUpdate=true};
+   image.src=path;
+  }else if(activeMdShirt==='tee-skull'){
    ctx.beginPath();ctx.moveTo(130,210);ctx.bezierCurveTo(108,126,179,78,255,78);
    ctx.bezierCurveTo(330,78,405,128,379,210);ctx.bezierCurveTo(366,253,332,266,327,299);
    ctx.lineTo(322,350);ctx.lineTo(190,350);ctx.lineTo(185,300);
