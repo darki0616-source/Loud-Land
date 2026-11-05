@@ -236,7 +236,7 @@ function showBookingNotice(name,title){
  setTimeout(()=>el.remove(),5200);
 }
 
-function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='snapshot'){state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);if(Array.isArray(d.chat)){$('chatMessages').replaceChildren();d.chat.forEach(appendChat)};activeDuos.clear();for(const duo of d.interactions||[])activeDuos.set(duo.id,duo);syncDuoStatus()}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){appendChat(d.entry);showBubble(d.entry)}else if(d.type==='move'){state.players.set(d.player.id,d.player);if(d.player.id===state.id&&currentDuo())state.me={...d.player}}else if(d.type==='profile'){state.players.set(d.player.id,d.player);if(d.player.id===state.id){state.me=d.player;refreshProfilePreview()}renderOnlinePlayers()}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers()}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue,d.history);else if(d.type==='slam')applySlam(d.slam,d.cooldownUntil);else if(d.type==='slam-go')onSlamGo(d);else if(d.type==='slam-impact')spawnSlamDust(d.x,d.y);else if(d.type==='toast-spark')spawnToastSpark(d.x,d.y);else if(d.type==='cheer'&&d.playerId!==state.id&&state.audioEnabled)playCheer();else if(d.type==='rockplay')applyRockPlay(d.event,d.rockCooldowns,d.rockRunningUntil);else if(d.type==='rockplay-go')onRockPlayGo(d);else if(d.type==='music-booked')showBookingNotice(d.name,d.title);else if(d.type==='music-control')showMusicControlNotice(d.name,d.command);else if(d.type==='skip-vote')applySkipVote(d.vote,d.cooldownUntil);else if(d.type==='skip-vote-result')showSkipVoteResult(d);else if(d.type.startsWith('duo-'))handleDuoEvent(d)};state.es.onerror=()=>{ /* EventSource retries automatically; heartbeat repairs an expired session. */ }}
+function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='snapshot'){state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);if(Array.isArray(d.chat)){$('chatMessages').replaceChildren();d.chat.forEach(appendChat)};for(const id of duoVfx.keys())removeDuoVfx(id);activeDuos.clear();for(const duo of d.interactions||[])activeDuos.set(duo.id,duo);syncDuoStatus()}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){appendChat(d.entry);showBubble(d.entry)}else if(d.type==='move'){state.players.set(d.player.id,d.player);if(d.player.id===state.id&&currentDuo())state.me={...d.player}}else if(d.type==='profile'){state.players.set(d.player.id,d.player);if(d.player.id===state.id){state.me=d.player;refreshProfilePreview()}renderOnlinePlayers()}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers()}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue,d.history);else if(d.type==='slam')applySlam(d.slam,d.cooldownUntil);else if(d.type==='slam-go')onSlamGo(d);else if(d.type==='slam-impact')spawnSlamDust(d.x,d.y);else if(d.type==='toast-spark')spawnToastSpark(d.x,d.y);else if(d.type==='cheer'&&d.playerId!==state.id&&state.audioEnabled)playCheer();else if(d.type==='rockplay')applyRockPlay(d.event,d.rockCooldowns,d.rockRunningUntil);else if(d.type==='rockplay-go')onRockPlayGo(d);else if(d.type==='music-booked')showBookingNotice(d.name,d.title);else if(d.type==='music-control')showMusicControlNotice(d.name,d.command);else if(d.type==='skip-vote')applySkipVote(d.vote,d.cooldownUntil);else if(d.type==='skip-vote-result')showSkipVoteResult(d);else if(d.type.startsWith('duo-'))handleDuoEvent(d)};state.es.onerror=()=>{ /* EventSource retries automatically; heartbeat repairs an expired session. */ }}
 function applySkipVote(vote,cooldownUntil){
  state.skipVote=vote||null;if(Number.isFinite(Number(cooldownUntil)))state.skipVoteCooldownUntil=Number(cooldownUntil);
  const overlay=$('skipVoteOverlay');overlay.hidden=!vote;updateSkipVoteUI();updateSharedMusicButtons();
@@ -285,6 +285,54 @@ $('profileToggle').onclick=()=>{if(!state.me)return toast('입장 후 변경할 
 // Real-time paired interactions: invitations are opt-in, synced by server timestamp.
 const activeDuos=new Map();let selectedDuoTarget=null,pendingDuoInvite=null;
 const duoNames={highfive:'하이파이브',handshake:'악수',hug:'포옹',dance:'함께 춤추기'};
+// Shared timeline helpers. Server timestamps keep two browsers aligned.
+const duoClamp=v=>Math.max(0,Math.min(1,v));
+const duoEase=v=>{v=duoClamp(v);return v*v*(3-2*v)};
+const duoVfx=new Map();
+const duoSparkMaterial=()=>new THREE.MeshBasicMaterial({color:'#ffe04c',transparent:true,opacity:1,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending});
+function removeDuoVfx(id){
+ const fx=duoVfx.get(id);if(!fx)return;
+ fx.group.traverse(o=>{if(o.isMesh){o.geometry.dispose();o.material.dispose()}});
+ scene.remove(fx.group);duoVfx.delete(id);
+}
+function updateDuoVfx(){
+ const now=Date.now()+state.serverDelta;
+ for(const [id,fx] of duoVfx)if(!activeDuos.has(id))removeDuoVfx(id);
+ for(const d of activeDuos.values()){
+  if(d.kind!=='highfive'||!d.anchor)continue;
+  const sec=(now-d.startAt)/1000;
+  // Yellow spark burst centered between the contacting palms.
+  if(sec<.86||sec>1.56)continue;
+  let fx=duoVfx.get(d.id);
+  if(!fx){
+   const group=new THREE.Group();scene.add(group);
+   const spokes=[];
+   const diskMat=duoSparkMaterial();
+   const disc=new THREE.Mesh(new THREE.RingGeometry(.12,.20,20),diskMat);
+   group.add(disc);
+   for(let i=0;i<10;i++){
+    const geometry=new THREE.BoxGeometry(.105,.34,.065);
+    const mesh=new THREE.Mesh(geometry,duoSparkMaterial());group.add(mesh);spokes.push(mesh);
+   }
+   fx={group,disc,spokes};duoVfx.set(d.id,fx);
+  }
+  const a=toWorld(d.anchor.a),b=toWorld(d.anchor.b);
+  fx.group.position.set((a.x+b.x)/2,2.0,(a.z+b.z)/2);
+  // Billboard the burst, not the people; visible from both sides of the stage.
+  fx.group.quaternion.copy(camera.quaternion);
+  const progress=duoClamp((sec-.90)/.62),size=.55+progress*1.6;
+  fx.disc.scale.setScalar(size);
+  fx.disc.material.opacity=(1-progress)*.95;
+  fx.spokes.forEach((mesh,i)=>{
+   const ang=i*Math.PI*2/fx.spokes.length;
+   mesh.position.set(Math.cos(ang)*(.2+progress*.95),Math.sin(ang)*(.2+progress*.95),0);
+   mesh.rotation.z=ang-Math.PI/2;
+   mesh.scale.setScalar(.7+progress*.5);
+   mesh.material.opacity=(1-progress)*.96;
+  });
+ }
+}
+
 function currentDuo(playerId=state.id){return [...activeDuos.values()].find(d=>d.endAt>Date.now()+state.serverDelta&&(d.a===playerId||d.b===playerId))}
 function duoPose(playerId){const d=currentDuo(playerId);return d?{action:'duo-'+d.kind,duo:d}:null}
 function closeDuoMenu(){selectedDuoTarget=null;$('duoMenu').classList.add('hidden')}
@@ -319,7 +367,7 @@ function startDuo(duo){
  syncDuoStatus();
 }
 function finishDuo(duoId){
- const duo=activeDuos.get(duoId);activeDuos.delete(duoId);
+ const duo=activeDuos.get(duoId);activeDuos.delete(duoId);removeDuoVfx(duoId);
  if(duo&&(duo.a===state.id||duo.b===state.id)){
   const p=state.players.get(state.id);if(p){state.me={...p};state.action='idle';state.actionUntil=0;state.pose='stand';updateActionButtons()}
  }
@@ -1700,12 +1748,46 @@ function placeHandIK(P,side,handTarget,smooth=.48){
 // Smooth motion blending for the upgraded chibi rig. All poses share the same joints.
 function animateAvatar(a,p,t){
  const q=(p.id===state.id&&state.me)?state.me:p,wp=toWorld(q),P=a.parts;
- a.root.position.x+=(wp.x-a.root.position.x)*.28;
- a.root.position.z+=(wp.z-a.root.position.z)*.28;
- if(P.sash)P.sash.rotation.y=Math.PI/2+Math.sin(t*.0028)*.055;
- P.toastCup.visible=q.action==='toast-clink';
  const duoContext=duoPose(q.id),act=duoContext?.action||(q.action||'idle'),basePose=duoContext?'stand':(q.pose||((act==='sit'||act==='lie')?act:'stand'));
  const sec=duoContext?(Date.now()+state.serverDelta-duoContext.duo.startAt)/1000:t*.001,pose={};
+ let targetX=wp.x,targetZ=wp.z,duoYaw=null;
+ if(duoContext?.duo.anchor){
+  const duo=duoContext.duo,first=q.id===duo.a;
+  const own=toWorld(first?duo.anchor.a:duo.anchor.b);
+  const partner=toWorld(first?duo.anchor.b:duo.anchor.a);
+  const mx=(own.x+partner.x)*.5,mz=(own.z+partner.z)*.5;
+  const dx=own.x-mx,dz=own.z-mz,dist=Math.hypot(dx,dz)||1;
+  const nx=dx/dist,nz=dz/dist;
+  if(duo.kind==='hug'){
+   // Walk closer, wrap arms, then STEP BACK to the original pair position.
+   const approach=duoEase((sec-.12)/.88);
+   const retreat=duoEase((sec-3.42)/1.05);
+   const close=Math.max(0,approach-retreat);
+   targetX=own.x-nx*.63*close;targetZ=own.z-nz*.63*close;
+   duoYaw=Math.atan2(-nx,-nz);
+  }else if(duo.kind==='dance'){
+   // Exactly three synchronized revolutions around one midpoint.
+   const f=duoEase((sec-.14)/.45)*(1-duoEase((sec-5.10)/.32));
+   const cycles=duoClamp((sec-.15)/5.0)*Math.PI*6;
+   const sign=first?1:-1,phase=Math.atan2(dz,dx)+cycles;
+   const radius=Math.max(.65,Math.min(1.25,dist));
+   const circleX=mx+Math.cos(phase)*radius,circleZ=mz+Math.sin(phase)*radius;
+   targetX=THREE.MathUtils.lerp(own.x,circleX,f);
+   targetZ=THREE.MathUtils.lerp(own.z,circleZ,f);
+   duoYaw=Math.atan2(mx-targetX,mz-targetZ);
+  }else if(duo.kind==='highfive'){
+   const reach=duoEase((sec-.35)/.55)*(1-duoEase((sec-1.13)/.42));
+   targetX=own.x-nx*.22*reach;targetZ=own.z-nz*.22*reach;
+   duoYaw=Math.atan2(-nx,-nz);
+  }
+ }
+ // Paired choreography is deterministic and authoritative per server time.
+ // Movement returns to ordinary world positions after the duo ends.
+ const follow=duoContext?.duo.anchor?.kind==='dance'?.85:duoContext?.duo.anchor?.kind==='hug'?.36:.28;
+ a.root.position.x+=(targetX-a.root.position.x)*follow;
+ a.root.position.z+=(targetZ-a.root.position.z)*follow;
+ if(P.sash)P.sash.rotation.y=Math.PI/2+Math.sin(t*.0028)*.055;
+ P.toastCup.visible=q.action==='toast-clink';
  // Leaving headspin must clear its WORLD-ROOT spin, inversion and height.
  // Otherwise a huge sec*8.2 yaw leaks into walk/other dance interpolation.
  if(a.lastAction==='headspin'&&act!=='headspin'){
@@ -1992,19 +2074,32 @@ function animateAvatar(a,p,t){
  if(duoContext){
   const beat=Math.sin(sec*8),side=duoContext.duo.a===q.id?-1:1;
   if(act==='duo-highfive'){
-   const lift=Math.max(0,Math.sin(Math.min(1,Math.max(0,sec/1.0))*Math.PI));
-   rightHandTarget=new THREE.Vector3(.35,1.00+.14*lift,.56);
-   ikMode='duo-right';set('upper',-.08);set('neck',Math.sin(sec*4)*.045);
+   // Both palms move to the common midpoint at the same time, then recoil.
+   const reach=duoEase((sec-.32)/.52)*(1-duoEase((sec-1.12)/.42));
+   rightHandTarget=new THREE.Vector3(.12,.38+.56*reach,.34+.68*reach);
+   ikMode='duo-right';set('upper',-.12*reach);
+   set('neck',-.09*reach+Math.sin(sec*5)*.028);
+   height=.07*Math.sin(Math.min(1,sec)*Math.PI);
   }else if(act==='duo-handshake'){
    rightHandTarget=new THREE.Vector3(.15,.24+.07*beat,.65);
    ikMode='duo-right';set('upper',-.10);set('neck',.03);
   }else if(act==='duo-hug'){
-   leftHandTarget=new THREE.Vector3(-.42,.15,.64);rightHandTarget=new THREE.Vector3(.42,.15,.64);
-   ikMode='duo-both';set('upper',-.19);set('neck',.08,0,side*.04);
+   const approach=duoEase((sec-.12)/.88),retreat=duoEase((sec-3.42)/1.05);
+   const hold=duoClamp(approach-retreat);
+   // Arms extend OPEN during approach, fold around partner on contact,
+   // open again while stepping back to the original standing locations.
+   const wrap=duoEase((sec-1.1)/.48)*(1-duoEase((sec-3.22)/.45));
+   const spread=hold*(1-wrap);
+   leftHandTarget=new THREE.Vector3(-.82*spread-.30*wrap,.13+.17*wrap,.48+.43*hold);
+   rightHandTarget=new THREE.Vector3(.82*spread+.30*wrap,.13+.17*wrap,.48+.43*hold);
+   ikMode='duo-both';set('upper',-.20*hold);set('neck',.07*hold,0,side*.035);
+   // A small step cadence while moving in and backing out.
+   const stride= (sec<1.0||sec>3.4&&sec<4.6)?Math.sin(sec*15)*.20:0;
+   set('leftHip',stride);set('rightHip',-stride);
   }else if(act==='duo-dance'){
-   height=Math.abs(Math.sin(sec*6.8+side*.5))*.20;
-   set('upper',0,Math.sin(sec*3.5)*.24,Math.sin(sec*5.8)*.10);
-   set('neck',Math.sin(sec*7)*.14);
+   height=Math.abs(Math.sin(sec*11.3+side*.5))*.20;
+   set('upper',0,Math.sin(sec*5.4)*.24,Math.sin(sec*9.2)*.10);
+   set('neck',Math.sin(sec*10.5)*.14);
    set('leftShoulder',-1.3+beat*.5,0,-.55);
    set('rightShoulder',-1.3-beat*.5,0,.55);
    set('leftHip',beat*.26);set('rightHip',-beat*.26);
@@ -2098,7 +2193,7 @@ function animateAvatar(a,p,t){
   // Keep yaw bounded; absolute elapsed page seconds would grow without limit.
   a.root.rotation.y=(sec*8.2)%(Math.PI*2);
  }else if(basePose!=='lie'&&act!=='lie'){
-  const yaw=Number(q.facing)||0;
+  const yaw=duoYaw??(Number(q.facing)||0);
   a.root.rotation.y=((a.root.rotation.y%(Math.PI*2))+Math.PI*2)%(Math.PI*2);
   const delta=Math.atan2(Math.sin(yaw-a.root.rotation.y),Math.cos(yaw-a.root.rotation.y));
   a.root.rotation.y+=delta*.2;
@@ -2421,7 +2516,7 @@ function tick(t){
  }
  for(let [id,a] of avatars)if(!state.players.has(id)){disposeAvatar(a.root);avatars.delete(id)}
  if(moveMarker.visible){moveMarker.material.opacity=Math.min(.75,Math.max(0,(moveMarkerUntil-t)/1050)*.75);if(t>moveMarkerUntil)moveMarker.visible=false}
- updateEnvironment();animateSky(t);updateOcean(t);updateSlamDust(t);updateBubbles(t);animateShow(t);updateHourlyFireworks(t);animateToastSparks(t);followLocalAvatar();controls.update();keepCameraInFrontOfStage();updateSlamVisual(t);updateRockPlayVisual(t);renderer.render(scene,camera);cssRenderer.render(scene,camera);renderStageForeground();requestAnimationFrame(tick)
+ updateDuoVfx();updateEnvironment();animateSky(t);updateOcean(t);updateSlamDust(t);updateBubbles(t);animateShow(t);updateHourlyFireworks(t);animateToastSparks(t);followLocalAvatar();controls.update();keepCameraInFrontOfStage();updateSlamVisual(t);updateRockPlayVisual(t);renderer.render(scene,camera);cssRenderer.render(scene,camera);renderStageForeground();requestAnimationFrame(tick)
 }
 function resize(){let w=host.clientWidth,h=host.clientHeight;if(!w||!h)return;camera.aspect=w/h;camera.updateProjectionMatrix();renderer.setSize(w,h,false);cssRenderer.setSize(w,h);if(stageForeground)stageForeground.setSize(w,h,false)}new ResizeObserver(resize).observe(host);resize();requestAnimationFrame(tick);
 setInterval(()=>{syncVideo();reportDuration();let m=state.music;if(!m.id)return;let sec=m.paused?m.position:(Date.now()+state.serverDelta-m.startedAt)/1000;let dur=state.ytReady?state.yt.getDuration():0;$('progressFill').style.width=dur?Math.min(100,sec/dur*100)+'%':'0%'},5000);
