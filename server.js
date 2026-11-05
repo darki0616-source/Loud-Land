@@ -68,6 +68,33 @@ const DATA_DIR=process.env.DATA_DIR||path.join(__dirname,'data');
 const STATE_PATH=path.join(DATA_DIR,'festival-state.json');
 // Total online time per stable browser identity, persisted alongside the playlist.
 const badgeStats=new Map();
+// No account required: coins belong to the existing persistent badge identity.
+// All purchases and equipment are server-validated. Guests without the stable
+// badge identity cannot spend points; client-provided balances are ignored.
+const shopStats=new Map();
+const PUNK_ITEMS={
+ 'tee-skull':{name:'스컬 프린트 티셔츠',slot:'shirt',cost:30},
+ 'tee-lightning':{name:'번개 펑크 티셔츠',slot:'shirt',cost:45},
+ 'tee-anarchy':{name:'언더그라운드 티셔츠',slot:'shirt',cost:65},
+ 'horns':{name:'악마뿔 머리띠',slot:'head',cost:80},
+ 'spike-band':{name:'스파이크 머리띠',slot:'head',cost:110},
+ 'chain':{name:'실버 체인 목걸이',slot:'neck',cost:55},
+ 'choker':{name:'스파이크 초커',slot:'neck',cost:95}
+};
+const SHOP_SLOTS=['shirt','head','neck'];
+function shopRecord(identity){
+ if(!shopStats.has(identity))shopStats.set(identity,{spent:0,owned:[],equipped:{}});
+ return shopStats.get(identity);
+}
+function getShopView(p,now=Date.now()){
+ const record=shopRecord(p.badgeIdentity);
+ const earned=Math.floor(badgeTotal(p,now)/60); // 1 point per connected minute
+ return {points:Math.max(0,earned-record.spent),earned,spent:record.spent,owned:[...record.owned],equipped:{...record.equipped},items:PUNK_ITEMS};
+}
+function setShopAppearance(p){
+ p.equipped=p.badgeIdentity?{...shopRecord(p.badgeIdentity).equipped}:{};
+}
+
 const BADGE_LEVELS=[['bronze',0],['silver',3600],['gold',18000],['platinum',54000],['diamond',144000],['crown',360000]];
 function badgeTier(seconds){let tier='bronze';for(const [id,threshold] of BADGE_LEVELS){if(seconds>=threshold)tier=id;}return tier;}
 function badgeTotal(p,now=Date.now()){
@@ -93,9 +120,15 @@ const SB_KEY=process.env.SUPABASE_SECRET_KEY||'';
 const useSupabase=Boolean(SB_URL&&SB_KEY);
 let restored=false;
 let saveChain=Promise.resolve();
-function stateData(){return {version:4,music,queue:[...queue],history:[...history],nextTrackToken,badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),savedAt:Date.now()}}
+function stateData(){return {version:4,music,queue:[...queue],history:[...history],nextTrackToken,shopStats:Object.fromEntries([...shopStats].map(([k,v])=>[k,{spent:v.spent,owned:v.owned,equipped:v.equipped}])),badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),savedAt:Date.now()}}
 function applySaved(d){
  if(!d||typeof d!=='object')return;
+ if(d.shopStats&&typeof d.shopStats==='object')for(const [identity,r] of Object.entries(d.shopStats).slice(0,30000)){
+  if(!/^[a-zA-Z0-9_-]{20,100}$/.test(identity)||!r||typeof r!=='object')continue;
+  const owned=Array.isArray(r.owned)?[...new Set(r.owned.filter(k=>PUNK_ITEMS[k]))]:[];
+  const equipped={};for(const slot of SHOP_SLOTS){const key=r.equipped?.[slot];if(owned.includes(key)&&PUNK_ITEMS[key].slot===slot)equipped[slot]=key;}
+  shopStats.set(identity,{spent:Math.max(0,Math.floor(Number(r.spent)||0)),owned,equipped});
+ }
  if(d.badgeStats&&typeof d.badgeStats==='object')for(const [k,v] of Object.entries(d.badgeStats).slice(0,30000)){
   if(/^[a-zA-Z0-9_-]{20,100}$/.test(k)&&Number.isFinite(v)&&v>=0)badgeStats.set(k,{seconds:Math.min(v,315360000)});
  }
@@ -295,13 +328,35 @@ const server=http.createServer(async(req,res)=>{
           if(existingId)sessionPlayers.delete(sessionKey);
         }
         const id=crypto.randomUUID(),p={id,badgeSince:Date.now(),badgeTier:'bronze',badgeSeconds:0,name:clean(d.name,18)||'ROCKER',flagText:cleanFlag(d.flagText),flagImage:d.flagImage?storeFlagImage(d.flagImage)||'':'',color:colors.includes(d.color)?d.color:colors[0],...apparel(d),gender:d.gender==='female'?'female':'male',x:clamp(190+Math.random()*880,20,1380),y:clamp(390+Math.random()*420,220,1100),facing:0,action:'idle',pose:'stand',seen:Date.now()};
-        Object.defineProperty(p,'badgeIdentity',{value:badgeIdentity,writable:true,enumerable:false});updateBadge(p);players.set(id,p);
+        Object.defineProperty(p,'badgeIdentity',{value:badgeIdentity,writable:true,enumerable:false});updateBadge(p);setShopAppearance(p);players.set(id,p);
         if(sessionKey){sessionPlayers.set(sessionKey,id);playerSessions.set(id,sessionKey)}
         if(pageId)pageOwners.set(id,pageId);
         resumeForFirst();broadcast({type:'join',player:p,count:players.size});return json(res,200,{id,reused:false,...snapshot()});
       }
       const id=clean(d.id,80),p=players.get(id);if(!p)return json(res,401,{error:'Session expired. Please rejoin.'});p.seen=Date.now();
       if(url.pathname==='/api/heartbeat'){return json(res,200,{ok:true})}
+      if(url.pathname==='/api/shop'){
+        if(!p.badgeIdentity)return json(res,400,{error:'브라우저 저장소를 사용해야 포인트를 모을 수 있습니다.'});
+        const command=clean(d.command,20);
+        if(command==='status')return json(res,200,{shop:getShopView(p)});
+        const key=clean(d.item,40),item=PUNK_ITEMS[key];
+        if(!item)return json(res,400,{error:'존재하지 않는 상품입니다.'});
+        const record=shopRecord(p.badgeIdentity);
+        if(command==='buy'){
+          if(record.owned.includes(key))return json(res,400,{error:'이미 보유한 상품입니다.'});
+          const view=getShopView(p);
+          if(view.points<item.cost)return json(res,400,{error:'포인트가 부족합니다.'});
+          record.spent+=item.cost;record.owned.push(key);
+        }else if(command==='equip'){
+          if(!record.owned.includes(key))return json(res,403,{error:'구매하지 않은 상품입니다.'});
+          record.equipped[item.slot]=key;
+        }else if(command==='unequip'){
+          if(record.equipped[item.slot]===key)delete record.equipped[item.slot];
+        }else return json(res,400,{error:'지원하지 않는 명령입니다.'});
+        for(const other of players.values())if(other.badgeIdentity===p.badgeIdentity){setShopAppearance(other);broadcast({type:'profile',player:other})}
+        scheduleSave();return json(res,200,{ok:true,shop:getShopView(p)});
+      }
+
       if(url.pathname==='/api/flag'){
         const upload=Boolean(d.flagImage);
         const flagImage=upload?storeFlagImage(d.flagImage):'';
