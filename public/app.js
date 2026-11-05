@@ -977,7 +977,13 @@ let PUNK_SHOP_ITEMS=[
  ['bat-glasses','🦇','배트 선글라스',90,'eyes'],
  ['fallen-wings','🪽','타락천사 날개',300,'back'],
  ['devil-tail','😈','악마 꼬리',150,'tail'],
- ['headset','🎧','락 페스티벌 헤드셋',170,'ears']
+ ['headset','🎧','락 페스티벌 헤드셋',170,'ears'],
+ ['flame-glasses','🔥','불꽃 선글라스',110,'eyes'],
+ ['bat-wing-band','🦇','박쥐날개 머리띠',140,'head'],
+ ['heart-band','💗','하트 머리띠',100,'head'],
+ ['round-glasses','👓','둥근 안경',80,'eyes'],
+ ['back-guitar','🎸','등에 메는 기타',220,'back'],
+ ['angel-wings','🤍','천사 날개',280,'back']
 ];
 let mdCatalog={}, mdCatalogSignature='';
 function syncMdCatalog(items){
@@ -2046,6 +2052,30 @@ function makeAvatar(p){
    spike.rotation.z=isHorn?side*.19:side*.09;
   }
  }
+ // Additional raised headbands stay above the oversized face/hair silhouette.
+ if(['bat-wing-band','heart-band'].includes(look.head)){
+  const bandMaterial=mat(look.head==='heart-band'?'#e75a80':'#25202d',.45);
+  const arc=child(neck,new THREE.TorusGeometry(.76,.067,9,40,Math.PI),bandMaterial,[0,.35,.28]);
+  if(look.head==='heart-band'){
+   const pink=mat('#fa5986',.43),light=mat('#ff91b4',.45);
+   for(const side of [-1,1]){
+    const heart=new THREE.Group();heart.position.set(side*.47,1.11,.37);neck.add(heart);
+    for(const c of [-1,1])child(heart,new THREE.SphereGeometry(.20,12,9),pink,[c*.14,.10,0],[1,.88,.63]);
+    const tip=child(heart,new THREE.ConeGeometry(.30,.37,4),pink,[0,-.13,0]);tip.rotation.y=Math.PI/4;
+    child(heart,new THREE.SphereGeometry(.062,8,6),light,[-.12,.19,.12]);
+   }
+  }else{
+   const bat=mat('#262131',.56),edge=mat('#4b395a',.60);
+   for(const side of [-1,1]){
+    // Bat-wing crest points outward, taller than the hair and with scalloped lower edge.
+    const shape=new THREE.Shape();
+    const pts=[[0,0],[.19,.29],[.42,.24],[.64,.51],[.69,.12],[.57,.04],[.40,.10],[.29,-.05],[.13,.04]];
+    pts.forEach(([x,y],i)=>i?shape.lineTo(side*x,y):shape.moveTo(side*x,y));shape.closePath();
+    const wing=child(neck,new THREE.ShapeGeometry(shape),bat,[side*.25,1.13,.36]);wing.material.side=THREE.DoubleSide;
+    const tip=child(neck,new THREE.ConeGeometry(.068,.27,5),edge,[side*.90,1.58,.34]);tip.rotation.z=-side*.34;
+   }
+  }
+ }
  if(['chain','choker'].includes(look.neck)){
   // Head radius is about .8 and extends over the neck, so neckwear must sit
   // on the FRONT of the torso (positive Z), not behind the oversized head.
@@ -2102,6 +2132,34 @@ function makeAvatar(p){
   batWing(-1);batWing(1);
   child(neck,new THREE.BoxGeometry(.18,.06,.06),black,[0,.23,.835]);
  }
+ if(['flame-glasses','round-glasses'].includes(look.eyes)){
+  const frame=mat(look.eyes==='round-glasses'?'#bdad91':'#231d29',.29),
+        lens=mat(look.eyes==='round-glasses'?'#8cacc0':'#d24325',.23);
+  if(look.eyes==='round-glasses'){
+   for(const side of [-1,1]){
+    // Both rings are positioned in front of the large head, not inside the face.
+    const ring=child(neck,new THREE.TorusGeometry(.255,.041,8,24),frame,[side*.34,.16,.80]);
+    const glass=child(neck,new THREE.CircleGeometry(.222,28),lens,[side*.34,.16,.805]);
+    glass.material.side=THREE.DoubleSide;glass.material.transparent=true;glass.material.opacity=.29;
+    child(neck,new THREE.BoxGeometry(.22,.043,.052),frame,[side*.69,.17,.59]);
+   }
+   child(neck,new THREE.BoxGeometry(.21,.046,.055),frame,[0,.21,.81]);
+  }else{
+   // Flame outlines are broad enough to be visible at gameplay camera distance.
+   for(const side of [-1,1]){
+    const shape=new THREE.Shape();
+    const points=[[0,-.10],[.23,-.16],[.46,-.10],[.59,.06],[.52,.14],
+      [.64,.29],[.39,.22],[.34,.39],[.22,.25],[.09,.36],[.08,.16],[0,.12]];
+    points.forEach(([x,y],i)=>i?shape.lineTo(side*x,y):shape.moveTo(side*x,y));shape.closePath();
+    const outer=child(neck,new THREE.ShapeGeometry(shape),mat('#fa592b',.50),[side*.04,.15,.82]);
+    outer.material.side=THREE.DoubleSide;
+    const inner=child(neck,new THREE.CircleGeometry(.17,20),lens,[side*.35,.12,.844],[1,.85,1]);
+    inner.material.side=THREE.DoubleSide;
+    child(neck,new THREE.BoxGeometry(.19,.05,.06),frame,[side*.73,.15,.46]);
+   }
+   child(neck,new THREE.BoxGeometry(.20,.06,.06),frame,[0,.18,.85]);
+  }
+ }
  if(look.ears==='headset'){
   const shell=mat('#171922',.4),accent=mat('#ec3654',.34),padding=mat('#333743',.95);
   // A raised arch follows the head's upper hemisphere without hair clipping.
@@ -2132,6 +2190,44 @@ function makeAvatar(p){
     feather.rotation.z=side*(-.90+progress*.76);
    }
   }
+ }
+ if(look.back==='angel-wings'){
+  const white=mat('#f2f1ec',.94),feather=mat('#d6e5f3',.93),outline=mat('#c2cede',.82);
+  const wings=new THREE.Group();wings.position.set(0,.66,-.55);upper.add(wings);parts.mdWings=wings;
+  for(const side of [-1,1]){
+   const bone=child(wings,new THREE.CapsuleGeometry(.14,.67,6,10),white,[side*.43,.15,-.03]);bone.rotation.z=-side*.72;
+   for(let i=0;i<8;i++){
+    const t=i/7;
+    const f=child(wings,new THREE.CapsuleGeometry(.105,.52-t*.08,5,8),i%3===0?outline:i%2?feather:white,
+      [side*(.35+t*1.06),.11-t*.28,-.04-t*.05],[1.03,1.04-t*.23,.62]);
+    f.rotation.z=side*(-.91+t*.80);
+   }
+  }
+ }
+ if(look.back==='back-guitar'){
+  // Guitar hangs diagonally on the rear torso with a visible strap. Entire rig
+  // is parented to upper, so dances/turns keep guitar attached to the back.
+  const guitar=new THREE.Group();guitar.position.set(.20,.46,-.62);guitar.rotation.z=-.47;upper.add(guitar);
+  const body=mat('#b52c40',.46),rim=mat('#22202b',.45),metal=mat('#dde1e8',.30),wood=mat('#302028',.68);
+  child(guitar,new THREE.SphereGeometry(.33,16,12),rim,[0,-.27,-.05],[1.07,1.13,.27]);
+  child(guitar,new THREE.SphereGeometry(.30,16,12),body,[0,-.24,-.105],[1.01,1.12,.24]);
+  // Two pointed electric-guitar horns.
+  for(const side of [-1,1]){
+   const horn=child(guitar,new THREE.ConeGeometry(.125,.42,7),body,[side*.23,.03,-.09]);horn.rotation.z=-side*.29;
+  }
+  child(guitar,new THREE.BoxGeometry(.18,.99,.11),wood,[0,.51,-.04]);
+  child(guitar,new THREE.BoxGeometry(.30,.19,.12),wood,[0,1.05,-.04]);
+  for(let i=0;i<5;i++){
+   child(guitar,new THREE.BoxGeometry(.18,.025,.015),metal,[0,.20+i*.16,.028]);
+  }
+  for(let i=0;i<4;i++)child(guitar,new THREE.BoxGeometry(.014,1.53,.012),metal,[(i-1.5)*.040,.36,.041]);
+  child(guitar,new THREE.BoxGeometry(.28,.08,.045),metal,[0,-.36,-.23]);
+  // Dark diagonal shoulder strap remains visible against colorful shirts.
+  const strapCurve=new THREE.CatmullRomCurve3([
+   new THREE.Vector3(-.36,.86,.10),new THREE.Vector3(-.30,.55,.16),
+   new THREE.Vector3(.14,.08,.07),new THREE.Vector3(.24,-.39,-.03)
+  ]);
+  child(guitar,new THREE.TubeGeometry(strapCurve,18,.055,7,false),rim,[0,0,0]);
  }
  if(look.tail==='devil-tail'){
   const tailMat=mat('#27212e',.55),red=mat('#b92742',.38);
