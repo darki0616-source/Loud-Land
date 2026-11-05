@@ -699,10 +699,13 @@ function surfPoseAt(event,playerId,now=slamNow()){
   mount=Math.min(1,(elapsed-SURF_APPROACH_MS)/SURF_MOUNT_MS);
   mount=mount*mount*(3-2*mount);
   rideProgress=Math.max(0,Math.min(1,(elapsed-SURF_APPROACH_MS-SURF_MOUNT_MS)/SURF_RIDE_MS));
-  // Rider only: 2 complete back-and-forth trips over 10 seconds.
+  // Rider stays directly ABOVE the center of the supporters' formation.
+  // Two symmetric left-right traversals over 10 seconds; ends in the center.
   const wave=Math.sin(rideProgress*Math.PI*4);
-  x=event.x+wave*18; y=event.y;
-  roll=rideProgress*Math.PI*8;
+  x=event.x+wave*14;
+  y=event.y;
+  // Eight full headspin-style rotations, synchronised on every viewer by server time.
+  roll=rideProgress*Math.PI*16;
  }
  return {x,y,isRider,mounted,mount,rideProgress,roll,
   running:elapsed<SURF_APPROACH_MS,
@@ -960,7 +963,11 @@ let PUNK_SHOP_ITEMS=[
  ['horns','😈','악마뿔 머리띠',80,'head'],
  ['spike-band','🤘','스파이크 머리띠',110,'head'],
  ['chain','⛓️','실버 체인 목걸이',55,'neck'],
- ['choker','🖤','스파이크 초커',95,'neck']
+ ['choker','🖤','스파이크 초커',95,'neck'],
+ ['bat-glasses','🦇','배트 선글라스',90,'eyes'],
+ ['fallen-wings','🪽','타락천사 날개',300,'back'],
+ ['devil-tail','😈','악마 꼬리',150,'tail'],
+ ['headset','🎧','락 페스티벌 헤드셋',170,'ears']
 ];
 let mdCatalog={}, mdCatalogSignature='';
 function syncMdCatalog(items){
@@ -971,7 +978,7 @@ function syncMdCatalog(items){
  // Rebuild existing avatar shirt meshes only when the catalog really changes.
  for(const avatar of avatars.values())disposeAvatar(avatar.root);
  avatars.clear();
- PUNK_SHOP_ITEMS=Object.entries(items).map(([id,item])=>[id,item.slot==='shirt'?'👕':item.slot==='head'?'😈':'⛓️',item.name,item.cost,item.slot]);
+ PUNK_SHOP_ITEMS=Object.entries(items).map(([id,item])=>[id,({'shirt':'👕','head':'😈','neck':'⛓️','eyes':'🦇','back':'🪽','tail':'😈','ears':'🎧'}[item.slot]||'✨'),item.name,item.cost,item.slot]);
  drawPunkShop();drawMdWardrobe();
 }
 let punkWallet=null,punkShopBusy=false,povEnabled=false,povYaw=0,povPitch=0;
@@ -1011,7 +1018,7 @@ function drawMdWardrobe(){
   const wearing=wallet.equipped?.[slot]===id;
   const card=document.createElement('div');card.className='md-wardrobe-entry';
   const title=document.createElement('strong');title.textContent=emoji+' '+name;
-  const line=document.createElement('small');line.textContent=slot==='shirt'?'티셔츠 위에 표시':slot==='head'?'머리 장식':'목 장식';
+  const line=document.createElement('small');line.textContent=({'shirt':'티셔츠 위에 표시','head':'머리 장식','neck':'목 장식','eyes':'안경','back':'등 장식','tail':'꼬리 장식','ears':'헤드셋'}[slot]||'장식');
   const btn=document.createElement('button');btn.type='button';btn.textContent=wearing?'벗기':'입기';btn.disabled=punkShopBusy;
   btn.onclick=async()=>{if(punkShopBusy||!state.id)return;punkShopBusy=true;drawMdWardrobe();
    try{const d=await post('shop',{id:state.id,command:wearing?'unequip':'equip',item:id});punkWallet=d.shop;
@@ -2066,6 +2073,69 @@ function makeAvatar(p){
   }
  }
 
+ // v123: Four independent wearable MD slots. Geometry is constructed locally,
+ // so remote players receive the same models via their synchronized equipped map.
+ if(look.eyes==='bat-glasses'){
+  const black=mat('#11111a',.20),lens=mat('#231c33',.14);
+  const batWing=(side)=>{
+   // Pointed bat-wing silhouette: temples flare beyond the face outline.
+   const outline=[[.04,.13],[.18,.24],[.34,.20],[.49,.32],[.57,.18],
+                  [.72,.26],[.66,.03],[.55,-.04],[.38,-.01],[.20,-.06]];
+   const shape=new THREE.Shape();
+   outline.forEach(([x,y],i)=>i?shape.lineTo(x*side,y):shape.moveTo(x*side,y));
+   shape.closePath();
+   const lensMesh=child(neck,new THREE.ShapeGeometry(shape),lens,[0,.16,.81]);
+   lensMesh.material.side=THREE.DoubleSide;
+   child(neck,new THREE.BoxGeometry(.05,.065,.055),black,[side*.025,.31,.82]);
+   child(neck,new THREE.BoxGeometry(.19,.06,.055),black,[side*.72,.17,.40]);
+  };
+  batWing(-1);batWing(1);
+  child(neck,new THREE.BoxGeometry(.18,.06,.06),black,[0,.23,.835]);
+ }
+ if(look.ears==='headset'){
+  const shell=mat('#171922',.4),accent=mat('#ec3654',.34),padding=mat('#333743',.95);
+  // A raised arch follows the head's upper hemisphere without hair clipping.
+  const arc=new THREE.Mesh(new THREE.TorusGeometry(.88,.095,9,36,Math.PI),shell);
+  arc.position.set(0,.20,0);neck.add(arc);
+  const bandTrim=new THREE.Mesh(new THREE.TorusGeometry(.88,.025,6,36,Math.PI),accent);
+  bandTrim.position.set(0,.20,.065);neck.add(bandTrim);
+  for(const side of [-1,1]){
+   const cup=child(neck,new THREE.BoxGeometry(.23,.49,.35),shell,[side*.88,.17,.06]);
+   cup.rotation.z=side*.12;
+   child(neck,new THREE.BoxGeometry(.025,.33,.26),accent,[side*1.012,.17,.07]);
+   child(neck,new THREE.BoxGeometry(.07,.34,.29),padding,[side*.745,.17,.055]);
+  }
+ }
+ if(look.back==='fallen-wings'){
+  const wingMat=mat('#1d1b28',.72),featherMat=mat('#35313e',.72),tipMat=mat('#0a0a10',.68);
+  const wingGroup=new THREE.Group();wingGroup.position.set(0,.62,-.52);upper.add(wingGroup);parts.mdWings=wingGroup;
+  for(const side of [-1,1]){
+   const arm=child(wingGroup,new THREE.CapsuleGeometry(.115,.61,5,9),wingMat,[side*.46,.12,-.03]);
+   arm.rotation.z=-side*.69;
+   // Layered outer feathers form a broad, tapered black angel-wing silhouette.
+   for(let i=0;i<7;i++){
+    const progress=i/6;
+    const feather=child(wingGroup,new THREE.CapsuleGeometry(.095,.57-progress*.12,4,8),
+      i%2?featherMat:tipMat,
+      [side*(.39+progress*.99),.08-progress*.25,-.08-progress*.045],
+      [.95,1.04-progress*.25,.60]);
+    feather.rotation.z=side*(-.90+progress*.76);
+   }
+  }
+ }
+ if(look.tail==='devil-tail'){
+  const tailMat=mat('#27212e',.55),red=mat('#b92742',.38);
+  const tailGroup=new THREE.Group();tailGroup.position.set(0,-.14,-.47);upper.add(tailGroup);parts.mdTail=tailGroup;
+  const curve=new THREE.CatmullRomCurve3([
+   new THREE.Vector3(0,0,0),new THREE.Vector3(.13,-.34,-.34),
+   new THREE.Vector3(.28,-.66,-.57),new THREE.Vector3(.41,-.48,-.75),
+   new THREE.Vector3(.52,-.19,-.88)
+  ]);
+  child(tailGroup,new THREE.TubeGeometry(curve,24,.065,8,false),tailMat,[0,0,0]);
+  const tip=child(tailGroup,new THREE.ConeGeometry(.18,.42,3),red,[.55,-.08,-.88]);
+  tip.rotation.z=-.55;
+ }
+
  // Minimal articulated limbs: smooth joints tucked inside sleeve/leg, not exposed balls.
  function arm(side){
    const direction=side==='left'?-1:1;
@@ -2327,6 +2397,8 @@ function animateAvatar(a,p,t){
  a.root.position.x+=(targetX-a.root.position.x)*follow;
  a.root.position.z+=(targetZ-a.root.position.z)*follow;
  if(P.sash)P.sash.rotation.y=Math.PI/2+Math.sin(t*.0028)*.055;
+ if(P.mdWings)P.mdWings.rotation.y=Math.sin(t*.0022)*.045;
+ if(P.mdTail)P.mdTail.rotation.y=Math.sin(t*.0034)*.24;
  P.toastCup.visible=q.action==='toast-clink';
  // Leaving headspin must clear its WORLD-ROOT spin, inversion and height.
  // Otherwise a huge sec*8.2 yaw leaks into walk/other dance interpolation.
@@ -2709,7 +2781,8 @@ function animateAvatar(a,p,t){
  // Only the initiating surfer rides above the other participants. The avatar
  // remains visible to spectators even though Y is not transmitted by /api/move.
  const surfing=Boolean(surfView?.mounted);
- if(surfing)height=2.35*surfView.mount+Math.sin(sec*6)*.055;
+ // Clearance for the large chibi heads below: feet/torso never intersect supporters.
+ if(surfing)height=3.95*surfView.mount+Math.sin(sec*6)*.04;
  a.root.position.y+=(height-a.root.position.y)*(surfView?1:.28);
  a.root.rotation.x+=(lean-a.root.rotation.x)*.22;
  // While breakdancing, rotate the whole prone body around its center, not just its chest.
@@ -2763,11 +2836,12 @@ function animateAvatar(a,p,t){
   a.root.rotation.y+=delta*.2;
  }
  if(surfView?.mounted){
-  // A sideways, rolling body along the crowd; not floating upright.
-  const yaw=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),Math.PI/2);
-  const sideways=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1),-Math.PI/2*surfView.mount);
-  const tumble=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),surfView.roll);
-  a.root.quaternion.copy(yaw).multiply(sideways).multiply(tumble);
+  // First lean the rider horizontally over the center of the supporters.
+  // Rotate around the WORLD vertical axis like a headspin; unlike local-Y
+  // rotation this reads clearly as a full-body spin from every camera angle.
+  const spin=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),surfView.roll);
+  const lieDown=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1),-Math.PI/2*surfView.mount);
+  a.root.quaternion.copy(spin).multiply(lieDown);
  }else if(surfView){
   a.root.rotation.x=0;a.root.rotation.z=0;
  }
