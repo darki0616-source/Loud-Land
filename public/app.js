@@ -1773,7 +1773,11 @@ function makeAvatar(p){
  const parts={}, female=p.gender==='female';
  const hairHex=hairColors.some(([,hex])=>hex===p.hairColor)?p.hairColor:'#4b3932';
  const skinMat=mat('#f3d6c2',.96),hair=mat(hairHex,.97);
- const shirtMat=mat(p.color,.88),bottomColor=female?'#ad816c':'#6c7891';
+ const look=p.equipped||{};
+ const mdShirtColors={'tee-skull':'#17191f','tee-lightning':'#292139','tee-anarchy':'#191d25'};
+ const activeMdShirt=Object.prototype.hasOwnProperty.call(mdShirtColors,look.shirt)?look.shirt:null;
+ const activeShirtColor=activeMdShirt?mdShirtColors[activeMdShirt]:p.color;
+ const shirtMat=mat(activeShirtColor,.88),bottomColor=female?'#ad816c':'#6c7891';
  const pantsMat=mat(bottomColor,.9),shoeMat=mat('#f6f3e9',.9);
  function child(g,geo,m,pos,sc){let o=new THREE.Mesh(geo,m);o.position.set(...pos);if(sc)o.scale.set(...sc);o.castShadow=true;g.add(o);return o}
  // The torso is one continuous capsule: color on the lower vertices suggests clothes,
@@ -1781,29 +1785,75 @@ function makeAvatar(p){
  const upper=new THREE.Group();upper.position.y=1.03;root.add(upper);parts.upper=upper;
  const bodyGeo=new THREE.CapsuleGeometry(.45,.46,8,16);
  const pa=bodyGeo.attributes.position,colors=[];
- const topColor=new THREE.Color(p.color),bottom=new THREE.Color(bottomColor);
+ const topColor=new THREE.Color(activeShirtColor),bottom=new THREE.Color(bottomColor);
  for(let i=0;i<pa.count;i++){const y=pa.getY(i),blend=THREE.MathUtils.smoothstep(y,-.29,-.21);let c=bottom.clone().lerp(topColor,blend);colors.push(c.r,c.g,c.b)}
  bodyGeo.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
  const bodyMat=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.88});
- if(p.pattern==='stripe'||p.pattern==='wide-stripe'){
-  // Locally calculated ink-like bands on the existing torso surface: no extra 3D parts.
+ // Graphics are inked directly into the torso fragment material. Never attach a
+ // rectangular plane in front of the character: it looks like a signboard.
+ let mdPrintTexture=null;
+ if(activeMdShirt){
+  const cvs=document.createElement('canvas');cvs.width=512;cvs.height=512;
+  const ctx=cvs.getContext('2d');
+  ctx.clearRect(0,0,512,512);
+  ctx.fillStyle=activeMdShirt==='tee-lightning'?'#ffeb5c':'#f9f6ed';
+  ctx.strokeStyle='#17191f';ctx.lineWidth=12;ctx.lineJoin='round';
+  if(activeMdShirt==='tee-skull'){
+   ctx.beginPath();ctx.moveTo(130,210);ctx.bezierCurveTo(108,126,179,78,255,78);
+   ctx.bezierCurveTo(330,78,405,128,379,210);ctx.bezierCurveTo(366,253,332,266,327,299);
+   ctx.lineTo(322,350);ctx.lineTo(190,350);ctx.lineTo(185,300);
+   ctx.bezierCurveTo(179,266,143,252,130,210);ctx.fill();
+   ctx.fillStyle='#151820';ctx.beginPath();ctx.ellipse(207,218,33,38,-.12,0,Math.PI*2);ctx.ellipse(305,218,33,38,.12,0,Math.PI*2);ctx.fill();
+   ctx.beginPath();ctx.moveTo(256,259);ctx.lineTo(239,286);ctx.lineTo(273,286);ctx.closePath();ctx.fill();
+   ctx.fillStyle='#151820';for(let i=0;i<5;i++)ctx.fillRect(207+i*20,310,12,41);
+  }else if(activeMdShirt==='tee-lightning'){
+   ctx.beginPath();ctx.moveTo(289,60);ctx.lineTo(160,270);ctx.lineTo(263,260);
+   ctx.lineTo(218,462);ctx.lineTo(368,214);ctx.lineTo(279,226);ctx.closePath();ctx.fill();ctx.stroke();
+  }else{
+   ctx.font='bold 380px Arial,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+   ctx.fillText('Ⓐ',256,250);
+  }
+  mdPrintTexture=new THREE.CanvasTexture(cvs);
+  mdPrintTexture.colorSpace=THREE.SRGBColorSpace;
+  mdPrintTexture.wrapS=THREE.ClampToEdgeWrapping;
+  mdPrintTexture.wrapT=THREE.ClampToEdgeWrapping;
+  mdPrintTexture.anisotropy=2;
+  // Store the shader-only texture for explicit disposal when the avatar is rebuilt.
+  bodyMat.userData.mdPrintTexture=mdPrintTexture;
+ }
+ const showStripes=!activeMdShirt&&(p.pattern==='stripe'||p.pattern==='wide-stripe');
+ if(showStripes||mdPrintTexture){
   const spacing=p.pattern==='stripe'?.155:.31;
   const width=p.pattern==='stripe'?.046:.105;
+  bodyMat.customProgramCacheKey=()=>mdPrintTexture?'one-md-shirt-ink-v112':`one-shirt-stripes-v112-${p.pattern}`;
   bodyMat.onBeforeCompile=shader=>{
    shader.vertexShader=shader.vertexShader.replace('#include <common>',
      '#include <common>\nvarying vec3 vShirtPosition;');
    shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>',
      '#include <begin_vertex>\nvShirtPosition = position;');
    shader.fragmentShader=shader.fragmentShader.replace('#include <common>',
-     '#include <common>\nvarying vec3 vShirtPosition;');
-   shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',
-     '#include <color_fragment>\n'+
-     'float stripeCoord = mod(vShirtPosition.y + 0.51, '+spacing.toFixed(4)+');\n'+
-     'float stripeEdge = fwidth(stripeCoord) * 0.65;\n'+
-     'float stripeInk = 1.0 - smoothstep('+width.toFixed(4)+' - stripeEdge, '+width.toFixed(4)+' + stripeEdge, stripeCoord);\n'+
-     'float shirtCoverage = smoothstep(-0.18, -0.08, vShirtPosition.y);\n'+
-     'vec3 stripeColor = dot(diffuseColor.rgb, vec3(0.2126,0.7152,0.0722)) > 0.72 ? vec3(0.18,0.20,0.23) : vec3(0.96,0.97,0.95);\n'+
-     'diffuseColor.rgb = mix(diffuseColor.rgb, stripeColor, stripeInk * shirtCoverage * 0.93);');
+     '#include <common>\nvarying vec3 vShirtPosition;'+(mdPrintTexture?'\nuniform sampler2D mdPrintTexture;':''));
+   if(mdPrintTexture){
+    shader.uniforms.mdPrintTexture={value:mdPrintTexture};
+    shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',
+      '#include <color_fragment>\n'+
+      // Torso capsule center region is +Z; top chest is around local y 0.0..0.67.
+      'vec2 printUV = vec2(vShirtPosition.x / 0.79 + 0.5, (vShirtPosition.y - 0.02) / 0.64);\n'+
+      'float printBounds = step(0.0, printUV.x) * step(printUV.x, 1.0) * step(0.0, printUV.y) * step(printUV.y, 1.0);\n'+
+      'float chestFront = smoothstep(0.12, 0.31, vShirtPosition.z);\n'+
+      'float shirtArea = smoothstep(-0.10, 0.04, vShirtPosition.y);\n'+
+      'vec4 ink = texture2D(mdPrintTexture, clamp(printUV,0.0,1.0));\n'+
+      'diffuseColor.rgb = mix(diffuseColor.rgb, ink.rgb, ink.a * printBounds * chestFront * shirtArea);');
+   }else{
+    shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',
+      '#include <color_fragment>\n'+
+      'float stripeCoord = mod(vShirtPosition.y + 0.51, '+spacing.toFixed(4)+');\n'+
+      'float stripeEdge = fwidth(stripeCoord) * 0.65;\n'+
+      'float stripeInk = 1.0 - smoothstep('+width.toFixed(4)+' - stripeEdge, '+width.toFixed(4)+' + stripeEdge, stripeCoord);\n'+
+      'float shirtCoverage = smoothstep(-0.18, -0.08, vShirtPosition.y);\n'+
+      'vec3 stripeColor = dot(diffuseColor.rgb, vec3(0.2126,0.7152,0.0722)) > 0.72 ? vec3(0.18,0.20,0.23) : vec3(0.96,0.97,0.95);\n'+
+      'diffuseColor.rgb = mix(diffuseColor.rgb, stripeColor, stripeInk * shirtCoverage * 0.93);');
+   }
   };
  }
  parts.torso=child(upper,bodyGeo,bodyMat,[0,.33,0],[.94,1.12,.88]);
@@ -1894,27 +1944,7 @@ function makeAvatar(p){
   }
   child(fabric,new THREE.BoxGeometry(.23,1.14,.065),clothMaterial,[-.025,-.57,0],[1,1,1]);
  }
- // Shop costumes are separate lightweight meshes, independent of the original hair and pose rig.
- const look=p.equipped||{};
- if(look.shirt&&['tee-skull','tee-lightning','tee-anarchy'].includes(look.shirt)){
-  const picture=document.createElement('canvas');picture.width=256;picture.height=256;
-  const ctx=picture.getContext('2d');ctx.clearRect(0,0,256,256);
-  ctx.fillStyle='#f8f3ea';ctx.strokeStyle='#111';ctx.lineWidth=8;ctx.textAlign='center';ctx.textBaseline='middle';
-  if(look.shirt==='tee-skull'){
-   ctx.beginPath();ctx.ellipse(128,108,74,66,0,0,Math.PI*2);ctx.fill();
-   ctx.fillStyle='#181a21';ctx.beginPath();ctx.arc(99,96,17,0,Math.PI*2);ctx.arc(157,96,17,0,Math.PI*2);ctx.fill();
-   ctx.fillRect(112,137,32,12);for(let i=0;i<4;i++)ctx.fillRect(95+i*20,154,14,24);
-  }else if(look.shirt==='tee-lightning'){
-   ctx.fillStyle='#fdf273';ctx.strokeStyle='#161616';ctx.beginPath();ctx.moveTo(134,25);ctx.lineTo(84,130);ctx.lineTo(131,125);ctx.lineTo(106,237);ctx.lineTo(194,103);ctx.lineTo(146,110);ctx.closePath();ctx.fill();ctx.stroke();
-  }else{ctx.font='bold 185px sans-serif';ctx.fillText('Ⓐ',128,139)}
-  const map=new THREE.CanvasTexture(picture);map.colorSpace=THREE.SRGBColorSpace;
-  // MD is an extra wearable print layer. The original player-selected shirt
-  // color/pattern stays intact underneath and reappears when MD is removed.
-  const patch=new THREE.MeshBasicMaterial({color:'#20232c',side:THREE.DoubleSide,depthWrite:true});
-  child(upper,new THREE.PlaneGeometry(.80,.76),patch,[0,.40,.485]);
-  const ink=new THREE.MeshBasicMaterial({map,transparent:true,side:THREE.DoubleSide,depthWrite:false});
-  child(upper,new THREE.PlaneGeometry(.68,.66),ink,[0,.40,.491]);
- }
+ // MD shirt ink is painted on the capsule itself above (no front-plane patch).
  if(['horns','spike-band'].includes(look.head)){
   const band=child(neck,new THREE.TorusGeometry(.69,.064,6,20,Math.PI),mat('#20212b'),[0,.51,0]);band.rotation.x=Math.PI/2;
   for(const side of [-1,1]){
@@ -2766,6 +2796,7 @@ function disposeAvatar(root){
    if(!material)continue;
    materials.add(material);
    if(material.map)textures.add(material.map);
+   if(material.userData?.mdPrintTexture)textures.add(material.userData.mdPrintTexture);
   }
  });
  // Collect first; a shared material may be referenced by more than one mesh.
