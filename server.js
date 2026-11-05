@@ -24,7 +24,7 @@ let pendingSlamImpact=null; // Last launch roster; exactly one shared first-arri
 const SLAM_COUNTDOWN_MS=5000,SLAM_COOLDOWN_MS=15000;
 // Circle pit and shoulder-to-shoulder figure-eight train: server-authoritative join roster.
 const ROCK_COUNTDOWN_MS=5000,ROCK_COOLDOWN_MS=15000;
-const ROCK_DURATIONS={circle:20000,train:36000,mosh:9000,row:20000,toast:6000,surf:14000};
+const ROCK_DURATIONS={circle:20000,train:36000,mosh:4500,row:20000,toast:6000,surf:14000};
 let activeRock=null,rockRunningUntil=0;
 let activeSurfRide=null; // Active 10s crowd-surf choreography; included in snapshots for reconnects.
 const moshDustEvents=new Set();
