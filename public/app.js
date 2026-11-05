@@ -674,24 +674,49 @@ function makeWindowTexture(cols=3,rows=6){
  for(let row=0;row<rows;row++)for(let col=0;col<cols;col++)c.fillRect(marginX+col*(winW+gapX),26+row*(winH+gapY),winW,winH);
  const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;return texture;
 }
-function createBackdropBuilding(x,z,w,h,d,windowCols=3,windowRows=6,rotY=0){
+// Architectural groups stay outside the ±50 playfield and never become collisions.
+const skylinePalette=['#647d94','#7e8ca1','#576f86','#8a91a0','#59758b'];
+const facadeTrimMaterials=[];
+function createBackdropBuilding(x,z,w,h,d,windowCols=3,windowRows=6,rotY=0,variant=0){
  const group=new THREE.Group();group.position.set(x,0,z);group.rotation.y=rotY;backdropGroup.add(group);
- const bodyMat=new THREE.MeshStandardMaterial({color:'#667287',roughness:.92,metalness:.02});
- const roofMat=new THREE.MeshStandardMaterial({color:'#4a5568',roughness:.95,metalness:.02});
- const windowMat=new THREE.MeshBasicMaterial({map:makeWindowTexture(windowCols,windowRows),transparent:true,opacity:.16,depthWrite:false,toneMapped:false,side:THREE.DoubleSide,color:'#dfe7f0'});
+ const bodyMat=new THREE.MeshStandardMaterial({color:skylinePalette[variant%skylinePalette.length],roughness:.88,metalness:.035});
+ const roofMat=new THREE.MeshStandardMaterial({color:'#3c5067',roughness:.93,metalness:.02});
+ const trimMat=new THREE.MeshStandardMaterial({color:'#a5b1bd',roughness:.72,metalness:.12});
+ const windowMat=new THREE.MeshBasicMaterial({
+  map:makeWindowTexture(windowCols,windowRows),transparent:true,
+  opacity:.16,depthWrite:false,toneMapped:false,side:THREE.DoubleSide,color:'#dfe7f0'
+ });
  buildingBodyMats.push(bodyMat);buildingRoofMats.push(roofMat);buildingWindowMats.push(windowMat);
+ facadeTrimMaterials.push(trimMat);
  addBackdropMesh(group,new THREE.BoxGeometry(w,h,d),bodyMat,0,h/2,0);
- const roofH=Math.max(.7,h*.06);
- addBackdropMesh(group,new THREE.BoxGeometry(w*.58,roofH,d*.58),roofMat,0,h+roofH*.5,0);
- addBackdropMesh(group,new THREE.PlaneGeometry(w*.64,h*.6),windowMat,0,h*.54,d*.5+.03,0,0,0);
- addBackdropMesh(group,new THREE.PlaneGeometry(d*.42,h*.52),windowMat,w*.5+.03,h*.52,0,0,Math.PI/2,0);
+ // Low-poly cornices, storefront, rooftop fixtures and illuminated glass.
+ addBackdropMesh(group,new THREE.BoxGeometry(w+.25,.27,d+.26),roofMat,0,h+.14,0);
+ addBackdropMesh(group,new THREE.BoxGeometry(w*.69,.65,d*.65),roofMat,0,h+.45,0);
+ addBackdropMesh(group,new THREE.BoxGeometry(w*.45,.25,.48),trimMat,0,h+.87,0);
+ addBackdropMesh(group,new THREE.PlaneGeometry(w*.77,h*.69),windowMat,0,h*.59,d/2+.045);
+ addBackdropMesh(group,new THREE.PlaneGeometry(d*.77,h*.62),windowMat,w/2+.045,h*.58,0,0,Math.PI/2,0);
+ addBackdropMesh(group,new THREE.BoxGeometry(w*.78,.2,.38),trimMat,0,h*.18,d/2+.28);
+ if(variant%3===0){
+  addBackdropMesh(group,new THREE.BoxGeometry(w*.42,.16,.38),roofMat,0,h*.86,d/2+.24);
+  addBackdropMesh(group,new THREE.BoxGeometry(w*.42,.16,.38),roofMat,0,h*.46,d/2+.24);
+ }
+ const doorMat=new THREE.MeshStandardMaterial({color:'#334d61',roughness:.52,metalness:.12});
+ addBackdropMesh(group,new THREE.BoxGeometry(Math.min(w*.3,2.15),2.6,.12),doorMat,0,1.3,d/2+.07);
+ const canopyMat=new THREE.MeshStandardMaterial({color:variant%2?'#93aeb3':'#b299a2',roughness:.72});
+ addBackdropMesh(group,new THREE.BoxGeometry(w*.54,.16,1.2),canopyMat,0,3.04,d/2+.43);
  return group;
 }
-function createMountain(x,z,sx,sy,sz,rotY=0){
- const material=new THREE.MeshStandardMaterial({color:'#8fa6ba',roughness:.98,metalness:0,flatShading:true});
+function createMountain(x,z,width,height,depth,rotY=0){
+ // Far-off shapes are narrower and lower than v89 to avoid engulfing buildings.
+ const material=new THREE.MeshBasicMaterial({color:'#93adbf',fog:false,depthWrite:true});
  mountainMats.push(material);
- const peak=new THREE.Mesh(new THREE.ConeGeometry(1.8,3.1,5,1),material);peak.position.set(x,sy*1.45,z);peak.scale.set(sx,sy,sz);peak.rotation.y=rotY;peak.castShadow=false;peak.receiveShadow=false;backdropGroup.add(peak);
- const shoulder=new THREE.Mesh(new THREE.ConeGeometry(2.5,2.2,5,1),material);shoulder.position.set(x+(sx>0?1.2:-1.2),sy*.85,z+.8);shoulder.scale.set(sx*1.25,sy*.62,sz*1.15);shoulder.rotation.y=rotY+.35;shoulder.castShadow=false;shoulder.receiveShadow=false;backdropGroup.add(shoulder);
+ const peak=new THREE.Mesh(new THREE.ConeGeometry(1,1,5),material);
+ peak.position.set(x,height*.48,z);peak.scale.set(width*.56,height,depth*.53);
+ peak.rotation.y=rotY;peak.castShadow=false;backdropGroup.add(peak);
+ const shoulder=new THREE.Mesh(new THREE.ConeGeometry(1,1,5),material);
+ shoulder.position.set(x+width*.36,height*.28,z-2);
+ shoulder.scale.set(width*.48,height*.6,depth*.6);
+ shoulder.rotation.y=rotY+.17;shoulder.castShadow=false;backdropGroup.add(shoulder);
 }
 
 // v87: The red line is the end of the STAGE/AUDIENCE area, not a cue
@@ -724,19 +749,38 @@ const horizonGlow=new THREE.Mesh(new THREE.PlaneGeometry(200,38),new THREE.MeshB
 for(const x of [-40,-28,-15,16,31,45]){const rock=new THREE.Mesh(new THREE.DodecahedronGeometry(1.2+Math.abs(x)%3*.22),mat('#6f6d75'));rock.position.set(x,.85,70+Math.abs(x)%3*2.5);rock.rotation.set(.25,.3,0);rock.castShadow=true;rock.receiveShadow=true;scene.add(rock)}
 function dune(x,z,sx,sz,sy=.8){const d=new THREE.Mesh(new THREE.SphereGeometry(1.9,18,14),sandMat);d.scale.set(sx,sy,sz);d.position.set(x,.7,z);d.castShadow=false;d.receiveShadow=true;scene.add(d)}
 [[-36,48,4.6,1.5,.95],[-18,52,5.5,1.8,1.05],[8,49,6.6,2.0,.92],[28,53,5.1,1.7,1.0],[44,49,3.8,1.3,.8]].forEach(v=>dune(...v));
-// Background skyline + distant mountains: decorative only, always behind the live stage.
+// v90: buildings directly OUTSIDE both sides of the playable map.
+// They form a dense streetscape around the festival instead of floating in
+// distant mountain silhouettes. Center rear skyline stays behind the stage.
+const nearbyCity=[
+ // left: a staggered front row visible from the sea and audience cameras
+ [-60,-47,9,13,9,3,5,.09,0],[-61,-34,10,16,10,3,6,.02,1],
+ [-62,-20,8,12,8,2,4,.04,2],[-60,-7,10,18,9,3,6,-.06,3],
+ [-61,8,9,15,9,3,5,.07,4],[-62,22,10,17,9,3,6,.02,1],
+ [-60,36,10,14,9,3,5,.04,2],[-62,49,9,13,9,2,4,.06,0],
+ // right edge, same density but varied heights and façade rhythm
+ [60,-47,10,16,9,3,6,-.04,3],[61,-34,8,13,9,2,5,.04,4],
+ [62,-20,10,19,9,3,7,-.02,0],[61,-7,9,15,9,3,5,.04,2],
+ [60,8,10,18,10,3,6,-.04,1],[62,22,9,13,9,3,4,.05,3],
+ [61,36,10,16,9,3,5,-.04,4],[60,49,9,14,8,2,4,-.08,1],
+ // second side row adds depth, but still outside the visitor map
+ [-73,-40,10,20,11,3,7,.09,1],[-74,-15,9,17,9,3,6,.12,3],
+ [-73,13,10,21,10,3,7,.07,0],[-74,39,11,18,10,3,6,.06,4],
+ [73,-40,9,19,11,3,7,-.06,2],[74,-15,11,17,9,3,6,-.1,1],
+ [73,13,10,22,10,3,7,-.05,4],[74,39,10,18,10,3,6,-.08,0],
+ // rear buildings are behind the stage, with enough separation from mountains
+ [-53,-72,10,13,10,3,4,.03,2],[-39,-72,11,17,9,3,5,.03,4],
+ [-25,-74,9,14,9,3,5,-.04,1],[25,-74,9,14,9,3,5,.04,3],
+ [39,-72,11,17,9,3,5,-.03,2],[53,-72,10,13,10,3,4,-.03,0]
+];
+nearbyCity.forEach(v=>createBackdropBuilding(...v));
+// Mountain peaks occupy the outer horizon, NOT the city rows.
+// Separate skyline layer and low saturated silhouettes keep foreground clear.
 [
- [-104,-74,10,16,10,2,4,.08],[-92,-66,8,12,8,2,4,.04],[-80,-78,11,18,10,3,5,.06],
- [-68,-70,9,14,9,2,4,.03],[-56,-82,8,11,8,2,4,.05],[-44,-74,10,15,10,3,5,.02],
- [44,-74,10,15,10,3,5,-.02],[56,-82,8,11,8,2,4,-.05],[68,-70,9,14,9,2,4,-.03],
- [80,-78,11,18,10,3,5,-.06],[92,-66,8,12,8,2,4,-.04],[104,-74,10,16,10,2,4,-.08],
- [-118,-32,10,13,11,3,4,.18],[-116,-6,8,10,8,2,3,.24],[-112,18,9,12,9,2,3,.22],
- [118,-34,10,13,11,3,4,-.18],[116,-6,8,10,8,2,3,-.24],[112,18,9,12,9,2,3,-.22]
-].forEach(v=>createBackdropBuilding(...v));
-[
- [-120,-118,14,18,12,.3],[-92,-126,22,28,18,.14],[-58,-134,28,38,21,-.08],[-14,-130,24,31,20,.11],
- [30,-136,26,35,22,-.18],[74,-128,20,27,17,.09],[112,-120,15,20,12,-.22],
- [-146,-26,18,25,16,.24],[146,-24,18,25,16,-.24]
+ [-133,-119,24,23,22,.1],[-108,-129,20,17,20,.12],
+ [-82,-137,14,13,18,-.04],[82,-137,14,13,18,.04],
+ [108,-129,20,17,20,-.12],[133,-119,24,23,22,-.1],
+ [-26,-140,24,12,17,.14],[22,-141,23,11,17,-.12]
 ].forEach(v=>createMountain(...v));
 // Main stage faces the audience: far north = negative z.
 cube(45,1.7,14,dark,0,1,-25);cube(47,1.2,1,metal,0,2.05,-17.3);cube(46,1.5,1,dark,0,13.8,-31);cube(1,13.8,1,metal,-22,7.8,-31);cube(1,13.8,1,metal,22,7.8,-31);cube(46,11.8,.6,dark,0,7.2,-31);

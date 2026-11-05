@@ -398,3 +398,14 @@ html,body{height:100%;height:100dvh;overflow:hidden!important}
     left:12px;
   }
 }
+
+/* v88: always-accessible mobile drawer close button and one-tap save. */
+.sidebar #musicClose.music-close{
+ position:sticky!important;top:calc(env(safe-area-inset-top) + 6px)!important;
+ right:auto!important;margin:-42px 0 12px auto!important;
+ display:block!important;z-index:150!important;pointer-events:auto!important;
+ min-width:44px;min-height:44px;touch-action:manipulation;
+ background:#2a3448!important;color:#fff!important;border:1px solid #71809d!important;
+}
+#joinBtn{touch-action:manipulation}
+#joinBtn:disabled{opacity:.75;cursor:wait}
