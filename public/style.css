@@ -546,3 +546,38 @@ html,body{height:100%;height:100dvh;overflow:hidden!important}
 .yt-search-item img{width:83px;height:48px;object-fit:cover;border-radius:5px;flex:none}
 .yt-search-item-text{flex:1;min-width:0}.yt-search-item-text strong{font-size:11px;color:#f5f5ff;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.35}.yt-search-item-text small{display:block;color:#adb4d1;font-size:10px;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media(max-width:440px){.yt-search-item img{width:68px;height:42px}.yt-search-item button{padding:9px 8px}}
+
+/* v110 — POV & punk point shop */
+.pov-toggle,.shop-toggle{position:absolute;left:16px;z-index:17;top:138px;color:#171f27;background:#d9ff82;border:0;border-radius:9px;padding:9px 12px;font-weight:900;font-size:12px;box-shadow:0 3px 16px #0004}
+.shop-toggle{top:181px;background:#f9c6e7}
+.pov-toggle[aria-pressed="true"]{background:#ffd17d}
+.punk-shop{position:fixed;inset:0;z-index:80;background:#080a16d9;display:flex;align-items:center;justify-content:center;padding:18px}
+.punk-shop.hidden{display:none}
+.punk-shop-window{width:min(720px,100%);max-height:min(88dvh,800px);overflow:auto;background:#1a2034;border:1px solid #56637a;border-radius:18px;padding:22px;color:white;box-shadow:0 25px 80px #000b}
+.punk-shop-header{display:flex;justify-content:space-between;gap:12px;align-items:start;margin-bottom:16px}
+.punk-shop-header b{display:block;font-size:20px;color:#dfff90}.punk-shop-header small{display:block;font-size:12px;color:#adb9cd;margin-top:5px}
+.punk-shop-header button{background:#313c55;color:white;border:0;border-radius:8px;padding:9px 13px}
+.punk-balance{background:#10182b;border-radius:12px;padding:14px;margin-bottom:16px;font-weight:700;font-size:14px}
+.punk-balance strong{color:#dfff90;font-size:24px;margin-left:8px}.punk-balance span{float:right;color:#b6c3d2;margin-top:9px;font-size:12px}
+.punk-shop-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:11px}
+.punk-item{border:1px solid #495570;border-radius:12px;padding:12px;background:#252d45;display:flex;flex-direction:column;gap:7px;align-items:center;text-align:center}
+.punk-item-visual{display:grid;place-items:center;width:100%;height:72px;background:#141b30;border-radius:10px;font-size:42px}
+.punk-item strong{font-size:13px;min-height:35px}.punk-item small{font-size:12px;color:#dfff90}.punk-item button{width:100%;padding:8px;background:#dfff90;color:#121c1a;border:0;border-radius:8px;font-weight:900}
+.punk-item button:disabled{opacity:.45;cursor:not-allowed}.punk-item button.equipped{background:#788aa5;color:white}
+.punk-shop-foot{display:block;margin-top:15px;color:#b3bdd0;font-size:11px}
+@media(max-width:700px){.pov-toggle{top:calc(env(safe-area-inset-top) + 123px);left:9px}.shop-toggle{top:calc(env(safe-area-inset-top) + 162px);left:9px}.punk-shop-window{padding:14px}.punk-shop-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.punk-shop-header b{font-size:16px}.punk-balance span{float:none;display:block;margin-top:4px}}
+
+/* v111: The shop opens only via the clickable 3D merchandise booth. */
+.shop-toggle{display:none!important}
+.md-wardrobe{margin-top:14px;border:1px solid #4d5971;border-radius:12px;padding:10px;background:#171c2e}
+.md-wardrobe[hidden],#mdWardrobePanel[hidden]{display:none!important}
+#mdWardrobeToggle{display:flex;align-items:center;justify-content:space-between;width:100%;border:0;border-radius:9px;background:#303a53;color:#f6ffa6;font-weight:900;padding:13px 14px}
+#mdWardrobePanel p{font-size:11px;line-height:1.6;color:#b9c5d5;margin:12px 4px}
+.md-wardrobe-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.md-wardrobe-entry{display:flex;flex-direction:column;gap:8px;border:1px solid #44536a;border-radius:9px;padding:9px;background:#242b41}
+.md-wardrobe-entry strong{font-size:11px;color:#fff}.md-wardrobe-entry small{font-size:10px;color:#bfc7d8}
+.md-wardrobe-entry button{padding:9px 5px;border:0;background:#dfff90;color:#151e22;border-radius:7px;font-weight:900}
+.md-wardrobe-entry button:disabled{opacity:.5}
+.md-booth-label{position:absolute;pointer-events:none;z-index:12;transform:translate(-50%,-100%);color:#fff;background:#1a1528e6;border:1px solid #ff8cc7;border-radius:8px;padding:5px 9px;font-size:11px;font-weight:900;white-space:nowrap;box-shadow:0 0 14px #ff68c344}
+.md-booth-label[hidden]{display:none!important}
+@media(max-width:700px){.md-wardrobe-grid{grid-template-columns:1fr}.md-booth-label{font-size:10px;padding:4px 6px}}

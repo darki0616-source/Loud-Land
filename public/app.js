@@ -59,10 +59,6 @@ function getBadgeIdentity(){
  }catch{return sessionKey;}
 }
 const badgeIdentity=getBadgeIdentity();
-const BADGE_INFO={
- bronze:['브론즈',0],silver:['실버',3600],gold:['골드',18000],
- platinum:['플래티넘',54000],diamond:['다이아',144000],crown:['왕관',360000]
-};
 function badgeIconUrl(tier){return '/assets/badges/'+(BADGE_INFO[tier]?tier:'bronze')+'.svg';}
 function makeBadgeImg(tier){
  const img=document.createElement('img');img.className='stay-badge-icon';img.src=badgeIconUrl(tier);img.alt=(BADGE_INFO[tier]||BADGE_INFO.bronze)[0]+' 배지';img.width=20;img.height=20;
@@ -304,7 +300,7 @@ function showBookingNotice(name,title){
  setTimeout(()=>el.remove(),5200);
 }
 
-function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='snapshot'){state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);if(Array.isArray(d.chat)){$('chatMessages').replaceChildren();d.chat.forEach(appendChat)};for(const id of duoVfx.keys())removeDuoVfx(id);activeDuos.clear();for(const duo of d.interactions||[])activeDuos.set(duo.id,duo);syncDuoStatus()}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){appendChat(d.entry);showBubble(d.entry)}else if(d.type==='move'){state.players.set(d.player.id,d.player);if(d.player.id===state.id&&currentDuo())state.me={...d.player}}else if(d.type==='flag'){const player=state.players.get(d.id);if(player){player.flagText=d.flagText;player.flagImage=d.flagImage||'';}if(d.id===state.id&&state.me){state.me.flagText=d.flagText;state.me.flagImage=d.flagImage||'';currentFlagText=d.flagText;currentFlagImageId=d.flagImage||'';refreshFlagButton();}}else if(d.type==='badge'){const person=state.players.get(d.id);if(person){person.badgeTier=d.badgeTier;person.badgeSeconds=d.badgeSeconds;if(d.id===state.id&&state.me){state.me.badgeTier=d.badgeTier;state.me.badgeSeconds=d.badgeSeconds;}renderOnlinePlayers();}}else if(d.type==='profile'){state.players.set(d.player.id,d.player);if(d.player.id===state.id){state.me=d.player;refreshProfilePreview()}renderOnlinePlayers()}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers()}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue,d.history);else if(d.type==='slam')applySlam(d.slam,d.cooldownUntil);else if(d.type==='slam-go')onSlamGo(d);else if(d.type==='slam-impact')spawnSlamDust(d.x,d.y);else if(d.type==='toast-spark')spawnToastSpark(d.x,d.y);else if(d.type==='cheer'&&d.playerId!==state.id&&state.audioEnabled)playCheer();else if(d.type==='rockplay')applyRockPlay(d.event,d.rockCooldowns,d.rockRunningUntil);else if(d.type==='rockplay-go')onRockPlayGo(d);else if(d.type==='music-booked')showBookingNotice(d.name,d.title);else if(d.type==='music-control')showMusicControlNotice(d.name,d.command);else if(d.type==='skip-vote')applySkipVote(d.vote,d.cooldownUntil);else if(d.type==='skip-vote-result')showSkipVoteResult(d);else if(d.type.startsWith('duo-'))handleDuoEvent(d)};state.es.onerror=()=>{ /* EventSource retries automatically; heartbeat repairs an expired session. */ }}
+function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='snapshot'){state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);if(Array.isArray(d.chat)){$('chatMessages').replaceChildren();d.chat.forEach(appendChat)};for(const id of duoVfx.keys())removeDuoVfx(id);activeDuos.clear();for(const duo of d.interactions||[])activeDuos.set(duo.id,duo);syncDuoStatus()}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){appendChat(d.entry);showBubble(d.entry)}else if(d.type==='move'){state.players.set(d.player.id,d.player);if(d.player.id===state.id&&currentDuo())state.me={...d.player}}else if(d.type==='flag'){const player=state.players.get(d.id);if(player){player.flagText=d.flagText;player.flagImage=d.flagImage||'';}if(d.id===state.id&&state.me){state.me.flagText=d.flagText;state.me.flagImage=d.flagImage||'';currentFlagText=d.flagText;currentFlagImageId=d.flagImage||'';refreshFlagButton();}}else if(d.type==='badge'){const person=state.players.get(d.id);if(person){person.badgeTier=d.badgeTier;person.badgeSeconds=d.badgeSeconds;if(d.id===state.id&&state.me){state.me.badgeTier=d.badgeTier;state.me.badgeSeconds=d.badgeSeconds;}renderOnlinePlayers();}}else if(d.type==='profile'){state.players.set(d.player.id,d.player);if(d.player.id===state.id){state.me=d.player;refreshProfilePreview();if(!$('punkShop').classList.contains('hidden')||!$('mdWardrobe').hidden)refreshPunkShop()}renderOnlinePlayers()}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers()}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue,d.history);else if(d.type==='slam')applySlam(d.slam,d.cooldownUntil);else if(d.type==='slam-go')onSlamGo(d);else if(d.type==='slam-impact')spawnSlamDust(d.x,d.y);else if(d.type==='toast-spark')spawnToastSpark(d.x,d.y);else if(d.type==='cheer'&&d.playerId!==state.id&&state.audioEnabled)playCheer();else if(d.type==='rockplay')applyRockPlay(d.event,d.rockCooldowns,d.rockRunningUntil);else if(d.type==='rockplay-go')onRockPlayGo(d);else if(d.type==='music-booked')showBookingNotice(d.name,d.title);else if(d.type==='music-control')showMusicControlNotice(d.name,d.command);else if(d.type==='skip-vote')applySkipVote(d.vote,d.cooldownUntil);else if(d.type==='skip-vote-result')showSkipVoteResult(d);else if(d.type.startsWith('duo-'))handleDuoEvent(d)};state.es.onerror=()=>{ /* EventSource retries automatically; heartbeat repairs an expired session. */ }}
 function applySkipVote(vote,cooldownUntil){
  state.skipVote=vote||null;if(Number.isFinite(Number(cooldownUntil)))state.skipVoteCooldownUntil=Number(cooldownUntil);
  const overlay=$('skipVoteOverlay');overlay.hidden=!vote;updateSkipVoteUI();updateSharedMusicButtons();
@@ -325,7 +321,7 @@ function updateSkipVoteUI(){
 async function castSkipVote(choice){const vote=state.skipVote;if(!vote||!state.id)return;try{await post('music',{id:state.id,command:'vote-cast',voteId:vote.id,choice})}catch(e){toast(e.message)}}
 function showSkipVoteResult(d){applySkipVote(null,state.skipVoteCooldownUntil);let msg=d.passed?'✅ 과반수 찬성! 요청한 곡으로 이동합니다':d.reason==='timeout'?'투표 시간이 종료되어 현재 곡을 유지합니다':'투표가 부결되어 현재 곡을 유지합니다';notice(msg)}
 setInterval(()=>{updateSkipVoteUI();updateSharedMusicButtons()},500);
-let joining=false;async function join(options={}){const auto=Boolean(options?.auto);if(editingProfile)return updateProfile();if(joining)return;joining=true;manualExit=false;try{let d=await post('join',{sessionKey,pageId,badgeIdentity,flagText:currentFlagText,flagImage:currentFlagImageData,name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender,pattern:chosenPattern,sash:chosenSash,hairStyle:chosenHairStyle,hairColor:chosenHairColor});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);currentFlagImageId=state.me?.flagImage||'';state.pose=state.me?.pose||'stand';cameraFollowInitialized=false;state.players=new Map(d.players.map(p=>[p.id,p]));renderOnlinePlayers();$('joinModal').classList.add('hidden');$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='페스티벌 참가 중';$('avatarPreview').querySelector('b').style.background=chosenColor;saveProfile(state.me);applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);listen();$('audioModal').classList.add('hidden');setPersonalAudio(true);showMovementGuide();if(!auto)toast('ONEseason에 오신 것을 환영합니다!')}catch(e){if(auto)$('joinModal').classList.remove('hidden');$('joinError').textContent='입장 실패: '+(e?.message||'연결을 확인해주세요');console.error('ONEseason join error:',e)}finally{joining=false}}
+let joining=false;async function join(options={}){const auto=Boolean(options?.auto);if(editingProfile)return updateProfile();if(joining)return;joining=true;manualExit=false;try{let d=await post('join',{sessionKey,pageId,badgeIdentity,flagText:currentFlagText,flagImage:currentFlagImageData,name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender,pattern:chosenPattern,sash:chosenSash,hairStyle:chosenHairStyle,hairColor:chosenHairColor});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);currentFlagImageId=state.me?.flagImage||'';state.pose=state.me?.pose||'stand';cameraFollowInitialized=false;state.players=new Map(d.players.map(p=>[p.id,p]));renderOnlinePlayers();refreshPunkShop();$('joinModal').classList.add('hidden');$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='페스티벌 참가 중';$('avatarPreview').querySelector('b').style.background=chosenColor;saveProfile(state.me);applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);listen();$('audioModal').classList.add('hidden');setPersonalAudio(true);showMovementGuide();if(!auto)toast('ONEseason에 오신 것을 환영합니다!')}catch(e){if(auto)$('joinModal').classList.remove('hidden');$('joinError').textContent='입장 실패: '+(e?.message||'연결을 확인해주세요');console.error('ONEseason join error:',e)}finally{joining=false}}
 $('audioYes').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(true);toast(state.music.id?'음악 재생을 허용했어요':'음악이 등록되면 바로 재생돼요')};$('audioNo').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(false);toast('내 소리를 끈 상태로 입장했어요')};// First tap must save even if the nickname field currently has keyboard focus.
 // A pointerdown listener runs BEFORE Safari's keyboard dismissal can consume
 // the subsequent click. De-duplicate that click and block duplicate requests.
@@ -341,12 +337,12 @@ $('joinBtn').addEventListener('pointerdown',event=>{
 $('joinBtn').onclick=event=>{
  if(performance.now()-profileSavePointerAt<800){event.preventDefault();return}
  join();
-};$('nick').onkeydown=e=>{if(e.key==='Enter')join()};function closeProfileEditor(){editingProfile=false;$('joinModal').classList.add('hidden');$('joinBtn').innerHTML='페스티벌 입장하기 <span>↗</span>';$('profileCancel').hidden=true;$('joinError').textContent=''}
+};$('nick').onkeydown=e=>{if(e.key==='Enter')join()};function closeProfileEditor(){$('mdWardrobe').hidden=true;editingProfile=false;$('joinModal').classList.add('hidden');$('joinBtn').innerHTML='페스티벌 입장하기 <span>↗</span>';$('profileCancel').hidden=true;$('joinError').textContent=''}
 async function updateProfile(){if(!state.id||!state.me)return;const button=$('joinBtn');if(button.disabled)return;button.disabled=true;button.textContent='저장 중…';try{
  const d=await post('profile',{id:state.id,name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender,pattern:chosenPattern,sash:chosenSash,hairStyle:chosenHairStyle,hairColor:chosenHairColor});
  state.me=d.player;state.players.set(state.id,d.player);saveProfile(d.player);refreshProfilePreview();renderOnlinePlayers();closeProfileEditor();toast('캐릭터 설정을 변경했어요');
  }catch(e){$('joinError').textContent='변경 실패: '+e.message}finally{button.disabled=false;if(editingProfile)button.textContent='변경 사항 저장'}}
-$('editAvatar').onclick=()=>{if(!state.me)return;editingProfile=true;$('nick').value=state.me.name;chosenColor=state.me.color;chosenPattern=state.me.pattern||'solid';chosenSash=state.me.sash||'none';chosenHairStyle=normalizeHairStyle(state.me.hairStyle);chosenHairColor=state.me.hairColor||'#4b3932';selectGender(state.me.gender);colorPicker();renderApparelPicker();renderHairPicker();$('joinError').textContent='';$('joinBtn').textContent='변경 사항 저장';$('profileCancel').hidden=false;$('joinModal').classList.remove('hidden');if(!matchMedia('(pointer:coarse)').matches)$('nick').focus()};
+$('editAvatar').onclick=()=>{if(!state.me)return;editingProfile=true;$('nick').value=state.me.name;chosenColor=state.me.color;chosenPattern=state.me.pattern||'solid';chosenSash=state.me.sash||'none';chosenHairStyle=normalizeHairStyle(state.me.hairStyle);chosenHairColor=state.me.hairColor||'#4b3932';selectGender(state.me.gender);colorPicker();renderApparelPicker();renderHairPicker();$('joinError').textContent='';$('joinBtn').textContent='변경 사항 저장';$('profileCancel').hidden=false;$('joinModal').classList.remove('hidden');$('mdWardrobe').hidden=false;$('mdWardrobePanel').hidden=true;$('mdWardrobeToggle').setAttribute('aria-expanded','false');drawMdWardrobe();if(!matchMedia('(pointer:coarse)').matches)$('nick').focus()};
 $('profileCancel').onclick=closeProfileEditor;
 $('profileToggle').onclick=()=>{if(!state.me)return toast('입장 후 변경할 수 있어요');$('editAvatar').click()};
 ;$('helpBtn').onclick=()=>toast('WASD 이동 · 클릭/터치 이동 · 드래그 시점 회전 · 춤: B/G/V/K · 환호성: H · 담배: C');
@@ -907,6 +903,99 @@ function renderStageForeground(){
  try{stageForeground.render(scene,foregroundCamera)}finally{scene.background=original}
 }
 
+// Simple same-browser punk wardrobe: server owns points, inventory and equipment.
+const PUNK_SHOP_ITEMS=[
+ ['tee-skull','💀','스컬 프린트 티셔츠',30,'shirt'],
+ ['tee-lightning','⚡','번개 펑크 티셔츠',45,'shirt'],
+ ['tee-anarchy','Ⓐ','언더그라운드 티셔츠',65,'shirt'],
+ ['horns','😈','악마뿔 머리띠',80,'head'],
+ ['spike-band','🤘','스파이크 머리띠',110,'head'],
+ ['chain','⛓️','실버 체인 목걸이',55,'neck'],
+ ['choker','🖤','스파이크 초커',95,'neck']
+];
+let punkWallet=null,punkShopBusy=false,povEnabled=false,povYaw=0,povPitch=0;
+async function refreshPunkShop(){
+ if(!state.id)return;
+ try{const r=await post('shop',{id:state.id,command:'status'});punkWallet=r.shop;drawPunkShop();drawMdWardrobe()}
+ catch(e){toast('상점 정보를 불러오지 못했습니다: '+e.message)}
+}
+function drawPunkShop(){
+ const root=$('punkShopGrid');if(!root)return;root.replaceChildren();
+ const wallet=punkWallet||{points:0,earned:0,owned:[],equipped:{}};
+ $('punkPoints').textContent=wallet.points.toLocaleString()+' P';$('punkEarned').textContent='누적 '+wallet.earned.toLocaleString()+' P';
+ for(const [id,emoji,title,cost] of PUNK_SHOP_ITEMS){
+  const owned=wallet.owned.includes(id);
+  const card=document.createElement('article');card.className='punk-item';
+  const visual=document.createElement('div');visual.className='punk-item-visual';visual.textContent=emoji;
+  const name=document.createElement('strong');name.textContent=title;
+  const price=document.createElement('small');price.textContent=owned?'보유 중':cost+' P';
+  const button=document.createElement('button');button.type='button';button.disabled=punkShopBusy||owned||wallet.points<cost;
+  button.textContent=owned?'구매 완료':'교환하기';
+  button.onclick=async()=>{
+   if(punkShopBusy||owned||!state.id)return;
+   punkShopBusy=true;drawPunkShop();
+   try{const d=await post('shop',{id:state.id,command:'buy',item:id});punkWallet=d.shop;
+    toast(title+' 교환 완료! 내 설정 → MD 사용하기에서 장착하세요.');
+   }catch(e){toast(e.message)}finally{punkShopBusy=false;drawPunkShop()}
+  };
+  card.append(visual,name,price,button);root.append(card);
+ }
+}
+function drawMdWardrobe(){
+ const container=$('mdWardrobeGrid');if(!container)return;container.replaceChildren();
+ const wallet=punkWallet||{owned:[],equipped:{}};
+ const ownedItems=PUNK_SHOP_ITEMS.filter(([id])=>wallet.owned.includes(id));
+ if(!ownedItems.length){const empty=document.createElement('p');empty.textContent='보유한 MD 아이템이 없어요. 무대 왼쪽 MD샵에서 교환할 수 있어요.';container.append(empty);return}
+ for(const [id,emoji,name,cost,slot] of ownedItems){
+  const wearing=wallet.equipped?.[slot]===id;
+  const card=document.createElement('div');card.className='md-wardrobe-entry';
+  const title=document.createElement('strong');title.textContent=emoji+' '+name;
+  const line=document.createElement('small');line.textContent=slot==='shirt'?'티셔츠 위에 표시':slot==='head'?'머리 장식':'목 장식';
+  const btn=document.createElement('button');btn.type='button';btn.textContent=wearing?'벗기':'입기';btn.disabled=punkShopBusy;
+  btn.onclick=async()=>{if(punkShopBusy||!state.id)return;punkShopBusy=true;drawMdWardrobe();
+   try{const d=await post('shop',{id:state.id,command:wearing?'unequip':'equip',item:id});punkWallet=d.shop;
+    toast(name+(wearing?' 해제':' 장착')+' 완료');
+   }catch(e){toast(e.message)}finally{punkShopBusy=false;drawMdWardrobe()}
+  };
+  card.append(title,line,btn);container.append(card);
+ }
+}
+function openPunkShop(){if(!state.id)return toast('입장 후 MD샵을 이용할 수 있어요');$('punkShop').classList.remove('hidden');refreshPunkShop()}
+$('punkShopClose').onclick=()=>$('punkShop').classList.add('hidden');
+$('punkShop').addEventListener('click',e=>{if(e.target===$('punkShop'))$('punkShop').classList.add('hidden')});
+$('mdWardrobeToggle').onclick=()=>{const panel=$('mdWardrobePanel');panel.hidden=!panel.hidden;$('mdWardrobeToggle').setAttribute('aria-expanded',String(!panel.hidden));if(!panel.hidden)refreshPunkShop()};
+$('povToggle').onclick=()=>{
+ povEnabled=!povEnabled;povYaw=0;povPitch=0;
+ controls.enabled=!povEnabled;
+ $('povToggle').setAttribute('aria-pressed',String(povEnabled));
+ $('povToggle').textContent=povEnabled?'👁 3인칭':'👁 POV';
+ cameraFollowInitialized=false;
+ if(!povEnabled&&state.me){const w=toWorld(state.me);controls.target.set(w.x,1.55,w.z);camera.position.set(w.x,8,w.z+13);camera.lookAt(controls.target)}
+ toast(povEnabled?'POV: 1인칭 시점 · 드래그로 시선 조절':'3인칭 시점');
+};
+let povPointer=null;
+gameTouchSurface.addEventListener('pointerdown',e=>{if(!povEnabled)return;povPointer={id:e.pointerId,x:e.clientX,y:e.clientY};});
+gameTouchSurface.addEventListener('pointermove',e=>{
+ if(!povEnabled||!povPointer||e.pointerId!==povPointer.id)return;
+ if(e.buttons===0&&e.pointerType==='mouse')return;
+ const dx=e.clientX-povPointer.x,dy=e.clientY-povPointer.y;
+ if(Math.abs(dx)+Math.abs(dy)>0){povYaw=Math.max(-Math.PI,Math.min(Math.PI,povYaw-dx*.005));povPitch=Math.max(-.95,Math.min(.9,povPitch-dy*.003));}
+ povPointer.x=e.clientX;povPointer.y=e.clientY;
+});
+for(const ev of ['pointerup','pointercancel'])gameTouchSurface.addEventListener(ev,()=>povPointer=null);
+function updatePovCamera(){
+ if(!povEnabled||!state.me)return;
+ const w=toWorld(state.me),yaw=(state.me.facing||0)+povYaw;
+ camera.position.set(w.x,2.55,w.z);
+ const dx=Math.sin(yaw)*Math.cos(povPitch),dy=Math.sin(povPitch),dz=Math.cos(yaw)*Math.cos(povPitch);
+ camera.lookAt(w.x+dx*15,2.55+dy*15,w.z+dz*15);
+}
+
+const BADGE_INFO={
+ bronze:['브론즈',0],silver:['실버',3600],gold:['골드',18000],
+ platinum:['플래티넘',54000],diamond:['다이아',144000],crown:['왕관',360000]
+};
+
 const controls=new OrbitControls(camera,gameTouchSurface);controls.enableDamping=true;controls.dampingFactor=.07;controls.minDistance=3.2;controls.maxDistance=105;controls.maxPolarAngle=Math.PI/2.12;controls.target.set(0,1,4);controls.enablePan=false;
 // Full 360° orbit on mouse and touch. Collide the camera with the actual stage
 // box, never an infinite Z-plane (the old plane felt like a left/right lock).
@@ -1170,6 +1259,33 @@ for(let s of [-1,1]){for(let j=0;j<2;j++){let x=s*18.5,z=-25+j*3.4;cube(3.8,4.3,
 // drum kit + guitars on stage
 cylinder(1.55,1.55,1.2,mat('#d671c0',.5),0,3.25,-25);for(let x of [-2.2,2.2]){cylinder(.82,.82,.72,mat('#94bbfe'),x,3.65,-26);cylinder(.07,.07,3,metal,x*1.3,3.8,-26)}
 for(let x of [-8,8]){cylinder(.12,.12,3.2,metal,x,4,-24);sphere(.18,mat('#fcf6d5'),x,5.65,-24)}
+// v111: walk-up merchandise booth on the audience's stage-left edge.
+// Its front faces +Z (the audience/camera). All click targets are local meshes.
+const mdBoothTargets=[];
+const mdBoothGroup=new THREE.Group();mdBoothGroup.position.set(-38,0,-7.2);scene.add(mdBoothGroup);
+function mdPart(geometry,material,x,y,z,clickable=true){
+ const mesh=new THREE.Mesh(geometry,material);mesh.position.set(x,y,z);mesh.receiveShadow=true;
+ mesh.castShadow=false;mdBoothGroup.add(mesh);if(clickable)mdBoothTargets.push(mesh);return mesh;
+}
+const mdCharcoal=mat('#222235'),mdPink=mat('#e884b6'),mdWhite=mat('#f5eddf'),mdSilver=mat('#abb8c5',.45);
+mdPart(new THREE.BoxGeometry(9,.35,5.5),mdCharcoal,0,.18,0);
+for(const x of [-4.0,4.0])for(const z of [-2.3,2.3])mdPart(new THREE.BoxGeometry(.24,4.8,.24),mdSilver,x,2.5,z);
+mdPart(new THREE.BoxGeometry(9.5,.35,6),mdPink,0,5.0,0);
+mdPart(new THREE.BoxGeometry(8.6,1.25,.42),mdCharcoal,0,4.38,2.65);
+const mdSign=new THREE.Mesh(new THREE.PlaneGeometry(7.9,1.02),label('ONEseason MD',63,'#ffffff','#252135'));
+mdSign.position.set(0,4.38,2.9);mdBoothGroup.add(mdSign);mdBoothTargets.push(mdSign);
+mdPart(new THREE.BoxGeometry(8.15,1.15,1.25),mdCharcoal,0,.98,2.18);
+mdPart(new THREE.BoxGeometry(8.15,.15,1.6),mdWhite,0,1.64,2.18);
+// Display three collectible T-shirts, a pink horn headband and a metal chain.
+for(const [i,color] of [[-2.9,'#22242d'],[0,'#e6d34d'],[2.9,'#f3f0ea']]){
+ mdPart(new THREE.BoxGeometry(1.85,1.45,.16),mat(color),i,2.92,-2.31);
+ const emblem=new THREE.Mesh(new THREE.PlaneGeometry(1.25,.80),label(i<0?'SKULL':i===0?'PUNK':'ROCK',54,'#ffffff',i===0?'#514a22':'#343043'));
+ emblem.position.set(i,2.96,-2.20);mdBoothGroup.add(emblem);mdBoothTargets.push(emblem);
+}
+for(const side of [-1,1]){const horn=mdPart(new THREE.ConeGeometry(.29,.76,7),mat('#de4a76'),side*.47,2.16,2.44);horn.rotation.z=side*.26}
+mdPart(new THREE.TorusGeometry(.72,.07,7,20,Math.PI),mdSilver,0,1.90,2.95);
+const mdInteractSign=new THREE.Mesh(new THREE.PlaneGeometry(5.4,.78),label('TOUCH TO SHOP',58,'#fcfae8','#e36b9b'));
+mdInteractSign.position.set(0,2.0,3.01);mdBoothGroup.add(mdInteractSign);mdBoothTargets.push(mdInteractSign);
 // Crowd barrier
 for(let x=-34;x<=34;x+=3){cube(.11,1.45,.11,metal,x,.9,-13.2);if(x<34)cube(3,.13,.13,metal,x+1.5,1.48,-13.2)}
 // Walkway and picnic area: use the existing continuous lawn directly.
@@ -1777,6 +1893,47 @@ function makeAvatar(p){
    clothMaterial=[patterned,patterned,clothMaterial,clothMaterial,patterned,patterned];
   }
   child(fabric,new THREE.BoxGeometry(.23,1.14,.065),clothMaterial,[-.025,-.57,0],[1,1,1]);
+ }
+ // Shop costumes are separate lightweight meshes, independent of the original hair and pose rig.
+ const look=p.equipped||{};
+ if(look.shirt&&['tee-skull','tee-lightning','tee-anarchy'].includes(look.shirt)){
+  const picture=document.createElement('canvas');picture.width=256;picture.height=256;
+  const ctx=picture.getContext('2d');ctx.clearRect(0,0,256,256);
+  ctx.fillStyle='#f8f3ea';ctx.strokeStyle='#111';ctx.lineWidth=8;ctx.textAlign='center';ctx.textBaseline='middle';
+  if(look.shirt==='tee-skull'){
+   ctx.beginPath();ctx.ellipse(128,108,74,66,0,0,Math.PI*2);ctx.fill();
+   ctx.fillStyle='#181a21';ctx.beginPath();ctx.arc(99,96,17,0,Math.PI*2);ctx.arc(157,96,17,0,Math.PI*2);ctx.fill();
+   ctx.fillRect(112,137,32,12);for(let i=0;i<4;i++)ctx.fillRect(95+i*20,154,14,24);
+  }else if(look.shirt==='tee-lightning'){
+   ctx.fillStyle='#fdf273';ctx.strokeStyle='#161616';ctx.beginPath();ctx.moveTo(134,25);ctx.lineTo(84,130);ctx.lineTo(131,125);ctx.lineTo(106,237);ctx.lineTo(194,103);ctx.lineTo(146,110);ctx.closePath();ctx.fill();ctx.stroke();
+  }else{ctx.font='bold 185px sans-serif';ctx.fillText('Ⓐ',128,139)}
+  const map=new THREE.CanvasTexture(picture);map.colorSpace=THREE.SRGBColorSpace;
+  // MD is an extra wearable print layer. The original player-selected shirt
+  // color/pattern stays intact underneath and reappears when MD is removed.
+  const patch=new THREE.MeshBasicMaterial({color:'#20232c',side:THREE.DoubleSide,depthWrite:true});
+  child(upper,new THREE.PlaneGeometry(.80,.76),patch,[0,.40,.485]);
+  const ink=new THREE.MeshBasicMaterial({map,transparent:true,side:THREE.DoubleSide,depthWrite:false});
+  child(upper,new THREE.PlaneGeometry(.68,.66),ink,[0,.40,.491]);
+ }
+ if(['horns','spike-band'].includes(look.head)){
+  const band=child(neck,new THREE.TorusGeometry(.69,.064,6,20,Math.PI),mat('#20212b'),[0,.51,0]);band.rotation.x=Math.PI/2;
+  for(const side of [-1,1]){
+   const spike=child(neck,new THREE.ConeGeometry(look.head==='horns'?.19:.11,look.head==='horns'?.63:.37,9),mat(look.head==='horns'?'#d43747':'#a9aebd',.48),[side*.48,look.head==='horns'?1.03:.85,.02]);
+   spike.rotation.z=look.head==='horns'?side*.24:0;
+  }
+ }
+ if(['chain','choker'].includes(look.neck)){
+  const silver=mat(look.neck==='choker'?'#161720':'#c4c9d2',.34);
+  const collar=child(upper,new THREE.TorusGeometry(.33,.062,8,18),silver,[0,.85,0]);collar.rotation.x=Math.PI/2;
+  if(look.neck==='chain'){
+   for(let i=0;i<8;i++){
+    const x=(i-3.5)*.075,y=.72-Math.sin(i/7*Math.PI)*.15;
+    const chainLink=child(upper,new THREE.TorusGeometry(.07,.02,5,8),silver,[x,y,.36]);chainLink.rotation.z=i*.14;
+   }
+   child(upper,new THREE.OctahedronGeometry(.12,0),silver,[0,.52,.42]);
+  }else{
+   for(const x of [-.23,-.08,.08,.23]){const spike=child(upper,new THREE.ConeGeometry(.065,.20,6),mat('#ccd0d9',.35),[x,.78,.36]);spike.rotation.x=Math.PI*.52;}
+  }
  }
  // Minimal articulated limbs: smooth joints tucked inside sleeve/leg, not exposed balls.
  function arm(side){
@@ -2547,7 +2704,9 @@ gameTouchSurface.addEventListener('pointerup',e=>{
  // change tabs. Do not intercept the ground click: walking still works.
  if(!$('chatPanel').classList.contains('hidden'))selectBottomMenu('reaction');
  const bounds=renderer.domElement.getBoundingClientRect();pointer.set(((e.clientX-bounds.left)/bounds.width)*2-1,-((e.clientY-bounds.top)/bounds.height)*2+1);
- groundRay.setFromCamera(pointer,camera);if(!groundRay.ray.intersectPlane(groundPlane,hit))return;
+ groundRay.setFromCamera(pointer,camera);
+ if(!rockPlacementMode&&!slamMode&&groundRay.intersectObjects(mdBoothTargets,false).length){openPunkShop();return;}
+ if(!groundRay.ray.intersectPlane(groundPlane,hit))return;
  const x=Math.max(20,Math.min(1380,hit.x/.058+600)),y=Math.max(220,Math.min(1100,(contractWorldZ(hit.z)-8)/.058+500));
  if(rockPlacementMode){
   const kind=rockPlacementMode;rockPlacementMode=null;refreshRockUI();
@@ -2774,10 +2933,10 @@ function tick(t){
 
  for(let [id,p] of state.players){
   const current=avatars.get(id);
-  if(current&&(current.color!==p.color||current.name!==p.name||current.badgeTier!==(p.badgeTier||'bronze')||current.gender!==p.gender||current.pattern!==(p.pattern||'solid')||current.sash!==(p.sash||'none')||current.hairStyle!==(p.hairStyle||'short')||current.hairColor!==(p.hairColor||'#4b3932')||current.flagText!==(p.flagText||'')||current.flagImage!==(p.flagImage||''))){
+  if(current&&(current.color!==p.color||current.name!==p.name||current.badgeTier!==(p.badgeTier||'bronze')||current.gender!==p.gender||current.pattern!==(p.pattern||'solid')||current.sash!==(p.sash||'none')||current.hairStyle!==(p.hairStyle||'short')||current.hairColor!==(p.hairColor||'#4b3932')||current.flagText!==(p.flagText||'')||current.flagImage!==(p.flagImage||'')||JSON.stringify(current.equipped||{})!==JSON.stringify(p.equipped||{}))){
    disposeAvatar(current.root);avatars.delete(id);
   }
-  if(!avatars.has(id)){let a=makeAvatar(p),pos=toWorld(p);a.root.position.set(pos.x,0,pos.z);a.name=p.name;a.badgeTier=p.badgeTier||'bronze';a.gender=p.gender;a.pattern=p.pattern||'solid';a.sash=p.sash||'none';a.hairStyle=p.hairStyle||'short';a.hairColor=p.hairColor||'#4b3932';a.flagText=p.flagText||'';a.flagImage=p.flagImage||'';avatars.set(id,a)}
+  if(!avatars.has(id)){let a=makeAvatar(p),pos=toWorld(p);a.root.position.set(pos.x,0,pos.z);a.name=p.name;a.badgeTier=p.badgeTier||'bronze';a.gender=p.gender;a.pattern=p.pattern||'solid';a.sash=p.sash||'none';a.hairStyle=p.hairStyle||'short';a.hairColor=p.hairColor||'#4b3932';a.flagText=p.flagText||'';a.flagImage=p.flagImage||'';a.equipped={...(p.equipped||{})};avatars.set(id,a)}
   const avatar=avatars.get(id);
   animateAvatar(avatar,p,t);
   if(avatar.parts.flagPivot?.parent?.visible){
@@ -2807,7 +2966,14 @@ function tick(t){
  if(!minimalScenery)animateSky(t);
  updateSlamDust(t);updateBubbles(t);animateShow(t);
  if(!minimalScenery)updateHourlyFireworks(t);
- animateToastSparks(t);followLocalAvatar();controls.update();keepCameraInFrontOfStage();updateSlamVisual(t);updateRockPlayVisual(t);renderer.render(scene,camera);cssRenderer.render(scene,camera);renderStageForeground();
+ animateToastSparks(t);
+ if(povEnabled){updatePovCamera();}else{followLocalAvatar();controls.update();keepCameraInFrontOfStage();}
+ // Hide only our own avatar in POV, but leave all other avatars visible.
+ const selfAvatar=avatars.get(state.id),previousVisible=selfAvatar?.root.visible;
+ if(povEnabled&&selfAvatar)selfAvatar.root.visible=false;
+ updateSlamVisual(t);updateRockPlayVisual(t);renderer.render(scene,camera);cssRenderer.render(scene,camera);renderStageForeground();
+ if(selfAvatar)selfAvatar.root.visible=previousVisible;
+
  // Re-evaluate rendering cost roughly every 6 seconds, auto mode only.
  if(perfMode==='auto'){
   perfFrameTotal+=performance.now()-frameStart;perfFrameSamples++;
