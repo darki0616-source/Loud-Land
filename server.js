@@ -66,15 +66,39 @@ function voterLeaves(id){if(!skipVote||!skipVote.eligible.has(id))return;skipVot
 
 const DATA_DIR=process.env.DATA_DIR||path.join(__dirname,'data');
 const STATE_PATH=path.join(DATA_DIR,'festival-state.json');
+// Total online time per stable browser identity, persisted alongside the playlist.
+const badgeStats=new Map();
+const BADGE_LEVELS=[['bronze',0],['silver',3600],['gold',18000],['platinum',54000],['diamond',144000],['crown',360000]];
+function badgeTier(seconds){let tier='bronze';for(const [id,threshold] of BADGE_LEVELS){if(seconds>=threshold)tier=id;}return tier;}
+function badgeTotal(p,now=Date.now()){
+ const stat=p.badgeIdentity?badgeStats.get(p.badgeIdentity):null;
+ return Math.floor((stat?.seconds||0)+Math.max(0,now-(p.badgeSince||now))/1000);
+}
+function updateBadge(p,now=Date.now()){
+ if(!p||!p.badgeIdentity)return false;
+ const total=badgeTotal(p,now),tier=badgeTier(total),changed=tier!==p.badgeTier;
+ p.badgeTier=tier;p.badgeSeconds=total;
+ return changed;
+}
+function settleBadge(p,now=Date.now()){
+ if(!p||!p.badgeIdentity)return;
+ const stat=badgeStats.get(p.badgeIdentity)||{seconds:0};
+ stat.seconds+=Math.max(0,now-(p.badgeSince||now))/1000;
+ badgeStats.set(p.badgeIdentity,stat);p.badgeSince=now;updateBadge(p,now);scheduleSave();
+}
+
 let saveTimeout=null;
 const SB_URL=(process.env.SUPABASE_URL||'').replace(/\/$/,'');
 const SB_KEY=process.env.SUPABASE_SECRET_KEY||'';
 const useSupabase=Boolean(SB_URL&&SB_KEY);
 let restored=false;
 let saveChain=Promise.resolve();
-function stateData(){return {version:3,music,queue:[...queue],history:[...history],nextTrackToken,savedAt:Date.now()}}
+function stateData(){return {version:4,music,queue:[...queue],history:[...history],nextTrackToken,badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),savedAt:Date.now()}}
 function applySaved(d){
  if(!d||typeof d!=='object')return;
+ if(d.badgeStats&&typeof d.badgeStats==='object')for(const [k,v] of Object.entries(d.badgeStats).slice(0,30000)){
+  if(/^[a-zA-Z0-9_-]{20,100}$/.test(k)&&Number.isFinite(v)&&v>=0)badgeStats.set(k,{seconds:Math.min(v,315360000)});
+ }
  queue.length=0;history.length=0;
  if(Array.isArray(d.history))history.push(...d.history.filter(x=>x&&/^[\w-]{11}$/.test(x.id||'')).slice(-50));
  if(Array.isArray(d.queue))queue.push(...d.queue.filter(x=>x&&/^[\w-]{11}$/.test(x.id||'')).slice(0,50));
@@ -147,8 +171,18 @@ function duoDistance(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
 setInterval(()=>{const now=Date.now();for(const duo of [...activeDuos.values()])if(duo.endAt<=now)endDuo(duo);for(const [key,invite] of duoInvites)if(invite.expiresAt<=now){duoInvites.delete(key);broadcast({type:'duo-invite-ended',id:key,to:invite.to})}},700).unref();
 const snapshot=()=>({type:'snapshot',interactions:[...activeDuos.values()].filter(x=>x.endAt>Date.now()),players:[...players.values()],chat:chatHistory,...musicState(),skipVote:publicSkipVote(),skipVoteCooldownUntil,slam:publicSlam(),slamCooldownUntil,rockPlay:publicRock(),rockCooldowns:{...rockCooldowns},rockRunningUntil,count:players.size});
 const clamp=(n,min,max)=>Math.min(max,Math.max(min,Number(n)||0));
-function cleanup(){const now=Date.now();for(const [id,p] of players)if(now-p.seen>180000){clearDuosFor(id);players.delete(id);forgetSession(id);voterLeaves(id);if(activeSlam?.participants.delete(id))slamUpdate();rockMemberLeaves(id);pauseForEmpty();const r=clients.get(id);if(r){r.end();clients.delete(id)}broadcast({type:'leave',id,count:players.size})}}
+function cleanup(){const now=Date.now();for(const [id,p] of players)if(now-p.seen>180000){settleBadge(p,Math.min(now,p.seen+45000));settleBadge(p);clearDuosFor(id);players.delete(id);forgetSession(id);voterLeaves(id);if(activeSlam?.participants.delete(id))slamUpdate();rockMemberLeaves(id);pauseForEmpty();const r=clients.get(id);if(r){r.end();clients.delete(id)}broadcast({type:'leave',id,count:players.size})}}
 setInterval(cleanup,7000).unref();
+setInterval(()=>{
+ const now=Date.now();let changed=false;
+ for(const p of players.values()){
+  if(now-p.seen>45000)continue; // Do not reward stale tabs without heartbeat.
+  if(updateBadge(p,now)){broadcast({type:'badge',id:p.id,badgeTier:p.badgeTier,badgeSeconds:p.badgeSeconds});changed=true;}
+ }
+ for(const p of players.values())if(p.badgeIdentity&&now-p.seen<=45000)settleBadge(p,now);
+ if(changed)console.log('Visitor badge rank updated');
+},60000).unref();
+
 function videoId(input){const v=String(input||'').trim();if(/^[\w-]{11}$/.test(v))return v;try{const u=new URL(v);const host=u.hostname.replace(/^www\./,'');if(host==='youtu.be')return /^[\w-]{11}$/.test(u.pathname.slice(1))?u.pathname.slice(1):null;if(['youtube.com','m.youtube.com','music.youtube.com','youtube-nocookie.com'].includes(host)){const id=u.searchParams.get('v')||u.pathname.match(/\/(?:embed|shorts|live)\/([\w-]{11})/)?.[1];return /^[\w-]{11}$/.test(id||'')?id:null}}catch{}return null}
 // Read the actual public YouTube title server-side; never trust a user-submitted title.
 const videoTitleCache = new Map();
@@ -184,6 +218,7 @@ const server=http.createServer(async(req,res)=>{
       const d=await receive(req);
       if(url.pathname==='/api/join'){
         const sessionKey=typeof d.sessionKey==='string'&&/^[a-zA-Z0-9_-]{20,100}$/.test(d.sessionKey)?d.sessionKey:null;
+        const badgeIdentity=typeof d.badgeIdentity==='string'&&/^[a-zA-Z0-9_-]{20,100}$/.test(d.badgeIdentity)?d.badgeIdentity:null;
         const pageId=typeof d.pageId==='string'&&/^[a-zA-Z0-9_-]{20,100}$/.test(d.pageId)?d.pageId:null;
         // Repeated joins from reconnect/parallel timers must reuse the SAME avatar.
         if(sessionKey){
@@ -196,8 +231,8 @@ const server=http.createServer(async(req,res)=>{
           }
           if(existingId)sessionPlayers.delete(sessionKey);
         }
-        const id=crypto.randomUUID(),p={id,name:clean(d.name,18)||'ROCKER',color:colors.includes(d.color)?d.color:colors[0],...apparel(d),gender:d.gender==='female'?'female':'male',x:clamp(190+Math.random()*880,20,1380),y:clamp(390+Math.random()*420,220,1100),facing:0,action:'idle',pose:'stand',seen:Date.now()};
-        players.set(id,p);
+        const id=crypto.randomUUID(),p={id,badgeSince:Date.now(),badgeTier:'bronze',badgeSeconds:0,name:clean(d.name,18)||'ROCKER',color:colors.includes(d.color)?d.color:colors[0],...apparel(d),gender:d.gender==='female'?'female':'male',x:clamp(190+Math.random()*880,20,1380),y:clamp(390+Math.random()*420,220,1100),facing:0,action:'idle',pose:'stand',seen:Date.now()};
+        Object.defineProperty(p,'badgeIdentity',{value:badgeIdentity,writable:true,enumerable:false});updateBadge(p);players.set(id,p);
         if(sessionKey){sessionPlayers.set(sessionKey,id);playerSessions.set(id,sessionKey)}
         if(pageId)pageOwners.set(id,pageId);
         resumeForFirst();broadcast({type:'join',player:p,count:players.size});return json(res,200,{id,reused:false,...snapshot()});
@@ -395,7 +430,7 @@ const server=http.createServer(async(req,res)=>{
         // A late pagehide beacon from a previous page must not kick the newer page.
         const owner=pageOwners.get(id);
         if(owner&&d.pageId!==owner)return json(res,200,{ok:true,ignored:'stale-page'});
-        clearDuosFor(id);players.delete(id);forgetSession(id);voterLeaves(id);
+        settleBadge(p);clearDuosFor(id);players.delete(id);forgetSession(id);voterLeaves(id);
         if(activeSlam?.participants.delete(id))slamUpdate();rockMemberLeaves(id);pauseForEmpty();
         clients.get(id)?.end();clients.delete(id);broadcast({type:'leave',id,count:players.size});return json(res,200,{ok:true})
       }
