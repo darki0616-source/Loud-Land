@@ -208,6 +208,46 @@ function reportDuration(){if(!state.id||!state.ytReady||!state.music.id)return;c
 function syncVideo(force=false){let m=state.music;if(!m.id||!state.ytReady)return;let sec=m.paused?m.position:Math.max(0,(Date.now()+state.serverDelta-m.startedAt)/1000);try{if(state.lastTrack!==String(m.token)+':'+m.id){state.lastTrack=String(m.token)+':'+m.id;reportedToken=0;if(state.audioEnabled&&!m.paused){state.yt.unMute();state.yt.loadVideoById({videoId:m.id,startSeconds:sec})}else{state.yt.mute();state.yt.loadVideoById({videoId:m.id,startSeconds:sec})}return}if(force||Math.abs(state.yt.getCurrentTime()-sec)>3)state.yt.seekTo(sec,true);if(state.audioEnabled)state.yt.unMute();else state.yt.mute();if(m.paused)state.yt.pauseVideo();else if(state.yt.getPlayerState()!==1)state.yt.playVideo()}catch(e){console.warn(e)}}
 window.onYouTubeIframeAPIReady=()=>{state.yt=new YT.Player('youtubePlayer',{height:'100%',width:'100%',playerVars:{playsinline:1,controls:1,rel:0,origin:location.origin},events:{onReady:()=>{state.ytReady=true;syncVideo(true)},onStateChange:e=>{if(e.data===YT.PlayerState.PLAYING||e.data===YT.PlayerState.CUED)reportDuration();if(e.data===YT.PlayerState.ENDED&&state.id&&state.music.id)post('music',{id:state.id,command:'ended',token:state.music.token}).catch(()=>{})},onError:()=>toast('영상이 임베드 재생을 허용하지 않습니다')}})};
 async function musicCommand(command,extra={}){if(!state.id)return toast('먼저 입장해주세요');try{let d=await post('music',{id:state.id,command,...extra});applyMusic(d.music,d.serverNow,d.queue,d.history);toast('공유 음악이 업데이트되었습니다')}catch(e){toast(e.message)}}
+// YouTube search: display cards with safe textContent and enqueue through
+// the same queue endpoint as pasted links (no new playback code).
+let ytSearching=false;
+function setYtSearchStatus(message){$('ytSearchStatus').textContent=message;}
+async function searchYouTube(){
+ if(ytSearching)return;
+ if(!state.id){setYtSearchStatus('입장한 뒤 검색할 수 있어요.');return}
+ const query=$('ytSearchInput').value.trim();
+ if(query.length<2){setYtSearchStatus('두 글자 이상 입력해 주세요.');return}
+ ytSearching=true;$('ytSearchButton').disabled=true;
+ setYtSearchStatus('검색 중…');$('ytSearchResults').replaceChildren();
+ try{
+  const response=await fetch('/api/youtube-search?'+new URLSearchParams({id:state.id,q:query}),{cache:'no-store'});
+  const payload=await response.json();
+  if(!response.ok)throw Error(payload.error||'검색할 수 없어요.');
+  const items=Array.isArray(payload.items)?payload.items:[];
+  if(!items.length){setYtSearchStatus('검색 결과가 없어요. 다른 검색어를 입력해 보세요.');return}
+  setYtSearchStatus(`${items.length}개의 영상 · 예약 버튼을 누르면 대기열에 등록돼요.`);
+  const list=$('ytSearchResults');
+  for(const item of items){
+   const row=document.createElement('div');row.className='yt-search-item';
+   const img=document.createElement('img');img.src=item.thumb;img.alt='';img.loading='lazy';img.referrerPolicy='no-referrer';
+   const detail=document.createElement('div');detail.className='yt-search-item-text';
+   const title=document.createElement('strong');title.textContent=item.title;
+   const channel=document.createElement('small');channel.textContent=item.channel;
+   detail.append(title,channel);
+   const add=document.createElement('button');add.type='button';add.textContent='예약';
+   add.onclick=async()=>{
+    if(!state.id)return toast('입장 후 예약할 수 있어요.');
+    add.disabled=true;add.textContent='등록 중';
+    try{const d=await post('music',{id:state.id,command:'enqueue',url:'https://www.youtube.com/watch?v='+item.id});applyMusic(d.music,d.serverNow,d.queue,d.history);add.textContent='예약 완료';toast('음악을 예약했어요.');}
+    catch(e){add.disabled=false;add.textContent='예약';toast(e.message)}
+   };
+   row.append(img,detail,add);list.append(row);
+  }
+ }catch(error){setYtSearchStatus(error.message||'검색 오류가 발생했습니다.');}
+ finally{ytSearching=false;$('ytSearchButton').disabled=false}
+}
+$('ytSearchButton').addEventListener('click',searchYouTube);
+$('ytSearchInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();searchYouTube()}});
 $('playLink').onclick=()=>musicCommand('enqueue',{url:$('videoUrl').value});$('skipMusic').onclick=()=>musicCommand('skip');$('skipVoteYes').onclick=()=>castSkipVote('yes');$('skipVoteNo').onclick=()=>castSkipVote('no');function updatePersonalAudioButton(){
  const btn=$('enableAudio');
  if(btn){
