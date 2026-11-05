@@ -250,6 +250,7 @@ function duoDistance(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
 setInterval(()=>{const now=Date.now();for(const duo of [...activeDuos.values()])if(duo.endAt<=now)endDuo(duo);for(const [key,invite] of duoInvites)if(invite.expiresAt<=now){duoInvites.delete(key);broadcast({type:'duo-invite-ended',id:key,to:invite.to})}},700).unref();
 const snapshot=()=>({type:'snapshot',interactions:[...activeDuos.values()].filter(x=>x.endAt>Date.now()),players:[...players.values()],chat:chatHistory,...musicState(),skipVote:publicSkipVote(),skipVoteCooldownUntil,slam:publicSlam(),slamCooldownUntil,rockPlay:publicRock(),crowdSurf:activeSurfRide&&activeSurfRide.startAt+activeSurfRide.duration>Date.now()?activeSurfRide:null,rockCooldowns:{...rockCooldowns},rockRunningUntil,count:players.size});
 const clamp=(n,min,max)=>Math.min(max,Math.max(min,Number(n)||0));
+const SERVER_X_MIN=20,SERVER_X_MAX=1380,SERVER_Y_MIN=60,SERVER_Y_MAX=1100;
 function cleanup(){const now=Date.now();for(const [id,p] of players)if(now-p.seen>180000){settleBadge(p,Math.min(now,p.seen+45000));settleBadge(p);clearDuosFor(id);players.delete(id);forgetSession(id);voterLeaves(id);if(activeSlam?.participants.delete(id))slamUpdate();rockMemberLeaves(id);pauseForEmpty();const r=clients.get(id);if(r){r.end();clients.delete(id)}broadcast({type:'leave',id,count:players.size})}}
 setInterval(cleanup,7000).unref();
 setInterval(()=>{
@@ -397,7 +398,7 @@ const server=http.createServer(async(req,res)=>{
           }
           if(existingId)sessionPlayers.delete(sessionKey);
         }
-        const id=crypto.randomUUID(),p={id,badgeSince:Date.now(),badgeTier:'bronze',badgeSeconds:0,name:clean(d.name,18)||'ROCKER',flagText:cleanFlag(d.flagText),flagImage:d.flagImage?storeFlagImage(d.flagImage)||'':'',color:colors.includes(d.color)?d.color:colors[0],...apparel(d),gender:d.gender==='female'?'female':'male',x:clamp(190+Math.random()*880,20,1380),y:clamp(390+Math.random()*420,220,1100),facing:0,action:'idle',pose:'stand',seen:Date.now()};
+        const id=crypto.randomUUID(),p={id,badgeSince:Date.now(),badgeTier:'bronze',badgeSeconds:0,name:clean(d.name,18)||'ROCKER',flagText:cleanFlag(d.flagText),flagImage:d.flagImage?storeFlagImage(d.flagImage)||'':'',color:colors.includes(d.color)?d.color:colors[0],...apparel(d),gender:d.gender==='female'?'female':'male',x:clamp(190+Math.random()*880,SERVER_X_MIN,SERVER_X_MAX),y:clamp(390+Math.random()*420,SERVER_Y_MIN,SERVER_Y_MAX),facing:0,action:'idle',pose:'stand',seen:Date.now()};
         Object.defineProperty(p,'badgeIdentity',{value:badgeIdentity,writable:true,enumerable:false});updateBadge(p);setShopAppearance(p);players.set(id,p);
         if(sessionKey){sessionPlayers.set(sessionKey,id);playerSessions.set(id,sessionKey)}
         if(pageId)pageOwners.set(id,pageId);
@@ -455,8 +456,8 @@ const server=http.createServer(async(req,res)=>{
           // Face each other at a safe 2.2 world-unit gap, within the existing playfield.
           const centerX=(source.x+p.x)*.5,centerY=(source.y+p.y)*.5;
           const dx=p.x-source.x,dy=p.y-source.y,distance=Math.hypot(dx,dy),nx=distance>1?dx/distance:1,ny=distance>1?dy/distance:0;
-          const gap=14;source.x=clamp(centerX-nx*gap,20,1380);source.y=clamp(centerY-ny*gap,220,1100);
-          p.x=clamp(centerX+nx*gap,20,1380);p.y=clamp(centerY+ny*gap,220,1100);
+          const gap=14;source.x=clamp(centerX-nx*gap,SERVER_X_MIN,SERVER_X_MAX);source.y=clamp(centerY-ny*gap,SERVER_Y_MIN,SERVER_Y_MAX);
+          p.x=clamp(centerX+nx*gap,SERVER_X_MIN,SERVER_X_MAX);p.y=clamp(centerY+ny*gap,SERVER_Y_MIN,SERVER_Y_MAX);
           // For high-five, start in a slightly side-on stance so both avatars
           // visibly turn toward one another before their hands connect.
           const faceA=Math.atan2(nx,ny),faceB=Math.atan2(-nx,-ny);
@@ -483,7 +484,7 @@ const server=http.createServer(async(req,res)=>{
         // Ignore stale movement packets while server-authoritative paired poses play.
         if(duoFor(id))return json(res,200,{ok:true,paired:true});
         const previousAction=p.action;
-        p.x=clamp(d.x,20,1380);p.y=clamp(d.y,220,1100);p.facing=clamp(d.facing,-Math.PI,Math.PI);
+        p.x=clamp(d.x,SERVER_X_MIN,SERVER_X_MAX);p.y=clamp(d.y,SERVER_Y_MIN,SERVER_Y_MAX);p.facing=clamp(d.facing,-Math.PI,Math.PI);
         p.pose=['stand','sit','lie'].includes(d.pose)?d.pose:'stand';
         p.action=['idle','walk','peace','jump','run','wave','clap','sit','lie','drink','snack','headbang','buriburi','groove','windmill','skanking','airguitar','headspin','cheer','smoke','mosh-charge','slam-charge','slam-retreat','slam-celebrate','circle-run','train-run','row-paddle','toast-clink','surf-rider','surf-support'].includes(d.action)?d.action:'idle';
         broadcast({type:'move',player:p});
@@ -514,7 +515,7 @@ const server=http.createServer(async(req,res)=>{
           const key=eventId+':'+phase;
           if(!moshDustEvents.has(key)){
            moshDustEvents.add(key);setTimeout(()=>moshDustEvents.delete(key),90000).unref();
-           broadcast({type:'slam-impact',slamId:eventId,x:clamp(d.x,20,1380),y:clamp(d.y,220,1100)});
+           broadcast({type:'slam-impact',slamId:eventId,x:clamp(d.x,SERVER_X_MIN,SERVER_X_MAX),y:clamp(d.y,SERVER_Y_MIN,SERVER_Y_MAX)});
           }
           return json(res,200,{ok:true});
         }
