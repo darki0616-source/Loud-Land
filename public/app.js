@@ -677,16 +677,24 @@ function surfPoseAt(event,playerId,now=slamNow()){
  const supporters=event.participants.filter(pid=>pid!==event.riderId);
  const isRider=playerId===event.riderId;
  const index=supporters.indexOf(playerId);
- const columns=Math.min(4,supporters.length);
- const row=Math.floor(Math.max(0,index)/Math.max(1,columns));
- const col=Math.max(0,index)%Math.max(1,columns);
- const rows=Math.ceil(supporters.length/Math.max(1,columns));
- const rowCount=Math.min(columns,supporters.length-row*columns);
- // Each supporter is fixed to a single spot for the entire ride.
- const goal=isRider?{x:event.x,y:event.y+22}:{
-  x:event.x+(col-(rowCount-1)/2)*17,
-  y:event.y+(row-(rows-1)/2)*16
+ // Supporters occupy at most THREE places per row, filled CENTRE, LEFT, RIGHT.
+ // After three, fill the centre of the back row, then its sides; the next
+ // row (if needed) starts from the centre of the front row.
+ const SURF_COLUMN_SPACING=31, SURF_ROW_SPACING=34;
+ const slot=(n)=>{
+  const row=Math.floor(n/3),column=n%3;
+  const centreOut=[0,-1,1];
+  const rowOrder=row===0?0:(row%2===1?Math.ceil(row/2):-row/2);
+  return {x:centreOut[column]*SURF_COLUMN_SPACING,y:rowOrder*SURF_ROW_SPACING};
  };
+ const groupOffsets=supporters.map((_,n)=>slot(n));
+ const centre=groupOffsets.reduce((sum,v)=>({x:sum.x+v.x,y:sum.y+v.y}),{x:0,y:0});
+ centre.x/=Math.max(1,groupOffsets.length);
+ centre.y/=Math.max(1,groupOffsets.length);
+ // Centre of support GROUP, rather than world origin or the first supporter.
+ const midX=event.x+centre.x,midY=event.y+centre.y;
+ const relative=groupOffsets[Math.max(0,index)]||{x:0,y:0};
+ const goal=isRider?{x:midX,y:midY+25}:{x:event.x+relative.x,y:event.y+relative.y};
  const origin=event.origins?.[playerId]||{x:goal.x,y:goal.y};
  const travel=Math.min(1,elapsed/SURF_APPROACH_MS);
  // Slow ease-out still approaches on foot, with no altitude in this phase.
@@ -699,13 +707,15 @@ function surfPoseAt(event,playerId,now=slamNow()){
   mount=Math.min(1,(elapsed-SURF_APPROACH_MS)/SURF_MOUNT_MS);
   mount=mount*mount*(3-2*mount);
   rideProgress=Math.max(0,Math.min(1,(elapsed-SURF_APPROACH_MS-SURF_MOUNT_MS)/SURF_RIDE_MS));
-  // Move the rider's BODY CENTRE left/right over the stationary supporters.
-  // This translation is independent of the avatar's LOCAL-axis headspin.
-  const wave=Math.sin(rideProgress*Math.PI*4);
-  x=event.x+wave*22;
-  y=event.y;
-  // Eight turns around the rider's OWN centre, not around the group centre.
-  roll=rideProgress*Math.PI*16;
+  // ONE leisurely left-to-right-to-left cycle in 10 seconds, no orbit.
+  // Barrel-roll angle follows the distance travelled, reversing as the
+  // surfer changes direction (like a person rolling sideways on the ground).
+  const wave=Math.sin(rideProgress*Math.PI*2);
+  x=midX+wave*24;
+  y=midY;
+  // This is NOT a headspin/yaw. It is a long-axis sideways body roll.
+  roll=-wave*Math.PI*3;
+
  }
  return {x,y,isRider,mounted,mount,rideProgress,roll,
   running:elapsed<SURF_APPROACH_MS,
@@ -2837,19 +2847,17 @@ function animateAvatar(a,p,t){
   a.root.rotation.y+=delta*.2;
  }
  if(surfView?.mounted){
-  // IMPORTANT: Three.js avatar root is at its FEET, not at its body centre.
-  // Simply spinning the tilted root around Y sends the head/torso in a circle.
-  // Instead, pivot about the character's OWN chest while translating that
-  // chest from left to right. Group midpoint is only the traversal midpoint.
+  // BARREL ROLL: lay the avatar horizontally with head toward world Z,
+  // then spin around its own LONG axis (world Z). Yaw would spin like a top,
+  // which is NOT what sideways rolling means.
   const mount=surfView.mount;
-  const selfSpin=new THREE.Quaternion().setFromAxisAngle(
-   new THREE.Vector3(0,1,0),surfView.roll);
-  const horizontal=new THREE.Quaternion().setFromAxisAngle(
-   new THREE.Vector3(0,0,1),-Math.PI/2*mount);
-  a.root.quaternion.copy(selfSpin).multiply(horizontal);
-  // Approximate chibi torso/head combined centre in root-local coordinates.
-  // Correct world translation after applying rotation, so it stays exactly
-  // at (targetX,targetZ), with NO orbital motion from the avatar offset.
+  const lieDown=new THREE.Quaternion().setFromAxisAngle(
+   new THREE.Vector3(1,0,0),Math.PI/2*mount);
+  const barrel=new THREE.Quaternion().setFromAxisAngle(
+   new THREE.Vector3(0,0,1),surfView.roll);
+  a.root.quaternion.copy(barrel).multiply(lieDown);
+  // Avatar origin sits at its feet. Offset it so the centre of the body
+  // stays above supporters, unaffected by the body's own-axis rotation.
   const pivotOffset=new THREE.Vector3(0,1.65,0).applyQuaternion(a.root.quaternion);
   const chestY=THREE.MathUtils.lerp(1.65,4.45,mount);
   a.root.position.set(targetX-pivotOffset.x,chestY-pivotOffset.y,targetZ-pivotOffset.z);
