@@ -281,7 +281,7 @@ $('editAvatar').onclick=()=>{if(!state.me)return;editingProfile=true;$('nick').v
 $('profileCancel').onclick=closeProfileEditor;
 $('profileToggle').onclick=()=>{if(!state.me)return toast('입장 후 변경할 수 있어요');$('editAvatar').click()};
 ;$('helpBtn').onclick=()=>toast('WASD 이동 · 클릭/터치 이동 · 드래그 시점 회전 · 춤: B/G/V/K · 환호성: H · 담배: C');
-const sustainedReactions=new Set(['jump','run','headbang','buriburi','groove','windmill','skanking','cheer','smoke']);
+const sustainedReactions=new Set(['jump','run','headbang','buriburi','groove','windmill','skanking','airguitar','headspin','cheer','smoke']);
 // One shared bottom tab group: reactions / dances / chat.
 // Chat stays inside the dock instead of floating over the 3D world.
 function selectBottomMenu(menu){
@@ -327,7 +327,7 @@ function react(a){
  if(state.action===a&&sustainedReactions.has(a)){
   state.action='idle';state.actionUntil=0;state.me.action='idle';
  }else{
-  if((a==='jump'||a==='run'||a==='buriburi'||a==='groove'||a==='windmill'||a==='skanking'||a==='cheer'||a==='smoke')&&state.pose!=='stand'){
+  if((a==='jump'||a==='run'||a==='buriburi'||a==='groove'||a==='windmill'||a==='skanking'||a==='airguitar'||a==='headspin'||a==='cheer'||a==='smoke')&&state.pose!=='stand'){
    state.pose='stand';state.me.pose='stand';
   }
   state.action=a;state.me.action=a;if(a==='cheer')playCheer();
@@ -336,7 +336,7 @@ function react(a){
  updateActionButtons();sendMove();
 }
 document.querySelectorAll('[data-action]').forEach(b=>b.onclick=()=>react(b.dataset.action));
-document.addEventListener('keydown',e=>{if(e.target instanceof HTMLInputElement||e.target instanceof HTMLTextAreaElement||e.target?.isContentEditable)return;let k=e.key.toLowerCase();if(k.startsWith('arrow')||k===' ')e.preventDefault();state.keys.add(k);let acts={'1':'peace','2':'jump','3':'run','4':'wave','5':'clap','6':'sit','7':'lie','8':'drink','9':'snack','0':'headbang','b':'buriburi','g':'groove','v':'windmill','k':'skanking','h':'cheer','c':'smoke'};if(acts[k]&&!e.repeat)react(acts[k])});document.addEventListener('keyup',e=>state.keys.delete(e.key.toLowerCase()));window.addEventListener('blur',()=>state.keys.clear());
+document.addEventListener('keydown',e=>{if(e.target instanceof HTMLInputElement||e.target instanceof HTMLTextAreaElement||e.target?.isContentEditable)return;let k=e.key.toLowerCase();if(k.startsWith('arrow')||k===' ')e.preventDefault();state.keys.add(k);let acts={'1':'peace','2':'jump','3':'run','4':'wave','5':'clap','6':'sit','7':'lie','8':'drink','9':'snack','0':'headbang','b':'buriburi','g':'groove','v':'windmill','k':'skanking','a':'airguitar','n':'headspin','h':'cheer','c':'smoke'};if(acts[k]&&!e.repeat)react(acts[k])});document.addEventListener('keyup',e=>state.keys.delete(e.key.toLowerCase()));window.addEventListener('blur',()=>state.keys.clear());
 // CC0 crowd cheering by SFXMint; play only for listeners who enabled audio.
 // The URL is hotlink-permitted by the creator (https://sfxmint.com/sounds/crowd-cheer).
 const cheerAudioUrl='https://sfxmint.com/dl/crowd-cheer-44.mp3';
@@ -1764,6 +1764,37 @@ function animateAvatar(a,p,t){
   set('rightHip',.47,0,.72);
   set('rightKnee',1.28+.06*Math.sin(sec*2.4));
  }
+ if(act==='airguitar'){
+  // Continuous air guitar: left hand grips an imaginary neck while the
+  // right hand strums rapidly across the strings; the head nods throughout.
+  const strum=Math.sin(sec*26.5),pulse=Math.sin(sec*6.2);
+  height=-.035+Math.abs(pulse)*.065;
+  set('upper',-.07+.035*pulse,.075*Math.sin(sec*4.6),-.035*pulse);
+  set('neck',.24*Math.sin(sec*10.8)-.10,.09*Math.sin(sec*5.5),.11*Math.sin(sec*7.1));
+  set('leftHip',-.12+.11*Math.max(0,pulse),0,-.12);
+  set('rightHip',-.13+.11*Math.max(0,-pulse),0,.12);
+  set('leftKnee',.20+.08*Math.max(0,pulse));
+  set('rightKnee',.20+.08*Math.max(0,-pulse));
+  // Wrist targets are given in upper-torso local coordinates.
+  leftHandTarget=new THREE.Vector3(-.57,.47,.61);
+  rightHandTarget=new THREE.Vector3(.27,.12+strum*.22,.54);
+  ikMode='airguitar';
+ }
+ if(act==='headspin'){
+  // True inverted, continuously turning headspin: the character's head is
+  // the contact point with the ground (head center ~2.27 above root).
+  // rootY ~3.04 and 180° roll keeps its scalp at the ground plane.
+  height=3.04+.035*Math.sin(sec*13);
+  lean=0;
+  set('upper',0,0,0);
+  set('neck',0,0,0);
+  set('leftShoulder',-.38,0,-1.05);
+  set('rightShoulder',-.38,0,1.05);
+  set('leftElbow',-.20);set('rightElbow',-.20);
+  set('leftHip',-.14,0,-.40);
+  set('rightHip',.22,0,.45);
+  set('leftKnee',.27);set('rightKnee',.62);
+ }
  if(act==='skanking'){
   // Four-count ska step, with a real recoil/preparation on counts 2 and 4:
   // 1 right leg forward + left arm forward
@@ -1914,7 +1945,10 @@ function animateAvatar(a,p,t){
   o.rotation.y+=(target[1]-o.rotation.y)*alpha;
   o.rotation.z+=(target[2]-o.rotation.z)*alpha;
  }
- if(ikMode==='clap'){
+ if(ikMode==='airguitar'){
+  placeHandIK(P,'left',leftHandTarget,.68);
+  placeHandIK(P,'right',rightHandTarget,.78);
+ }else if(ikMode==='clap'){
   placeHandIK(P,'left',leftHandTarget,.58);
   placeHandIK(P,'right',rightHandTarget,.58);
  }else if(ikMode==='drink')placeHandIK(P,'right',rightHandTarget,.58);
@@ -1927,7 +1961,7 @@ function animateAvatar(a,p,t){
  a.root.rotation.x+=(lean-a.root.rotation.x)*.22;
  // While breakdancing, rotate the whole prone body around its center, not just its chest.
  // B-boy freeze tilts into a stable one-handed inversion rather than continuous windmill spinning.
- const zTarget=act==='windmill'?2.80+.055*Math.sin(sec*2.5):0;
+ const zTarget=act==='headspin'?Math.PI:(act==='windmill'?2.80+.055*Math.sin(sec*2.5):0);
  a.root.rotation.z+=(zTarget-a.root.rotation.z)*.17;
  if(act==='toast-clink'){
   // Track the hand even when both shoulder and elbow move during the clink.
@@ -1966,7 +2000,11 @@ function animateAvatar(a,p,t){
  });
  P.rockBubble.visible=act==='peace'||act==='slam-retreat'||act==='slam-celebrate';P.bottle.visible=act==='drink';
  if(P.rockBubble.visible)P.rockBubble.position.y=4.34+Math.sin(sec*7)*.075;
- if(basePose!=='lie'&&act!=='lie'){
+ if(act==='headspin'){
+  // Spin around the vertical axis without requiring network updates per frame.
+  // All viewers derive the same motion from local render time.
+  a.root.rotation.y=sec*8.2;
+ }else if(basePose!=='lie'&&act!=='lie'){
   const yaw=Number(q.facing)||0;
   const delta=((yaw-a.root.rotation.y+Math.PI*3)%(Math.PI*2))-Math.PI;
   a.root.rotation.y+=delta*.2;
@@ -2218,7 +2256,7 @@ function tick(t){
    }
   }
   state.moving=!!(dx||dy);
-  if(state.moving && (state.action==='buriburi'||state.action==='groove'||state.action==='windmill'||state.action==='cheer'||state.action==='smoke') && !slamMotion && !rockMotion){
+  if(state.moving && (state.action==='buriburi'||state.action==='groove'||state.action==='windmill'||state.action==='airguitar'||state.action==='headspin'||state.action==='cheer'||state.action==='smoke') && !slamMotion && !rockMotion){
    state.action='idle';state.me.action='walk';state.actionUntil=0;updateActionButtons();
   }
   if(state.moving){
