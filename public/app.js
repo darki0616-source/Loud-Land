@@ -1776,9 +1776,15 @@ function animateAvatar(a,p,t){
    targetZ=THREE.MathUtils.lerp(own.z,circleZ,f);
    duoYaw=Math.atan2(mx-targetX,mz-targetZ);
   }else if(duo.kind==='highfive'){
-   const reach=duoEase((sec-.35)/.55)*(1-duoEase((sec-1.13)/.42));
+   // Turn the whole body toward the other visitor, make contact, and return
+   // to the original side-on stance. The server's start time synchronizes both.
+   const turn=duoEase((sec-.12)/.60)*(1-duoEase((sec-1.32)/.66));
+   const reach=duoEase((sec-.37)/.47)*(1-duoEase((sec-1.12)/.37));
    targetX=own.x-nx*.22*reach;targetZ=own.z-nz*.22*reach;
-   duoYaw=Math.atan2(-nx,-nz);
+   const originalYaw=Number(q.facing)||0;
+   const lookYaw=Math.atan2(-nx,-nz)+(first?.12:-.12);
+   const delta=Math.atan2(Math.sin(lookYaw-originalYaw),Math.cos(lookYaw-originalYaw));
+   duoYaw=originalYaw+delta*turn;
   }
  }
  // Paired choreography is deterministic and authoritative per server time.
@@ -2074,12 +2080,15 @@ function animateAvatar(a,p,t){
  if(duoContext){
   const beat=Math.sin(sec*8),side=duoContext.duo.a===q.id?-1:1;
   if(act==='duo-highfive'){
-   // Both palms move to the common midpoint at the same time, then recoil.
-   const reach=duoEase((sec-.32)/.52)*(1-duoEase((sec-1.12)/.42));
-   rightHandTarget=new THREE.Vector3(.12,.38+.56*reach,.34+.68*reach);
-   ikMode='duo-right';set('upper',-.12*reach);
-   set('neck',-.09*reach+Math.sin(sec*5)*.028);
-   height=.07*Math.sin(Math.min(1,sec)*Math.PI);
+   // Shoulder and head follow the turning chest: not a rigid frontal slap.
+   const turn=duoEase((sec-.12)/.60)*(1-duoEase((sec-1.32)/.66));
+   const reach=duoEase((sec-.37)/.47)*(1-duoEase((sec-1.12)/.37));
+   rightHandTarget=new THREE.Vector3(.30-.14*reach,.34+.62*reach,.28+.82*reach);
+   ikMode='duo-right';
+   set('upper',-.10*reach,side*.22*turn,-side*.10*turn);
+   set('neck',-.07*reach,-side*.09*turn,side*.055*turn);
+   set('leftShoulder',-.18*turn,0,-side*.09*turn);
+   height=.055*Math.sin(Math.min(1,sec)*Math.PI);
   }else if(act==='duo-handshake'){
    rightHandTarget=new THREE.Vector3(.15,.24+.07*beat,.65);
    ikMode='duo-right';set('upper',-.10);set('neck',.03);
