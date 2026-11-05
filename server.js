@@ -24,7 +24,7 @@ let pendingSlamImpact=null; // Last launch roster; exactly one shared first-arri
 const SLAM_COUNTDOWN_MS=5000,SLAM_COOLDOWN_MS=15000;
 // Circle pit and shoulder-to-shoulder figure-eight train: server-authoritative join roster.
 const ROCK_COUNTDOWN_MS=5000,ROCK_COOLDOWN_MS=15000;
-const ROCK_DURATIONS={circle:20000,train:36000,mosh:9000,row:20000,toast:6000,surf:10000};
+const ROCK_DURATIONS={circle:20000,train:36000,mosh:9000,row:20000,toast:6000,surf:14000};
 let activeRock=null,rockRunningUntil=0;
 let activeSurfRide=null; // Active 10s crowd-surf choreography; included in snapshots for reconnects.
 const moshDustEvents=new Set();
@@ -531,9 +531,10 @@ const server=http.createServer(async(req,res)=>{
               broadcast({type:'rockplay-cancel',id:current.id,kind:'surf',reason:'크라우드 서핑은 시작자 포함 2명 이상이 필요해요.'});
               rockUpdate();return;
             }
-            const launch={type:'rockplay-go',id:current.id,kind:current.kind,x:current.x,y:current.y,startAt:current.endAt,duration,participants,riderId:current.kind==='surf'?current.initiator:null,serverNow:Date.now()};
+            const launch={type:'rockplay-go',id:current.id,kind:current.kind,x:current.x,y:current.y,startAt:current.endAt,duration,participants,riderId:current.kind==='surf'?current.initiator:null,serverNow:Date.now(),
+              origins:current.kind==='surf'?Object.fromEntries(participants.map(pid=>{const actor=players.get(pid);return [pid,{x:actor.x,y:actor.y}]})):undefined};
             if(current.kind==='surf'){
-              activeSurfRide={id:launch.id,kind:launch.kind,x:launch.x,y:launch.y,startAt:launch.startAt,duration:launch.duration,participants:[...participants],riderId:launch.riderId};
+              activeSurfRide={id:launch.id,kind:launch.kind,x:launch.x,y:launch.y,startAt:launch.startAt,duration:launch.duration,participants:[...participants],riderId:launch.riderId,origins:launch.origins};
               setTimeout(()=>{if(activeSurfRide?.id===current.id)activeSurfRide=null},duration+1500).unref();
             }
             broadcast(launch);
