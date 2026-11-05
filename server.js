@@ -156,6 +156,7 @@ function apparel(d,fallback={}){return {
  hairStyle:safeHairStyle(d.hairStyle||fallback.hairStyle||(d.gender==='female'?'bob':'short')),
  hairColor:hairColors.includes(d.hairColor)?d.hairColor:(fallback.hairColor||'#4b3932')
 }}
+const cleanFlag=s=>String(s||'').replace(/[\x00-\x1f<>]/g,'').replace(/\s+/g,' ').trim().slice(0,32);
 const clean = (s,max=30)=>String(s||'').replace(/[\x00-\x1f<>]/g,'').trim().slice(0,max);
 const send=(res,obj)=>{res.write('data: '+JSON.stringify(obj)+'\n\n');};
 const broadcast=obj=>{for(const res of clients.values()) {try {send(res,obj);}catch{}}};
@@ -231,7 +232,7 @@ const server=http.createServer(async(req,res)=>{
           }
           if(existingId)sessionPlayers.delete(sessionKey);
         }
-        const id=crypto.randomUUID(),p={id,badgeSince:Date.now(),badgeTier:'bronze',badgeSeconds:0,name:clean(d.name,18)||'ROCKER',color:colors.includes(d.color)?d.color:colors[0],...apparel(d),gender:d.gender==='female'?'female':'male',x:clamp(190+Math.random()*880,20,1380),y:clamp(390+Math.random()*420,220,1100),facing:0,action:'idle',pose:'stand',seen:Date.now()};
+        const id=crypto.randomUUID(),p={id,badgeSince:Date.now(),badgeTier:'bronze',badgeSeconds:0,name:clean(d.name,18)||'ROCKER',flagText:cleanFlag(d.flagText),color:colors.includes(d.color)?d.color:colors[0],...apparel(d),gender:d.gender==='female'?'female':'male',x:clamp(190+Math.random()*880,20,1380),y:clamp(390+Math.random()*420,220,1100),facing:0,action:'idle',pose:'stand',seen:Date.now()};
         Object.defineProperty(p,'badgeIdentity',{value:badgeIdentity,writable:true,enumerable:false});updateBadge(p);players.set(id,p);
         if(sessionKey){sessionPlayers.set(sessionKey,id);playerSessions.set(id,sessionKey)}
         if(pageId)pageOwners.set(id,pageId);
@@ -239,6 +240,7 @@ const server=http.createServer(async(req,res)=>{
       }
       const id=clean(d.id,80),p=players.get(id);if(!p)return json(res,401,{error:'Session expired. Please rejoin.'});p.seen=Date.now();
       if(url.pathname==='/api/heartbeat'){return json(res,200,{ok:true})}
+      if(url.pathname==='/api/flag'){p.flagText=cleanFlag(d.flagText);broadcast({type:'flag',id:p.id,flagText:p.flagText});return json(res,200,{ok:true,flagText:p.flagText})}
       if(url.pathname==='/api/profile'){p.name=clean(d.name,18)||'ROCKER';p.color=colors.includes(d.color)?d.color:p.color;p.gender=d.gender==='female'?'female':'male';Object.assign(p,apparel(d,p));broadcast({type:'profile',player:p});return json(res,200,{ok:true,player:p})}
       if(url.pathname==='/api/duo'){
         const command=clean(d.command,20),now=Date.now();
