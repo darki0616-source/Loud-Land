@@ -200,7 +200,7 @@ const server=http.createServer(async(req,res)=>{
         const previousAction=p.action;
         p.x=clamp(d.x,20,1380);p.y=clamp(d.y,220,1100);p.facing=clamp(d.facing,-Math.PI,Math.PI);
         p.pose=['stand','sit','lie'].includes(d.pose)?d.pose:'stand';
-        p.action=['idle','walk','peace','jump','run','wave','clap','sit','lie','drink','snack','headbang','buriburi','groove','windmill','skanking','cheer','smoke','mosh-charge','slam-charge','slam-retreat','slam-celebrate','circle-run','train-run','row-paddle','toast-clink'].includes(d.action)?d.action:'idle';
+        p.action=['idle','walk','peace','jump','run','wave','clap','sit','lie','drink','snack','headbang','buriburi','groove','windmill','skanking','airguitar','headspin','cheer','smoke','mosh-charge','slam-charge','slam-retreat','slam-celebrate','circle-run','train-run','row-paddle','toast-clink'].includes(d.action)?d.action:'idle';
         broadcast({type:'move',player:p});
         if(p.action==='cheer'&&previousAction!=='cheer')broadcast({type:'cheer',playerId:id});
         // Fire once, when the FIRST participant changes from charging to retreating.
