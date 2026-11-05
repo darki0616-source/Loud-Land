@@ -783,9 +783,11 @@ const perfMobile=matchMedia('(max-width:700px)').matches;
 const perfWeakDevice=perfMobile||((navigator.deviceMemory||8)<=4)||((navigator.hardwareConcurrency||8)<=4);
 let perfMode='auto';try{const saved=localStorage.getItem(PERF_KEY);if(['auto','eco','high'].includes(saved))perfMode=saved}catch{}
 let perfAutoScale=1;
-const perfPresets={eco:{fps:30,pixel:.72,foreground:.66,shadows:false},balanced:{fps:45,pixel:1,foreground:.85,shadows:false},high:{fps:60,pixel:1.45,foreground:1.08,shadows:true}};
+// v107: aggressive low-power mode for older tablets. A 0.40 pixel ratio
+// uses roughly 31% as many pixels as the previous eco 0.72 setting.
+const perfPresets={eco:{fps:20,pixel:.40,foreground:.36,shadows:false},balanced:{fps:45,pixel:1,foreground:.85,shadows:false},high:{fps:60,pixel:1.45,foreground:1.08,shadows:true}};
 function effectivePerfPreset(){return perfMode==='eco'?perfPresets.eco:perfMode==='high'?perfPresets.high:(perfWeakDevice?perfPresets.eco:perfPresets.balanced)}
-function performanceRatio(){return Math.max(.58,Math.min(1.45,effectivePerfPreset().pixel*perfAutoScale))}
+function performanceRatio(){return Math.max(.32,Math.min(1.45,effectivePerfPreset().pixel*perfAutoScale))}
 const host=$('world');const scene=new THREE.Scene();scene.background=new THREE.Color('#78bfff');scene.fog=new THREE.FogExp2('#78bfff',.0068);
 const camera=new THREE.PerspectiveCamera(56,1,.1,350);camera.position.set(0,27,39);
 const renderer=new THREE.WebGLRenderer({antialias:!perfWeakDevice,powerPreference:perfWeakDevice?'low-power':'high-performance'});renderer.setPixelRatio(Math.min(devicePixelRatio,performanceRatio()));renderer.shadowMap.enabled=effectivePerfPreset().shadows&&!perfMobile;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.outputColorSpace=THREE.SRGBColorSpace;host.appendChild(renderer.domElement);
@@ -831,7 +833,7 @@ let perfTargetFrame=1000/effectivePerfPreset().fps;
 let perfLastCheck=0,perfFrameSamples=0,perfFrameTotal=0,perfLastFrameTime=0;
 function updatePerformanceButton(){
  const b=$('performanceToggle');if(!b)return;
- const label=perfMode==='eco'?'절전':perfMode==='high'?'고화질':'자동';
+ const label=perfMode==='eco'?'초절전':perfMode==='high'?'고화질':'자동';
  b.textContent='⚙ 화질 '+label;
  b.title='화질 변경: 자동 → 절전 → 고화질';
  b.setAttribute('aria-label','화질 '+label+' (누르면 변경)');
@@ -840,7 +842,9 @@ function applyPerformancePreset(){
  const preset=effectivePerfPreset();perfTargetFrame=1000/preset.fps;
  renderer.setPixelRatio(Math.min(devicePixelRatio,performanceRatio()));
  renderer.shadowMap.enabled=preset.shadows&&!perfMobile;
- if(stageForeground)stageForeground.setPixelRatio(Math.min(devicePixelRatio,Math.max(.55,preset.foreground*perfAutoScale)));
+ if(stageForeground)stageForeground.setPixelRatio(Math.min(devicePixelRatio,Math.max(.30,preset.foreground*perfAutoScale)));
+ // Keep lightweight sky/lighting selections in sync when the user changes modes.
+ if(typeof updateEnvironment==='function')updateEnvironment(true);
  if(typeof resize==='function')resize();
  updatePerformanceButton();
 }
@@ -849,7 +853,7 @@ $('performanceToggle')?.addEventListener('click',()=>{
  perfAutoScale=1;perfFrameSamples=0;perfFrameTotal=0;
  try{localStorage.setItem(PERF_KEY,perfMode)}catch{}
  applyPerformancePreset();
- toast('그래픽 화질: '+(perfMode==='auto'?'자동':perfMode==='eco'?'절전':'고화질'));
+ toast('그래픽 화질: '+(perfMode==='auto'?'자동':perfMode==='eco'?'초절전 (20FPS)':'고화질'));
 });
 updatePerformanceButton();
 const foregroundCamera=camera.clone();
@@ -1266,7 +1270,17 @@ for(let side of [-1,1])for(let j=0;j<3;j++){
 }
 const sparks=[];const sparkGeo=new THREE.SphereGeometry(.095,5,4);
 for(let i=0;i<65;i++){const mesh=new THREE.Mesh(sparkGeo,emberMat);mesh.visible=false;scene.add(mesh);sparks.push({mesh,seed:i*0.91})}
-function animateShow(t){let sec=t*.001;stageLights.forEach((l,i)=>{const beat=70+65*Math.sin(sec*(state.music.id&&!state.music.paused?4:1.1)+i*2)**2;l.intensity=beat*stageAccentFactor;l.target.position.x=(-17+i*5.6)*.65+Math.sin(sec*.85+i)*7});
+function animateShow(t){
+ // On low-end tablets avoid 7 dynamic spotlights and dozens of animated
+ // stage meshes; stage, music and avatars continue to work unchanged.
+ if(perfMode==='eco'||(perfMode==='auto'&&perfWeakDevice)){
+  stageLights.forEach(l=>l.visible=false);
+  flameGroups.forEach(f=>f.visible=false);
+  sparks.forEach(q=>q.mesh.visible=false);
+  return;
+ }
+ stageLights.forEach(l=>l.visible=true);
+ let sec=t*.001;stageLights.forEach((l,i)=>{const beat=70+65*Math.sin(sec*(state.music.id&&!state.music.paused?4:1.1)+i*2)**2;l.intensity=beat*stageAccentFactor;l.target.position.x=(-17+i*5.6)*.65+Math.sin(sec*.85+i)*7});
  flameGroups.forEach((f,i)=>{const engaged=!!state.music.id&&!state.music.paused;const pulse=Math.max(0,Math.sin(sec*3.5+i*1.7));f.visible=engaged&&pulse>.68;f.scale.y=.3+pulse*1.65});
  sparks.forEach((q,i)=>{const active=!!state.music.id&&!state.music.paused;const phase=(sec*.65+q.seed)%3.6;q.mesh.visible=active&&phase<1.7;if(q.mesh.visible){const side=i%2?-1:1;q.mesh.position.set(side*(8+(i%3)*4)+Math.sin(i*2.1)*phase,3+phase*2.2,-18+Math.cos(i)*phase*.3);q.mesh.material.opacity=.9}})
 }
@@ -1384,7 +1398,10 @@ function updateEnvironment(force=false){
   dawn:{bg:'#efab8d',fog:'#efab8d',sky:'#ffb79e',hemiSky:'#ffd9cb',ground:'#655a58',hemi:1.75,grass:'#4d6858',sand:'#e6c08f',wet:'#cda06e',ocean:'#4a82be',sunColor:'#ff9b68',sunLight:'#ffd0a1',sun:1.65,moon:0.55,badge:'🌄 &nbsp; 새벽 석양 <span>✦</span>',glow:'#ff9d76',stage:.72,building:'#b6aabd',roof:'#897d9d',window:'#ffe7d1',windowOpacity:.3,mountain:'#b8a0b7'}
  };
  const p=themes[phase];
- skyPeriod=phase;clouds.visible=phase==='day'||phase==='sunset'||phase==='dawn';stars.visible=phase==='night';
+ skyPeriod=phase;
+ const minimalScenery=perfMode==='eco'||(perfMode==='auto'&&perfWeakDevice);
+ clouds.visible=!minimalScenery&&(phase==='day'||phase==='sunset'||phase==='dawn');
+ stars.visible=!minimalScenery&&phase==='night';
  cloudMaterial.opacity=phase==='day'?.88:.48;
  scene.background.set(p.bg);scene.fog.color.set(p.fog);skyDome.material.color.set(p.sky);horizonGlow.material.color.set(p.glow);
  hemi.color.set(p.hemiSky);hemi.groundColor.set(p.ground);hemi.intensity=p.hemi;
@@ -2724,18 +2741,33 @@ function tick(t){
   const avatar=avatars.get(id);
   animateAvatar(avatar,p,t);
   if(avatar.parts.flagPivot?.parent?.visible){
-   // Pole stays anchored to the avatar; only the cloth rotates around it.
+   // Keep the tall pole upright in world space even when the avatar root
+   // tilts 180 degrees (headspin) or sideways (B-boy/windmill).
+   // The flag is still a child of root so disposal and shared appearance work.
    avatar.root.updateWorldMatrix(true,false);
-   const poleWorld=new THREE.Vector3();avatar.parts.flagPivot.getWorldPosition(poleWorld);
+   const flagGroup=avatar.parts.flagGroup;
+   const inverseRootRotation=avatar.root.getWorldQuaternion(new THREE.Quaternion()).invert();
+   flagGroup.quaternion.copy(inverseRootRotation);
+   // Counteract the avatar's headspin/freeze vertical offset as well:
+   // the pole's foot stays above the same ground position while dancing.
+   const localGroundOffset=new THREE.Vector3(0,-avatar.root.position.y,0).applyQuaternion(inverseRootRotation);
+   flagGroup.position.copy(localGroundOffset);
+   avatar.root.updateWorldMatrix(true,false);
+   const poleWorld=new THREE.Vector3();
+   avatar.parts.flagPivot.getWorldPosition(poleWorld);
    const toCamera=new THREE.Vector3().subVectors(camera.position,poleWorld);
-   const desiredWorldYaw=Math.atan2(toCamera.x,toCamera.z);
-   const rootYaw=new THREE.Euler().setFromQuaternion(avatar.root.getWorldQuaternion(new THREE.Quaternion()),'YXZ').y;
-   avatar.parts.flagPivot.rotation.y=desiredWorldYaw-rootYaw;
+   avatar.parts.flagPivot.rotation.y=Math.atan2(toCamera.x,toCamera.z);
   }
  }
  for(let [id,a] of avatars)if(!state.players.has(id)){disposeAvatar(a.root);avatars.delete(id)}
  if(moveMarker.visible){moveMarker.material.opacity=Math.min(.75,Math.max(0,(moveMarkerUntil-t)/1050)*.75);if(t>moveMarkerUntil)moveMarker.visible=false}
- updateDuoVfx();updateEnvironment();animateSky(t);updateOcean(t);updateSlamDust(t);updateBubbles(t);animateShow(t);updateHourlyFireworks(t);animateToastSparks(t);followLocalAvatar();controls.update();keepCameraInFrontOfStage();updateSlamVisual(t);updateRockPlayVisual(t);renderer.render(scene,camera);cssRenderer.render(scene,camera);renderStageForeground();
+ updateDuoVfx();updateEnvironment();
+ const minimalScenery=perfMode==='eco'||(perfMode==='auto'&&perfWeakDevice);
+ if(!minimalScenery||t-(updateOcean.lastEco||0)>1000){updateOcean(t);updateOcean.lastEco=t;}
+ if(!minimalScenery)animateSky(t);
+ updateSlamDust(t);updateBubbles(t);animateShow(t);
+ if(!minimalScenery)updateHourlyFireworks(t);
+ animateToastSparks(t);followLocalAvatar();controls.update();keepCameraInFrontOfStage();updateSlamVisual(t);updateRockPlayVisual(t);renderer.render(scene,camera);cssRenderer.render(scene,camera);renderStageForeground();
  // Re-evaluate rendering cost roughly every 6 seconds, auto mode only.
  if(perfMode==='auto'){
   perfFrameTotal+=performance.now()-frameStart;perfFrameSamples++;
