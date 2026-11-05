@@ -82,6 +82,20 @@ const PUNK_ITEMS={
  'choker':{name:'스파이크 초커',slot:'neck',cost:95}
 };
 const SHOP_SLOTS=['shirt','head','neck'];
+const customMd=new Map();
+const MD_ADMIN_KEY=process.env.MD_ADMIN_KEY||'';
+function adminAuthorized(req){
+ const provided=String(req.headers['x-md-admin-key']||'');
+ const a=Buffer.from(provided),b=Buffer.from(MD_ADMIN_KEY);
+ return Boolean(MD_ADMIN_KEY&&a.length===b.length&&crypto.timingSafeEqual(a,b));
+}
+function publicMdItems(){
+ const items={...PUNK_ITEMS};
+ for(const [id,item] of customMd)items[id]={name:item.name,slot:'shirt',cost:0,shirtColor:item.shirtColor,imageUrl:'/api/md-image/'+id,custom:true};
+ return items;
+}
+function validMdItem(key){return PUNK_ITEMS[key]||customMd.has(key)&&publicMdItems()[key]}
+
 function shopRecord(identity){
  if(!shopStats.has(identity))shopStats.set(identity,{spent:0,owned:[],equipped:{}});
  return shopStats.get(identity);
@@ -89,7 +103,7 @@ function shopRecord(identity){
 function getShopView(p,now=Date.now()){
  const record=shopRecord(p.badgeIdentity);
  const earned=Math.floor(badgeTotal(p,now)/60); // 1 point per connected minute
- return {points:Math.max(0,earned-record.spent),earned,spent:record.spent,owned:[...record.owned],equipped:{...record.equipped},items:PUNK_ITEMS};
+ return {points:earned,earned,spent:0,refunded:record.refunded||0,testing:true,owned:Object.keys(publicMdItems()),equipped:{...record.equipped},items:publicMdItems()};
 }
 function setShopAppearance(p){
  p.equipped=p.badgeIdentity?{...shopRecord(p.badgeIdentity).equipped}:{};
@@ -120,14 +134,19 @@ const SB_KEY=process.env.SUPABASE_SECRET_KEY||'';
 const useSupabase=Boolean(SB_URL&&SB_KEY);
 let restored=false;
 let saveChain=Promise.resolve();
-function stateData(){return {version:4,music,queue:[...queue],history:[...history],nextTrackToken,shopStats:Object.fromEntries([...shopStats].map(([k,v])=>[k,{spent:v.spent,owned:v.owned,equipped:v.equipped}])),badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),savedAt:Date.now()}}
+function stateData(){return {version:5,music,queue:[...queue],history:[...history],nextTrackToken,customMd:Object.fromEntries(customMd),shopStats:Object.fromEntries([...shopStats].map(([k,v])=>[k,{spent:0,refunded:v.refunded||0,owned:v.owned,equipped:v.equipped}])),badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),savedAt:Date.now()}}
 function applySaved(d){
  if(!d||typeof d!=='object')return;
+ if(d.customMd&&typeof d.customMd==='object')for(const [id,r] of Object.entries(d.customMd).slice(0,40)){
+  if(!/^md-[a-f0-9]{16}$/.test(id)||!r||typeof r!=='object')continue;
+  if(!/^data:image\/webp;base64,[A-Za-z0-9+/=]+$/.test(r.image||'')||r.image.length>145000)continue;
+  customMd.set(id,{name:clean(r.name,45),shirtColor:/^#[a-fA-F0-9]{6}$/.test(r.shirtColor)?r.shirtColor:'#181818',image:r.image});
+ }
  if(d.shopStats&&typeof d.shopStats==='object')for(const [identity,r] of Object.entries(d.shopStats).slice(0,30000)){
   if(!/^[a-zA-Z0-9_-]{20,100}$/.test(identity)||!r||typeof r!=='object')continue;
-  const owned=Array.isArray(r.owned)?[...new Set(r.owned.filter(k=>PUNK_ITEMS[k]))]:[];
-  const equipped={};for(const slot of SHOP_SLOTS){const key=r.equipped?.[slot];if(owned.includes(key)&&PUNK_ITEMS[key].slot===slot)equipped[slot]=key;}
-  shopStats.set(identity,{spent:Math.max(0,Math.floor(Number(r.spent)||0)),owned,equipped});
+  const owned=Array.isArray(r.owned)?[...new Set(r.owned.filter(k=>validMdItem(k)))]:[];
+  const equipped={};for(const slot of SHOP_SLOTS){const key=r.equipped?.[slot];if(validMdItem(key)&&publicMdItems()[key].slot===slot)equipped[slot]=key;}
+  shopStats.set(identity,{spent:0,refunded:Math.max(0,Math.floor(Number(r.refunded)||0))+Math.max(0,Math.floor(Number(r.spent)||0)),owned,equipped});
  }
  if(d.badgeStats&&typeof d.badgeStats==='object')for(const [k,v] of Object.entries(d.badgeStats).slice(0,30000)){
   if(/^[a-zA-Z0-9_-]{20,100}$/.test(k)&&Number.isFinite(v)&&v>=0)badgeStats.set(k,{seconds:Math.min(v,315360000)});
@@ -157,6 +176,9 @@ async function restorePlaylist(){
   try{applySaved(JSON.parse(fs.readFileSync(STATE_PATH,'utf8')));console.log('Local playlist restored (non-durable)')}catch(err){if(err.code!=='ENOENT')console.warn('Local restore failed:',err.message)}
  }
  restored=true;
+ // One-time v114 migration: legacy spent points were converted into refunded credits.
+ // Persist the zero-spend records immediately so restarts never re-deduct them.
+ if([...shopStats.values()].some(r=>r.refunded>0))scheduleSave();
 }
 function saveNow(){
  if(!restored)return Promise.resolve();
@@ -287,7 +309,15 @@ const server=http.createServer(async(req,res)=>{
     res.writeHead(200,{'content-type':'image/jpeg','cache-control':'public, max-age=86400','x-content-type-options':'nosniff'});
     return res.end(bytes);
   }
+  if(url.pathname.startsWith('/api/md-image/')&&req.method==='GET'){
+   const id=url.pathname.slice('/api/md-image/'.length);const item=customMd.get(id);
+   if(!item){res.writeHead(404);return res.end('Not found')}
+   const data=Buffer.from(item.image.slice('data:image/webp;base64,'.length),'base64');
+   res.writeHead(200,{'content-type':'image/webp','cache-control':'public,max-age=3600','x-content-type-options':'nosniff'});
+   return res.end(data);
+  }
   if(!restored&&url.pathname.startsWith('/api/'))return json(res,503,{error:'음악 저장소 연결 확인 중입니다. 잠시 뒤 다시 시도해주세요.'});
+  if(url.pathname==='/api/md-catalog'&&req.method==='GET')return json(res,200,{items:publicMdItems(),testing:true});
   if(url.pathname==='/api/youtube-search'&&req.method==='GET'){
     res.setHeader('cache-control','no-store');
     if(!YOUTUBE_API_KEY)return json(res,503,{error:'유튜브 검색이 아직 설정되지 않았습니다. 관리자에게 YOUTUBE_API_KEY 등록을 요청해 주세요.'});
@@ -312,6 +342,35 @@ const server=http.createServer(async(req,res)=>{
   if(url.pathname.startsWith('/api/')&&req.method==='POST'){
     try{
       const d=await receive(req);
+      if(url.pathname==='/api/md-admin'){
+       if(!MD_ADMIN_KEY)return json(res,503,{error:'Render 환경변수 MD_ADMIN_KEY를 설정해 주세요.'});
+       if(!adminAuthorized(req))return json(res,403,{error:'관리자 키가 올바르지 않습니다.'});
+       const cmd=clean(d.command,20);
+       if(cmd==='list')return json(res,200,{items:publicMdItems()});
+       if(cmd==='create'){
+        if(customMd.size>=16)return json(res,400,{error:'등록 가능한 MD는 최대 16개입니다.'});
+        const name=clean(d.name,45);
+        const shirtColor=String(d.shirtColor||'');
+        const image=String(d.image||'');
+        if(name.length<2||!/^#[a-fA-F0-9]{6}$/.test(shirtColor))return json(res,400,{error:'상품 이름과 티셔츠 색상을 확인해 주세요.'});
+        if(!/^data:image\/webp;base64,[A-Za-z0-9+/=]+$/.test(image)||image.length>145000)return json(res,400,{error:'WEBP 이미지가 너무 크거나 잘못됐어요. 더 작게 압축해 주세요.'});
+        const bytes=Buffer.from(image.slice('data:image/webp;base64,'.length),'base64');
+        if(bytes.length>105000||bytes.length<32||bytes.toString('ascii',0,4)!=='RIFF'||bytes.toString('ascii',8,12)!=='WEBP')return json(res,400,{error:'WEBP 파일만 등록 가능합니다 (105KB 이하).'});
+        const id='md-'+crypto.randomBytes(8).toString('hex');
+        customMd.set(id,{name,shirtColor,image});
+        await saveNow();broadcast({type:'md-catalog',items:publicMdItems()});
+        return json(res,200,{ok:true,id,items:publicMdItems()});
+       }
+       if(cmd==='delete'){
+        const id=String(d.item||'');if(!customMd.has(id))return json(res,404,{error:'등록된 MD를 찾을 수 없어요.'});
+        customMd.delete(id);
+        for(const r of shopStats.values())if(r.equipped.shirt===id)delete r.equipped.shirt;
+        for(const player of players.values()){if(player.equipped?.shirt===id){setShopAppearance(player);broadcast({type:'profile',player})}}
+        await saveNow();broadcast({type:'md-catalog',items:publicMdItems()});
+        return json(res,200,{ok:true,items:publicMdItems()});
+       }
+       return json(res,400,{error:'알 수 없는 관리자 명령입니다.'});
+      }
       if(url.pathname==='/api/join'){
         const sessionKey=typeof d.sessionKey==='string'&&/^[a-zA-Z0-9_-]{20,100}$/.test(d.sessionKey)?d.sessionKey:null;
         const badgeIdentity=typeof d.badgeIdentity==='string'&&/^[a-zA-Z0-9_-]{20,100}$/.test(d.badgeIdentity)?d.badgeIdentity:null;
@@ -339,16 +398,13 @@ const server=http.createServer(async(req,res)=>{
         if(!p.badgeIdentity)return json(res,400,{error:'브라우저 저장소를 사용해야 포인트를 모을 수 있습니다.'});
         const command=clean(d.command,20);
         if(command==='status')return json(res,200,{shop:getShopView(p)});
-        const key=clean(d.item,40),item=PUNK_ITEMS[key];
+        const key=clean(d.item,40),item=publicMdItems()[key];
         if(!item)return json(res,400,{error:'존재하지 않는 상품입니다.'});
         const record=shopRecord(p.badgeIdentity);
         if(command==='buy'){
-          if(record.owned.includes(key))return json(res,400,{error:'이미 보유한 상품입니다.'});
-          const view=getShopView(p);
-          if(view.points<item.cost)return json(res,400,{error:'포인트가 부족합니다.'});
-          record.spent+=item.cost;record.owned.push(key);
+          // v114: temporary free testing. Old spent points already refunded.
+          if(!record.owned.includes(key))record.owned.push(key);
         }else if(command==='equip'){
-          if(!record.owned.includes(key))return json(res,403,{error:'구매하지 않은 상품입니다.'});
           record.equipped[item.slot]=key;
         }else if(command==='unequip'){
           if(record.equipped[item.slot]===key)delete record.equipped[item.slot];
