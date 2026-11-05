@@ -156,6 +156,18 @@ function apparel(d,fallback={}){return {
  hairStyle:safeHairStyle(d.hairStyle||fallback.hairStyle||(d.gender==='female'?'bob':'short')),
  hairColor:hairColors.includes(d.hairColor)?d.hairColor:(fallback.hairColor||'#4b3932')
 }}
+// Flag image uploads are served once per content hash; snapshots broadcast only small IDs.
+const flagImages=new Map();
+function storeFlagImage(source){
+ if(typeof source!=='string'||!/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(source)||source.length>210000)return null;
+ const raw=Buffer.from(source.slice('data:image/jpeg;base64,'.length),'base64');
+ if(raw.length<100||raw.length>155000||raw[0]!==0xff||raw[1]!==0xd8||raw[raw.length-2]!==0xff||raw[raw.length-1]!==0xd9)return null;
+ const id=crypto.createHash('sha256').update(raw).digest('hex').slice(0,32);
+ flagImages.set(id,raw);
+ // Keep at most 100 uploaded flags in memory; older uploads can be restored on rejoin.
+ while(flagImages.size>100)flagImages.delete(flagImages.keys().next().value);
+ return id;
+}
 const cleanFlag=s=>String(s||'').replace(/[\x00-\x1f<>]/g,'').replace(/\s+/g,' ').trim().slice(0,32);
 const clean = (s,max=30)=>String(s||'').replace(/[\x00-\x1f<>]/g,'').trim().slice(0,max);
 const send=(res,obj)=>{res.write('data: '+JSON.stringify(obj)+'\n\n');};
@@ -201,10 +213,17 @@ async function getVideoTitle(id){
   }catch{return '제목을 불러올 수 없는 영상';}
   finally{clearTimeout(timer)}
 }
-async function receive(req){let raw='';for await(const chunk of req){raw+=chunk;if(raw.length>4000)throw new Error('too large')}return JSON.parse(raw||'{}')}
+async function receive(req){let raw='';for await(const chunk of req){raw+=chunk;if(raw.length>240000)throw new Error('too large')}return JSON.parse(raw||'{}')}
 const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.ico':'image/x-icon','.gltf':'model/gltf+json','.bin':'application/octet-stream'};
 const server=http.createServer(async(req,res)=>{
   const url=new URL(req.url,'http://localhost');
+  if(url.pathname.startsWith('/api/flag-image/')&&req.method==='GET'){
+    const imageId=url.pathname.slice('/api/flag-image/'.length);
+    const bytes=/^[a-f0-9]{32}$/.test(imageId)?flagImages.get(imageId):null;
+    if(!bytes){res.writeHead(404);return res.end('Image not found')}
+    res.writeHead(200,{'content-type':'image/jpeg','cache-control':'public, max-age=86400','x-content-type-options':'nosniff'});
+    return res.end(bytes);
+  }
   if(!restored&&url.pathname.startsWith('/api/'))return json(res,503,{error:'음악 저장소 연결 확인 중입니다. 잠시 뒤 다시 시도해주세요.'});
   if(url.pathname==='/api/events'&&req.method==='GET'){
     const id=clean(url.searchParams.get('id'),80);
@@ -232,7 +251,7 @@ const server=http.createServer(async(req,res)=>{
           }
           if(existingId)sessionPlayers.delete(sessionKey);
         }
-        const id=crypto.randomUUID(),p={id,badgeSince:Date.now(),badgeTier:'bronze',badgeSeconds:0,name:clean(d.name,18)||'ROCKER',flagText:cleanFlag(d.flagText),color:colors.includes(d.color)?d.color:colors[0],...apparel(d),gender:d.gender==='female'?'female':'male',x:clamp(190+Math.random()*880,20,1380),y:clamp(390+Math.random()*420,220,1100),facing:0,action:'idle',pose:'stand',seen:Date.now()};
+        const id=crypto.randomUUID(),p={id,badgeSince:Date.now(),badgeTier:'bronze',badgeSeconds:0,name:clean(d.name,18)||'ROCKER',flagText:cleanFlag(d.flagText),flagImage:d.flagImage?storeFlagImage(d.flagImage)||'':'',color:colors.includes(d.color)?d.color:colors[0],...apparel(d),gender:d.gender==='female'?'female':'male',x:clamp(190+Math.random()*880,20,1380),y:clamp(390+Math.random()*420,220,1100),facing:0,action:'idle',pose:'stand',seen:Date.now()};
         Object.defineProperty(p,'badgeIdentity',{value:badgeIdentity,writable:true,enumerable:false});updateBadge(p);players.set(id,p);
         if(sessionKey){sessionPlayers.set(sessionKey,id);playerSessions.set(id,sessionKey)}
         if(pageId)pageOwners.set(id,pageId);
@@ -240,7 +259,14 @@ const server=http.createServer(async(req,res)=>{
       }
       const id=clean(d.id,80),p=players.get(id);if(!p)return json(res,401,{error:'Session expired. Please rejoin.'});p.seen=Date.now();
       if(url.pathname==='/api/heartbeat'){return json(res,200,{ok:true})}
-      if(url.pathname==='/api/flag'){p.flagText=cleanFlag(d.flagText);broadcast({type:'flag',id:p.id,flagText:p.flagText});return json(res,200,{ok:true,flagText:p.flagText})}
+      if(url.pathname==='/api/flag'){
+        const upload=Boolean(d.flagImage);
+        const flagImage=upload?storeFlagImage(d.flagImage):'';
+        if(upload&&!flagImage)return json(res,400,{error:'이미지가 너무 크거나 형식이 올바르지 않습니다.'});
+        p.flagText=upload?'':cleanFlag(d.flagText);p.flagImage=flagImage;
+        broadcast({type:'flag',id:p.id,flagText:p.flagText,flagImage:p.flagImage});
+        return json(res,200,{ok:true,flagText:p.flagText,flagImage:p.flagImage});
+      }
       if(url.pathname==='/api/profile'){p.name=clean(d.name,18)||'ROCKER';p.color=colors.includes(d.color)?d.color:p.color;p.gender=d.gender==='female'?'female':'male';Object.assign(p,apparel(d,p));broadcast({type:'profile',player:p});return json(res,200,{ok:true,player:p})}
       if(url.pathname==='/api/duo'){
         const command=clean(d.command,20),now=Date.now();
