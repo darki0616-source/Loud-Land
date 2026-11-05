@@ -229,7 +229,16 @@ const server=http.createServer(async(req,res)=>{
           const dx=p.x-source.x,dy=p.y-source.y,distance=Math.hypot(dx,dy),nx=distance>1?dx/distance:1,ny=distance>1?dy/distance:0;
           const gap=14;source.x=clamp(centerX-nx*gap,20,1380);source.y=clamp(centerY-ny*gap,220,1100);
           p.x=clamp(centerX+nx*gap,20,1380);p.y=clamp(centerY+ny*gap,220,1100);
-          source.facing=Math.atan2(nx,ny);p.facing=Math.atan2(-nx,-ny);
+          // For high-five, start in a slightly side-on stance so both avatars
+          // visibly turn toward one another before their hands connect.
+          const faceA=Math.atan2(nx,ny),faceB=Math.atan2(-nx,-ny);
+          if(invite.kind==='highfive'){
+            source.facing=faceA-.65;
+            p.facing=faceB+.65;
+          }else{
+            source.facing=faceA;
+            p.facing=faceB;
+          }
           source.action='idle';p.action='idle';source.pose='stand';p.pose='stand';
           const duo={id:crypto.randomUUID(),a:source.id,b:id,kind:invite.kind,startAt:now+300,endAt:now+300+DUO_DURATION,
            anchor:{a:{x:source.x,y:source.y},b:{x:p.x,y:p.y}}};
