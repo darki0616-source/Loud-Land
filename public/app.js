@@ -1666,25 +1666,31 @@ function makeAvatar(p){
  const poleGroup=new THREE.Group();root.add(poleGroup);parts.flagGroup=poleGroup;
  poleGroup.visible=Boolean(p.flagText);
  const poleMaterial=new THREE.MeshStandardMaterial({color:'#b8bbc0',roughness:.39,metalness:.48});
- const pole=new THREE.Mesh(new THREE.CylinderGeometry(.039,.044,4.65,10),poleMaterial);
- pole.position.set(.93,3.03,.2);pole.castShadow=false;poleGroup.add(pole);
- const finial=new THREE.Mesh(new THREE.SphereGeometry(.095,10,8),mat('#e0e3e6',.35));finial.position.set(.93,5.39,.2);poleGroup.add(finial);
- const clothCanvas=document.createElement('canvas');clothCanvas.width=768;clothCanvas.height=432;
+ // Twice the v101 pole length (4.65 -> 9.30 world units). Keep the grip base fixed.
+ const poleHeight=9.30,poleBaseY=.705,poleX=.93,poleZ=.2;
+ const pole=new THREE.Mesh(new THREE.CylinderGeometry(.039,.044,poleHeight,10),poleMaterial);
+ pole.position.set(poleX,poleBaseY+poleHeight/2,poleZ);pole.castShadow=false;poleGroup.add(pole);
+ const poleTopY=poleBaseY+poleHeight;
+ const finial=new THREE.Mesh(new THREE.SphereGeometry(.095,10,8),mat('#e0e3e6',.35));finial.position.set(poleX,poleTopY+.06,poleZ);poleGroup.add(finial);
+ const clothCanvas=document.createElement('canvas');clothCanvas.width=1024;clothCanvas.height=576;
  const clothCtx=clothCanvas.getContext('2d');
- clothCtx.fillStyle='#ffffff';clothCtx.fillRect(0,0,768,432);
+ clothCtx.fillStyle='#ffffff';clothCtx.fillRect(0,0,clothCanvas.width,clothCanvas.height);
  const lettering=(p.flagText||'').trim().slice(0,32);
  const glyphs=[...lettering];const lines=[];
- if(glyphs.length<=15)lines.push(lettering);
+ if(glyphs.length<=12)lines.push(lettering);
  else{const cut=Math.ceil(glyphs.length/2);lines.push(glyphs.slice(0,cut).join(''),glyphs.slice(cut).join(''));}
+ // Draw after measuring to keep long Korean/Latin strings inside the pennant.
+ const maxTextWidth=900;
  clothCtx.fillStyle='#080808';clothCtx.textAlign='center';clothCtx.textBaseline='middle';
- const maxWidth=675,fontSize=lines.length===1?101:84;
- clothCtx.font=`900 ${fontSize}px sans-serif`;
- lines.forEach((line,i)=>clothCtx.fillText(line,384,lines.length===1?215:157+i*130,maxWidth));
- const clothTexture=new THREE.CanvasTexture(clothCanvas);clothTexture.colorSpace=THREE.SRGBColorSpace;clothTexture.anisotropy=4;
- const fabric=new THREE.Mesh(new THREE.PlaneGeometry(2.85,1.7),new THREE.MeshBasicMaterial({map:clothTexture,side:THREE.DoubleSide}));
- fabric.position.set(2.375,4.45,.2);fabric.castShadow=false;poleGroup.add(fabric);
+ clothCtx.font=`900 ${lines.length===1?150:122}px "Apple SD Gothic Neo","Malgun Gothic",sans-serif`;
+ lines.forEach((line,i)=>clothCtx.fillText(line,512,lines.length===1?286:198+i*170,maxTextWidth));
+ const clothTexture=new THREE.CanvasTexture(clothCanvas);clothTexture.colorSpace=THREE.SRGBColorSpace;clothTexture.anisotropy=8;
+ // The cloth pivots around the pole so its black lettering can face the camera.
+ const flagPivot=new THREE.Group();flagPivot.position.set(poleX,poleTopY,poleZ);poleGroup.add(flagPivot);parts.flagPivot=flagPivot;
+ const fabric=new THREE.Mesh(new THREE.PlaneGeometry(2.85,1.7),new THREE.MeshBasicMaterial({map:clothTexture,side:THREE.DoubleSide,toneMapped:false,depthWrite:true}));
+ fabric.position.set(1.425,-.85,0);fabric.castShadow=false;flagPivot.add(fabric);
  const hem=new THREE.Mesh(new THREE.BoxGeometry(2.85,.055,.025),mat('#e0e0e0'));
- hem.position.set(2.375,5.30,.2);poleGroup.add(hem);
+ hem.position.set(1.425,-.025,0);flagPivot.add(hem);
  // Festival wristband attached to the left wrist, follows joint animations.
  const band=child(parts.leftElbow,new THREE.TorusGeometry(.119,.026,5,12),mat('#d5ff79',.65),[0,-.29,.006]);band.rotation.x=Math.PI/2;
  // Crossbody bag: both ends of the strap meet the bag at its top corners;
@@ -2615,11 +2621,21 @@ function tick(t){
 
  for(let [id,p] of state.players){
   const current=avatars.get(id);
-  if(current&&(current.color!==p.color||current.name!==p.name||current.badgeTier!==(p.badgeTier||'bronze')||current.gender!==p.gender||current.pattern!==(p.pattern||'solid')||current.sash!==(p.sash||'none')||current.hairStyle!==(p.hairStyle||'short')||current.hairColor!==(p.hairColor||'#4b3932'))){
+  if(current&&(current.color!==p.color||current.name!==p.name||current.badgeTier!==(p.badgeTier||'bronze')||current.gender!==p.gender||current.pattern!==(p.pattern||'solid')||current.sash!==(p.sash||'none')||current.hairStyle!==(p.hairStyle||'short')||current.hairColor!==(p.hairColor||'#4b3932')||current.flagText!==(p.flagText||''))){
    disposeAvatar(current.root);avatars.delete(id);
   }
   if(!avatars.has(id)){let a=makeAvatar(p),pos=toWorld(p);a.root.position.set(pos.x,0,pos.z);a.name=p.name;a.badgeTier=p.badgeTier||'bronze';a.gender=p.gender;a.pattern=p.pattern||'solid';a.sash=p.sash||'none';a.hairStyle=p.hairStyle||'short';a.hairColor=p.hairColor||'#4b3932';a.flagText=p.flagText||'';avatars.set(id,a)}
-  animateAvatar(avatars.get(id),p,t)
+  const avatar=avatars.get(id);
+  animateAvatar(avatar,p,t);
+  if(avatar.parts.flagPivot?.parent?.visible){
+   // Pole stays anchored to the avatar; only the cloth rotates around it.
+   avatar.root.updateWorldMatrix(true,false);
+   const poleWorld=new THREE.Vector3();avatar.parts.flagPivot.getWorldPosition(poleWorld);
+   const toCamera=new THREE.Vector3().subVectors(camera.position,poleWorld);
+   const desiredWorldYaw=Math.atan2(toCamera.x,toCamera.z);
+   const rootYaw=new THREE.Euler().setFromQuaternion(avatar.root.getWorldQuaternion(new THREE.Quaternion()),'YXZ').y;
+   avatar.parts.flagPivot.rotation.y=desiredWorldYaw-rootYaw;
+  }
  }
  for(let [id,a] of avatars)if(!state.players.has(id)){disposeAvatar(a.root);avatars.delete(id)}
  if(moveMarker.visible){moveMarker.material.opacity=Math.min(.75,Math.max(0,(moveMarkerUntil-t)/1050)*.75);if(t>moveMarkerUntil)moveMarker.visible=false}
