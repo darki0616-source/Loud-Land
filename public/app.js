@@ -699,12 +699,12 @@ function surfPoseAt(event,playerId,now=slamNow()){
   mount=Math.min(1,(elapsed-SURF_APPROACH_MS)/SURF_MOUNT_MS);
   mount=mount*mount*(3-2*mount);
   rideProgress=Math.max(0,Math.min(1,(elapsed-SURF_APPROACH_MS-SURF_MOUNT_MS)/SURF_RIDE_MS));
-  // Rider stays directly ABOVE the center of the supporters' formation.
-  // Two symmetric left-right traversals over 10 seconds; ends in the center.
+  // Move the rider's BODY CENTRE left/right over the stationary supporters.
+  // This translation is independent of the avatar's LOCAL-axis headspin.
   const wave=Math.sin(rideProgress*Math.PI*4);
-  x=event.x+wave*14;
+  x=event.x+wave*22;
   y=event.y;
-  // Eight full headspin-style rotations, synchronised on every viewer by server time.
+  // Eight turns around the rider's OWN centre, not around the group centre.
   roll=rideProgress*Math.PI*16;
  }
  return {x,y,isRider,mounted,mount,rideProgress,roll,
@@ -2400,9 +2400,11 @@ function animateAvatar(a,p,t){
  if(P.mdWings)P.mdWings.rotation.y=Math.sin(t*.0022)*.045;
  if(P.mdTail)P.mdTail.rotation.y=Math.sin(t*.0034)*.24;
  P.toastCup.visible=q.action==='toast-clink';
- // Leaving headspin must clear its WORLD-ROOT spin, inversion and height.
- // Otherwise a huge sec*8.2 yaw leaks into walk/other dance interpolation.
- if(a.lastAction==='headspin'&&act!=='headspin'){
+ // Both headspin and crowd-surf rotations temporarily transform the avatar ROOT.
+ // Reset the root when those actions end, rather than inheriting a tilted,
+ // off-centre pose into the celebration or the next walk animation.
+ if((a.lastAction==='headspin'&&act!=='headspin')||
+    (a.lastAction==='surf-rider'&&!surfView)){
   a.root.rotation.set(0,Number(q.facing)||0,0);
   a.root.position.y=0;
  }
@@ -2778,11 +2780,10 @@ function animateAvatar(a,p,t){
  P.flagGroup.visible=Boolean(q.flagText||q.flagImage);
  // Seat is higher than the grass; raise the seated avatar to the bench cushion.
  if(basePose==='sit'&&benchSeats.some(seat=>Math.hypot(q.x-seat.x,q.y-seat.y)<24))height+=.46;
- // Only the initiating surfer rides above the other participants. The avatar
- // remains visible to spectators even though Y is not transmitted by /api/move.
+ // Surfer height and orientation are resolved together below using a
+ // body-centre pivot. Never lift the old feet-origin pivot separately: that
+ // made the spinning chibi orbit like a satellite around the other players.
  const surfing=Boolean(surfView?.mounted);
- // Clearance for the large chibi heads below: feet/torso never intersect supporters.
- if(surfing)height=3.95*surfView.mount+Math.sin(sec*6)*.04;
  a.root.position.y+=(height-a.root.position.y)*(surfView?1:.28);
  a.root.rotation.x+=(lean-a.root.rotation.x)*.22;
  // While breakdancing, rotate the whole prone body around its center, not just its chest.
@@ -2836,12 +2837,22 @@ function animateAvatar(a,p,t){
   a.root.rotation.y+=delta*.2;
  }
  if(surfView?.mounted){
-  // First lean the rider horizontally over the center of the supporters.
-  // Rotate around the WORLD vertical axis like a headspin; unlike local-Y
-  // rotation this reads clearly as a full-body spin from every camera angle.
-  const spin=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),surfView.roll);
-  const lieDown=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1),-Math.PI/2*surfView.mount);
-  a.root.quaternion.copy(spin).multiply(lieDown);
+  // IMPORTANT: Three.js avatar root is at its FEET, not at its body centre.
+  // Simply spinning the tilted root around Y sends the head/torso in a circle.
+  // Instead, pivot about the character's OWN chest while translating that
+  // chest from left to right. Group midpoint is only the traversal midpoint.
+  const mount=surfView.mount;
+  const selfSpin=new THREE.Quaternion().setFromAxisAngle(
+   new THREE.Vector3(0,1,0),surfView.roll);
+  const horizontal=new THREE.Quaternion().setFromAxisAngle(
+   new THREE.Vector3(0,0,1),-Math.PI/2*mount);
+  a.root.quaternion.copy(selfSpin).multiply(horizontal);
+  // Approximate chibi torso/head combined centre in root-local coordinates.
+  // Correct world translation after applying rotation, so it stays exactly
+  // at (targetX,targetZ), with NO orbital motion from the avatar offset.
+  const pivotOffset=new THREE.Vector3(0,1.65,0).applyQuaternion(a.root.quaternion);
+  const chestY=THREE.MathUtils.lerp(1.65,4.45,mount);
+  a.root.position.set(targetX-pivotOffset.x,chestY-pivotOffset.y,targetZ-pivotOffset.z);
  }else if(surfView){
   a.root.rotation.x=0;a.root.rotation.z=0;
  }
