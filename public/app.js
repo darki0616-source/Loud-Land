@@ -2044,6 +2044,10 @@ gameTouchSurface.addEventListener('pointerup',e=>{
  if(!pointerStart||!state.me)return;
  const dist=Math.hypot(e.clientX-pointerStart.x,e.clientY-pointerStart.y);pointerStart=null;
  if(dist>9)return;
+ // A genuine tap on the 3D map closes the chat tab and returns to reactions.
+ // Leave the dance tab untouched; dragging/orbiting and pinch gestures do not
+ // change tabs. Do not intercept the ground click: walking still works.
+ if(!$('chatPanel').classList.contains('hidden'))selectBottomMenu('reaction');
  const bounds=renderer.domElement.getBoundingClientRect();pointer.set(((e.clientX-bounds.left)/bounds.width)*2-1,-((e.clientY-bounds.top)/bounds.height)*2+1);
  groundRay.setFromCamera(pointer,camera);if(!groundRay.ray.intersectPlane(groundPlane,hit))return;
  const x=Math.max(20,Math.min(1380,hit.x/.058+600)),y=Math.max(220,Math.min(1100,(contractWorldZ(hit.z)-8)/.058+500));
