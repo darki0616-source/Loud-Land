@@ -1644,6 +1644,12 @@ function animateAvatar(a,p,t){
  if(P.sash)P.sash.rotation.y=Math.PI/2+Math.sin(t*.0028)*.055;
  P.toastCup.visible=q.action==='toast-clink';
  const act=q.action||'idle',basePose=q.pose||((act==='sit'||act==='lie')?act:'stand'),sec=t*.001,pose={};
+ // Leaving headspin must clear its WORLD-ROOT spin, inversion and height.
+ // Otherwise a huge sec*8.2 yaw leaks into walk/other dance interpolation.
+ if(a.lastAction==='headspin'&&act!=='headspin'){
+  a.root.rotation.set(0,Number(q.facing)||0,0);
+  a.root.position.y=0;
+ }
  const keys=['upper','neck','leftShoulder','rightShoulder','leftElbow','rightElbow','leftHip','rightHip','leftKnee','rightKnee'];
  for(const key of keys)pose[key]=[0,0,0];
  let height=0,lean=0,ikMode=null,leftHandTarget=null,rightHandTarget=null;
@@ -2001,12 +2007,12 @@ function animateAvatar(a,p,t){
  P.rockBubble.visible=act==='peace'||act==='slam-retreat'||act==='slam-celebrate';P.bottle.visible=act==='drink';
  if(P.rockBubble.visible)P.rockBubble.position.y=4.34+Math.sin(sec*7)*.075;
  if(act==='headspin'){
-  // Spin around the vertical axis without requiring network updates per frame.
-  // All viewers derive the same motion from local render time.
-  a.root.rotation.y=sec*8.2;
+  // Keep yaw bounded; absolute elapsed page seconds would grow without limit.
+  a.root.rotation.y=(sec*8.2)%(Math.PI*2);
  }else if(basePose!=='lie'&&act!=='lie'){
   const yaw=Number(q.facing)||0;
-  const delta=((yaw-a.root.rotation.y+Math.PI*3)%(Math.PI*2))-Math.PI;
+  a.root.rotation.y=((a.root.rotation.y%(Math.PI*2))+Math.PI*2)%(Math.PI*2);
+  const delta=Math.atan2(Math.sin(yaw-a.root.rotation.y),Math.cos(yaw-a.root.rotation.y));
   a.root.rotation.y+=delta*.2;
  }
  a.lastAction=act;
