@@ -561,7 +561,10 @@ html,body{height:100%;height:100dvh;overflow:hidden!important}
 .punk-balance strong{color:#dfff90;font-size:24px;margin-left:8px}.punk-balance span{float:right;color:#b6c3d2;margin-top:9px;font-size:12px}
 .punk-shop-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:11px}
 .punk-item{border:1px solid #495570;border-radius:12px;padding:12px;background:#252d45;display:flex;flex-direction:column;gap:7px;align-items:center;text-align:center}
-.punk-item-visual{display:grid;place-items:center;width:100%;height:72px;background:#141b30;border-radius:10px;font-size:42px}
+.punk-item-visual{display:grid;place-items:center;width:100%;height:96px;min-width:0;overflow:hidden;background:#141b30;border-radius:10px;font-size:42px}
+/* v116: Scale every uploaded MD image into the existing shop thumbnail.
+   The image keeps its aspect ratio and never expands the product card. */
+.punk-item-visual img{display:block;width:auto;height:auto;max-width:calc(100% - 16px);max-height:80px;object-fit:contain;object-position:center;min-width:0;min-height:0}
 .punk-item strong{font-size:13px;min-height:35px}.punk-item small{font-size:12px;color:#dfff90}.punk-item button{width:100%;padding:8px;background:#dfff90;color:#121c1a;border:0;border-radius:8px;font-weight:900}
 .punk-item button:disabled{opacity:.45;cursor:not-allowed}.punk-item button.equipped{background:#788aa5;color:white}
 .punk-shop-foot{display:block;margin-top:15px;color:#b3bdd0;font-size:11px}

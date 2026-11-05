@@ -1973,25 +1973,50 @@ function makeAvatar(p){
   const band=child(neck,new THREE.TorusGeometry(.73,.069,8,32,Math.PI),mat('#20212b'),[0,.30,.27]);
   for(const side of [-1,1]){
    const isHorn=look.head==='horns';
-   const spike=child(neck,new THREE.ConeGeometry(isHorn?.19:.11,isHorn?.63:.37,9),
-     mat(isHorn?'#d43747':'#a9aebd',.48),
-     [side*.50,isHorn?1.12:.99,.24]);
-   spike.rotation.z=isHorn?side*.19:0;
+   // Larger visible metal spikes: clear the hair volume instead of disappearing into it.
+   const spike=child(neck,new THREE.ConeGeometry(isHorn?.19:.17,isHorn?.63:.57,10),
+     mat(isHorn?'#d43747':'#d5dce6',.39),
+     [side*.50,isHorn?1.12:1.13,.34]);
+   spike.rotation.z=isHorn?side*.19:side*.09;
   }
  }
  if(['chain','choker'].includes(look.neck)){
-  const silver=mat(look.neck==='choker'?'#161720':'#c4c9d2',.34);
-  const collar=child(upper,new THREE.TorusGeometry(.33,.062,8,18),silver,[0,.85,0]);collar.rotation.x=Math.PI/2;
+  // Head radius is about .8 and extends over the neck, so neckwear must sit
+  // on the FRONT of the torso (positive Z), not behind the oversized head.
+  const chainSilver=mat('#e3eaf2',.26),darkCollar=mat('#20232d',.79);
+  const tubular=(points,radius,material)=>{
+   const curve=new THREE.CatmullRomCurve3(points.map(v=>new THREE.Vector3(...v)));
+   const mesh=new THREE.Mesh(new THREE.TubeGeometry(curve,32,radius,7,false),material);
+   mesh.castShadow=false;upper.add(mesh);return mesh;
+  };
   if(look.neck==='chain'){
-   for(let i=0;i<8;i++){
-    const x=(i-3.5)*.075,y=.72-Math.sin(i/7*Math.PI)*.15;
-    const chainLink=child(upper,new THREE.TorusGeometry(.07,.02,5,8),silver,[x,y,.36]);chainLink.rotation.z=i*.14;
+   // Large V-shaped necklace drapes below the head and above the shirt print.
+   const path=[[-.49,.73,.49],[-.43,.61,.60],[-.31,.48,.70],[-.16,.35,.75],
+               [0,.31,.77],[.16,.35,.75],[.31,.48,.70],[.43,.61,.60],[.49,.73,.49]];
+   tubular(path,.045,chainSilver);
+   // Bright alternating chunky chain links follow the front-facing V.
+   for(let i=1;i<path.length-1;i++){
+    const [x,y,z]=path[i];
+    const link=child(upper,new THREE.TorusGeometry(.102,.027,8,12),chainSilver,[x,y,z+.045]);
+    link.rotation.z=(i<4?-.5:i>4?.5:0);
    }
-   child(upper,new THREE.OctahedronGeometry(.12,0),silver,[0,.52,.42]);
+   const pendant=child(upper,new THREE.OctahedronGeometry(.17,0),chainSilver,[0,.15,.80]);
+   pendant.rotation.z=Math.PI/4;
   }else{
-   for(const x of [-.23,-.08,.08,.23]){const spike=child(upper,new THREE.ConeGeometry(.065,.20,6),mat('#ccd0d9',.35),[x,.78,.36]);spike.rotation.x=Math.PI*.52;}
+   // A thick curved collar across the front throat/upper chest, with large
+   // outward-facing spikes. Original tiny band was hidden under the head.
+   tubular([[-.49,.71,.48],[-.37,.58,.63],[-.18,.52,.73],[0,.50,.77],
+            [.18,.52,.73],[.37,.58,.63],[.49,.71,.48]],.093,darkCollar);
+   const spikeMetal=mat('#e0e5ee',.31);
+   for(const x of [-.34,-.17,0,.17,.34]){
+    const y=.53+.17*Math.pow(Math.abs(x)/.49,2);
+    const z=.78-Math.abs(x)*.24;
+    const spike=child(upper,new THREE.ConeGeometry(.085,.30,8),spikeMetal,[x,y,z+.13]);
+    spike.rotation.x=Math.PI*.56;
+   }
   }
  }
+
  // Minimal articulated limbs: smooth joints tucked inside sleeve/leg, not exposed balls.
  function arm(side){
    const direction=side==='left'?-1:1;
