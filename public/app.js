@@ -28,6 +28,10 @@ const hairColors=[['검정','#25222a'],['진갈색','#4b3932'],['갈색','#85533
 let chosenColor=palette[0],chosenGender='male',toastTimer;const avatars=new Map();const activeBubbles=new Map();
 // Keep a visitor's own appearance on this browser only (not by shared public IP).
 const PROFILE_STORAGE_KEY='oneseason-profile-v1';
+const FLAG_STORAGE_KEY='oneseason-flag-v1';
+function savedFestivalFlag(){try{return (localStorage.getItem(FLAG_STORAGE_KEY)||'').slice(0,32)}catch{return ''}}
+let currentFlagText=savedFestivalFlag();
+
 // Per-tab identity survives refreshes and reconnects without linking people by IP.
 const SESSION_STORAGE_KEY='oneseason-avatar-session-v1';
 const pageId=crypto.randomUUID();
@@ -138,7 +142,7 @@ async function restoreSession(){
  if(rejoining)return rejoining;
  rejoining=(async()=>{
   try{
-   const r=await fetch('/api/join',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sessionKey,pageId,badgeIdentity,name:state.me?.name||$('nick').value||'ROCKER',color:state.me?.color||chosenColor,gender:state.me?.gender||chosenGender,pattern:state.me?.pattern||chosenPattern,sash:state.me?.sash||chosenSash,hairStyle:state.me?.hairStyle||chosenHairStyle,hairColor:state.me?.hairColor||chosenHairColor})});
+   const r=await fetch('/api/join',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sessionKey,pageId,badgeIdentity,flagText:currentFlagText,name:state.me?.name||$('nick').value||'ROCKER',color:state.me?.color||chosenColor,gender:state.me?.gender||chosenGender,pattern:state.me?.pattern||chosenPattern,sash:state.me?.sash||chosenSash,hairStyle:state.me?.hairStyle||chosenHairStyle,hairColor:state.me?.hairColor||chosenHairColor})});
    if(!r.ok)throw Error('재접속 실패');const d=await r.json();
    const old=state.me;state.id=d.id;state.me=d.players.find(x=>x.id===d.id);
    if(old){state.me.x=old.x;state.me.y=old.y;state.me.facing=old.facing;state.me.action=old.action;state.me.pose=old.pose;}
@@ -256,7 +260,7 @@ function showBookingNotice(name,title){
  setTimeout(()=>el.remove(),5200);
 }
 
-function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='snapshot'){state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);if(Array.isArray(d.chat)){$('chatMessages').replaceChildren();d.chat.forEach(appendChat)};for(const id of duoVfx.keys())removeDuoVfx(id);activeDuos.clear();for(const duo of d.interactions||[])activeDuos.set(duo.id,duo);syncDuoStatus()}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){appendChat(d.entry);showBubble(d.entry)}else if(d.type==='move'){state.players.set(d.player.id,d.player);if(d.player.id===state.id&&currentDuo())state.me={...d.player}}else if(d.type==='badge'){const person=state.players.get(d.id);if(person){person.badgeTier=d.badgeTier;person.badgeSeconds=d.badgeSeconds;if(d.id===state.id&&state.me){state.me.badgeTier=d.badgeTier;state.me.badgeSeconds=d.badgeSeconds;}renderOnlinePlayers();}}else if(d.type==='profile'){state.players.set(d.player.id,d.player);if(d.player.id===state.id){state.me=d.player;refreshProfilePreview()}renderOnlinePlayers()}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers()}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue,d.history);else if(d.type==='slam')applySlam(d.slam,d.cooldownUntil);else if(d.type==='slam-go')onSlamGo(d);else if(d.type==='slam-impact')spawnSlamDust(d.x,d.y);else if(d.type==='toast-spark')spawnToastSpark(d.x,d.y);else if(d.type==='cheer'&&d.playerId!==state.id&&state.audioEnabled)playCheer();else if(d.type==='rockplay')applyRockPlay(d.event,d.rockCooldowns,d.rockRunningUntil);else if(d.type==='rockplay-go')onRockPlayGo(d);else if(d.type==='music-booked')showBookingNotice(d.name,d.title);else if(d.type==='music-control')showMusicControlNotice(d.name,d.command);else if(d.type==='skip-vote')applySkipVote(d.vote,d.cooldownUntil);else if(d.type==='skip-vote-result')showSkipVoteResult(d);else if(d.type.startsWith('duo-'))handleDuoEvent(d)};state.es.onerror=()=>{ /* EventSource retries automatically; heartbeat repairs an expired session. */ }}
+function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='snapshot'){state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);if(Array.isArray(d.chat)){$('chatMessages').replaceChildren();d.chat.forEach(appendChat)};for(const id of duoVfx.keys())removeDuoVfx(id);activeDuos.clear();for(const duo of d.interactions||[])activeDuos.set(duo.id,duo);syncDuoStatus()}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){appendChat(d.entry);showBubble(d.entry)}else if(d.type==='move'){state.players.set(d.player.id,d.player);if(d.player.id===state.id&&currentDuo())state.me={...d.player}}else if(d.type==='flag'){const player=state.players.get(d.id);if(player)player.flagText=d.flagText;if(d.id===state.id&&state.me){state.me.flagText=d.flagText;currentFlagText=d.flagText;refreshFlagButton();}}else if(d.type==='badge'){const person=state.players.get(d.id);if(person){person.badgeTier=d.badgeTier;person.badgeSeconds=d.badgeSeconds;if(d.id===state.id&&state.me){state.me.badgeTier=d.badgeTier;state.me.badgeSeconds=d.badgeSeconds;}renderOnlinePlayers();}}else if(d.type==='profile'){state.players.set(d.player.id,d.player);if(d.player.id===state.id){state.me=d.player;refreshProfilePreview()}renderOnlinePlayers()}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers()}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue,d.history);else if(d.type==='slam')applySlam(d.slam,d.cooldownUntil);else if(d.type==='slam-go')onSlamGo(d);else if(d.type==='slam-impact')spawnSlamDust(d.x,d.y);else if(d.type==='toast-spark')spawnToastSpark(d.x,d.y);else if(d.type==='cheer'&&d.playerId!==state.id&&state.audioEnabled)playCheer();else if(d.type==='rockplay')applyRockPlay(d.event,d.rockCooldowns,d.rockRunningUntil);else if(d.type==='rockplay-go')onRockPlayGo(d);else if(d.type==='music-booked')showBookingNotice(d.name,d.title);else if(d.type==='music-control')showMusicControlNotice(d.name,d.command);else if(d.type==='skip-vote')applySkipVote(d.vote,d.cooldownUntil);else if(d.type==='skip-vote-result')showSkipVoteResult(d);else if(d.type.startsWith('duo-'))handleDuoEvent(d)};state.es.onerror=()=>{ /* EventSource retries automatically; heartbeat repairs an expired session. */ }}
 function applySkipVote(vote,cooldownUntil){
  state.skipVote=vote||null;if(Number.isFinite(Number(cooldownUntil)))state.skipVoteCooldownUntil=Number(cooldownUntil);
  const overlay=$('skipVoteOverlay');overlay.hidden=!vote;updateSkipVoteUI();updateSharedMusicButtons();
@@ -277,7 +281,7 @@ function updateSkipVoteUI(){
 async function castSkipVote(choice){const vote=state.skipVote;if(!vote||!state.id)return;try{await post('music',{id:state.id,command:'vote-cast',voteId:vote.id,choice})}catch(e){toast(e.message)}}
 function showSkipVoteResult(d){applySkipVote(null,state.skipVoteCooldownUntil);let msg=d.passed?'✅ 과반수 찬성! 요청한 곡으로 이동합니다':d.reason==='timeout'?'투표 시간이 종료되어 현재 곡을 유지합니다':'투표가 부결되어 현재 곡을 유지합니다';notice(msg)}
 setInterval(()=>{updateSkipVoteUI();updateSharedMusicButtons()},500);
-let joining=false;async function join(options={}){const auto=Boolean(options?.auto);if(editingProfile)return updateProfile();if(joining)return;joining=true;manualExit=false;try{let d=await post('join',{sessionKey,pageId,badgeIdentity,name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender,pattern:chosenPattern,sash:chosenSash,hairStyle:chosenHairStyle,hairColor:chosenHairColor});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);state.pose=state.me?.pose||'stand';cameraFollowInitialized=false;state.players=new Map(d.players.map(p=>[p.id,p]));renderOnlinePlayers();$('joinModal').classList.add('hidden');$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='페스티벌 참가 중';$('avatarPreview').querySelector('b').style.background=chosenColor;saveProfile(state.me);applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);listen();$('audioModal').classList.add('hidden');setPersonalAudio(true);showMovementGuide();if(!auto)toast('ONEseason에 오신 것을 환영합니다!')}catch(e){if(auto)$('joinModal').classList.remove('hidden');$('joinError').textContent='입장 실패: '+(e?.message||'연결을 확인해주세요');console.error('ONEseason join error:',e)}finally{joining=false}}
+let joining=false;async function join(options={}){const auto=Boolean(options?.auto);if(editingProfile)return updateProfile();if(joining)return;joining=true;manualExit=false;try{let d=await post('join',{sessionKey,pageId,badgeIdentity,flagText:currentFlagText,name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender,pattern:chosenPattern,sash:chosenSash,hairStyle:chosenHairStyle,hairColor:chosenHairColor});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);state.pose=state.me?.pose||'stand';cameraFollowInitialized=false;state.players=new Map(d.players.map(p=>[p.id,p]));renderOnlinePlayers();$('joinModal').classList.add('hidden');$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='페스티벌 참가 중';$('avatarPreview').querySelector('b').style.background=chosenColor;saveProfile(state.me);applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);listen();$('audioModal').classList.add('hidden');setPersonalAudio(true);showMovementGuide();if(!auto)toast('ONEseason에 오신 것을 환영합니다!')}catch(e){if(auto)$('joinModal').classList.remove('hidden');$('joinError').textContent='입장 실패: '+(e?.message||'연결을 확인해주세요');console.error('ONEseason join error:',e)}finally{joining=false}}
 $('audioYes').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(true);toast(state.music.id?'음악 재생을 허용했어요':'음악이 등록되면 바로 재생돼요')};$('audioNo').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(false);toast('내 소리를 끈 상태로 입장했어요')};// First tap must save even if the nickname field currently has keyboard focus.
 // A pointerdown listener runs BEFORE Safari's keyboard dismissal can consume
 // the subsequent click. De-duplicate that click and block duplicate requests.
@@ -465,6 +469,44 @@ function react(a){
  updateActionButtons();sendMove();
 }
 document.querySelectorAll('[data-action]').forEach(b=>b.onclick=()=>react(b.dataset.action));
+// A carrying festival flag is an equipment toggle, independent of dance/reaction state.
+let flagDialogMode='new',flagDialogBusy=false;
+function refreshFlagButton(){const b=$('flagAction');if(!b)return;b.classList.toggle('active',Boolean(currentFlagText));b.setAttribute('aria-pressed',String(Boolean(currentFlagText)));}
+function closeFlagDialog(){if(flagDialogBusy)return;$('flagDialog').classList.add('hidden');$('flagTextInput').blur()}
+function openFlagDialog(){
+ if(!state.id)return toast('먼저 입장해 주세요.');
+ flagDialogMode=currentFlagText?'remove':'new';
+ const removing=flagDialogMode==='remove';
+ $('flagDialogTitle').textContent=removing?'🏳️ 장대깃발 제거':'🏳️ 페스티벌 장대깃발';
+ $('flagDialogDescription').textContent=removing?'지금 들고 있는 깃발을 없앨까요?':'흰색 깃발에 넣을 검은 글씨를 입력해 주세요. (최대 32자)';
+ $('flagTextInput').classList.toggle('hidden',removing);
+ $('flagTextInput').value=removing?currentFlagText:'';
+ $('flagConfirm').textContent=removing?'깃발 없애기':'깃발 들기';
+ $('flagDialog').classList.remove('hidden');
+ if(!removing)requestAnimationFrame(()=>$('flagTextInput').focus());
+}
+$('flagAction').addEventListener('click',openFlagDialog);
+$('flagCancel').addEventListener('click',closeFlagDialog);
+$('flagDialog').addEventListener('click',e=>{if(e.target===$('flagDialog'))closeFlagDialog()});
+$('flagTextInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('flagConfirm').click()}if(e.key==='Escape')closeFlagDialog()});
+$('flagConfirm').addEventListener('click',async()=>{
+ if(flagDialogBusy)return;
+ const text=flagDialogMode==='remove'?'':$('flagTextInput').value.trim().replace(/\s+/g,' ').slice(0,32);
+ if(flagDialogMode!=='remove'&&!text)return toast('깃발에 넣을 글씨를 입력해 주세요.');
+ flagDialogBusy=true;$('flagConfirm').disabled=true;
+ try{
+  await post('flag',{id:state.id,flagText:text});
+  currentFlagText=text;
+  try{if(text)localStorage.setItem(FLAG_STORAGE_KEY,text);else localStorage.removeItem(FLAG_STORAGE_KEY)}catch{}
+  if(state.me)state.me.flagText=text;
+  if(state.players.has(state.id))state.players.get(state.id).flagText=text;
+  $('flagDialog').classList.add('hidden');$('flagTextInput').blur();refreshFlagButton();
+  toast(text?'장대깃발을 들었어요!':'장대깃발을 제거했어요.');
+ }catch(e){toast(e.message||'깃발 적용 실패')}
+ finally{flagDialogBusy=false;$('flagConfirm').disabled=false}
+});
+refreshFlagButton();
+
 document.addEventListener('keydown',e=>{if(e.target instanceof HTMLInputElement||e.target instanceof HTMLTextAreaElement||e.target?.isContentEditable)return;let k=e.key.toLowerCase();if(k.startsWith('arrow')||k===' ')e.preventDefault();state.keys.add(k);let acts={'1':'peace','2':'jump','3':'run','4':'wave','5':'clap','6':'sit','7':'lie','8':'drink','9':'snack','0':'headbang','b':'buriburi','g':'groove','v':'windmill','k':'skanking','a':'airguitar','n':'headspin','h':'cheer','c':'smoke'};if(acts[k]&&!e.repeat)react(acts[k])});document.addEventListener('keyup',e=>state.keys.delete(e.key.toLowerCase()));window.addEventListener('blur',()=>state.keys.clear());
 // CC0 crowd cheering by SFXMint; play only for listeners who enabled audio.
 // The URL is hotlink-permitted by the creator (https://sfxmint.com/sounds/crowd-cheer).
@@ -1619,6 +1661,30 @@ function makeAvatar(p){
    child(knee,new THREE.SphereGeometry(.20,13,10),shoeMat,[0,-.43,.13],[1.02,.62,1.5]);
  }
  arm('left');arm('right');leg('left');leg('right');
+ // White festival pennant with black personalized lettering, mounted on a tall hand-held pole.
+ // Model is attached to the avatar root so it follows movement but stays upright.
+ const poleGroup=new THREE.Group();root.add(poleGroup);parts.flagGroup=poleGroup;
+ poleGroup.visible=Boolean(p.flagText);
+ const poleMaterial=new THREE.MeshStandardMaterial({color:'#b8bbc0',roughness:.39,metalness:.48});
+ const pole=new THREE.Mesh(new THREE.CylinderGeometry(.039,.044,4.65,10),poleMaterial);
+ pole.position.set(.93,3.03,.2);pole.castShadow=false;poleGroup.add(pole);
+ const finial=new THREE.Mesh(new THREE.SphereGeometry(.095,10,8),mat('#e0e3e6',.35));finial.position.set(.93,5.39,.2);poleGroup.add(finial);
+ const clothCanvas=document.createElement('canvas');clothCanvas.width=768;clothCanvas.height=432;
+ const clothCtx=clothCanvas.getContext('2d');
+ clothCtx.fillStyle='#ffffff';clothCtx.fillRect(0,0,768,432);
+ const lettering=(p.flagText||'').trim().slice(0,32);
+ const glyphs=[...lettering];const lines=[];
+ if(glyphs.length<=15)lines.push(lettering);
+ else{const cut=Math.ceil(glyphs.length/2);lines.push(glyphs.slice(0,cut).join(''),glyphs.slice(cut).join(''));}
+ clothCtx.fillStyle='#080808';clothCtx.textAlign='center';clothCtx.textBaseline='middle';
+ const maxWidth=675,fontSize=lines.length===1?101:84;
+ clothCtx.font=`900 ${fontSize}px sans-serif`;
+ lines.forEach((line,i)=>clothCtx.fillText(line,384,lines.length===1?215:157+i*130,maxWidth));
+ const clothTexture=new THREE.CanvasTexture(clothCanvas);clothTexture.colorSpace=THREE.SRGBColorSpace;clothTexture.anisotropy=4;
+ const fabric=new THREE.Mesh(new THREE.PlaneGeometry(2.85,1.7),new THREE.MeshBasicMaterial({map:clothTexture,side:THREE.DoubleSide}));
+ fabric.position.set(2.375,4.45,.2);fabric.castShadow=false;poleGroup.add(fabric);
+ const hem=new THREE.Mesh(new THREE.BoxGeometry(2.85,.055,.025),mat('#e0e0e0'));
+ hem.position.set(2.375,5.30,.2);poleGroup.add(hem);
  // Festival wristband attached to the left wrist, follows joint animations.
  const band=child(parts.leftElbow,new THREE.TorusGeometry(.119,.026,5,12),mat('#d5ff79',.65),[0,-.29,.006]);band.rotation.x=Math.PI/2;
  // Crossbody bag: both ends of the strap meet the bag at its top corners;
@@ -2179,6 +2245,12 @@ function animateAvatar(a,p,t){
  else if(ikMode==='wave')placeHandIK(P,'right',rightHandTarget,.64);
  else if(ikMode==='snack')placeHandIK(P,'right',rightHandTarget,.56);
  else if(ikMode==='smoke')placeHandIK(P,'right',rightHandTarget,.66);
+ // Keep the right hand gripping the tall flag pole during walking or idle.
+ // Complex dances temporarily take precedence without deleting the flag.
+ const canGripFlag=Boolean(q.flagText)&&basePose==='stand'&&!duoContext&&
+  ['idle','walk','run','peace','jump'].includes(act);
+ if(canGripFlag)placeHandIK(P,'right',new THREE.Vector3(.88,.32,.21),.64);
+ P.flagGroup.visible=Boolean(q.flagText);
  // Seat is higher than the grass; raise the seated avatar to the bench cushion.
  if(basePose==='sit'&&benchSeats.some(seat=>Math.hypot(q.x-seat.x,q.y-seat.y)<24))height+=.46;
  a.root.position.y+=(height-a.root.position.y)*.28;
@@ -2546,7 +2618,7 @@ function tick(t){
   if(current&&(current.color!==p.color||current.name!==p.name||current.badgeTier!==(p.badgeTier||'bronze')||current.gender!==p.gender||current.pattern!==(p.pattern||'solid')||current.sash!==(p.sash||'none')||current.hairStyle!==(p.hairStyle||'short')||current.hairColor!==(p.hairColor||'#4b3932'))){
    disposeAvatar(current.root);avatars.delete(id);
   }
-  if(!avatars.has(id)){let a=makeAvatar(p),pos=toWorld(p);a.root.position.set(pos.x,0,pos.z);a.name=p.name;a.badgeTier=p.badgeTier||'bronze';a.gender=p.gender;a.pattern=p.pattern||'solid';a.sash=p.sash||'none';a.hairStyle=p.hairStyle||'short';a.hairColor=p.hairColor||'#4b3932';avatars.set(id,a)}
+  if(!avatars.has(id)){let a=makeAvatar(p),pos=toWorld(p);a.root.position.set(pos.x,0,pos.z);a.name=p.name;a.badgeTier=p.badgeTier||'bronze';a.gender=p.gender;a.pattern=p.pattern||'solid';a.sash=p.sash||'none';a.hairStyle=p.hairStyle||'short';a.hairColor=p.hairColor||'#4b3932';a.flagText=p.flagText||'';avatars.set(id,a)}
   animateAvatar(avatars.get(id),p,t)
  }
  for(let [id,a] of avatars)if(!state.players.has(id)){disposeAvatar(a.root);avatars.delete(id)}
