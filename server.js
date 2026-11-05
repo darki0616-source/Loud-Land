@@ -84,7 +84,13 @@ const PUNK_ITEMS={
  'bat-glasses':{name:'배트 선글라스',slot:'eyes',cost:90},
  'fallen-wings':{name:'타락천사 날개',slot:'back',cost:300},
  'devil-tail':{name:'악마 꼬리',slot:'tail',cost:150},
- 'headset':{name:'락 페스티벌 헤드셋',slot:'ears',cost:170}
+ 'headset':{name:'락 페스티벌 헤드셋',slot:'ears',cost:170},
+ 'flame-glasses':{name:'불꽃 선글라스',slot:'eyes',cost:110},
+ 'bat-wing-band':{name:'박쥐날개 머리띠',slot:'head',cost:140},
+ 'heart-band':{name:'하트 머리띠',slot:'head',cost:100},
+ 'round-glasses':{name:'둥근 안경',slot:'eyes',cost:80},
+ 'back-guitar':{name:'등에 메는 기타',slot:'back',cost:220},
+ 'angel-wings':{name:'천사 날개',slot:'back',cost:280}
 };
 const SHOP_SLOTS=['shirt','head','neck','eyes','back','tail','ears'];
 const customMd=new Map();
