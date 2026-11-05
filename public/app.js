@@ -453,7 +453,7 @@ function handleDuoEvent(d){
  if(d.type==='duo-end'){finishDuo(d.id);return}
 }
 setInterval(syncDuoStatus,250);
-const sustainedReactions=new Set(['jump','run','headbang','buriburi','groove','windmill','skanking','airguitar','headspin','cheer','smoke']);
+const sustainedReactions=new Set(['peace','jump','run','headbang','buriburi','groove','windmill','skanking','airguitar','headspin','cheer','smoke']);
 // One shared bottom tab group: reactions / dances / chat.
 // Chat stays inside the dock instead of floating over the 3D world.
 function selectBottomMenu(menu){
@@ -774,17 +774,26 @@ function blendGroupWorld(from,to,alpha){
  return serverFromWorld({x:a.x+(b.x-a.x)*t,z:a.z+(b.z-a.z)*t});
 }
 function moshPathAt(m,elapsed){
+ // Run STRAIGHT THROUGH the selected marker, then turn around and come
+ // back to that marker. No legacy retreat to the halfway point.
+ // Same overall route length in half the time => approximately 2x speed.
  const fraction=Math.min(1,Math.max(0,elapsed/m.duration));
- const from=m.moshStart||{x:state.me.x,y:state.me.y};const dest=m.moshDestination||{x:m.x,y:m.y};
- const half={x:from.x+(dest.x-from.x)*.5,y:from.y+(dest.y-from.y)*.5};
- let a,b,t;
- if(fraction<.30){a=from;b=dest;t=fraction/.30}
- else if(fraction<.65){a=dest;b=half;t=(fraction-.30)/.35}
- else {a=half;b=dest;t=Math.min(1,(fraction-.65)/.31)}
- const u=t*t*(3-2*t);
- const wa=toWorld(a),wb=toWorld(b);
- const p=serverFromWorld({x:wa.x+(wb.x-wa.x)*u,z:wa.z+(wb.z-wa.z)*u});
- return {...p,dx:wb.x-wa.x,dy:wb.z-wa.z};
+ const from=toWorld(m.moshStart||{x:state.me.x,y:state.me.y});
+ const dest=toWorld(m.moshDestination||{x:m.x,y:m.y});
+ const dx=dest.x-from.x,dz=dest.z-from.z;
+ // Extend 50% of the start-to-target distance beyond the chosen position.
+ const ahead={x:dest.x+dx*.5,z:dest.z+dz*.5};
+ let point,dir;
+ if(fraction<=.75){
+  const t=fraction/.75;
+  point={x:from.x+(ahead.x-from.x)*t,z:from.z+(ahead.z-from.z)*t};
+  dir=1;
+ }else{
+  const t=(fraction-.75)/.25;
+  point={x:ahead.x+(dest.x-ahead.x)*t,z:ahead.z+(dest.z-ahead.z)*t};
+  dir=-1;
+ }
+ return {...serverFromWorld(point),dx:dx*dir,dy:dz*dir};
 }
 function rockPathAt(m,elapsed){
  const elapsedFraction=Math.min(1,Math.max(0,elapsed/m.duration));
@@ -1058,7 +1067,14 @@ $('povToggle').onclick=()=>{
  $('povToggle').setAttribute('aria-pressed',String(povEnabled));
  $('povToggle').textContent=povEnabled?'👁 3인칭':'👁 POV';
  cameraFollowInitialized=false;
- if(!povEnabled&&state.me){const w=toWorld(state.me);controls.target.set(w.x,1.55,w.z);camera.position.set(w.x,8,w.z+13);camera.lookAt(controls.target)}
+ if(!povEnabled&&state.me){
+  // Restore the third-person camera around the avatar's head, including
+  // the elevation of the expanded stage and its entrance steps.
+  getLocalHeadFocus(cameraFocus);
+  controls.target.copy(cameraFocus);
+  camera.position.set(cameraFocus.x,cameraFocus.y+6.45,cameraFocus.z+13);
+  camera.lookAt(controls.target);
+ }
  toast(povEnabled?'POV: 1인칭 시점 · 드래그로 시선 조절':'3인칭 시점');
 };
 let povPointer=null;
@@ -1071,12 +1087,30 @@ gameTouchSurface.addEventListener('pointermove',e=>{
  povPointer.x=e.clientX;povPointer.y=e.clientY;
 });
 for(const ev of ['pointerup','pointercancel'])gameTouchSurface.addEventListener(ev,()=>povPointer=null);
+// Exact world-space head position (after stage elevation / stairs animation).
+// Using the rendered avatar avoids a mismatch between visual stage height and
+// camera height. Fall back to the same stage-height function during join.
+const headFocusScratch=new THREE.Vector3();
+function getLocalHeadFocus(out){
+ const a=avatars.get(state.id);
+ if(a?.parts?.head){
+  a.root.updateWorldMatrix(true,true);
+  a.parts.head.getWorldPosition(out);
+  return out;
+ }
+ const w=toWorld(state.me);
+ return out.set(w.x,2.6+stageWalkHeightAt(w.x,w.z),w.z);
+}
 function updatePovCamera(){
  if(!povEnabled||!state.me)return;
- const w=toWorld(state.me),yaw=(state.me.facing||0)+povYaw;
- camera.position.set(w.x,2.55,w.z);
+ const head=getLocalHeadFocus(headFocusScratch);
+ const yaw=(state.me.facing||0)+povYaw;
+ // Eye level is relative to the animated head, not to the ground at y=0.
+ // This keeps POV at eye height on the stage and while using the stairs.
+ const eyeY=head.y-.04;
+ camera.position.set(head.x,eyeY,head.z);
  const dx=Math.sin(yaw)*Math.cos(povPitch),dy=Math.sin(povPitch),dz=Math.cos(yaw)*Math.cos(povPitch);
- camera.lookAt(w.x+dx*15,2.55+dy*15,w.z+dz*15);
+ camera.lookAt(head.x+dx*15,eyeY+dy*15,head.z+dz*15);
 }
 
 const BADGE_INFO={
@@ -1126,8 +1160,11 @@ function keepCameraInFrontOfStage(){
 const cameraFocus=new THREE.Vector3();let cameraFollowInitialized=false;
 function followLocalAvatar(){
  if(!state.me)return;
- const p=toWorld(state.me);cameraFocus.set(p.x,1.55,p.z);
- const strength=cameraFollowInitialized?0.24:1;
+ // Third-person tracking is anchored to the avatar's actual head, rather
+ // than a fixed world Y. Ascending the stage raises both orbit center and
+ // camera together; a damped delta prevents an abrupt jump on stair edges.
+ getLocalHeadFocus(cameraFocus);
+ const strength=cameraFollowInitialized?0.18:1;
  const delta=cameraFocus.clone().sub(controls.target).multiplyScalar(strength);
  camera.position.add(delta);controls.target.add(delta);
  cameraFollowInitialized=true;
@@ -2852,10 +2889,13 @@ function animateAvatar(a,p,t){
   // Headbanging is driven by the WAIST, not a rapidly nodding head.
   // Fold the whole torso forward and straighten it rhythmically. The head
   // stays connected to the chest, with only a small counter-rotation.
-  const fold=(1-Math.cos(sec*10.4))*.5;
+  // Bend at HALF the former tempo (~0.83 bends/sec). The head nods
+  // separately and a little faster, rather than staying rigid with the chest.
+  const fold=(1-Math.cos(sec*5.2))*.5;
+  const nod=(1-Math.cos(sec*10.4))*.5;
   if(basePose==='stand'){
    set('upper',.06+fold*1.04);
-   set('neck',-.035-fold*.12);
+   set('neck',-.08-fold*.14+nod*.34);
    set('leftHip',-fold*.17);set('rightHip',-fold*.17);
    set('leftKnee',fold*.24);set('rightKnee',fold*.24);
    set('leftShoulder',.10+fold*.24,0,-.12);
@@ -2863,10 +2903,10 @@ function animateAvatar(a,p,t){
   }else if(basePose==='sit'){
    // Seated version still folds at the waist, with reduced range.
    set('upper',.05+fold*.76);
-   set('neck',-.03-fold*.09);
+   set('neck',-.05-fold*.10+nod*.27);
   }else{
    // Do not throw a lying avatar upright while headbanging.
-   set('neck',-.02+fold*.08);
+   set('neck',-.02+nod*.15);
   }
  }
  if(act==='sit'){
@@ -2935,7 +2975,7 @@ function animateAvatar(a,p,t){
   height=.52;lean=-Math.PI/2;
   set('leftHip',.11);set('rightHip',.11);
   // Allow gestures with shoulder and head while resting on the back.
-  if(act==='headbang')set('neck',-.02+(1-Math.cos(sec*10.4))*.04,0,0);
+  if(act==='headbang')set('neck',-.02+(1-Math.cos(sec*10.4))*.075,0,0);
  }
  // Only the Buriburi dance slides the torso laterally; return smoothly on exit.
  const hipSlide=act==='buriburi'?Math.sin(sec*9.5)*.14:0;
@@ -3092,6 +3132,48 @@ function spawnSlamDust(x,y){
   p.start=now;p.active=true;
   p.mesh.visible=true;p.mesh.position.set(p.x,p.y,p.z);
  });
+}
+// Continuous lightweight mosh dust, visible locally for EVERY synchronized
+// mosh participant. Emission starts on the very first moving frame.
+const moshTrailLastEmission=new Map();
+function spawnMoshTrail(x,y,t){
+ const center=toWorld({x,y});
+ let emitted=0;
+ for(const particle of slamDustParticles){
+  if(particle.active)continue;
+  const angle=(t*.011+emitted*2.39996)%(Math.PI*2);
+  particle.x=center.x+Math.cos(angle)*.28;
+  particle.z=center.z+Math.sin(angle)*.28;
+  particle.y=.13;
+  particle.vx=Math.cos(angle)*.004;
+  particle.vz=Math.sin(angle)*.004;
+  particle.vy=.004+emitted*.001;
+  particle.size=.13+emitted*.025;
+  particle.duration=450+emitted*65;
+  particle.start=t;particle.active=true;
+  particle.mesh.visible=true;
+  particle.mesh.position.set(particle.x,particle.y,particle.z);
+  if(++emitted>=3)break;
+ }
+}
+function updateMoshTrails(t){
+ const activeIds=new Set();
+ if(state.me&&rockMotion?.kind==='mosh'&&!rockMotion.phase){
+  activeIds.add(state.id);
+  if(t-(moshTrailLastEmission.get(state.id)||-Infinity)>145){
+   spawnMoshTrail(state.me.x,state.me.y,t);
+   moshTrailLastEmission.set(state.id,t);
+  }
+ }
+ for(const [id,p] of state.players){
+  if(id===state.id||p.action!=='mosh-charge')continue;
+  activeIds.add(id);
+  if(t-(moshTrailLastEmission.get(id)||-Infinity)>170){
+   spawnMoshTrail(p.x,p.y,t);
+   moshTrailLastEmission.set(id,t);
+  }
+ }
+ for(const id of moshTrailLastEmission.keys())if(!activeIds.has(id))moshTrailLastEmission.delete(id);
 }
 function updateSlamDust(t){
  for(const p of slamDustParticles){if(!p.active)continue;
@@ -3305,17 +3387,17 @@ function tick(t){
     }
    }else{
     const p=m.kind==='mosh'?moshPathAt(m,elapsed):rockPathAt(m,elapsed);
-    // Gather into rows/circle with a short smooth approach, then perform in place.
+    // Moshing launches immediately at full speed; other games retain their
+    // 1.4-second group gathering animation.
     const gather=Math.min(1,elapsed/1400);
     const from=m.gatherFrom||p;
-    const smooth=blendGroupWorld(from,p,gather);
+    const smooth=m.kind==='mosh'?p:blendGroupWorld(from,p,gather);
     state.me.x=clampServerX(smooth.x);
     state.me.y=clampServerY(smooth.y);
     // Crowd-surf supporters face the middle and never rotate onto the train path.
     state.me.facing=m.kind==='surf'?(m.isSurfRider?0:Math.atan2(m.x-p.x,m.y-p.y)):
      m.kind==='toast'?Math.atan2(m.x-p.x,m.y-p.y):m.kind==='row'?0:Math.atan2(p.dx,p.dy);
     state.me.action=m.kind==='surf'?(state.id===m.riderId?'surf-rider':'surf-support'):m.kind==='mosh'?'mosh-charge':m.kind==='circle'?'circle-run':m.kind==='row'?'row-paddle':m.kind==='toast'?'toast-clink':'train-run';state.action=state.me.action;
-    if(m.kind==='mosh'){if(elapsed>=m.duration*.30&&!m.dustA){m.dustA=true;post('rockplay',{id:state.id,command:'impact',eventId:m.id,phase:1,x:state.me.x,y:state.me.y}).catch(()=>{})}if(elapsed>=m.duration*.96&&!m.dustB){m.dustB=true;post('rockplay',{id:state.id,command:'impact',eventId:m.id,phase:2,x:state.me.x,y:state.me.y}).catch(()=>{})}}
     state.moving=true;
     if(t-state.lastSent>70){state.lastSent=t;sendMove()}
    }
@@ -3413,7 +3495,7 @@ function tick(t){
  const minimalScenery=perfMode==='eco'||(perfMode==='auto'&&perfWeakDevice);
  if(!minimalScenery||t-(updateOcean.lastEco||0)>1000){updateOcean(t);updateOcean.lastEco=t;}
  if(!minimalScenery)animateSky(t);
- updateSlamDust(t);updateBubbles(t);animateShow(t);
+ updateMoshTrails(t);updateSlamDust(t);updateBubbles(t);animateShow(t);
  if(!minimalScenery)updateHourlyFireworks(t);
  animateToastSparks(t);
  if(povEnabled){updatePovCamera();}else{followLocalAvatar();controls.update();keepCameraInFrontOfStage();}
