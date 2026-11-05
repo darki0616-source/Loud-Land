@@ -634,8 +634,8 @@ function onSlamGo(event){
   // the same centre. Clamp to the server's accepted festival coordinates.
   const reach=(count===1?48:55);
   const rx=Math.max(20,Math.min(1380,ax+Math.cos(angle)*reach));
-  const ry=Math.max(220,Math.min(1100,ay+Math.sin(angle)*reach));
-  slamMotion={phase:'charge',approach:{x:Math.max(20,Math.min(1380,ax)),y:Math.max(220,Math.min(1100,ay))},retreat:{x:rx,y:ry},started:performance.now(),phaseStarted:performance.now()};
+  const ry=clampServerY(ay+Math.sin(angle)*reach);
+  slamMotion={phase:'charge',approach:{x:clampServerX(ax),y:clampServerY(ay)},retreat:{x:rx,y:ry},started:performance.now(),phaseStarted:performance.now()};
   state.walkTarget=null;state.benchTarget=null;
   state.pose='stand';state.me.pose='stand';state.action='slam-charge';state.actionUntil=Infinity;state.me.action='slam-charge';
   document.querySelectorAll('[data-action]').forEach(b=>b.classList.remove('active'));
@@ -806,7 +806,7 @@ function beginRockCelebration(m){
  const radius=m.kind==='circle'?150:Math.max(58,Math.min(108,40+m.count*6));
  m.scatterTarget={
   x:Math.max(20,Math.min(1380,m.x+Math.cos(angle)*radius)),
-  y:Math.max(220,Math.min(1100,m.y+Math.sin(angle)*radius))
+  y:clampServerY(m.y+Math.sin(angle)*radius)
  };
  m.phase='scatter';m.phaseStarted=performance.now();
  state.action='slam-retreat';state.me.action='slam-retreat';
@@ -1089,7 +1089,7 @@ const controls=new OrbitControls(camera,gameTouchSurface);controls.enableDamping
 // box, never an infinite Z-plane (the old plane felt like a left/right lock).
 // When the stage is between the player and the camera, dolly in along the
 // current view direction instead of refusing horizontal orbit.
-const stageCameraBox=new THREE.Box3(new THREE.Vector3(-23.6,-.3,-32),new THREE.Vector3(23.6,15.1,-16.7));
+const stageCameraBox=new THREE.Box3(new THREE.Vector3(-23.6,-.3,-32),new THREE.Vector3(23.6,15.1,-9.6));
 const cameraHit=new THREE.Vector3(),cameraRay=new THREE.Ray(),cameraOffset=new THREE.Vector3();
 function keepCameraInFrontOfStage(){
  cameraOffset.subVectors(camera.position,controls.target);
@@ -1282,7 +1282,20 @@ nearbyCity.forEach(v=>createBackdropBuilding(...v));
  [149,-159,18,25,16,-.24]
 ].forEach(v=>createMountain(...v));
 // Main stage faces the audience: far north = negative z.
-cube(45,1.7,14,dark,0,1,-25);cube(47,1.2,1,metal,0,2.05,-17.3);cube(46,1.5,1,dark,0,13.8,-31);cube(1,13.8,1,metal,-22,7.8,-31);cube(1,13.8,1,metal,22,7.8,-31);cube(46,11.8,.6,dark,0,7.2,-31);
+// v128: keep the original backdrop, but add a front apron and two approach
+// stairs so visitors can actually walk onto the highlighted stage zone.
+cube(45,1.7,14,dark,0,1,-25);
+cube(19.2,1.72,7.9,dark,0,.96,-14.15); // walkable front apron (red marked zone)
+cube(21.2,.28,8.3,metal,0,1.86,-14.15);
+for(const sx of [-3.7,3.7]){
+ for(let i=0;i<4;i++){
+  const depth=1.02;
+  const stepZ=-9.0-i*0.78;
+  const stepY=.18+i*.23;
+  cube(3.1,.34,depth,metal,sx,stepY,stepZ);
+ }
+}
+cube(47,1.2,1,metal,0,2.05,-17.3);cube(46,1.5,1,dark,0,13.8,-31);cube(1,13.8,1,metal,-22,7.8,-31);cube(1,13.8,1,metal,22,7.8,-31);cube(46,11.8,.6,dark,0,7.2,-31);
 const sign=new THREE.Mesh(new THREE.PlaneGeometry(24,1.6),label('ONEseason',78,'#dcfd8b','#18172e'));sign.position.set(0,13.9,-29.85);scene.add(sign);
 
 // Two full-height portrait poster bays just outside the left/right stage pillars.
@@ -1375,7 +1388,12 @@ mdPart(new THREE.TorusGeometry(.72,.07,7,20,Math.PI),mdSilver,0,1.90,2.95);
 const mdInteractSign=new THREE.Mesh(new THREE.PlaneGeometry(5.4,.78),label('TOUCH TO SHOP',58,'#fcfae8','#e36b9b'));
 mdInteractSign.position.set(0,2.0,3.01);mdBoothGroup.add(mdInteractSign);mdBoothTargets.push(mdInteractSign);
 // Crowd barrier
-for(let x=-34;x<=34;x+=3){cube(.11,1.45,.11,metal,x,.9,-13.2);if(x<34)cube(3,.13,.13,metal,x+1.5,1.48,-13.2)}
+// Keep the front fence, but open the centre so the new stage stairs are usable.
+for(let x=-34;x<=34;x+=3){
+ if(x>-9&&x<9)continue;
+ cube(.11,1.45,.11,metal,x,.9,-13.2);
+ if(x<34&&!(x+1.5>-9&&x+1.5<9))cube(3,.13,.13,metal,x+1.5,1.48,-13.2)
+}
 // Walkway and picnic area: use the existing continuous lawn directly.
 // Do not add a second slab at the exact same height; its depth artifacts
 // were responsible for the flashing horizontal stripes in the audience zone.
@@ -2057,12 +2075,25 @@ function makeAvatar(p){
   const bandMaterial=mat(look.head==='heart-band'?'#e75a80':'#25202d',.45);
   const arc=child(neck,new THREE.TorusGeometry(.76,.067,9,40,Math.PI),bandMaterial,[0,.35,.28]);
   if(look.head==='heart-band'){
-   const pink=mat('#fa5986',.43),light=mat('#ff91b4',.45);
+   // True, flat heart silhouettes: no spheres or cones that distort the outline.
+   // The heart lies in the XY plane facing forward (+Z), and remains visible
+   // from both sides when the avatar turns around.
+   const heartMaterial=new THREE.MeshBasicMaterial({
+    color:'#ff5b8c',side:THREE.DoubleSide,depthWrite:true
+   });
+   const heartShape=new THREE.Shape();
+   heartShape.moveTo(0,-.29); // pointed bottom
+   heartShape.bezierCurveTo(-.10,-.19,-.37,.00,-.37,.19);
+   heartShape.bezierCurveTo(-.37,.43,-.09,.46,0,.26);
+   heartShape.bezierCurveTo(.09,.46,.37,.43,.37,.19);
+   heartShape.bezierCurveTo(.37,.00,.10,-.19,0,-.29);
+   const geometry=new THREE.ShapeGeometry(heartShape,16);
    for(const side of [-1,1]){
-    const heart=new THREE.Group();heart.position.set(side*.47,1.11,.37);neck.add(heart);
-    for(const c of [-1,1])child(heart,new THREE.SphereGeometry(.20,12,9),pink,[c*.14,.10,0],[1,.88,.63]);
-    const tip=child(heart,new THREE.ConeGeometry(.30,.37,4),pink,[0,-.13,0]);tip.rotation.y=Math.PI/4;
-    child(heart,new THREE.SphereGeometry(.062,8,6),light,[-.12,.19,.12]);
+    const heart=new THREE.Mesh(geometry,heartMaterial);
+    heart.position.set(side*.47,1.18,.49);
+    heart.scale.set(.82,.82,1);
+    heart.renderOrder=2;
+    neck.add(heart);
    }
   }else{
    const bat=mat('#262131',.56),edge=mat('#4b395a',.60);
@@ -2419,7 +2450,29 @@ function updateBubbles(now){
   b.sprite.material.opacity=Math.min(1,(b.expires-now)/350);
  }
 }
+const SERVER_X_MIN=20,SERVER_X_MAX=1380,SERVER_Y_MIN=60,SERVER_Y_MAX=1100;
 function toWorld(p){return {x:(p.x-600)*.058,z:expandWorldZ((p.y-500)*.058+8)}}
+function clampServerX(v){return Math.max(SERVER_X_MIN,Math.min(SERVER_X_MAX,v))}
+function clampServerY(v){return Math.max(SERVER_Y_MIN,Math.min(SERVER_Y_MAX,v))}
+// v128: front-access stage apron, two shallow stair approaches, and walkable
+// elevated space. Only the red-marked forward stage zone is walkable; the rear
+// backdrop and screen remain decorative. Avatars rise onto the stage when they
+// enter this world-space footprint.
+const STAGE_WALK_X_HALF=14.6;
+const STAGE_PLATFORM_Z_MIN=-18.0,STAGE_PLATFORM_Z_MAX=-10.25;
+const STAGE_PLATFORM_HEIGHT=1.82;
+const STAGE_RAMP_Z_MIN=-10.25,STAGE_RAMP_Z_MAX=-7.65;
+const STAGE_RAMP_X_SPANS=[[-5.8,-1.5],[1.5,5.8]];
+function xInSpan(x,span){return x>=span[0]&&x<=span[1]}
+function isInStageRamp(x,z){return z>=STAGE_RAMP_Z_MIN&&z<=STAGE_RAMP_Z_MAX&&STAGE_RAMP_X_SPANS.some(span=>xInSpan(x,span))}
+function stageWalkHeightAt(x,z){
+ if(Math.abs(x)<=STAGE_WALK_X_HALF&&z>=STAGE_PLATFORM_Z_MIN&&z<=STAGE_PLATFORM_Z_MAX)return STAGE_PLATFORM_HEIGHT;
+ if(isInStageRamp(x,z)){
+  const t=(STAGE_RAMP_Z_MAX-z)/(STAGE_RAMP_Z_MAX-STAGE_RAMP_Z_MIN);
+  return Math.max(0,Math.min(1,t))*STAGE_PLATFORM_HEIGHT;
+ }
+ return 0;
+}
 // Two-bone IK keeps the hands on exact, reachable targets for clap and drinking.
 // All targets are in the upper-torso coordinate system. The hand meshes are
 // at elbow-local (0,-.39,.018); elbow and forearm are .40 and .39 long.
@@ -2884,6 +2937,8 @@ function animateAvatar(a,p,t){
   ['idle','walk','run','peace','jump'].includes(act);
  if(canGripFlag)placeHandIK(P,'right',new THREE.Vector3(.88,.32,.21),.64);
  P.flagGroup.visible=Boolean(q.flagText||q.flagImage);
+ const avatarWorld=toWorld(q);
+ height+=stageWalkHeightAt(avatarWorld.x,avatarWorld.z);
  // Seat is higher than the grass; raise the seated avatar to the bench cushion.
  if(basePose==='sit'&&benchSeats.some(seat=>Math.hypot(q.x-seat.x,q.y-seat.y)<24))height+=.46;
  // Surfer height and orientation are resolved together below using a
@@ -3055,7 +3110,7 @@ gameTouchSurface.addEventListener('pointerup',e=>{
  groundRay.setFromCamera(pointer,camera);
  if(!rockPlacementMode&&!slamMode&&groundRay.intersectObjects(mdBoothTargets,false).length){openPunkShop();return;}
  if(!groundRay.ray.intersectPlane(groundPlane,hit))return;
- const x=Math.max(20,Math.min(1380,hit.x/.058+600)),y=Math.max(220,Math.min(1100,(contractWorldZ(hit.z)-8)/.058+500));
+ const x=clampServerX(hit.x/.058+600),y=clampServerY((contractWorldZ(hit.z)-8)/.058+500);
  if(rockPlacementMode){
   const kind=rockPlacementMode;rockPlacementMode=null;refreshRockUI();
   post('rockplay',{id:state.id,command:'start',kind,x,y}).then(d=>applyRockPlay(d.event,d.rockCooldowns,d.rockRunningUntil)).catch(e=>toast(e.message));
@@ -3170,8 +3225,8 @@ function tick(t){
      // Travel through the rendered world at a stable pace even when the
      // map stretches a short section of server Y into a long 3D corridor.
      const next=stepWorldToward(state.me,dest,(m.phase==='charge'?13:5.5)*frameDelta/1000);
-     state.me.x=Math.max(20,Math.min(1380,next.x));
-     state.me.y=Math.max(220,Math.min(1100,next.y));
+     state.me.x=clampServerX(next.x);
+     state.me.y=clampServerY(next.y);
      state.me.facing=Math.atan2(tx,ty);
      state.action=m.phase==='charge'?'slam-charge':'slam-retreat';
      state.me.action=state.action;
@@ -3195,8 +3250,8 @@ function tick(t){
     }else{
      // Jumping retreat at a gentle, frame-rate-independent pace.
      const next=stepWorldToward(state.me,target,5.5*frameDelta/1000);
-     state.me.x=Math.max(20,Math.min(1380,next.x));
-     state.me.y=Math.max(220,Math.min(1100,next.y));
+     state.me.x=clampServerX(next.x);
+     state.me.y=clampServerY(next.y);
      state.me.facing=Math.atan2(tx,ty);
      state.action='slam-retreat';state.me.action='slam-retreat';
      state.actionUntil=Infinity;
@@ -3210,7 +3265,7 @@ function tick(t){
     const surf=surfPoseAt(crowdSurfScene||m,state.id);
     if(surf){
      state.me.x=Math.max(20,Math.min(1380,surf.x));
-     state.me.y=Math.max(220,Math.min(1100,surf.y));
+     state.me.y=clampServerY(surf.y);
      state.me.facing=surf.facing;
      state.me.action=surf.action;state.action=surf.action;
      state.moving=surf.running;
@@ -3222,8 +3277,8 @@ function tick(t){
     const gather=Math.min(1,elapsed/1400);
     const from=m.gatherFrom||p;
     const smooth=blendGroupWorld(from,p,gather);
-    state.me.x=Math.max(20,Math.min(1380,smooth.x));
-    state.me.y=Math.max(220,Math.min(1100,smooth.y));
+    state.me.x=clampServerX(smooth.x);
+    state.me.y=clampServerY(smooth.y);
     // Crowd-surf supporters face the middle and never rotate onto the train path.
     state.me.facing=m.kind==='surf'?(m.isSurfRider?0:Math.atan2(m.x-p.x,m.y-p.y)):
      m.kind==='toast'?Math.atan2(m.x-p.x,m.y-p.y):m.kind==='row'?0:Math.atan2(p.dx,p.dy);
@@ -3271,13 +3326,13 @@ function tick(t){
     if(worldDist>0.00001){
       const nextX=at.x+worldDx/worldDist*worldStep;
       const nextZ=at.z+worldDz/worldDist*worldStep;
-      state.me.x=Math.max(20,Math.min(1380,nextX/.058+600));
-      state.me.y=Math.max(220,Math.min(1100,(contractWorldZ(nextZ)-8)/.058+500));
+      state.me.x=clampServerX(nextX/.058+600);
+      state.me.y=clampServerY((contractWorldZ(nextZ)-8)/.058+500);
     }
    }else{
     // Group rock-play and slam motion use their own intentional pace.
-    state.me.x=Math.max(20,Math.min(1380,state.me.x+dx/n*speed));
-    state.me.y=Math.max(220,Math.min(1100,state.me.y+dy/n*speed));
+    state.me.x=clampServerX(state.me.x+dx/n*speed);
+    state.me.y=clampServerY(state.me.y+dy/n*speed);
    }
    if(state.action!=='skanking'||slamMotion||rockMotion)state.me.facing=Math.atan2(dx,dy);
    if(state.pose!=='stand'){state.pose='stand';state.me.pose='stand';updateActionButtons()}
