@@ -629,7 +629,7 @@ function followLocalAvatar(){
 const hemi=new THREE.HemisphereLight('#d7efff','#557157',2.35);scene.add(hemi);hemi.layers.enable(1);
 const sunLight=new THREE.DirectionalLight('#fff0c7',2.8);sunLight.position.set(24,38,92);sunLight.castShadow=!matchMedia('(max-width:700px)').matches;sunLight.shadow.mapSize.set(1024,1024);sunLight.shadow.camera.left=-62;sunLight.shadow.camera.right=62;sunLight.shadow.camera.top=62;sunLight.shadow.camera.bottom=-62;scene.add(sunLight);sunLight.layers.enable(1);
 const moonLight=new THREE.DirectionalLight('#d8e8ff',1.55);moonLight.position.set(-18,26,92);scene.add(moonLight);moonLight.layers.enable(1);
-const skyDome=new THREE.Mesh(new THREE.SphereGeometry(175,28,20),new THREE.MeshBasicMaterial({color:'#82c4ff',side:THREE.BackSide,fog:false}));scene.add(skyDome);
+const skyDome=new THREE.Mesh(new THREE.SphereGeometry(245,32,22),new THREE.MeshBasicMaterial({color:'#82c4ff',side:THREE.BackSide,fog:false}));scene.add(skyDome);
 const sunOrb=new THREE.Mesh(new THREE.SphereGeometry(4.5,24,18),new THREE.MeshBasicMaterial({color:'#ffd580'}));scene.add(sunOrb);
 const moonOrb=new THREE.Mesh(new THREE.SphereGeometry(3.4,20,16),new THREE.MeshBasicMaterial({color:'#eff6ff'}));scene.add(moonOrb);
 // Shared local-time sky: gentle drifting clouds by day and star field by night.
@@ -675,13 +675,13 @@ function makeWindowTexture(cols=3,rows=6){
  const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;return texture;
 }
 // Architectural groups stay outside the ±50 playfield and never become collisions.
-const skylinePalette=['#647d94','#7e8ca1','#576f86','#8a91a0','#59758b'];
+const skylinePalette=['#a7c1d2','#b7c9d5','#91b6ce','#c2c4d7','#a3cabc'];
 const facadeTrimMaterials=[];
 function createBackdropBuilding(x,z,w,h,d,windowCols=3,windowRows=6,rotY=0,variant=0){
  const group=new THREE.Group();group.position.set(x,0,z);group.rotation.y=rotY;backdropGroup.add(group);
  const bodyMat=new THREE.MeshStandardMaterial({color:skylinePalette[variant%skylinePalette.length],roughness:.88,metalness:.035});
- const roofMat=new THREE.MeshStandardMaterial({color:'#3c5067',roughness:.93,metalness:.02});
- const trimMat=new THREE.MeshStandardMaterial({color:'#a5b1bd',roughness:.72,metalness:.12});
+ const roofMat=new THREE.MeshStandardMaterial({color:'#738eab',roughness:.9,metalness:.02});
+ const trimMat=new THREE.MeshStandardMaterial({color:'#d7e3e8',roughness:.72,metalness:.12});
  const windowMat=new THREE.MeshBasicMaterial({
   map:makeWindowTexture(windowCols,windowRows),transparent:true,
   opacity:.16,depthWrite:false,toneMapped:false,side:THREE.DoubleSide,color:'#dfe7f0'
@@ -700,23 +700,27 @@ function createBackdropBuilding(x,z,w,h,d,windowCols=3,windowRows=6,rotY=0,varia
   addBackdropMesh(group,new THREE.BoxGeometry(w*.42,.16,.38),roofMat,0,h*.86,d/2+.24);
   addBackdropMesh(group,new THREE.BoxGeometry(w*.42,.16,.38),roofMat,0,h*.46,d/2+.24);
  }
- const doorMat=new THREE.MeshStandardMaterial({color:'#334d61',roughness:.52,metalness:.12});
+ const doorMat=new THREE.MeshStandardMaterial({color:'#7894aa',roughness:.52,metalness:.12});
  addBackdropMesh(group,new THREE.BoxGeometry(Math.min(w*.3,2.15),2.6,.12),doorMat,0,1.3,d/2+.07);
- const canopyMat=new THREE.MeshStandardMaterial({color:variant%2?'#93aeb3':'#b299a2',roughness:.72});
+ const canopyMat=new THREE.MeshStandardMaterial({color:variant%2?'#c2e2d7':'#f2c0b9',roughness:.72});
  addBackdropMesh(group,new THREE.BoxGeometry(w*.54,.16,1.2),canopyMat,0,3.04,d/2+.43);
  return group;
 }
 function createMountain(x,z,width,height,depth,rotY=0){
- // Far-off shapes are narrower and lower than v89 to avoid engulfing buildings.
- const material=new THREE.MeshBasicMaterial({color:'#93adbf',fog:false,depthWrite:true});
+ // Restore v89's tall mountain proportions, while keeping the mass entirely
+ // beyond the last row of buildings. The shapes are purely decorative.
+ const material=new THREE.MeshStandardMaterial({color:'#a7bfd2',roughness:.98,metalness:0,flatShading:true,side:THREE.FrontSide});
  mountainMats.push(material);
- const peak=new THREE.Mesh(new THREE.ConeGeometry(1,1,5),material);
- peak.position.set(x,height*.48,z);peak.scale.set(width*.56,height,depth*.53);
- peak.rotation.y=rotY;peak.castShadow=false;backdropGroup.add(peak);
- const shoulder=new THREE.Mesh(new THREE.ConeGeometry(1,1,5),material);
- shoulder.position.set(x+width*.36,height*.28,z-2);
- shoulder.scale.set(width*.48,height*.6,depth*.6);
- shoulder.rotation.y=rotY+.17;shoulder.castShadow=false;backdropGroup.add(shoulder);
+ const peak=new THREE.Mesh(new THREE.ConeGeometry(1.8,3.1,5,1),material);
+ peak.position.set(x,height*1.45,z);
+ peak.scale.set(width,height,depth);
+ peak.rotation.y=rotY;
+ peak.castShadow=false;peak.receiveShadow=false;backdropGroup.add(peak);
+ const shoulder=new THREE.Mesh(new THREE.ConeGeometry(2.5,2.2,5,1),material);
+ shoulder.position.set(x+width*.3,height*.85,z-4);
+ shoulder.scale.set(width*1.05,height*.62,depth*1.05);
+ shoulder.rotation.y=rotY+.20;
+ shoulder.castShadow=false;shoulder.receiveShadow=false;backdropGroup.add(shoulder);
 }
 
 // v87: The red line is the end of the STAGE/AUDIENCE area, not a cue
@@ -728,7 +732,10 @@ function contractWorldZ(z){return z;}
 // Input and render coordinates remain compatible with the extended-world map.
 for(const m of mats)m.y=(contractWorldZ(m.worldZ)-8)/.058+500;
 // Extend the ground without changing the stage or audience barrier.
-const floor=cube(104,.4,118,grass,0,-.24,25);floor.receiveShadow=true;
+// A single low grass substrate continues under ALL city lots outside the playable edges.
+// Its top is y=-.04, safely below the distinct playable lawns at y=.07: no z-fighting.
+// It ends exactly at z=42 where the existing beach begins.
+const floor=cube(242,.4,134,grass,0,-.24,-25);floor.receiveShadow=true;
 // Stage/audience grass ends EXACTLY at the red boundary z=18.
 // Below it, the rest/picnic grass starts in the yellow zone.
 // Both surfaces meet edge-to-edge (not overlapping), preventing Z-fighting.
@@ -737,18 +744,19 @@ lawn.receiveShadow=true;
 const picnicLawn=cube(100,.08,32,mat('#536f5c'),0,.03,34,false); // z 18 .. 50
 picnicLawn.receiveShadow=true;
 const sandMat=mat('#dec391',.95),wetSandMat=mat('#c9ab74',.94);
-const beach=cube(110,.06,28,sandMat,0,.02,56,false);beach.receiveShadow=true;
-const wetBand=cube(110,.045,6.5,wetSandMat,0,.03,67,false);
-const oceanGeo=new THREE.PlaneGeometry(170,104,56,32);
+// Retain the beach's original front/back coordinates (z=42..70), extending ONLY sideways.
+const beach=cube(242,.06,28,sandMat,0,.02,56,false);beach.receiveShadow=true;
+const wetBand=cube(242,.045,6.5,wetSandMat,0,.03,67,false);
+const oceanGeo=new THREE.PlaneGeometry(300,104,68,32);
 const oceanMat=new THREE.MeshStandardMaterial({color:'#3f95c9',roughness:.24,metalness:.04,transparent:true,opacity:.96,side:THREE.DoubleSide});
 const ocean=new THREE.Mesh(oceanGeo,oceanMat);ocean.rotation.x=-Math.PI/2;ocean.position.set(0,-.15,112);ocean.receiveShadow=true;scene.add(ocean);
 const oceanBase=oceanGeo.attributes.position.array.slice();
 const foamStrips=[];
-for(let i=0;i<5;i++){const foam=new THREE.Mesh(new THREE.PlaneGeometry(100-i*10,1.35),new THREE.MeshBasicMaterial({color:'#f8ffff',transparent:true,opacity:.3-i*.04,side:THREE.DoubleSide,depthWrite:false}));foam.rotation.x=-Math.PI/2;foam.position.set(0,.09,66.5+i*1.8);scene.add(foam);foamStrips.push(foam)}
-const horizonGlow=new THREE.Mesh(new THREE.PlaneGeometry(200,38),new THREE.MeshBasicMaterial({color:'#f7b89b',transparent:true,opacity:.26,side:THREE.DoubleSide,depthWrite:false}));horizonGlow.position.set(0,15,144);scene.add(horizonGlow);
+for(let i=0;i<5;i++){const foam=new THREE.Mesh(new THREE.PlaneGeometry(230-i*10,1.35),new THREE.MeshBasicMaterial({color:'#f8ffff',transparent:true,opacity:.3-i*.04,side:THREE.DoubleSide,depthWrite:false}));foam.rotation.x=-Math.PI/2;foam.position.set(0,.09,66.5+i*1.8);scene.add(foam);foamStrips.push(foam)}
+const horizonGlow=new THREE.Mesh(new THREE.PlaneGeometry(300,38),new THREE.MeshBasicMaterial({color:'#f7b89b',transparent:true,opacity:.26,side:THREE.DoubleSide,depthWrite:false}));horizonGlow.position.set(0,15,144);scene.add(horizonGlow);
 for(const x of [-40,-28,-15,16,31,45]){const rock=new THREE.Mesh(new THREE.DodecahedronGeometry(1.2+Math.abs(x)%3*.22),mat('#6f6d75'));rock.position.set(x,.85,70+Math.abs(x)%3*2.5);rock.rotation.set(.25,.3,0);rock.castShadow=true;rock.receiveShadow=true;scene.add(rock)}
 function dune(x,z,sx,sz,sy=.8){const d=new THREE.Mesh(new THREE.SphereGeometry(1.9,18,14),sandMat);d.scale.set(sx,sy,sz);d.position.set(x,.7,z);d.castShadow=false;d.receiveShadow=true;scene.add(d)}
-[[-36,48,4.6,1.5,.95],[-18,52,5.5,1.8,1.05],[8,49,6.6,2.0,.92],[28,53,5.1,1.7,1.0],[44,49,3.8,1.3,.8]].forEach(v=>dune(...v));
+[[-105,51,5.5,1.8,1.0],[-82,54,5.2,1.7,.9],[-60,49,4.0,1.4,.9],[-36,48,4.6,1.5,.95],[-18,52,5.5,1.8,1.05],[8,49,6.6,2.0,.92],[28,53,5.1,1.7,1.0],[44,49,3.8,1.3,.8],[64,52,4.6,1.6,.9],[85,49,5.6,1.8,1.0],[108,54,4.7,1.5,.8]].forEach(v=>dune(...v));
 // v90: buildings directly OUTSIDE both sides of the playable map.
 // They form a dense streetscape around the festival instead of floating in
 // distant mountain silhouettes. Center rear skyline stays behind the stage.
@@ -757,30 +765,32 @@ const nearbyCity=[
  [-60,-47,9,13,9,3,5,.09,0],[-61,-34,10,16,10,3,6,.02,1],
  [-62,-20,8,12,8,2,4,.04,2],[-60,-7,10,18,9,3,6,-.06,3],
  [-61,8,9,15,9,3,5,.07,4],[-62,22,10,17,9,3,6,.02,1],
- [-60,36,10,14,9,3,5,.04,2],[-62,49,9,13,9,2,4,.06,0],
+ [-60,31,10,14,9,3,5,.04,2],[-62,40,9,13,9,2,4,.06,0],
  // right edge, same density but varied heights and façade rhythm
  [60,-47,10,16,9,3,6,-.04,3],[61,-34,8,13,9,2,5,.04,4],
  [62,-20,10,19,9,3,7,-.02,0],[61,-7,9,15,9,3,5,.04,2],
  [60,8,10,18,10,3,6,-.04,1],[62,22,9,13,9,3,4,.05,3],
- [61,36,10,16,9,3,5,-.04,4],[60,49,9,14,8,2,4,-.08,1],
+ [61,31,10,16,9,3,5,-.04,4],[60,40,9,14,8,2,4,-.08,1],
  // second side row adds depth, but still outside the visitor map
  [-73,-40,10,20,11,3,7,.09,1],[-74,-15,9,17,9,3,6,.12,3],
- [-73,13,10,21,10,3,7,.07,0],[-74,39,11,18,10,3,6,.06,4],
+ [-73,13,10,21,10,3,7,.07,0],[-74,34,11,18,10,3,6,.06,4],
  [73,-40,9,19,11,3,7,-.06,2],[74,-15,11,17,9,3,6,-.1,1],
- [73,13,10,22,10,3,7,-.05,4],[74,39,10,18,10,3,6,-.08,0],
+ [73,13,10,22,10,3,7,-.05,4],[74,34,10,18,10,3,6,-.08,0],
  // rear buildings are behind the stage, with enough separation from mountains
  [-53,-72,10,13,10,3,4,.03,2],[-39,-72,11,17,9,3,5,.03,4],
  [-25,-74,9,14,9,3,5,-.04,1],[25,-74,9,14,9,3,5,.04,3],
  [39,-72,11,17,9,3,5,-.03,2],[53,-72,10,13,10,3,4,-.03,0]
 ];
 nearbyCity.forEach(v=>createBackdropBuilding(...v));
-// Mountain peaks occupy the outer horizon, NOT the city rows.
-// Separate skyline layer and low saturated silhouettes keep foreground clear.
+// Recreate the dramatic v89 mountain silhouette, in a separate distant row.
+// Center mountains are shifted farther back so not a single building sits inside
+// their mesh footprint. Mountain height and broad shoulders match the v89 style.
 [
- [-133,-119,24,23,22,.1],[-108,-129,20,17,20,.12],
- [-82,-137,14,13,18,-.04],[82,-137,14,13,18,.04],
- [108,-129,20,17,20,-.12],[133,-119,24,23,22,-.1],
- [-26,-140,24,12,17,.14],[22,-141,23,11,17,-.12]
+ [-124,-170,14,18,12,.3],[-102,-181,22,28,18,.14],
+ [-72,-186,28,38,21,-.08],[-22,-190,24,31,20,.11],
+ [29,-190,26,35,22,-.18],[79,-183,20,27,17,.09],
+ [121,-170,15,20,12,-.22],[-150,-159,18,25,16,.24],
+ [149,-159,18,25,16,-.24]
 ].forEach(v=>createMountain(...v));
 // Main stage faces the audience: far north = negative z.
 cube(45,1.7,14,dark,0,1,-25);cube(47,1.2,1,metal,0,2.05,-17.3);cube(46,1.5,1,dark,0,13.8,-31);cube(1,13.8,1,metal,-22,7.8,-31);cube(1,13.8,1,metal,22,7.8,-31);cube(46,11.8,.6,dark,0,7.2,-31);
@@ -1100,10 +1110,10 @@ function updateEnvironment(force=false){
  else if(hour>=19||hour<4)phase='night';
  else if(hour>=4&&hour<6)phase='dawn';
  const themes={
-  day:{bg:'#86c8ff',fog:'#86c8ff',sky:'#8ecfff',hemiSky:'#e4f6ff',ground:'#58745c',hemi:2.45,grass:'#4a7b60',sand:'#e0c896',wet:'#d5b57c',ocean:'#4098d0',sunColor:'#fff0c0',sunLight:'#fff4cd',sun:2.95,moon:0.15,badge:'☀️ &nbsp; 낮 공연 <span>✦</span>',glow:'#f6d0a8',stage:.42,building:'#71839c',roof:'#4d5f78',window:'#dce5ef',windowOpacity:.12,mountain:'#9fb6c8'},
-  sunset:{bg:'#f39b7e',fog:'#f0a184',sky:'#ffad93',hemiSky:'#ffd8c6',ground:'#6a5755',hemi:1.95,grass:'#56715c',sand:'#ebc28d',wet:'#d3a46d',ocean:'#4c87c2',sunColor:'#ff9855',sunLight:'#ffcb95',sun:2.45,moon:0.25,badge:'🌇 &nbsp; 석양 공연 <span>✦</span>',glow:'#ff8b66',stage:.85,building:'#6a6479',roof:'#4e4457',window:'#ffd4b5',windowOpacity:.18,mountain:'#a68896'},
-  night:{bg:'#091326',fog:'#091326',sky:'#0f1b39',hemiSky:'#45608f',ground:'#243330',hemi:1.15,grass:'#2d5244',sand:'#a98d67',wet:'#907558',ocean:'#1f4e86',sunColor:'#ffcf88',sunLight:'#b5c8ff',sun:0.0,moon:1.75,badge:'🌙 &nbsp; 달빛 공연 <span>✦</span>',glow:'#6d84a8',stage:1.12,building:'#303e58',roof:'#222d42',window:'#ffe7ac',windowOpacity:.34,mountain:'#536887'},
-  dawn:{bg:'#efab8d',fog:'#efab8d',sky:'#ffb79e',hemiSky:'#ffd9cb',ground:'#655a58',hemi:1.75,grass:'#4d6858',sand:'#e6c08f',wet:'#cda06e',ocean:'#4a82be',sunColor:'#ff9b68',sunLight:'#ffd0a1',sun:1.65,moon:0.55,badge:'🌄 &nbsp; 새벽 석양 <span>✦</span>',glow:'#ff9d76',stage:.72,building:'#6d6b84',roof:'#4f4d63',window:'#ffd8bc',windowOpacity:.16,mountain:'#9f8491'}
+  day:{bg:'#86c8ff',fog:'#86c8ff',sky:'#8ecfff',hemiSky:'#e4f6ff',ground:'#58745c',hemi:2.45,grass:'#4a7b60',sand:'#e0c896',wet:'#d5b57c',ocean:'#4098d0',sunColor:'#fff0c0',sunLight:'#fff4cd',sun:2.95,moon:0.15,badge:'☀️ &nbsp; 낮 공연 <span>✦</span>',glow:'#f6d0a8',stage:.42,building:'#b8d1df',roof:'#829fbb',window:'#f6f9fa',windowOpacity:.25,mountain:'#a5bace'},
+  sunset:{bg:'#f39b7e',fog:'#f0a184',sky:'#ffad93',hemiSky:'#ffd8c6',ground:'#6a5755',hemi:1.95,grass:'#56715c',sand:'#ebc28d',wet:'#d3a46d',ocean:'#4c87c2',sunColor:'#ff9855',sunLight:'#ffcb95',sun:2.45,moon:0.25,badge:'🌇 &nbsp; 석양 공연 <span>✦</span>',glow:'#ff8b66',stage:.85,building:'#c4a9c3',roof:'#8d789a',window:'#ffe8c9',windowOpacity:.27,mountain:'#bf9eb4'},
+  night:{bg:'#091326',fog:'#091326',sky:'#0f1b39',hemiSky:'#45608f',ground:'#243330',hemi:1.15,grass:'#2d5244',sand:'#a98d67',wet:'#907558',ocean:'#1f4e86',sunColor:'#ffcf88',sunLight:'#b5c8ff',sun:0.0,moon:1.75,badge:'🌙 &nbsp; 달빛 공연 <span>✦</span>',glow:'#6d84a8',stage:1.12,building:'#586a87',roof:'#425477',window:'#ffe7b8',windowOpacity:.5,mountain:'#657eaa'},
+  dawn:{bg:'#efab8d',fog:'#efab8d',sky:'#ffb79e',hemiSky:'#ffd9cb',ground:'#655a58',hemi:1.75,grass:'#4d6858',sand:'#e6c08f',wet:'#cda06e',ocean:'#4a82be',sunColor:'#ff9b68',sunLight:'#ffd0a1',sun:1.65,moon:0.55,badge:'🌄 &nbsp; 새벽 석양 <span>✦</span>',glow:'#ff9d76',stage:.72,building:'#b6aabd',roof:'#897d9d',window:'#ffe7d1',windowOpacity:.3,mountain:'#b8a0b7'}
  };
  const p=themes[phase];
  skyPeriod=phase;clouds.visible=phase==='day'||phase==='sunset'||phase==='dawn';stars.visible=phase==='night';
@@ -1111,7 +1121,7 @@ function updateEnvironment(force=false){
  scene.background.set(p.bg);scene.fog.color.set(p.fog);skyDome.material.color.set(p.sky);horizonGlow.material.color.set(p.glow);
  hemi.color.set(p.hemiSky);hemi.groundColor.set(p.ground);hemi.intensity=p.hemi;
  grass.color.set(p.grass);sandMat.color.set(p.sand);wetSandMat.color.set(p.wet);oceanMat.color.set(p.ocean);oceanMat.emissive.set(p.ocean);oceanMat.emissive.multiplyScalar(phase==='night'?0.18:.05);
- buildingBodyMats.forEach(m=>m.color.set(p.building));buildingRoofMats.forEach(m=>m.color.set(p.roof));buildingWindowMats.forEach(m=>{m.color.set(p.window);m.opacity=p.windowOpacity});mountainMats.forEach(m=>m.color.set(p.mountain));
+ buildingBodyMats.forEach((m,i)=>m.color.set(p.building).multiplyScalar([1,1.07,.96,1.12,1.02][i%5]));buildingRoofMats.forEach(m=>m.color.set(p.roof));buildingWindowMats.forEach(m=>{m.color.set(p.window);m.opacity=p.windowOpacity});mountainMats.forEach(m=>m.color.set(p.mountain));
  sunOrb.material.color.set(p.sunColor);sunLight.color.set(p.sunLight);sunLight.intensity=p.sun;moonLight.intensity=p.moon;stageAccentFactor=p.stage;
  if(weatherBadge)weatherBadge.innerHTML=p.badge;
  let sunProgress=null;
