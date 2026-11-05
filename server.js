@@ -80,9 +80,13 @@ const PUNK_ITEMS={
  'horns':{name:'악마뿔 머리띠',slot:'head',cost:80},
  'spike-band':{name:'스파이크 머리띠',slot:'head',cost:110},
  'chain':{name:'실버 체인 목걸이',slot:'neck',cost:55},
- 'choker':{name:'스파이크 초커',slot:'neck',cost:95}
+ 'choker':{name:'스파이크 초커',slot:'neck',cost:95},
+ 'bat-glasses':{name:'배트 선글라스',slot:'eyes',cost:90},
+ 'fallen-wings':{name:'타락천사 날개',slot:'back',cost:300},
+ 'devil-tail':{name:'악마 꼬리',slot:'tail',cost:150},
+ 'headset':{name:'락 페스티벌 헤드셋',slot:'ears',cost:170}
 };
-const SHOP_SLOTS=['shirt','head','neck'];
+const SHOP_SLOTS=['shirt','head','neck','eyes','back','tail','ears'];
 const customMd=new Map();
 const MD_ADMIN_KEY=process.env.MD_ADMIN_KEY||'';
 function adminAuthorized(req){
