@@ -139,7 +139,7 @@ const json=(res,status,obj)=>{res.writeHead(status,{'content-type':'application/
 // Consent-based two-player interactions. The server owns distance, invitations and timing.
 const duoInvites=new Map(),activeDuos=new Map();
 const DUO_LABELS={highfive:'하이파이브',handshake:'악수',hug:'포옹',dance:'함께 춤추기'};
-const DUO_DURATION=5600,DUO_INVITE_TTL=15000,DUO_DISTANCE=88; // server coordinate (~5.1 world units)
+const DUO_DURATION=5800,DUO_INVITE_TTL=15000,DUO_DISTANCE=88; // server coordinate (~5.1 world units)
 function duoFor(playerId){return [...activeDuos.values()].find(d=>d.endAt>Date.now()&&(d.a===playerId||d.b===playerId))}
 function endDuo(duo){if(!duo||!activeDuos.has(duo.id))return;activeDuos.delete(duo.id);for(const id of [duo.a,duo.b]){const p=players.get(id);if(p){p.action='idle';p.pose='stand';broadcast({type:'move',player:p})}}broadcast({type:'duo-end',id:duo.id,a:duo.a,b:duo.b})}
 function clearDuosFor(id){for(const duo of [...activeDuos.values()])if(duo.a===id||duo.b===id)endDuo(duo);for(const [inviteId,invite] of duoInvites)if(invite.from===id||invite.to===id){duoInvites.delete(inviteId);broadcast({type:'duo-invite-ended',id:inviteId,to:invite.to})}}
@@ -227,11 +227,12 @@ const server=http.createServer(async(req,res)=>{
           // Face each other at a safe 2.2 world-unit gap, within the existing playfield.
           const centerX=(source.x+p.x)*.5,centerY=(source.y+p.y)*.5;
           const dx=p.x-source.x,dy=p.y-source.y,distance=Math.hypot(dx,dy),nx=distance>1?dx/distance:1,ny=distance>1?dy/distance:0;
-          const gap=19;source.x=clamp(centerX-nx*gap,20,1380);source.y=clamp(centerY-ny*gap,220,1100);
+          const gap=14;source.x=clamp(centerX-nx*gap,20,1380);source.y=clamp(centerY-ny*gap,220,1100);
           p.x=clamp(centerX+nx*gap,20,1380);p.y=clamp(centerY+ny*gap,220,1100);
           source.facing=Math.atan2(nx,ny);p.facing=Math.atan2(-nx,-ny);
           source.action='idle';p.action='idle';source.pose='stand';p.pose='stand';
-          const duo={id:crypto.randomUUID(),a:source.id,b:id,kind:invite.kind,startAt:now+300,endAt:now+300+DUO_DURATION};
+          const duo={id:crypto.randomUUID(),a:source.id,b:id,kind:invite.kind,startAt:now+300,endAt:now+300+DUO_DURATION,
+           anchor:{a:{x:source.x,y:source.y},b:{x:p.x,y:p.y}}};
           activeDuos.set(duo.id,duo);
           broadcast({type:'move',player:source});broadcast({type:'move',player:p});broadcast({type:'duo-start',duo});
           return json(res,200,{ok:true});
