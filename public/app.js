@@ -673,7 +673,9 @@ function onRockPlayGo(event){
  const participants=Array.isArray(event.participants)?event.participants:[];
  const index=participants.indexOf(state.id);
  if(index!==-1&&state.me){
-   rockMotion={id:event.id,kind:event.kind,x:event.x,y:event.y,startAt:event.startAt,duration:event.duration,index,count:participants.length,riderId:event.riderId||participants[0]};
+   rockMotion={id:event.id,kind:event.kind,x:event.x,y:event.y,startAt:event.startAt,duration:event.duration,index,count:participants.length,riderId:event.riderId||participants[0],
+    riderIndex:participants.indexOf(event.riderId||participants[0]),
+    isSurfRider:event.kind==='surf'&&state.id===(event.riderId||participants[0])};
    slamMotion=null;state.walkTarget=null;state.benchTarget=null;
    state.pose='stand';state.me.pose='stand';state.action=event.kind==='surf'?(state.id===event.riderId?'surf-rider':'surf-support'):event.kind==='mosh'?'mosh-charge':event.kind==='circle'?'circle-run':event.kind==='row'?'row-paddle':event.kind==='toast'?'toast-clink':'train-run';state.me.action=state.action;
    // Every moving group action now gathers smoothly, instead of teleporting
@@ -734,14 +736,26 @@ function moshPathAt(m,elapsed){
 }
 function rockPathAt(m,elapsed){
  if(m.kind==='surf'){
+  // The creator is the surfer regardless of the order users joined.
+  // All other participants remain in a COMPACT, STATIONARY support line,
+  // not on the legacy figure-eight train route.
+  const supporterIndex=m.index-(m.index>m.riderIndex?1:0);
   const supportCount=Math.max(1,m.count-1);
-  const rider=m.index===0; // Start event's first participant is the initiator.
-  if(rider){
-   const wave=Math.sin((elapsed/m.duration)*Math.PI*4); // two back/forth cycles in 10 seconds
-   return groupWorldPathPoint(m,{x:m.x+wave*25,y:m.y,dx:Math.cos(elapsed/m.duration*Math.PI*4),dy:0});
+  if(m.isSurfRider){
+   // Only the raised surfer moves. Four changes of direction in 10 seconds.
+   const phase=Math.max(0,(elapsed-1400))/Math.max(1,m.duration-1400);
+   const wave=Math.sin(phase*Math.PI*4);
+   return groupWorldPathPoint(m,{x:m.x+wave*16,y:m.y,dx:Math.cos(phase*Math.PI*4),dy:0});
   }
-  const place=m.index-1;
-  return groupWorldPathPoint(m,{x:m.x+(place-(supportCount-1)/2)*16,y:m.y+Math.sin(place*2.6)*8,dx:0,dy:-1});
+  const columns=Math.min(4,supportCount);
+  const row=Math.floor(supporterIndex/columns);
+  const col=supporterIndex%columns;
+  const rowCount=Math.min(columns,supportCount-row*columns);
+  return groupWorldPathPoint(m,{
+   x:m.x+(col-(rowCount-1)/2)*12,
+   y:m.y+(row-(Math.ceil(supportCount/columns)-1)/2)*13,
+   dx:0,dy:-1
+  });
  }
  const elapsedFraction=Math.min(1,Math.max(0,elapsed/m.duration));
  if(m.kind==='row'){return groupWorldPathPoint(m,{x:m.x+(m.index%2===0?-21:21),y:m.y+Math.floor(m.index/2)*28-22,dx:0,dy:1})}
@@ -2980,7 +2994,9 @@ function tick(t){
     const smooth=blendGroupWorld(from,p,gather);
     state.me.x=Math.max(20,Math.min(1380,smooth.x));
     state.me.y=Math.max(220,Math.min(1100,smooth.y));
-    state.me.facing=m.kind==='toast'?Math.atan2(m.x-p.x,m.y-p.y):m.kind==='row'?0:Math.atan2(p.dx,p.dy);
+    // Crowd-surf supporters face the middle and never rotate onto the train path.
+    state.me.facing=m.kind==='surf'?(m.isSurfRider?0:Math.atan2(m.x-p.x,m.y-p.y)):
+     m.kind==='toast'?Math.atan2(m.x-p.x,m.y-p.y):m.kind==='row'?0:Math.atan2(p.dx,p.dy);
     state.me.action=m.kind==='surf'?(state.id===m.riderId?'surf-rider':'surf-support'):m.kind==='mosh'?'mosh-charge':m.kind==='circle'?'circle-run':m.kind==='row'?'row-paddle':m.kind==='toast'?'toast-clink':'train-run';state.action=state.me.action;
     if(m.kind==='mosh'){if(elapsed>=m.duration*.30&&!m.dustA){m.dustA=true;post('rockplay',{id:state.id,command:'impact',eventId:m.id,phase:1,x:state.me.x,y:state.me.y}).catch(()=>{})}if(elapsed>=m.duration*.96&&!m.dustB){m.dustB=true;post('rockplay',{id:state.id,command:'impact',eventId:m.id,phase:2,x:state.me.x,y:state.me.y}).catch(()=>{})}}
     state.moving=true;
