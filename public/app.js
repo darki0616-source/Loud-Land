@@ -18,7 +18,7 @@ const picnicMatColors=['#f5a5a3','#a7def4','#f5ce80','#b3d9a0','#ceb8f1','#ffd2a
 const mats=picnicSlots.map((slot,i)=>({x:slot.worldX/.058+600,y:500,c:picnicMatColors[i],worldX:slot.worldX,worldZ:slot.worldZ}));
 const state={id:null,me:null,players:new Map(),keys:new Set(),action:'idle',pose:'stand',actionUntil:0,lastSent:0,es:null,music:{id:'',paused:true,position:0,startedAt:0,token:0},queue:[],history:[],serverDelta:0,yt:null,ytReady:false,lastTrack:'',audioEnabled:true,skipVote:null,skipVoteCooldownUntil:0,walkTarget:null,benchTarget:null,moving:false};
 let slamMode=false,slam=null,slamCooldownUntil=0,slamMotion=null;
-let rockPlacementMode=null,rockPlay=null,rockCooldowns={circle:0,train:0,mosh:0,row:0,toast:0,surf:0},rockRunningUntil=0,rockMotion=null,crowdSurfScene=null;
+let rockPlacementMode=null,rockPlay=null,rockCooldowns={circle:0,train:0,mosh:0,row:0,toast:0,surf:0},rockRunningUntil=0,rockMotion=null,crowdSurfScene=null,toastSequence=null;
 let chosenPattern='solid',chosenSash='none',chosenHairStyle='short',chosenHairColor='#4b3932';
 const hairStyles=[['short','가르마 숏컷'],['bob','짧은 보브'],['long','장발'],['buns','번 헤어'],['bob2','레이어드 단발'],['short2','더 짧은 사이드 숏컷'],['basic-short','기본 숏컷'],['basic-bob','기본 단발']];
 // Older custom styles are converted to the closest available Quaternius asset.
@@ -723,6 +723,8 @@ function surfPoseAt(event,playerId,now=slamNow()){
   facing:isRider?0:Math.atan2(event.x-x,event.y-y)};
 }
 function onRockPlayGo(event){
+ // Every client uses the same server timestamp for clink -> raise -> sip -> lower.
+ if(event.kind==='toast')toastSequence={startAt:event.startAt,duration:event.duration,participants:[...(event.participants||[])]};
  if(event.kind==='surf')syncCrowdSurf(event);
  const participants=Array.isArray(event.participants)?event.participants:[];
  const index=participants.indexOf(state.id);
@@ -798,7 +800,18 @@ function moshPathAt(m,elapsed){
 function rockPathAt(m,elapsed){
  const elapsedFraction=Math.min(1,Math.max(0,elapsed/m.duration));
  if(m.kind==='row'){return groupWorldPathPoint(m,{x:m.x+(m.index%2===0?-21:21),y:m.y+Math.floor(m.index/2)*28-22,dx:0,dy:1})}
- if(m.kind==='toast'){const angle=2*Math.PI*m.index/Math.max(1,m.count);return groupWorldPathPoint(m,{x:m.x+Math.sin(angle)*22,y:m.y+Math.cos(angle)*22,dx:-Math.sin(angle),dy:-Math.cos(angle)})}
+ if(m.kind==='toast'){
+  // Keep neighbouring chibi heads apart even with a larger crowd. v133 used
+  // radius 22 server units (~1.28 world units), causing character overlap.
+  // Grow the circle for larger groups so adjacent people retain >=42 units.
+  const count=Math.max(1,m.count);
+  const angle=2*Math.PI*m.index/count;
+  const radius=Math.max(42,21/Math.sin(Math.PI/Math.max(2,count)));
+  return groupWorldPathPoint(m,{
+   x:m.x+Math.sin(angle)*radius,y:m.y+Math.cos(angle)*radius,
+   dx:-Math.sin(angle),dy:-Math.cos(angle)
+  });
+ }
  if(m.kind==='circle'){
    const angle=elapsedFraction*Math.PI*10 + m.index*2*Math.PI/Math.max(1,m.count);
    return groupWorldPathPoint(m,{x:m.x+Math.cos(angle)*115,y:m.y+Math.sin(angle)*115,dx:-Math.sin(angle),dy:Math.cos(angle)});
@@ -2566,6 +2579,13 @@ function animateAvatar(a,p,t){
  const surfEvent=crowdSurfScene&&slamNow()<crowdSurfScene.startAt+crowdSurfScene.duration?crowdSurfScene:null;
  const surfView=surfPose;
  const sec=duoContext?(Date.now()+state.serverDelta-duoContext.duo.startAt)/1000:t*.001,pose={};
+ // Choreography is determined by the server start time, not by the local
+ // animation clock. Observers and participants see the same drinking phase.
+ const toastElapsed=act==='toast-clink'&&toastSequence?.participants.includes(q.id)
+  ?Math.max(0,Math.min(toastSequence.duration/1000,(slamNow()-toastSequence.startAt)/1000))
+  :0;
+ const toastSmooth=(a,b)=>{const u=Math.max(0,Math.min(1,(toastElapsed-a)/(b-a)));return u*u*(3-2*u)};
+ const toastDrink=toastSmooth(3.25,4.0)*(1-toastSmooth(4.75,5.5));
  let targetX=wp.x,targetZ=wp.z,duoYaw=null;
  if(surfView){const visual=toWorld(surfView);targetX=visual.x;targetZ=visual.z;}
  if(duoContext?.duo.anchor){
@@ -2708,9 +2728,20 @@ function animateAvatar(a,p,t){
   height=-.38;
  }
  if(act==='toast-clink'){
-  const reach=Math.min(1,Math.max(0,(Math.sin(sec*3.5)+1)*.5));
-  set('rightShoulder',-1.2-.55*reach,0,.10);set('rightElbow',-.45);
-  set('leftShoulder',-.22);set('upper',-.04,0,0);
+  // 0-3.25s: extend toward the centre, clink at 3s (server spark).
+  // 3.25-4s: bring the cup to lips; 4-4.75s: drink;
+  // 4.75-5.5s: lower cup, 5.5-6s: finish.
+  const clinkReach=toastSmooth(.25,1.6)*(1-toastSmooth(3.1,3.85));
+  const restReach=toastSmooth(5.15,5.75);
+  const armOut=new THREE.Vector3(.42,.32,.78);
+  const armMouth=new THREE.Vector3(.31,.77,.59);
+  const armRest=new THREE.Vector3(.53,-.16,.29);
+  rightHandTarget=armRest.clone().lerp(armOut,clinkReach).lerp(armMouth,toastDrink);
+  if(restReach>0)rightHandTarget.lerp(armRest,restReach);
+  ikMode='drink';
+  set('leftShoulder',-.22);
+  set('upper',-.04-toastDrink*.075);
+  set('neck',toastDrink*.13);
  }
  if(act==='groove'){
   // Relaxed festival groove: low-impact alternating knee dips, loose elbows,
@@ -2886,27 +2917,22 @@ function animateAvatar(a,p,t){
   set('upper',.025);
  }
  if(act==='headbang'){
-  // Headbanging is driven by the WAIST, not a rapidly nodding head.
-  // Fold the whole torso forward and straighten it rhythmically. The head
-  // stays connected to the chest, with only a small counter-rotation.
-  // Bend at HALF the former tempo (~0.83 bends/sec). The head nods
-  // separately and a little faster, rather than staying rigid with the chest.
+  // Head and waist are driven by the SAME phase: bow down together,
+  // rise together. Never run a separate double-tempo neck oscillation.
+  // Keep the slower waist tempo introduced in v131.
   const fold=(1-Math.cos(sec*5.2))*.5;
-  const nod=(1-Math.cos(sec*10.4))*.5;
   if(basePose==='stand'){
    set('upper',.06+fold*1.04);
-   set('neck',-.08-fold*.14+nod*.34);
+   set('neck',-.03+fold*.38);
    set('leftHip',-fold*.17);set('rightHip',-fold*.17);
    set('leftKnee',fold*.24);set('rightKnee',fold*.24);
    set('leftShoulder',.10+fold*.24,0,-.12);
    set('rightShoulder',.10+fold*.24,0,.12);
   }else if(basePose==='sit'){
-   // Seated version still folds at the waist, with reduced range.
    set('upper',.05+fold*.76);
-   set('neck',-.05-fold*.10+nod*.27);
+   set('neck',-.025+fold*.30);
   }else{
-   // Do not throw a lying avatar upright while headbanging.
-   set('neck',-.02+nod*.15);
+   set('neck',-.02+fold*.17);
   }
  }
  if(act==='sit'){
@@ -2975,7 +3001,7 @@ function animateAvatar(a,p,t){
   height=.52;lean=-Math.PI/2;
   set('leftHip',.11);set('rightHip',.11);
   // Allow gestures with shoulder and head while resting on the back.
-  if(act==='headbang')set('neck',-.02+(1-Math.cos(sec*10.4))*.075,0,0);
+  if(act==='headbang')set('neck',-.02+((1-Math.cos(sec*5.2))*.5)*.17,0,0);
  }
  // Only the Buriburi dance slides the torso laterally; return smoothly on exit.
  const hipSlide=act==='buriburi'?Math.sin(sec*9.5)*.14:0;
@@ -3030,6 +3056,8 @@ function animateAvatar(a,p,t){
   const handWorld=P.rightElbow.localToWorld(new THREE.Vector3(0,-.58,.08));
   P.toastCup.position.copy(a.root.worldToLocal(handWorld));
   P.toastCup.quaternion.copy(a.root.getWorldQuaternion(new THREE.Quaternion()).invert());
+  // Tip the cup toward the mouth only during the drinking phase.
+  P.toastCup.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),-.60*toastDrink));
  }
  P.snackCrumbs.forEach((crumb,i)=>{
   if(act!=='snack'){crumb.visible=false;return}
@@ -3350,6 +3378,21 @@ function tick(t){
   }
   if(!dx&&!dy&&rockMotion){
    const m=rockMotion,elapsed=Math.max(0,slamNow()-m.startAt);
+   // In addition to v131's continuous dust trail, restore the original
+   // synchronized burst AT THE CHOSEN MOSH ZONE. The runner first crosses
+   // the marker at 2/3 of the outward leg (50% of total duration) and
+   // returns to that marker at the end. The server deduplicates each phase
+   // for all participants and broadcasts the same burst to every viewer.
+   if(m.kind==='mosh'&&!m.phase){
+    if(elapsed>=m.duration*.50&&!m.dustA){
+     m.dustA=true;
+     post('rockplay',{id:state.id,command:'impact',eventId:m.id,phase:1,x:m.x,y:m.y}).catch(()=>{});
+    }
+    if(elapsed>=m.duration*.965&&!m.dustB){
+     m.dustB=true;
+     post('rockplay',{id:state.id,command:'impact',eventId:m.id,phase:2,x:m.x,y:m.y}).catch(()=>{});
+    }
+   }
    if(!m.phase&&elapsed>=m.duration){if(m.kind==='toast'){m.phase='done';rockMotion=null;state.action='idle';state.me.action='idle';state.actionUntil=0;sendMove()}else beginRockCelebration(m)}
    if(m.phase==='done'){
     // Group cheers has finished; do not restart this turn.
