@@ -198,6 +198,36 @@ setInterval(()=>{
 
 function videoId(input){const v=String(input||'').trim();if(/^[\w-]{11}$/.test(v))return v;try{const u=new URL(v);const host=u.hostname.replace(/^www\./,'');if(host==='youtu.be')return /^[\w-]{11}$/.test(u.pathname.slice(1))?u.pathname.slice(1):null;if(['youtube.com','m.youtube.com','music.youtube.com','youtube-nocookie.com'].includes(host)){const id=u.searchParams.get('v')||u.pathname.match(/\/(?:embed|shorts|live)\/([\w-]{11})/)?.[1];return /^[\w-]{11}$/.test(id||'')?id:null}}catch{}return null}
 // Read the actual public YouTube title server-side; never trust a user-submitted title.
+// YouTube search runs only on the server, keeping its API key out of public JS.
+// Search requests are rate-limited per live player and cached to protect quota.
+const YOUTUBE_API_KEY=process.env.YOUTUBE_API_KEY||'';
+const ytSearchCache=new Map(),ytSearchTimes=new Map();
+const SEARCH_CACHE_MS=10*60*1000, SEARCH_COOLDOWN_MS=4000;
+function youtubeErrorMessage(status,payload){
+ const reason=payload?.error?.errors?.[0]?.reason||'';
+ if(reason==='quotaExceeded'||reason==='dailyLimitExceeded'||status===429)return '오늘 유튜브 검색 한도를 모두 사용했습니다. 링크로 예약할 수 있어요.';
+ if(status===400||status===403)return '유튜브 API 키 또는 프로젝트 설정을 확인해 주세요.';
+ return '유튜브 검색에 실패했습니다. 링크 예약은 계속 사용할 수 있어요.';
+}
+async function youtubeSearch(query){
+ const key=query.toLocaleLowerCase('ko-KR');const hit=ytSearchCache.get(key);
+ if(hit&&Date.now()-hit.time<SEARCH_CACHE_MS)return hit.items;
+ const params=new URLSearchParams({part:'snippet',q:query,type:'video',maxResults:'8',safeSearch:'moderate',videoEmbeddable:'true',videoSyndicated:'true',key:YOUTUBE_API_KEY});
+ const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),6500);
+ try{
+  const response=await fetch('https://www.googleapis.com/youtube/v3/search?'+params.toString(),{signal:controller.signal});
+  const payload=await response.json();
+  if(!response.ok)throw Object.assign(new Error(youtubeErrorMessage(response.status,payload)),{status:502});
+  const items=(payload.items||[]).filter(x=>/^[\w-]{11}$/.test(x?.id?.videoId||'')).map(x=>({
+   id:x.id.videoId,title:String(x.snippet?.title||'제목 없음').slice(0,180),
+   channel:String(x.snippet?.channelTitle||'').slice(0,100),
+   thumb:'https://i.ytimg.com/vi/'+x.id.videoId+'/mqdefault.jpg'
+  }));
+  ytSearchCache.set(key,{time:Date.now(),items});
+  if(ytSearchCache.size>100)ytSearchCache.delete(ytSearchCache.keys().next().value);
+  return items;
+ }finally{clearTimeout(timer)}
+}
 const videoTitleCache = new Map();
 async function getVideoTitle(id){
   if(videoTitleCache.has(id))return videoTitleCache.get(id);
@@ -225,6 +255,19 @@ const server=http.createServer(async(req,res)=>{
     return res.end(bytes);
   }
   if(!restored&&url.pathname.startsWith('/api/'))return json(res,503,{error:'음악 저장소 연결 확인 중입니다. 잠시 뒤 다시 시도해주세요.'});
+  if(url.pathname==='/api/youtube-search'&&req.method==='GET'){
+    res.setHeader('cache-control','no-store');
+    if(!YOUTUBE_API_KEY)return json(res,503,{error:'유튜브 검색이 아직 설정되지 않았습니다. 관리자에게 YOUTUBE_API_KEY 등록을 요청해 주세요.'});
+    const id=String(url.searchParams.get('id')||'');
+    if(!players.has(id))return json(res,401,{error:'입장 후 검색할 수 있어요.'});
+    const q=String(url.searchParams.get('q')||'').trim().replace(/\s+/g,' ');
+    if(q.length<2||q.length>80)return json(res,400,{error:'검색어를 2~80자로 입력해 주세요.'});
+    const now=Date.now(),last=ytSearchTimes.get(id)||0;
+    if(now-last<SEARCH_COOLDOWN_MS)return json(res,429,{error:'검색은 4초 간격으로 할 수 있어요.'});
+    ytSearchTimes.set(id,now);
+    try{const items=await youtubeSearch(q);return json(res,200,{items})}
+    catch(error){console.warn('YouTube search:',error.message);return json(res,error.status||502,{error:error.status?error.message:'유튜브에 연결하지 못했습니다. 링크 예약을 이용해 주세요.'})}
+  }
   if(url.pathname==='/api/events'&&req.method==='GET'){
     const id=clean(url.searchParams.get('id'),80);
     if(!players.has(id))return json(res,404,{error:'Join first'});
