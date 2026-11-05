@@ -1089,7 +1089,7 @@ const controls=new OrbitControls(camera,gameTouchSurface);controls.enableDamping
 // box, never an infinite Z-plane (the old plane felt like a left/right lock).
 // When the stage is between the player and the camera, dolly in along the
 // current view direction instead of refusing horizontal orbit.
-const stageCameraBox=new THREE.Box3(new THREE.Vector3(-23.6,-.3,-32),new THREE.Vector3(23.6,15.1,-9.6));
+const stageCameraBox=new THREE.Box3(new THREE.Vector3(-23.6,-.3,-32),new THREE.Vector3(23.6,15.1,-16.7));
 const cameraHit=new THREE.Vector3(),cameraRay=new THREE.Ray(),cameraOffset=new THREE.Vector3();
 function keepCameraInFrontOfStage(){
  cameraOffset.subVectors(camera.position,controls.target);
@@ -1097,11 +1097,28 @@ function keepCameraInFrontOfStage(){
  cameraOffset.divideScalar(distance);
  cameraRay.set(controls.target,cameraOffset);
  const hit=cameraRay.intersectBox(stageCameraBox,cameraHit);
- if(!hit||controls.target.distanceToSquared(hit)>=distance*distance)return;
- const room=controls.target.distanceTo(hit)-.8;
- if(room<.6)return;
- const safe=controls.target.clone().addScaledVector(cameraOffset,Math.max(.9,room));
- camera.position.lerp(safe,.65);
+ // The expanded apron must not act as an invisible camera wall: keep the
+ // original audience-side zoom range and collision boundary from v127.
+ if(hit&&controls.target.distanceToSquared(hit)<distance*distance){
+  const room=controls.target.distanceTo(hit)-.8;
+  if(room>=.6){
+   const safe=controls.target.clone().addScaledVector(cameraOffset,Math.max(.9,room));
+   camera.position.lerp(safe,.65);
+  }
+ }
+ // Behind the stage, the camera must not zoom past the stage video/screen.
+ // Clamp only views from behind (negative Z), leaving audience-side zoom free.
+ // The screen sits at z=-29.12 and its stage wall at roughly z=-31.
+ const screenRearLimit=-30.15;
+ if(cameraOffset.z<-.06&&controls.target.z>screenRearLimit&&camera.position.z<screenRearLimit){
+  const dz=camera.position.z-controls.target.z;
+  if(Math.abs(dz)>.001){
+   const fraction=(screenRearLimit-controls.target.z)/dz;
+   if(fraction>0&&fraction<1){
+    camera.position.copy(controls.target).addScaledVector(cameraOffset,distance*fraction);
+   }
+  }
+ }
  camera.lookAt(controls.target);
 }
 
@@ -2832,10 +2849,25 @@ function animateAvatar(a,p,t){
   set('upper',.025);
  }
  if(act==='headbang'){
-  // Strong rhythmic head nods, restrained when lying down.
-  const amp=basePose==='lie'?.24:.58;
-  set('neck',-.10+Math.sin(sec*9.4)*amp,0,Math.sin(sec*4.7)*.025);
-  set('upper',Math.sin(sec*9.4)*.07);
+  // Headbanging is driven by the WAIST, not a rapidly nodding head.
+  // Fold the whole torso forward and straighten it rhythmically. The head
+  // stays connected to the chest, with only a small counter-rotation.
+  const fold=(1-Math.cos(sec*10.4))*.5;
+  if(basePose==='stand'){
+   set('upper',.06+fold*1.04);
+   set('neck',-.035-fold*.12);
+   set('leftHip',-fold*.17);set('rightHip',-fold*.17);
+   set('leftKnee',fold*.24);set('rightKnee',fold*.24);
+   set('leftShoulder',.10+fold*.24,0,-.12);
+   set('rightShoulder',.10+fold*.24,0,.12);
+  }else if(basePose==='sit'){
+   // Seated version still folds at the waist, with reduced range.
+   set('upper',.05+fold*.76);
+   set('neck',-.03-fold*.09);
+  }else{
+   // Do not throw a lying avatar upright while headbanging.
+   set('neck',-.02+fold*.08);
+  }
  }
  if(act==='sit'){
   height=-.24;set('upper',.06);set('leftHip',-1.43);set('rightHip',-1.43);
@@ -2903,7 +2935,7 @@ function animateAvatar(a,p,t){
   height=.52;lean=-Math.PI/2;
   set('leftHip',.11);set('rightHip',.11);
   // Allow gestures with shoulder and head while resting on the back.
-  if(act==='headbang')set('neck',Math.sin(sec*9.4)*.24,0,0);
+  if(act==='headbang')set('neck',-.02+(1-Math.cos(sec*10.4))*.04,0,0);
  }
  // Only the Buriburi dance slides the torso laterally; return smoothly on exit.
  const hipSlide=act==='buriburi'?Math.sin(sec*9.5)*.14:0;
