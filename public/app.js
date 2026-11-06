@@ -865,7 +865,7 @@ function handleDuoEvent(d){
  if(d.type==='duo-end'){finishDuo(d.id);return}
 }
 setInterval(syncDuoStatus,250);
-const sustainedReactions=new Set(['peace','jump','run','headbang','buriburi','groove','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','marshmallow','putyourhandsup']);
+const sustainedReactions=new Set(['peace','jump','run','headbang','buriburi','groove','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','marshmallow','putyourhandsup','nightfirework']);
 // One shared bottom tab group: reactions / dances / chat.
 // Chat stays inside the dock instead of floating over the 3D world.
 function selectBottomMenu(menu){
@@ -898,6 +898,7 @@ function react(a,glowColor=null){
  if(a==='glowstick'&&glowColor===null){openGlowstickPicker();return;}
  if(a==='glowstick'){state.me.glowColor=glowstickColors[glowColor]?glowColor:'rainbow';state.me.glowEnabled=true;updateActionButtons();sendMove();return;}
  if(a==='beatking'&&!state.me.rhythmKing)return toast('박자왕에게만 허용된 리액션입니다.');
+ if(a==='nightfirework'&&!nightFireworkAvailable())return toast('폭죽놀이는 새벽 1시부터 4시까지만 사용할 수 있어요.');
  if(a==='marshmallow'&&!campfireReactionAvailable())return toast('모닥불이 켜진 시간(20:00~03:00)에 화덕 가까이에서 사용할 수 있어요.');
  if(currentDuo())return toast('상호작용을 종료한 후 다른 동작을 사용해 주세요.');
  if(slamMotion){slamMotion=null;state.walkTarget=null}if(rockMotion){rockMotion=null;state.walkTarget=null}state.benchTarget=null;
@@ -916,7 +917,7 @@ function react(a,glowColor=null){
  if(state.action===a&&sustainedReactions.has(a)){
   state.action='idle';state.actionUntil=0;state.me.action='idle';
  }else{
-  if((a==='jump'||a==='run'||a==='buriburi'||a==='groove'||a==='windmill'||a==='skanking'||a==='airguitar'||a==='headspin'||a==='cheer'||a==='smoke'||a==='bubblegun'||a==='freestyle'||a==='beatking'||a==='marshmallow'||a==='putyourhandsup')&&state.pose!=='stand'){
+  if((a==='jump'||a==='run'||a==='buriburi'||a==='groove'||a==='windmill'||a==='skanking'||a==='airguitar'||a==='headspin'||a==='cheer'||a==='smoke'||a==='bubblegun'||a==='freestyle'||a==='beatking'||a==='marshmallow'||a==='putyourhandsup'||a==='nightfirework')&&state.pose!=='stand'){
    state.pose='stand';state.me.pose='stand';
   }
   state.action=a;state.me.action=a;if(a==='cheer')playCheer();
@@ -979,12 +980,35 @@ marshmallowButton.innerHTML='🍡 <span>마시멜로 굽기</span>';
 marshmallowButton.style.display='none';
 marshmallowButton.onclick=()=>react('marshmallow');
 $('reactionActions').append(marshmallowButton);
+// v177: Night-only synchronized handheld fireworks reaction (01:00–04:00 KST).
+const nightFireworkButton=document.createElement('button');
+nightFireworkButton.type='button';
+nightFireworkButton.dataset.action='nightfirework';
+nightFireworkButton.innerHTML='🎆 <span>폭죽놀이</span>';
+nightFireworkButton.style.display='none';
+nightFireworkButton.onclick=()=>react('nightfirework');
+$('reactionActions').append(nightFireworkButton);
+const nightFireworkKST=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Seoul',hour:'2-digit',hourCycle:'h23'});
+function nightFireworkAvailable(){
+ const hour=Number(nightFireworkKST.format(new Date()));
+ return hour>=1&&hour<4;
+}
+function syncNightFirework(){
+ const available=nightFireworkAvailable();
+ nightFireworkButton.style.display=available?'':'none';
+ if(state.me&&state.action==='nightfirework'&&!available){
+  state.action='idle';state.me.action='idle';state.actionUntil=0;
+  updateActionButtons();sendMove();
+ }
+}
+setInterval(syncNightFirework,5000);
+syncNightFirework();
 // v174: Arrange reaction controls in the requested display order only.
 // Keep data-action values, keyboard shortcuts and all existing onclick handlers intact.
 const reactionMenuOrder=[
  'peace','wave','clap','putyourhandsup','cheer','jump','run','sit','lie',
  'drink','smoke','snack','toastStart','headbang','bubblegun','glowstick',
- 'flagAction','beatking','marshmallow'
+ 'flagAction','beatking','nightfirework','marshmallow'
 ];
 const reactionMenu=$('reactionActions');
 for(const key of reactionMenuOrder){
@@ -1423,21 +1447,26 @@ function rockPathAt(m,elapsed){
  const phase=elapsedFraction*Math.PI*8 - m.index*.42;
  return groupWorldPathPoint(m,{x:m.x+Math.sin(phase)*180,y:m.y+Math.sin(phase*2)*90,dx:180*Math.cos(phase),dy:180*Math.cos(phase*2)});
 }
-// When circle pit or train completes, each participant moves to a distinct
-// outward point and keeps jumping with the 🤘 bubble until manual input.
+// Every completed rock-play (except the campfire's sit-down sequence) scatters
+// from each participant's ACTUAL ending position while visibly skanking with 🤘.
+// The shoulder-linked game keeps its own existing end behaviour.
 function beginRockCelebration(m){
- const angle=(m.kind==='circle'?0:-Math.PI/2)+2*Math.PI*m.index/Math.max(1,m.count);
- const radius=m.kind==='circle'?150:Math.max(58,Math.min(108,40+m.count*6));
- // Free train can end far from where the group started; disperse from each
- // carriage's CURRENT position rather than dragging everyone back to start.
- const origin=m.kind==='train'?{x:state.me.x,y:state.me.y}:{x:m.x,y:m.y};
+ const origin={x:state.me.x,y:state.me.y};
+ const awayX=origin.x-m.x,awayY=origin.y-m.y;
+ const count=Math.max(1,m.count);
+ const laneAngle=-Math.PI/2+2*Math.PI*m.index/count;
+ // Use a consistent outward route instead of pulling moving participants
+ // back toward the original event centre before they can disperse.
+ const radialAngle=Math.hypot(awayX,awayY)>12?Math.atan2(awayY,awayX):laneAngle;
+ const angle=radialAngle+.18*Math.sin(m.index*2.4);
+ const distance=m.kind==='circle'?100:Math.max(75,Math.min(112,66+count*5));
  m.scatterTarget={
-  x:Math.max(20,Math.min(1380,origin.x+Math.cos(angle)*radius)),
-  y:clampServerY(origin.y+Math.sin(angle)*radius)
+  x:Math.max(20,Math.min(1380,origin.x+Math.cos(angle)*distance)),
+  y:clampServerY(origin.y+Math.sin(angle)*distance)
  };
  m.phase='scatter';m.phaseStarted=performance.now();
- state.action='rock-skank';state.me.action='rock-skank';
- state.actionUntil=Infinity;sendMove();
+ state.action='rock-skank';state.me.action='rock-skank';state.actionUntil=Infinity;
+ state.moving=true;sendMove();
 }
 function finishRockMotion(){
  if(rockMotion?.kind==='train')freeTrainTrail=null;
@@ -3357,6 +3386,30 @@ function makeAvatar(p){
   glowsticks.push({group:stick,rodMat,haloMat});
  }
  parts.glowsticks=glowsticks;
+ // Lightweight shared night fireworks effect: a wrist-held launcher and small
+ // repeating overhead bursts. Animations are deterministic from the shared action.
+ const nightLauncher=new THREE.Group();parts.nightLauncher=nightLauncher;
+ parts.rightElbow.add(nightLauncher);
+ nightLauncher.position.set(0,-.39,.065);
+ nightLauncher.rotation.set(-Math.PI/2,0,0);
+ const nightHandle=new THREE.Mesh(new THREE.CylinderGeometry(.085,.095,.57,8),
+  new THREE.MeshStandardMaterial({color:'#343b61',roughness:.55}));
+ nightHandle.rotation.x=Math.PI/2;nightHandle.position.z=.28;nightLauncher.add(nightHandle);
+ const nightTip=new THREE.Mesh(new THREE.CylinderGeometry(.095,.095,.14,8),
+  new THREE.MeshBasicMaterial({color:'#fff1bb'}));
+ nightTip.rotation.x=Math.PI/2;nightTip.position.z=.59;nightLauncher.add(nightTip);
+ nightLauncher.visible=false;
+ const nightFireworkColors=['#ff547a','#ffe57b','#81edff','#b28aff','#8bffb0'];
+ const nightSparkGeometry=new THREE.SphereGeometry(.065,5,4);
+ const nightSparks=[];
+ for(let i=0;i<36;i++){
+  const spark=new THREE.Mesh(nightSparkGeometry,
+   new THREE.MeshBasicMaterial({color:nightFireworkColors[i%nightFireworkColors.length],
+    transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending}));
+  spark.visible=false;root.add(spark);nightSparks.push(spark);
+ }
+ parts.nightSparks=nightSparks;
+
 
  // White festival pennant with black personalized lettering, mounted on a tall hand-held pole.
  // Model is attached to the avatar root so it follows movement but stays upright.
@@ -4041,6 +4094,13 @@ function animateAvatar(a,p,t){
   set('rightElbow',-.10-.12*Math.sin(sec*5.6+.75));
   set('upper',.035*Math.sin(sec*5.6));
  }
+ if(act==='nightfirework'){
+  // Hold the launcher above the face, pointing away from the avatar.
+  set('rightShoulder',-2.18,0,.12);
+  set('rightElbow',-.22);
+  set('leftShoulder',-.54,0,-.12);
+  set('upper',-.025+.025*Math.sin(sec*3.5));
+ }
  if(act==='marshmallow'){
   const roast=Math.sin(sec*2.1);
   rightHandTarget=new THREE.Vector3(.52,.23+.07*roast,.53);
@@ -4256,6 +4316,31 @@ function animateAvatar(a,p,t){
    const c=key==='rainbow'?new THREE.Color().setHSL((hue+i*.20)%1,1,.62):new THREE.Color(glowstickColors[key]);
    stick.rodMat.color.copy(c);stick.haloMat.color.copy(c);
    stick.haloMat.opacity=.20+.055*Math.sin(sec*8+i);
+  }
+ }
+ if(P.nightLauncher){
+  const firing=act==='nightfirework';
+  P.nightLauncher.visible=firing;
+  P.nightLauncher.rotation.x=-Math.PI/2+.07*Math.sin(sec*4);
+  if(P.nightSparks){
+   // Continuous 2.6-second loops, staggered for two independent sky bursts.
+   const loop=2.6;
+   for(let i=0;i<P.nightSparks.length;i++){
+    const dot=P.nightSparks[i];
+    if(!firing){dot.visible=false;continue;}
+    const burst=Math.floor(i/18),j=i%18;
+    const phase=((sec+burst*1.3)%loop)/loop;
+    if(phase<.25){dot.visible=false;continue;}
+    const life=(phase-.25)/.75;
+    const a=j*2.399963229728653+burst*.8;
+    const rise=3.2+(burst*.8);
+    const spread=(life**.62)*(1.6+burst*.27);
+    const vertical=Math.sin(a*1.17)*spread*.65-life*life*1.2;
+    dot.position.set(.5+Math.cos(a)*spread,2.45+rise+vertical, .5+Math.sin(a)*spread);
+    dot.scale.setScalar(.55+(1-life)*.75);
+    dot.material.opacity=Math.max(0,Math.sin(Math.PI*life)*.92);
+    dot.visible=true;
+   }
   }
  }
  if(P.marshmallowStick){
@@ -4543,7 +4628,7 @@ function tick(t){
      state.me.x=dest.x;state.me.y=dest.y;
      if(m.phase==='charge'){
       m.phase='retreat';m.phaseStarted=t;
-      state.action='slam-retreat';state.me.action='slam-retreat';
+      state.action='rock-skank';state.me.action='rock-skank';
       // The next frame naturally rotates to the outward retreat direction.
       sendMove();
      }else{
@@ -4557,7 +4642,7 @@ function tick(t){
      state.me.x=clampServerX(next.x);
      state.me.y=clampServerY(next.y);
      state.me.facing=Math.atan2(tx,ty);
-     state.action=m.phase==='charge'?'slam-charge':'slam-retreat';
+     state.action=m.phase==='charge'?'slam-charge':'rock-skank';
      state.me.action=state.action;
      state.moving=true;
     }
@@ -4596,13 +4681,13 @@ function tick(t){
      state.action='slam-celebrate';state.me.action='slam-celebrate';
      state.actionUntil=Infinity;sendMove();
     }else{
-     // Jumping retreat at a gentle, frame-rate-independent pace.
+     // Run outward while performing full skanking steps and showing the horns bubble.
      const next=stepWorldToward(state.me,target,5.5*frameDelta/1000);
      state.me.x=clampServerX(next.x);
      state.me.y=clampServerY(next.y);
      state.me.facing=Math.atan2(tx,ty);
      state.action='rock-skank';state.me.action='rock-skank';
-     state.actionUntil=Infinity;
+     state.moving=true;state.actionUntil=Infinity;
      if(t-state.lastSent>90){state.lastSent=t;sendMove()}
     }
    }else if(m.phase==='celebrate'){
