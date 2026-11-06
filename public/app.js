@@ -38,6 +38,11 @@ function savedFestivalFlagImage(){try{const value=localStorage.getItem(FLAG_IMAG
 let currentFlagImageData=savedFestivalFlagImage();
 let currentFlagImageId='';
 
+// Keep badge metadata initialized before any asynchronous join or player-list rendering.
+const BADGE_INFO={
+ bronze:['브론즈',0],silver:['실버',3600],gold:['골드',18000],
+ platinum:['플래티넘',54000],diamond:['다이아',144000],crown:['왕관',360000]
+};
 // Per-tab identity survives refreshes and reconnects without linking people by IP.
 const SESSION_STORAGE_KEY='oneseason-avatar-session-v1';
 const pageId=crypto.randomUUID();
@@ -1842,10 +1847,7 @@ function updatePovCamera(){
  camera.lookAt(head.x+dx*15,eyeY+dy*15,head.z+dz*15);
 }
 
-const BADGE_INFO={
- bronze:['브론즈',0],silver:['실버',3600],gold:['골드',18000],
- platinum:['플래티넘',54000],diamond:['다이아',144000],crown:['왕관',360000]
-};
+// Badge information is initialized near the module start, before any join or SSE events.
 
 const controls=new OrbitControls(camera,gameTouchSurface);controls.enableDamping=true;controls.dampingFactor=.07;controls.minDistance=3.2;controls.maxDistance=105;controls.maxPolarAngle=Math.PI/2.12;controls.target.set(0,1,4);controls.enablePan=false;
 // Full 360° orbit on mouse and touch. Collide the camera with the actual stage
@@ -4947,8 +4949,11 @@ document.getElementById('movementGuideDismiss')?.addEventListener('click',()=>do
 // Auto-enter with saved character settings; a failed request leaves the editor open.
 if(savedProfile && typeof savedProfile.name==='string' && savedProfile.name.trim()){
   document.getElementById('joinModal')?.classList.add('hidden');
-  // Defer auto-enter until the current module and scene setup have settled.
-  requestAnimationFrame(()=>{
+  // Auto-enter only after every top-level module declaration and the 3D scene are ready.
+  const autoEnterAfterInit=()=>{
    join({auto:true}).then(()=>{if(!state.id)document.getElementById('joinModal')?.classList.remove('hidden')}).catch(()=>{document.getElementById('joinModal')?.classList.remove('hidden')});
-  });
+  };
+  if(document.readyState==='loading'){
+   window.addEventListener('DOMContentLoaded',()=>requestAnimationFrame(autoEnterAfterInit),{once:true});
+  }else requestAnimationFrame(autoEnterAfterInit);
 }
