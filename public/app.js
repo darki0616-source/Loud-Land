@@ -865,7 +865,7 @@ function handleDuoEvent(d){
  if(d.type==='duo-end'){finishDuo(d.id);return}
 }
 setInterval(syncDuoStatus,250);
-const sustainedReactions=new Set(['peace','jump','run','headbang','buriburi','groove','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','marshmallow']);
+const sustainedReactions=new Set(['peace','jump','run','headbang','buriburi','groove','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','marshmallow','putyourhandsup']);
 // One shared bottom tab group: reactions / dances / chat.
 // Chat stays inside the dock instead of floating over the 3D world.
 function selectBottomMenu(menu){
@@ -889,12 +889,14 @@ document.querySelectorAll('[data-action-menu]').forEach(button=>{
 function updateActionButtons(){
  document.querySelectorAll('[data-action]').forEach(b=>{
   const a=b.dataset.action;
-  const chosen=(a==='sit'&&state.pose==='sit')||(a==='lie'&&state.pose==='lie')||(!['sit','lie'].includes(a)&&state.action===a);
+  const chosen=(a==='glowstick'&&Boolean(state.me?.glowEnabled))||(a==='sit'&&state.pose==='sit')||(a==='lie'&&state.pose==='lie')||(!['sit','lie','glowstick'].includes(a)&&state.action===a);
   b.classList.toggle('active',chosen);
  });
 }
-function react(a){
+function react(a,glowColor=null){
  if(!state.me)return;
+ if(a==='glowstick'&&glowColor===null){openGlowstickPicker();return;}
+ if(a==='glowstick'){state.me.glowColor=glowstickColors[glowColor]?glowColor:'rainbow';state.me.glowEnabled=true;updateActionButtons();sendMove();return;}
  if(a==='beatking'&&!state.me.rhythmKing)return toast('박자왕에게만 허용된 리액션입니다.');
  if(a==='marshmallow'&&!campfireReactionAvailable())return toast('모닥불이 켜진 시간(20:00~03:00)에 화덕 가까이에서 사용할 수 있어요.');
  if(currentDuo())return toast('상호작용을 종료한 후 다른 동작을 사용해 주세요.');
@@ -914,7 +916,7 @@ function react(a){
  if(state.action===a&&sustainedReactions.has(a)){
   state.action='idle';state.actionUntil=0;state.me.action='idle';
  }else{
-  if((a==='jump'||a==='run'||a==='buriburi'||a==='groove'||a==='windmill'||a==='skanking'||a==='airguitar'||a==='headspin'||a==='cheer'||a==='smoke'||a==='bubblegun'||a==='freestyle'||a==='beatking'||a==='marshmallow')&&state.pose!=='stand'){
+  if((a==='jump'||a==='run'||a==='buriburi'||a==='groove'||a==='windmill'||a==='skanking'||a==='airguitar'||a==='headspin'||a==='cheer'||a==='smoke'||a==='bubblegun'||a==='freestyle'||a==='beatking'||a==='marshmallow'||a==='putyourhandsup')&&state.pose!=='stand'){
    state.pose='stand';state.me.pose='stand';
   }
   state.action=a;state.me.action=a;if(a==='cheer')playCheer();
@@ -923,6 +925,52 @@ function react(a){
  updateActionButtons();sendMove();
 }
 document.querySelectorAll('[data-action]').forEach(b=>b.onclick=()=>react(b.dataset.action));
+// The glowsticks are independent equipped accessories; putyourhandsup is a separate looping animation.
+const glowstickColors={red:'#ff294b',pink:'#ff4bda',blue:'#36a5ff',lime:'#9dff32',yellow:'#fff94b',white:'#f4fbff',rainbow:'#ffffff'};
+const glowstickLabels={red:'빨강',pink:'핑크',blue:'파랑',lime:'연두',yellow:'노랑',white:'흰색',rainbow:'무지개'};
+const glowstickButton=document.createElement('button');
+glowstickButton.type='button';glowstickButton.dataset.action='glowstick';
+glowstickButton.innerHTML='🌈 <span>야광봉 들기</span>';
+glowstickButton.onclick=()=>react('glowstick');
+$('reactionActions').append(glowstickButton);
+const handsupButton=document.createElement('button');
+handsupButton.type='button';handsupButton.dataset.action='putyourhandsup';
+handsupButton.innerHTML='🙌 <span>풋쳐핸섭</span>';handsupButton.onclick=()=>react('putyourhandsup');
+$('reactionActions').append(handsupButton);
+const glowstickPicker=document.createElement('div');
+glowstickPicker.id='glowstickPicker';glowstickPicker.className='glowstick-picker hidden';
+glowstickPicker.setAttribute('role','dialog');glowstickPicker.setAttribute('aria-modal','true');glowstickPicker.setAttribute('aria-label','야광봉 색상 선택');
+glowstickPicker.innerHTML='<div class="glowstick-panel"><h3>🌈 야광봉 색상 선택</h3><p>양손에 장착합니다. 춤과 다른 리액션 중에도 계속 들고 있어요.</p><div id="glowstickColors" class="glowstick-colors"></div><button type="button" id="glowstickCancel">취소</button></div>';
+document.body.append(glowstickPicker);
+for(const [key,hex] of Object.entries(glowstickColors)){
+ const b=document.createElement('button');b.type='button';b.className='glowstick-choice';
+ b.innerHTML='<i></i><span>'+glowstickLabels[key]+'</span>';
+ const dot=b.querySelector('i');dot.style.background=key==='rainbow'?'conic-gradient(#fa3751,#f8e33c,#52e6a2,#46a3ff,#bf58f5,#fa3751)':hex;
+ dot.style.boxShadow=key==='rainbow'?'0 0 14px #f7f8ff':'0 0 14px '+hex;
+ b.onclick=()=>{glowstickPicker.classList.add('hidden');react('glowstick',key);};
+ $('glowstickColors').append(b);
+}
+$('glowstickCancel').onclick=()=>glowstickPicker.classList.add('hidden');
+glowstickPicker.addEventListener('pointerdown',e=>{if(e.target===glowstickPicker)glowstickPicker.classList.add('hidden');});
+function openGlowstickPicker(){
+ if(!state.me)return;
+ if(currentDuo())return toast('상호작용을 종료한 후 사용해 주세요.');
+ if(state.me.glowEnabled){state.me.glowEnabled=false;updateActionButtons();sendMove();return;}
+ glowstickPicker.classList.remove('hidden');
+}
+const glowstickStyle=document.createElement('style');
+glowstickStyle.textContent=`
+.glowstick-picker{position:fixed;inset:0;z-index:310;display:grid;place-items:center;background:rgba(5,7,19,.79);padding:18px;overscroll-behavior:contain}
+.glowstick-picker.hidden{display:none}
+.glowstick-panel{width:min(440px,100%);max-height:90dvh;overflow:auto;padding:24px;border-radius:23px;background:#191a2d;color:white;border:1px solid #74718e;box-shadow:0 22px 68px #000b;text-align:center}
+.glowstick-panel h3{margin:0;font-size:22px}.glowstick-panel p{margin:9px 0 22px;font-size:13px;color:#d6d7e6}
+.glowstick-colors{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.glowstick-choice{border:1px solid #575a77;border-radius:14px;background:#2b2e49;color:white;padding:13px 4px;min-height:84px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px}
+.glowstick-choice i{width:29px;height:29px;border-radius:50%;display:block}.glowstick-choice span{font-size:12px;font-weight:800}
+#glowstickCancel{margin-top:19px;background:#353a55;color:white;border:1px solid #656983;border-radius:12px;padding:12px 26px;font-weight:800}
+@media(max-width:420px){.glowstick-colors{grid-template-columns:repeat(3,minmax(0,1fr))}}
+`;
+document.head.append(glowstickStyle);
 const beatKingButton=document.createElement('button');beatKingButton.id='beatkingAction';beatKingButton.dataset.action='beatking';beatKingButton.hidden=true;beatKingButton.innerHTML='👑 <span>박자왕</span><em>Y</em>';beatKingButton.onclick=()=>react('beatking');$('reactionActions').append(beatKingButton);refreshRhythmReactionButton();
 // The marshmallow action is local to the lit campfire, and is hidden elsewhere.
 const marshmallowButton=document.createElement('button');
@@ -1052,7 +1100,7 @@ function playCheer(){
   audio.play().catch(error=>console.warn('Cheer sound could not play',error));
  }catch(error){console.warn('Cheer sound unavailable',error)}
 }
-function sendMove(){if(!state.id||!state.me||currentDuo())return;let p=state.me;post('move',{id:state.id,x:Math.round(p.x),y:Math.round(p.y),facing:p.facing,action:p.action,pose:p.pose||'stand'}).catch(()=>{})}
+function sendMove(){if(!state.id||!state.me||currentDuo())return;let p=state.me;post('move',{id:state.id,x:Math.round(p.x),y:Math.round(p.y),facing:p.facing,action:p.action,pose:p.pose||'stand',glowColor:p.glowColor||'lime',glowEnabled:Boolean(p.glowEnabled)}).catch(()=>{})}
 // Shared SLAM countdown (server timestamps, 15 s global launch cooldown).
 const slamButton=$('slamButton'),slamInfo=$('slamInfo'),slamMarker=$('slamMarker'),slamCount=$('slamCount'),slamMembers=$('slamMembers'),slamJoin=$('slamJoin');
 function slamNow(){return Date.now()+state.serverDelta}
@@ -3264,6 +3312,23 @@ function makeAvatar(p){
    child(knee,new THREE.SphereGeometry(.20,13,10),shoeMat,[0,-.43,.13],[1.02,.62,1.5]);
  }
  arm('left');arm('right');leg('left');leg('right');
+ // Neon baton follows each hand joint. Two rods + emissive edges; no lights added per player.
+ const glowsticks=[];
+ const glowRodGeo=new THREE.CylinderGeometry(.076,.076,.78,9);
+ const glowHaloGeo=new THREE.CylinderGeometry(.14,.14,.83,10,1,true);
+ const glowCapMat=new THREE.MeshStandardMaterial({color:'#e8e8ef',roughness:.38,metalness:.32});
+ for(const side of ['left','right']){
+  const stick=new THREE.Group();stick.position.set(0,-.70,.06);parts[side+'Elbow'].add(stick);
+  const rodMat=new THREE.MeshBasicMaterial({color:'#9dff32',toneMapped:false});
+  const rod=new THREE.Mesh(glowRodGeo,rodMat);rod.position.y=-.04;stick.add(rod);
+  const haloMat=new THREE.MeshBasicMaterial({color:'#9dff32',transparent:true,opacity:.18,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide,toneMapped:false});
+  const halo=new THREE.Mesh(glowHaloGeo,haloMat);halo.position.y=-.04;stick.add(halo);
+  const cap=new THREE.Mesh(new THREE.CylinderGeometry(.086,.086,.11,9),glowCapMat);cap.position.y=.36;stick.add(cap);
+  stick.rotation.z=side==='left'?.22:-.22;stick.visible=false;
+  glowsticks.push({group:stick,rodMat,haloMat});
+ }
+ parts.glowsticks=glowsticks;
+
  // White festival pennant with black personalized lettering, mounted on a tall hand-held pole.
  // Model is attached to the avatar root so it follows movement but stays upright.
  const poleGroup=new THREE.Group();root.add(poleGroup);parts.flagGroup=poleGroup;
@@ -3935,6 +4000,15 @@ function animateAvatar(a,p,t){
   P.bottle.quaternion.slerp(targetRotation,.32);
   P.bottle.scale.setScalar(1.3);
  }
+ if(act==='putyourhandsup'){
+  // Both arms sweep forward and back together, independent of equipped glowsticks.
+  const wave=Math.sin(sec*5.6);
+  set('leftShoulder',-.90-.60*wave,0,-.20);
+  set('rightShoulder',-.90-.60*Math.sin(sec*5.6+.40),0,.20);
+  set('leftElbow',-.25-.18*Math.sin(sec*5.6+.3));
+  set('rightElbow',-.25-.18*Math.sin(sec*5.6+.7));
+  set('upper',.035*Math.sin(sec*5.6));
+ }
  if(act==='marshmallow'){
   const roast=Math.sin(sec*2.1);
   rightHandTarget=new THREE.Vector3(.52,.23+.07*roast,.53);
@@ -4141,6 +4215,18 @@ function animateAvatar(a,p,t){
  });
  if(P.rhythmTitle){P.rhythmTitle.visible=Boolean(q.rhythmKing);P.rhythmTitle.position.y=4.96+Math.sin(sec*3.5)*.05;}
  if(P.rhythmSparkles){P.rhythmSparkles.forEach((spark,i)=>{if(act!=='beatking'){spark.visible=false;return}const phase=(sec*1.8+i/5)%1;const angle=phase*Math.PI*2+i*.7;const band=(i%2?1:-1);spark.visible=true;spark.position.set(Math.cos(angle)*(1.1+phase*.5),1.1+Math.sin(phase*Math.PI*2+band)*1.1+phase*.9,.45+Math.sin(angle*1.4)*.7);const sc=.55+.35*Math.sin(phase*Math.PI);spark.scale.setScalar(sc);spark.rotation.x=sec*2.2+i;spark.rotation.y=sec*3.1+i;});}
+ if(P.glowsticks){
+  const enabled=Boolean(q.glowEnabled);
+  const key=glowstickColors[q.glowColor]?q.glowColor:'lime';
+  const hue=(sec*.16)%1;
+  for(let i=0;i<P.glowsticks.length;i++){
+   const stick=P.glowsticks[i];stick.group.visible=enabled;
+   if(!enabled)continue;
+   const c=key==='rainbow'?new THREE.Color().setHSL((hue+i*.20)%1,1,.62):new THREE.Color(glowstickColors[key]);
+   stick.rodMat.color.copy(c);stick.haloMat.color.copy(c);
+   stick.haloMat.opacity=.20+.055*Math.sin(sec*8+i);
+  }
+ }
  if(P.marshmallowStick){
   P.marshmallowStick.visible=act==='marshmallow';
   if(P.marshmallowStick.visible){
