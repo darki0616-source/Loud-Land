@@ -3181,22 +3181,36 @@ function makeAvatar(p){
 
 // Chat bubbles are true 3D sprites anchored in world coordinates, independent of avatar pose.
 function bubbleTexture(message){
- const canvas=document.createElement('canvas');canvas.width=768;canvas.height=320;
- const ctx=canvas.getContext('2d');ctx.clearRect(0,0,768,320);
- ctx.fillStyle='rgba(255,255,255,.98)';ctx.strokeStyle='#283044';ctx.lineWidth=7;
- ctx.beginPath();ctx.roundRect(15,14,738,248,30);ctx.fill();ctx.stroke();
- ctx.beginPath();ctx.moveTo(368,263);ctx.lineTo(384,302);ctx.lineTo(408,263);ctx.closePath();ctx.fill();ctx.stroke();
+ // v158: much larger glyphs, proportionally larger bubble and a fourth
+ // line when needed. Fit text by measured pixel width, not character count.
+ const canvas=document.createElement('canvas');canvas.width=1024;canvas.height=460;
+ const ctx=canvas.getContext('2d');ctx.clearRect(0,0,1024,460);
+ ctx.fillStyle='rgba(255,255,255,.98)';ctx.strokeStyle='#283044';ctx.lineWidth=9;
+ ctx.beginPath();ctx.roundRect(18,18,988,375,46);ctx.fill();ctx.stroke();
+ ctx.beginPath();ctx.moveTo(468,394);ctx.lineTo(512,440);ctx.lineTo(556,394);ctx.closePath();ctx.fill();ctx.stroke();
  ctx.fillStyle='#171d31';ctx.textAlign='center';ctx.textBaseline='middle';
- const chars=Array.from(String(message||''));let lines=[],line='';
- // Wrap by rendered width, not raw character count (Korean/emoji/Latin all supported).
- ctx.font='bold 44px system-ui, sans-serif';
- for(const ch of chars){if(ctx.measureText(line+ch).width>670&&line){lines.push(line);line=ch}else line+=ch}
- if(line)lines.push(line);
- if(lines.length>3){lines=lines.slice(0,3);let last=lines[2];while(ctx.measureText(last+'…').width>670&&last.length)last=last.slice(0,-1);lines[2]=last+'…'}
- const fontSize=lines.length===1?55:lines.length===2?48:43;
- ctx.font=`bold ${fontSize}px system-ui, sans-serif`;
- const lineHeight=fontSize*1.25,top=130-(lines.length-1)*lineHeight/2;
- lines.forEach((l,i)=>ctx.fillText(l,384,top+i*lineHeight,670));
+ const chars=Array.from(String(message||''));
+ const wrap=(size)=>{
+  ctx.font=`900 ${size}px system-ui, sans-serif`;
+  const rows=[];let line='';
+  for(const ch of chars){
+   if(ctx.measureText(line+ch).width>900&&line){rows.push(line);line=ch;}
+   else line+=ch;
+  }
+  if(line)rows.push(line);
+  return rows;
+ };
+ let fontSize=84,lines=wrap(fontSize);
+ while(lines.length>4&&fontSize>46){fontSize-=2;lines=wrap(fontSize)}
+ if(lines.length>4){
+  lines=lines.slice(0,4);let last=lines[3];
+  while(ctx.measureText(last+'…').width>900&&last.length)last=last.slice(0,-1);
+  lines[3]=last+'…';
+ }
+ // Vertically center one to four lines inside the main white balloon.
+ const lineHeight=fontSize*1.10,top=200-(lines.length-1)*lineHeight/2;
+ ctx.font=`900 ${fontSize}px system-ui, sans-serif`;
+ lines.forEach((l,i)=>ctx.fillText(l,512,top+i*lineHeight,900));
  const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;return texture;
 }
 function showBubble(entry){
@@ -3204,7 +3218,8 @@ function showBubble(entry){
  const old=activeBubbles.get(entry.playerId);
  if(old){scene.remove(old.sprite);old.sprite.material.map.dispose();old.sprite.material.dispose()}
  const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:bubbleTexture(entry.message),transparent:true,depthTest:false,depthWrite:false}));
- sprite.scale.set(4.2,1.75,1);sprite.renderOrder=150;scene.add(sprite);if(stageForeground)sprite.layers.set(1);
+ // v158: keep the physical speech bubble proportional to the larger glyphs.
+ sprite.scale.set(6.8,3.05,1);sprite.renderOrder=150;scene.add(sprite);if(stageForeground)sprite.layers.set(1);
  activeBubbles.set(entry.playerId,{sprite,expires:performance.now()+3800});
 }
 
@@ -3212,7 +3227,7 @@ function updateBubbles(now){
  for(const [id,b] of activeBubbles){
   const a=avatars.get(id);
   if(!a||now>=b.expires){scene.remove(b.sprite);b.sprite.material.map.dispose();b.sprite.material.dispose();activeBubbles.delete(id);continue}
-  b.sprite.position.set(a.root.position.x,a.root.position.y+5.0,a.root.position.z);
+  b.sprite.position.set(a.root.position.x,a.root.position.y+5.74,a.root.position.z);
   b.sprite.material.opacity=Math.min(1,(b.expires-now)/350);
  }
 }
