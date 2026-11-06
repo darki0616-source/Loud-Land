@@ -1370,6 +1370,7 @@ const sign=new THREE.Mesh(new THREE.PlaneGeometry(24,1.6),label('ONEseason',78,'
 // without extra server polling, database writes or additional asset files.
 const firetruckShow=new THREE.Group();scene.add(firetruckShow);
 firetruckShow.position.set(35,0,-12.5);
+firetruckShow.scale.set(1.38,1.38,1.38);
 firetruckShow.visible=false;
 const truckRed=new THREE.MeshStandardMaterial({color:'#b8212e',metalness:.24,roughness:.44});
 const truckDeepRed=new THREE.MeshStandardMaterial({color:'#861c27',metalness:.2,roughness:.5});
@@ -1415,8 +1416,8 @@ for(let i=0;i<8;i++){
 }
 const firetruckNozzle=new THREE.Mesh(new THREE.CylinderGeometry(.22,.32,1.65,10),truckSilver);
 firetruckNozzle.position.set(-3.8,4.28,0);firetruckNozzle.rotation.z=-Math.PI/2.9;firetruckShow.add(firetruckNozzle);
-const firetruckStart=new THREE.Vector3(30.5,5.0,-12.5);
-const firetruckEnd=new THREE.Vector3(4.1,8.1,-23.9);
+const firetruckStart=new THREE.Vector3(29.8,5.9,-12.5);
+const firetruckEnd=new THREE.Vector3(11.8,7.2,-4.6);
 const firetruckArc=new THREE.Vector3();
 function firetruckWaterPoint(progress,out){
  out.lerpVectors(firetruckStart,firetruckEnd,progress);
@@ -1427,19 +1428,19 @@ const waterCurvePoints=[];
 for(let i=0;i<=42;i++)waterCurvePoints.push(firetruckWaterPoint(i/42,new THREE.Vector3()));
 const firetruckWater=new THREE.Group();scene.add(firetruckWater);firetruckWater.visible=false;
 const waterStream=new THREE.Line(new THREE.BufferGeometry().setFromPoints(waterCurvePoints),
- new THREE.LineBasicMaterial({color:'#c9f2ff',transparent:true,opacity:.6,depthWrite:false}));
+ new THREE.LineBasicMaterial({color:'#c9f2ff',transparent:true,opacity:.78,depthWrite:false}));
 firetruckWater.add(waterStream);
-const waterSprayMaterial=new THREE.PointsMaterial({color:'#d9f5ff',size:.18,transparent:true,opacity:.82,depthWrite:false,sizeAttenuation:true});
-const waterSprayCount=perfWeakDevice?130:280;
+const waterSprayMaterial=new THREE.PointsMaterial({color:'#d9f5ff',size:.34,transparent:true,opacity:.88,depthWrite:false,sizeAttenuation:true});
+const waterSprayCount=perfWeakDevice?190:420;
 const waterSprayPos=new Float32Array(waterSprayCount*3);
 const waterSprayGeometry=new THREE.BufferGeometry();
 waterSprayGeometry.setAttribute('position',new THREE.BufferAttribute(waterSprayPos,3));
 const waterSpray=new THREE.Points(waterSprayGeometry,waterSprayMaterial);
 waterSpray.frustumCulled=false;firetruckWater.add(waterSpray);
-const waterSplashCount=perfWeakDevice?40:90;
+const waterSplashCount=perfWeakDevice?70:150;
 const waterSplashPositions=new Float32Array(waterSplashCount*3);
 const waterSplashGeo=new THREE.BufferGeometry();waterSplashGeo.setAttribute('position',new THREE.BufferAttribute(waterSplashPositions,3));
-const waterSplash=new THREE.Points(waterSplashGeo,new THREE.PointsMaterial({color:'#f4fbff',size:.26,transparent:true,opacity:.6,depthWrite:false}));
+const waterSplash=new THREE.Points(waterSplashGeo,new THREE.PointsMaterial({color:'#f4fbff',size:.52,transparent:true,opacity:.72,depthWrite:false}));
 waterSplash.frustumCulled=false;firetruckWater.add(waterSplash);
 const koreaClock=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Seoul',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
 function updateFiretruckShow(t){
@@ -1454,7 +1455,7 @@ function updateFiretruckShow(t){
  for(let i=0;i<waterSprayCount;i++){
   const u=(i*.61803398875+sec*.72)%1;
   firetruckWaterPoint(u,firetruckArc);
-  const diffuse=.13+u*.76;
+  const diffuse=.28+u*1.08;
   waterSprayPos[i*3]=firetruckArc.x+Math.sin(i*12.989+sec*2.8)*diffuse;
   waterSprayPos[i*3+1]=firetruckArc.y+Math.cos(i*7.83+sec*4.1)*diffuse;
   waterSprayPos[i*3+2]=firetruckArc.z+Math.sin(i*5.33+sec*3.6)*diffuse;
@@ -1463,7 +1464,7 @@ function updateFiretruckShow(t){
  for(let i=0;i<waterSplashCount;i++){
   const phase=(i*.75487766+sec*.82)%1;
   const angle=i*2.39996;
-  const radius=phase*(1.1+(i%7)*.20);
+  const radius=phase*(1.9+(i%7)*.28);
   waterSplashPositions[i*3]=firetruckEnd.x+Math.cos(angle)*radius;
   waterSplashPositions[i*3+1]=firetruckEnd.y+1.5*phase-2.0*phase*phase;
   waterSplashPositions[i*3+2]=firetruckEnd.z+Math.sin(angle)*radius;
