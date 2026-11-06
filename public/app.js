@@ -94,61 +94,47 @@ function ensureRhythmUI(){
  const style=document.createElement('style');
  style.textContent=`
 
-#rhythmBoothButton{position:fixed;left:14px;bottom:160px;z-index:46;padding:12px 16px;border:none;border-radius:16px;background:linear-gradient(135deg,#8f5bff,#ff5eb9);color:#fff;font-weight:900;box-shadow:0 10px 35px rgba(0,0,0,.28);display:none}
+#rhythmBoothButton{position:fixed;left:14px;bottom:160px;z-index:46;padding:14px 18px;border:none;border-radius:18px;background:linear-gradient(135deg,#8f5bff,#ff5eb9);color:#fff;font-weight:900;box-shadow:0 10px 35px rgba(0,0,0,.28);display:none;font-size:16px}
 #rhythmBoothButton.show{display:block}
 #rhythmBoothButton:disabled{opacity:.45}
-#rhythmBoothHint{position:fixed;left:14px;bottom:126px;z-index:46;color:#fff;background:rgba(16,18,32,.72);padding:7px 10px;border-radius:12px;font-size:12px;display:none}
-#rhythmBoothHint.show{display:none}
-#rhythmOverlay{position:fixed;inset:0;z-index:90;background:radial-gradient(circle at 50% 20%,rgba(95,121,255,.36),transparent 34%),linear-gradient(180deg,#090c18,#10162b 65%,#0a0d19);color:#fff;display:none}
+#rhythmBoothHint{display:none}
+#rhythmOverlay{position:fixed;inset:0;z-index:90;display:none;color:#fff;background:linear-gradient(180deg,rgba(7,9,25,.33),rgba(7,9,25,.54)),url('/assets/rhythm/background.png') center/cover no-repeat,radial-gradient(circle at 50% 20%,rgba(95,121,255,.36),transparent 34%),linear-gradient(180deg,#090c18,#10162b 65%,#0a0d19)}
 #rhythmOverlay.show{display:block}
 #rhythmOverlay,#rhythmCanvas,#rhythmMain,#rhythmHud{touch-action:none;overscroll-behavior:contain;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 #rhythmOverlay button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 #rhythmRank{touch-action:pan-y;overscroll-behavior:contain}
 #rhythmOverlay *{box-sizing:border-box}
-#rhythmShell{position:absolute;inset:0;display:flex;flex-direction:column;padding:18px}
-#rhythmTop{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:4px 0 12px}
-#rhythmTitle{font-size:clamp(20px,2.6vw,42px);font-weight:900;letter-spacing:.04em;text-shadow:0 0 18px rgba(255,255,255,.22)}
-#rhythmSub{font-size:12px;opacity:.82}
-#rhythmClose{border:none;border-radius:14px;padding:12px 16px;font-weight:800;background:#ffffff18;color:#fff}
-#rhythmBody{flex:1;display:grid;grid-template-columns:minmax(230px,320px) 1fr;gap:16px;min-height:0}
-#rhythmRank{background:rgba(255,255,255,.08);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.12);border-radius:24px;padding:18px;display:flex;flex-direction:column;gap:14px;overflow:auto}
-#rhythmRank h3{margin:0;font-size:18px}
-#rhythmRankList{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px}
-#rhythmRankList li{display:grid;grid-template-columns:44px 1fr auto;gap:10px;align-items:center;padding:10px 12px;border-radius:14px;background:rgba(255,255,255,.05)}
-#rhythmRankList li strong{font-size:14px}
-#rhythmRankList li span{font-variant-numeric:tabular-nums}
-#rhythmRewardBox,#rhythmGuide{background:rgba(0,0,0,.22);border-radius:16px;padding:12px 13px;font-size:13px;line-height:1.45}
-#rhythmMain{position:relative;background:linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.03));border:1px solid rgba(255,255,255,.12);border-radius:28px;overflow:hidden;min-height:0}
+#rhythmShell{position:absolute;inset:0;display:flex;flex-direction:column;padding:8px;gap:8px}
+#rhythmTop{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;padding:2px 2px 0}
+#rhythmTitle{position:relative;isolation:isolate;font-size:clamp(18px,5.3vw,42px);font-weight:900;letter-spacing:.04em;text-shadow:0 0 18px rgba(255,255,255,.22);line-height:1.1;padding:6px 4px}
+#rhythmTitle::before{content:'';position:absolute;inset:-8px -14px;background:url('/assets/rhythm/title.png') center/contain no-repeat;z-index:-1;pointer-events:none}
+#rhythmSub{font-size:10px;opacity:.84;line-height:1.35;padding:0 4px;max-width:78vw}
+#rhythmClose{border:none;border-radius:14px;padding:10px 12px;font-weight:900;background:#ffffff18;color:#fff;min-width:64px}
+#rhythmBody{flex:1;display:grid;grid-template-rows:auto 1fr;gap:8px;min-height:0}
+#rhythmRank{background-image:linear-gradient(rgba(12,14,35,.79),rgba(12,14,35,.85)),url('/assets/rhythm/ranking.png');background-position:center;background-size:cover;border:1px solid rgba(255,255,255,.12);border-radius:20px;padding:10px;display:flex;flex-direction:column;gap:8px;overflow:hidden}
+#rhythmRankHeader{display:flex;align-items:center;justify-content:space-between;gap:8px}
+#rhythmRankHeader h3{margin:0;font-size:14px}
+#rhythmRankMini{font-size:10px;opacity:.78}
+#rhythmRankList{margin:0;padding:0;list-style:none;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px}
+#rhythmRankList li{display:flex;flex-direction:column;gap:2px;align-items:flex-start;padding:6px;border-radius:12px;background:rgba(255,255,255,.06);min-width:0}
+#rhythmRankList li em{font-size:10px}
+#rhythmRankList li strong{font-size:10px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#rhythmRankList li span{font-size:10px;font-variant-numeric:tabular-nums}
+#rhythmRewardBox{display:block;background:rgba(0,0,0,.18);border-radius:12px;padding:8px 10px;font-size:11px;line-height:1.35}
+#rhythmGuide{display:none}
+#rhythmMain{position:relative;min-height:0;border:1px solid rgba(255,255,255,.12);border-radius:24px;overflow:hidden;background-image:linear-gradient(rgba(5,9,25,.18),rgba(5,9,25,.3)),url('/assets/rhythm/play-area.png');background-position:center;background-size:cover}
 #rhythmCanvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
 #rhythmHud{position:absolute;inset:0;pointer-events:none}
-#rhythmStats{position:absolute;left:18px;top:18px;display:flex;gap:10px;flex-wrap:wrap}
-#rhythmStats b{display:block;font-size:11px;opacity:.72}
-#rhythmStats span{display:block;font-weight:900;font-size:24px}
-#rhythmStats div{pointer-events:auto;background:rgba(8,10,18,.52);backdrop-filter:blur(10px);padding:10px 14px;border-radius:16px;min-width:100px}
-#rhythmJudge{position:absolute;left:50%;top:10%;transform:translateX(-50%);font-weight:900;font-size:clamp(28px,3vw,54px);text-shadow:0 0 20px rgba(255,255,255,.35)}
-#rhythmCenter{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;width:min(80vw,700px)}
-#rhythmHelp{margin-top:300px;font-size:14px;opacity:.88}
-#rhythmStart{pointer-events:auto;margin-top:16px;border:none;border-radius:18px;padding:15px 28px;font-size:18px;font-weight:900;background:linear-gradient(135deg,#ffe36d,#ff76c8);color:#241133;box-shadow:0 14px 30px rgba(0,0,0,.28)}
-#rhythmCenterButton{pointer-events:auto;margin-top:10px;border:none;background:transparent;color:#fff;padding:10px 18px;font-size:16px;font-weight:800}
-#rhythmDesignNote{position:absolute;right:16px;bottom:16px;max-width:min(48vw,430px);font-size:12px;line-height:1.45;background:rgba(10,12,22,.66);border:1px solid rgba(255,255,255,.12);padding:10px 12px;border-radius:14px}
-#rhythmDesignNote strong{display:block;margin-bottom:4px}
-@media (max-width:900px){
- #rhythmBody{grid-template-columns:1fr;grid-template-rows:auto 1fr}
- #rhythmRank{max-height:34vh}
- #rhythmStats{left:10px;top:10px}
- #rhythmJudge{top:7%}
- #rhythmHelp{margin-top:220px;font-size:12px}
- #rhythmDesignNote{max-width:calc(100vw - 34px);font-size:11px}
-}
-/* Optional artist PNGs; absent images leave the built-in dark neon theme intact. */
-#rhythmOverlay{background-image:linear-gradient(180deg,rgba(7,9,25,.33),rgba(7,9,25,.54)),url('/assets/rhythm/background.png');background-position:center;background-size:cover}
-#rhythmTitle{position:relative;isolation:isolate}
-#rhythmTitle::before{content:'';position:absolute;inset:-12px -20px;background:url('/assets/rhythm/title.png') center/contain no-repeat;z-index:-1;pointer-events:none}
-#rhythmRank{background-image:linear-gradient(rgba(12,14,35,.79),rgba(12,14,35,.85)),url('/assets/rhythm/ranking.png');background-position:center;background-size:cover}
-#rhythmMain{background-image:linear-gradient(rgba(5,9,25,.18),rgba(5,9,25,.3)),url('/assets/rhythm/play-area.png');background-position:center;background-size:cover}
-#rhythmStart{background-image:url('/assets/rhythm/start-button.png'),linear-gradient(135deg,#ffe36d,#ff76c8);background-position:center;background-size:100% 100%}
-#rhythmJudge{min-width:min(38vw,360px);min-height:clamp(45px,7vw,130px);display:flex;align-items:center;justify-content:center;background:url('/assets/rhythm/judge.png') center/contain no-repeat;pointer-events:none}
-#rhythmComboFlash{position:absolute;left:50%;top:22%;transform:translate(-50%,-50%) scale(.7);font-size:clamp(18px,3.8vw,58px);font-weight:1000;letter-spacing:.03em;white-space:nowrap;opacity:0;text-shadow:0 0 14px #ff79c6,0 0 34px #984bff;will-change:transform,opacity}
+#rhythmStats{position:absolute;left:8px;right:8px;top:8px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+#rhythmStats b{display:block;font-size:10px;opacity:.72}
+#rhythmStats span{display:block;font-weight:900;font-size:clamp(18px,5vw,28px)}
+#rhythmStats div{pointer-events:auto;background:rgba(8,10,18,.52);backdrop-filter:blur(10px);padding:8px 10px;border-radius:14px;min-width:0;text-align:center}
+#rhythmJudge{position:absolute;left:50%;top:15%;transform:translateX(-50%);font-weight:900;font-size:clamp(24px,7vw,54px);text-shadow:0 0 20px rgba(255,255,255,.35);min-width:min(60vw,360px);min-height:clamp(54px,12vw,130px);display:flex;align-items:center;justify-content:center;background:url('/assets/rhythm/judge.png') center/contain no-repeat;pointer-events:none}
+#rhythmCenter{position:absolute;left:50%;bottom:8%;transform:translateX(-50%);text-align:center;width:min(92vw,520px)}
+#rhythmHelp{margin-top:12px;font-size:12px;opacity:.94;line-height:1.35;padding:0 10px}
+#rhythmStart{pointer-events:auto;margin-top:12px;border:none;border-radius:18px;padding:14px 24px;font-size:18px;font-weight:900;background-image:url('/assets/rhythm/start-button.png'),linear-gradient(135deg,#ffe36d,#ff76c8);background-position:center;background-size:100% 100%;color:#241133;box-shadow:0 14px 30px rgba(0,0,0,.28);min-width:min(66vw,320px)}
+#rhythmCenterButton{pointer-events:auto;margin-top:8px;border:none;background:transparent;color:#fff;padding:8px 12px;font-size:14px;font-weight:800}
+#rhythmComboFlash{position:absolute;left:50%;top:25%;transform:translate(-50%,-50%) scale(.7);font-size:clamp(18px,6vw,58px);font-weight:1000;letter-spacing:.03em;white-space:nowrap;opacity:0;text-shadow:0 0 14px #ff79c6,0 0 34px #984bff;will-change:transform,opacity}
 #rhythmComboFlash.pop{animation:rhythmComboPop .9s cubic-bezier(.2,.6,.2,1) both}
 @keyframes rhythmComboPop{0%{opacity:0;transform:translate(-50%,-50%) scale(.38) rotate(-5deg)}18%{opacity:1;transform:translate(-50%,-50%) scale(1.28) rotate(3deg)}60%{opacity:1;transform:translate(-50%,-58%) scale(1)}100%{opacity:0;transform:translate(-50%,-90%) scale(.8)}}
 #rhythmJudge.judge-pop{animation:rhythmJudgePop .44s ease-out both}
@@ -156,13 +142,32 @@ function ensureRhythmUI(){
 #rhythmStats .score-bump span{animation:rhythmScoreBump .36s ease-out}
 @keyframes rhythmScoreBump{0%{transform:scale(1)}45%{transform:scale(1.23);color:#ffe976}100%{transform:scale(1)}}
 #rhythmDesignNote{display:none}
-@media(max-width:900px){#rhythmShell{padding:8px}#rhythmTop{padding:0 3px 5px}#rhythmSub{font-size:10px}#rhythmRank{max-height:23vh;padding:8px;gap:7px}#rhythmRankList{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:3px}#rhythmRankList li{display:flex;flex-direction:column;padding:4px;gap:2px;min-width:0}#rhythmRankList li strong{max-width:100%;overflow:hidden;text-overflow:ellipsis;font-size:10px}#rhythmRankList li span{font-size:10px}#rhythmRewardBox,#rhythmGuide{display:none}#rhythmBody{gap:6px}#rhythmStart{padding:11px 20px}}
-
+@media (min-width:901px){
+ #rhythmShell{padding:18px;gap:14px}
+ #rhythmTop{padding:2px 2px 0}
+ #rhythmSub{font-size:12px;max-width:none}
+ #rhythmBody{grid-template-columns:minmax(280px,340px) 1fr;grid-template-rows:1fr;gap:16px}
+ #rhythmRank{padding:16px;gap:12px;overflow:auto}
+ #rhythmRankHeader h3{font-size:18px}
+ #rhythmRankMini{font-size:12px}
+ #rhythmRankList{display:flex;flex-direction:column;gap:8px}
+ #rhythmRankList li{display:grid;grid-template-columns:44px 1fr auto;gap:10px;align-items:center;padding:10px 12px}
+ #rhythmRankList li strong{font-size:14px}
+ #rhythmRankList li span{font-size:14px}
+ #rhythmRewardBox,#rhythmGuide{display:block;background:rgba(0,0,0,.22);border-radius:16px;padding:12px 13px;font-size:13px;line-height:1.45}
+ #rhythmStats{left:18px;right:auto;top:18px;display:flex;gap:10px;flex-wrap:wrap}
+ #rhythmStats div{padding:10px 14px;min-width:100px}
+ #rhythmJudge{top:10%;min-width:min(38vw,360px)}
+ #rhythmCenter{top:50%;bottom:auto;transform:translate(-50%,-50%);width:min(80vw,700px)}
+ #rhythmHelp{margin-top:300px;font-size:14px}
+ #rhythmStart{min-width:auto;padding:15px 28px}
+ #rhythmCenterButton{font-size:16px}
+}
 `;
  document.head.append(style);
  const overlay=document.createElement('div');
  overlay.id='rhythmOverlay';
- overlay.innerHTML=`<div id="rhythmShell"><div id="rhythmTop"><div><div id="rhythmTitle">🥁 BEAT CIRCLE · 박자게임</div><div id="rhythmSub">해변 오른쪽 벤치 옆 게임부스에서만 플레이 가능 · 스코어는 1판 기준 · 매일 초기화</div></div><button type="button" id="rhythmClose">나가기</button></div><div id="rhythmBody"><aside id="rhythmRank"><div><h3>오늘의 TOP 5</h3><div style="font-size:12px;opacity:.78;margin-top:4px">랭킹은 오늘 최고 점수 기준입니다.</div></div><ol id="rhythmRankList"></ol><div id="rhythmRewardBox"></div><div id="rhythmGuide"></div></aside><main id="rhythmMain"><canvas id="rhythmCanvas" width="1280" height="720"></canvas><div id="rhythmHud"><div id="rhythmStats"><div><b>SCORE</b><span id="rhythmScore">0</span></div><div><b>COMBO</b><span id="rhythmCombo">0</span></div><div><b>TIME</b><span id="rhythmTime">45.0</span></div></div><div id="rhythmJudge">READY</div><div id="rhythmComboFlash" aria-live="off"></div><div id="rhythmCenter"><button type="button" id="rhythmStart">게임 시작</button><button type="button" id="rhythmCenterButton">SPACE / ENTER / TAP 으로 박자 맞추기</button><div id="rhythmHelp">움직이는 파란 원이 노란 판정 원에 정확히 겹치는 순간 누르세요!</div></div></div></main></div></div>`;
+ overlay.innerHTML=`<div id="rhythmShell"><div id="rhythmTop"><div><div id="rhythmTitle">🥁 BEAT CIRCLE · 박자게임</div><div id="rhythmSub">모바일 세로 화면 기준 · 해변 오른쪽 벤치 옆 게임부스에서만 플레이 가능 · 스코어는 1판 기준 · 매일 초기화</div></div><button type="button" id="rhythmClose">닫기</button></div><div id="rhythmBody"><aside id="rhythmRank"><div id="rhythmRankHeader"><h3>오늘의 TOP 5</h3><div id="rhythmRankMini">오늘 최고 점수</div></div><ol id="rhythmRankList"></ol><div id="rhythmRewardBox"></div><div id="rhythmGuide"></div></aside><main id="rhythmMain"><canvas id="rhythmCanvas" width="1280" height="720"></canvas><div id="rhythmHud"><div id="rhythmStats"><div><b>SCORE</b><span id="rhythmScore">0</span></div><div><b>COMBO</b><span id="rhythmCombo">0</span></div><div><b>TIME</b><span id="rhythmTime">45.0</span></div></div><div id="rhythmJudge">READY</div><div id="rhythmComboFlash" aria-live="off"></div><div id="rhythmCenter"><button type="button" id="rhythmStart">게임 시작</button><button type="button" id="rhythmCenterButton">화면 아무 데나 터치해서 박자 맞추기</button><div id="rhythmHelp">움직이는 파란 원이 노란 판정 원에 딱 겹치는 순간 터치하세요.</div></div></div></main></div></div>`;
  document.body.append(overlay);
  const boothButton=document.createElement('button');
  boothButton.id='rhythmBoothButton';boothButton.type='button';boothButton.textContent='🥁 박자게임';document.body.append(boothButton);
