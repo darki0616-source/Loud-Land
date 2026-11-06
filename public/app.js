@@ -865,7 +865,7 @@ function handleDuoEvent(d){
  if(d.type==='duo-end'){finishDuo(d.id);return}
 }
 setInterval(syncDuoStatus,250);
-const sustainedReactions=new Set(['peace','jump','run','headbang','buriburi','groove','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking']);
+const sustainedReactions=new Set(['peace','jump','run','headbang','buriburi','groove','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','marshmallow']);
 // One shared bottom tab group: reactions / dances / chat.
 // Chat stays inside the dock instead of floating over the 3D world.
 function selectBottomMenu(menu){
@@ -896,6 +896,7 @@ function updateActionButtons(){
 function react(a){
  if(!state.me)return;
  if(a==='beatking'&&!state.me.rhythmKing)return toast('박자왕에게만 허용된 리액션입니다.');
+ if(a==='marshmallow'&&!campfireReactionAvailable())return toast('모닥불이 켜진 시간(20:00~03:00)에 화덕 가까이에서 사용할 수 있어요.');
  if(currentDuo())return toast('상호작용을 종료한 후 다른 동작을 사용해 주세요.');
  if(slamMotion){slamMotion=null;state.walkTarget=null}if(rockMotion){rockMotion=null;state.walkTarget=null}state.benchTarget=null;
  if(a==='sit'||a==='lie'){
@@ -913,7 +914,7 @@ function react(a){
  if(state.action===a&&sustainedReactions.has(a)){
   state.action='idle';state.actionUntil=0;state.me.action='idle';
  }else{
-  if((a==='jump'||a==='run'||a==='buriburi'||a==='groove'||a==='windmill'||a==='skanking'||a==='airguitar'||a==='headspin'||a==='cheer'||a==='smoke'||a==='bubblegun'||a==='freestyle'||a==='beatking')&&state.pose!=='stand'){
+  if((a==='jump'||a==='run'||a==='buriburi'||a==='groove'||a==='windmill'||a==='skanking'||a==='airguitar'||a==='headspin'||a==='cheer'||a==='smoke'||a==='bubblegun'||a==='freestyle'||a==='beatking'||a==='marshmallow')&&state.pose!=='stand'){
    state.pose='stand';state.me.pose='stand';
   }
   state.action=a;state.me.action=a;if(a==='cheer')playCheer();
@@ -923,6 +924,31 @@ function react(a){
 }
 document.querySelectorAll('[data-action]').forEach(b=>b.onclick=()=>react(b.dataset.action));
 const beatKingButton=document.createElement('button');beatKingButton.id='beatkingAction';beatKingButton.dataset.action='beatking';beatKingButton.hidden=true;beatKingButton.innerHTML='👑 <span>박자왕</span><em>Y</em>';beatKingButton.onclick=()=>react('beatking');$('reactionActions').append(beatKingButton);refreshRhythmReactionButton();
+// The marshmallow action is local to the lit campfire, and is hidden elsewhere.
+const marshmallowButton=document.createElement('button');
+marshmallowButton.id='marshmallowAction';marshmallowButton.dataset.action='marshmallow';
+marshmallowButton.innerHTML='🍡 <span>마시멜로 굽기</span>';
+marshmallowButton.style.display='none';
+marshmallowButton.onclick=()=>react('marshmallow');
+$('reactionActions').append(marshmallowButton);
+function campfireReactionAvailable(){
+ if(!state.me)return false;
+ const wp=toWorld(state.me);
+ const h=Number(new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Seoul',hour:'2-digit',hourCycle:'h23'}).format(new Date()));
+ return (h>=20||h<3)&&Math.hypot(wp.x-CAMPFIRE_X,wp.z-CAMPFIRE_Z)<=CAMPFIRE_REST_RADIUS;
+}
+let lastCampfireReactionAvailable=false;
+function syncMarshmallowReaction(){
+ const available=campfireReactionAvailable();
+ marshmallowButton.style.display=available?'':'none';
+ if(state.me&&state.action==='marshmallow'&&!available){
+  state.action='idle';state.me.action='idle';state.actionUntil=0;
+  updateActionButtons();sendMove();
+ }
+ lastCampfireReactionAvailable=available;
+}
+setInterval(syncMarshmallowReaction,300);
+
 // Festival flag editor: text or cropped image, both synchronized across visitors.
 let flagDialogMode='new',flagDialogBusy=false,flagEditorMode='text';
 let flagSelectedImage=null,flagSelectedUrl='',flagCropX=0,flagCropY=0,flagCropZoom=1,flagCropPointer=null;
@@ -2327,7 +2353,18 @@ for(let i=0;i<10;i++){
  const smoke=new THREE.Mesh(new THREE.SphereGeometry(.22+(i%3)*.06,6,5),new THREE.MeshBasicMaterial({color:'#8b8080',transparent:true,opacity:.12,depthWrite:false}));
  smoke.userData={seed:i*.91,drift:.18+(i%4)*.05};campFireVisual.add(smoke);campSmoke.push(smoke);
 }
-const campCoreGlow=new THREE.Sprite(new THREE.SpriteMaterial({color:'#ffbc52',transparent:true,opacity:.78,depthWrite:false,blending:THREE.AdditiveBlending}));
+// Radial alpha texture prevents the default solid square Sprite from appearing inside the flames.
+const campGlowCanvas=document.createElement('canvas');
+campGlowCanvas.width=128;campGlowCanvas.height=128;
+const campGlowCtx=campGlowCanvas.getContext('2d');
+const campGlowGradient=campGlowCtx.createRadialGradient(64,64,2,64,64,63);
+campGlowGradient.addColorStop(0,'rgba(255,247,175,0.92)');
+campGlowGradient.addColorStop(.20,'rgba(255,197,78,0.67)');
+campGlowGradient.addColorStop(.52,'rgba(255,112,34,0.24)');
+campGlowGradient.addColorStop(1,'rgba(255,90,25,0)');
+campGlowCtx.fillStyle=campGlowGradient;campGlowCtx.fillRect(0,0,128,128);
+const campGlowTexture=new THREE.CanvasTexture(campGlowCanvas);
+const campCoreGlow=new THREE.Sprite(new THREE.SpriteMaterial({map:campGlowTexture,color:'#ffffff',transparent:true,opacity:.78,depthWrite:false,blending:THREE.AdditiveBlending}));
 campCoreGlow.scale.set(2.8,2.8,1);campCoreGlow.position.set(0,1.45,0);campFireVisual.add(campCoreGlow);
 const campLight=new THREE.PointLight('#ff8b3b',0,22,2);campLight.position.set(0,2.25,0);campfire.add(campLight);
 const campLightHalo=new THREE.Mesh(new THREE.CircleGeometry(3.2,32),campGlowMat);campLightHalo.rotation.x=-Math.PI/2;campLightHalo.position.y=.095;campLightHalo.visible=false;campfire.add(campLightHalo);
@@ -3224,6 +3261,18 @@ function makeAvatar(p){
  child(toastCup,new THREE.CylinderGeometry(.12,.09,.23,12),mat('#ffc977',.5),[0,0,0]);
  child(toastCup,new THREE.TorusGeometry(.11,.015,6,12),mat('#fff2b4',.45),[0,.12,0]).rotation.x=Math.PI/2;
  toastCup.visible=false;
+ // Wooden skewer + roasting marshmallow; one lightweight mesh group per avatar.
+ const marshmallowStick=new THREE.Group();root.add(marshmallowStick);parts.marshmallowStick=marshmallowStick;
+ const stickMat=mat('#b99a65',.95);
+ const stickMesh=child(marshmallowStick,new THREE.CylinderGeometry(.025,.028,1.65,7),stickMat,[0,0,.73]);
+ stickMesh.rotation.x=Math.PI/2;
+ const marshMat=new THREE.MeshStandardMaterial({color:'#fff5e3',roughness:.89,emissive:'#b47c39',emissiveIntensity:.07});
+ const marsh=child(marshmallowStick,new THREE.CylinderGeometry(.18,.18,.38,14),marshMat,[0,0,1.62]);
+ marsh.rotation.x=Math.PI/2;
+ const toastedStripe=new THREE.Mesh(new THREE.CylinderGeometry(.183,.183,.075,14),new THREE.MeshStandardMaterial({color:'#d49a5e',roughness:1}));
+ toastedStripe.rotation.x=Math.PI/2;toastedStripe.position.z=1.52;marshmallowStick.add(toastedStripe);
+ marshmallowStick.visible=false;
+
  // The cigarette faces outward (+Z is the front of the avatar).
  // Anchor it to the upper torso instead of the rotating hand bone: arm IK can
  // rotate the hand so far that a hand-attached cigarette points into the mouth.
@@ -3804,6 +3853,13 @@ function animateAvatar(a,p,t){
   P.bottle.quaternion.slerp(targetRotation,.32);
   P.bottle.scale.setScalar(1.3);
  }
+ if(act==='marshmallow'){
+  const roast=Math.sin(sec*2.1);
+  rightHandTarget=new THREE.Vector3(.52,.23+.07*roast,.53);
+  ikMode='marshmallow';
+  set('upper',.04);
+  set('neck',-.018);
+ }
  if(act==='snack'){
   // Keep the oversized chibi head unobstructed: hand reaches the lower-right mouth.
   const chew=(1+Math.sin(sec*11.5))*.5;
@@ -3906,7 +3962,7 @@ function animateAvatar(a,p,t){
  for(const k of keys){
   if((ikMode==='duo-both'&&['leftShoulder','leftElbow','rightShoulder','rightElbow'].includes(k))||(ikMode==='duo-right'&&['rightShoulder','rightElbow'].includes(k)))continue;
   if(ikMode==='clap'&&['leftShoulder','leftElbow','rightShoulder','rightElbow'].includes(k))continue;
-  if((ikMode==='drink'||ikMode==='wave'||ikMode==='snack'||ikMode==='smoke'||ikMode==='bubblegun')&&['rightShoulder','rightElbow'].includes(k))continue;
+  if((ikMode==='drink'||ikMode==='wave'||ikMode==='snack'||ikMode==='smoke'||ikMode==='bubblegun'||ikMode==='marshmallow')&&['rightShoulder','rightElbow'].includes(k))continue;
   const target=pose[k],o=P[k];
   o.rotation.x+=(target[0]-o.rotation.x)*alpha;
   o.rotation.y+=(target[1]-o.rotation.y)*alpha;
@@ -3926,6 +3982,7 @@ function animateAvatar(a,p,t){
  else if(ikMode==='snack')placeHandIK(P,'right',rightHandTarget,.56);
  else if(ikMode==='smoke')placeHandIK(P,'right',rightHandTarget,.66);
  else if(ikMode==='bubblegun')placeHandIK(P,'right',rightHandTarget,.7);
+ else if(ikMode==='marshmallow')placeHandIK(P,'right',rightHandTarget,.68);
  // Keep the right hand gripping the tall flag pole during walking or idle.
  // Complex dances temporarily take precedence without deleting the flag.
  const canGripFlag=Boolean(q.flagText||q.flagImage)&&basePose==='stand'&&!duoContext&&
@@ -4002,6 +4059,13 @@ function animateAvatar(a,p,t){
  });
  if(P.rhythmTitle){P.rhythmTitle.visible=Boolean(q.rhythmKing);P.rhythmTitle.position.y=4.96+Math.sin(sec*3.5)*.05;}
  if(P.rhythmSparkles){P.rhythmSparkles.forEach((spark,i)=>{if(act!=='beatking'){spark.visible=false;return}const phase=(sec*1.8+i/5)%1;const angle=phase*Math.PI*2+i*.7;const band=(i%2?1:-1);spark.visible=true;spark.position.set(Math.cos(angle)*(1.1+phase*.5),1.1+Math.sin(phase*Math.PI*2+band)*1.1+phase*.9,.45+Math.sin(angle*1.4)*.7);const sc=.55+.35*Math.sin(phase*Math.PI);spark.scale.setScalar(sc);spark.rotation.x=sec*2.2+i;spark.rotation.y=sec*3.1+i;});}
+ if(P.marshmallowStick){
+  P.marshmallowStick.visible=act==='marshmallow';
+  if(P.marshmallowStick.visible){
+   P.marshmallowStick.position.set(.52,1.44+.05*Math.sin(sec*2.1),.57);
+   P.marshmallowStick.rotation.set(-.07+.055*Math.sin(sec*1.7),.10*Math.sin(sec*1.25),.07*Math.sin(sec*1.5));
+  }
+ }
  P.rockBubble.visible=act==='peace'||act==='slam-retreat'||act==='slam-celebrate';P.bottle.visible=act==='drink';
  if(P.rockBubble.visible)P.rockBubble.position.y=4.34+Math.sin(sec*7)*.075;
  if(act==='headspin'){
@@ -4382,7 +4446,7 @@ function tick(t){
    }
   }
   state.moving=!!(dx||dy);
-  if(state.moving && (state.action==='buriburi'||state.action==='groove'||state.action==='windmill'||state.action==='airguitar'||state.action==='headspin'||state.action==='cheer'||state.action==='smoke'||state.action==='freestyle'||state.action==='beatking') && !slamMotion && !rockMotion){
+  if(state.moving && (state.action==='buriburi'||state.action==='groove'||state.action==='windmill'||state.action==='airguitar'||state.action==='headspin'||state.action==='cheer'||state.action==='smoke'||state.action==='freestyle'||state.action==='beatking'||state.action==='marshmallow') && !slamMotion && !rockMotion){
    state.action='idle';state.me.action='walk';state.actionUntil=0;updateActionButtons();
   }
   if(state.moving){
