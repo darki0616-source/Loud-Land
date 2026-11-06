@@ -899,8 +899,8 @@ function react(a){
  if(currentDuo())return toast('상호작용을 종료한 후 다른 동작을 사용해 주세요.');
  if(slamMotion){slamMotion=null;state.walkTarget=null}if(rockMotion){rockMotion=null;state.walkTarget=null}state.benchTarget=null;
  if(a==='sit'||a==='lie'){
-  const near=mats.some(m=>Math.hypot(state.me.x-m.x,state.me.y-m.y)<105)||benchSeats.some(b=>Math.hypot(state.me.x-b.x,state.me.y-b.y)<75);
-  if(!near&&state.pose==='stand')return toast('돗자리 근처에서 앉거나 누울 수 있어요');
+  const near=mats.some(m=>Math.hypot(state.me.x-m.x,state.me.y-m.y)<105)||benchSeats.some(b=>Math.hypot(state.me.x-b.x,state.me.y-b.y)<75)||Math.hypot(toWorld(state.me).x-CAMPFIRE_X,toWorld(state.me).z-CAMPFIRE_Z)<CAMPFIRE_REST_RADIUS;
+  if(!near&&state.pose==='stand')return toast('돗자리·벤치·모닥불 근처에서 앉거나 누울 수 있어요');
   state.pose=state.pose===a?'stand':a;
   state.me.pose=state.pose;
   state.walkTarget=null;state.benchTarget=null;
@@ -2266,6 +2266,66 @@ for(const seat of benchSeats){
  seat.wz=expandWorldZ(seat.wz);
 }
 
+// v159: shared beach-side audience campfire, in front of the left MD shop.
+// World x=-34, z=10.5: audience-side left, ahead of the MD booth and clear of picnic blankets.
+const CAMPFIRE_X=-34,CAMPFIRE_Z=10.5,CAMPFIRE_REST_RADIUS=8.8;
+const campfire=new THREE.Group();campfire.position.set(CAMPFIRE_X,0,CAMPFIRE_Z);scene.add(campfire);
+const campStone=new THREE.MeshStandardMaterial({color:'#7f7875',roughness:1,flatShading:true});
+const campWood=new THREE.MeshStandardMaterial({color:'#77533b',roughness:1,flatShading:true});
+const campAsh=new THREE.MeshStandardMaterial({color:'#332a2a',roughness:1});
+const campGlowMat=new THREE.MeshBasicMaterial({color:'#ffad43',transparent:true,opacity:.24,depthWrite:false});
+function campPart(geometry,material,x,y,z){const mesh=new THREE.Mesh(geometry,material);mesh.position.set(x,y,z);mesh.castShadow=false;mesh.receiveShadow=true;campfire.add(mesh);return mesh}
+const campAshDisk=campPart(new THREE.CylinderGeometry(1.35,1.45,.12,16),campAsh,0,.12,0);
+for(let i=0;i<13;i++){
+ const angle=i*Math.PI*2/13,stone=campPart(new THREE.DodecahedronGeometry(.38,0),campStone,Math.cos(angle)*1.44,.21,Math.sin(angle)*1.44);
+ stone.scale.set(1.13,.68,.86);stone.rotation.y=angle;
+}
+for(let i=0;i<5;i++){
+ const angle=i*Math.PI/5,log=campPart(new THREE.CylinderGeometry(.19,.25,2.3,8),campWood,Math.cos(angle)*.15,.34,Math.sin(angle)*.15);
+ log.rotation.z=Math.PI/2;log.rotation.y=angle;
+}
+// Separate small cushions around the fire. They remain available even when the fire is off.
+const campCushions=[];
+for(let i=0;i<7;i++){
+ const a=(i/7)*Math.PI*2+.25,r=4.1+(i%2)*.43,x=Math.cos(a)*r,z=Math.sin(a)*r;
+ const cushion=campPart(new THREE.CylinderGeometry(.88,.91,.14,14),new THREE.MeshStandardMaterial({color:['#b98087','#9b9ace','#a9be9e','#d1a477'][i%4],roughness:1}),x,.14,z);
+ cushion.scale.z=.78;campCushions.push({x:CAMPFIRE_X+x,z:CAMPFIRE_Z+z});
+}
+const campFireVisual=new THREE.Group();campfire.add(campFireVisual);
+const campFlames=[];
+for(let i=0;i<9;i++){
+ const h=1.08+(i%3)*.33,flame=new THREE.Mesh(new THREE.ConeGeometry(.37+(i%2)*.10,h,7),new THREE.MeshBasicMaterial({color:['#ffcc55','#ff8533','#fff1a0'][i%3],transparent:true,opacity:.82,depthWrite:false}));
+ flame.position.set(Math.sin(i*2.4)*.38,.38+h*.46,Math.cos(i*2.4)*.38);campFireVisual.add(flame);campFlames.push(flame);
+}
+const campEmbers=[];
+for(let i=0;i<18;i++){
+ const ember=new THREE.Mesh(new THREE.SphereGeometry(.045+(i%4)*.012,5,4),new THREE.MeshBasicMaterial({color:i%3?'#ffc064':'#fff1b8',transparent:true,opacity:.75,depthWrite:false}));
+ campFireVisual.add(ember);campEmbers.push(ember);
+}
+const campLight=new THREE.PointLight('#ff8b3b',0,14,2);campLight.position.set(0,1.45,0);campfire.add(campLight);
+const campLightHalo=new THREE.Mesh(new THREE.CircleGeometry(2.35,28),campGlowMat);campLightHalo.rotation.x=-Math.PI/2;campLightHalo.position.y=.095;campfire.add(campLightHalo);
+let campfireBurning=false;
+const campfireKSTClock=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Seoul',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
+function updateCampfireSchedule(){
+ const hour=Number(campfireKSTClock.format(new Date()).split(':')[0]);
+ const active=hour>=20||hour<3;
+ if(campfireBurning!==active){campfireBurning=active;campFireVisual.visible=active;campLightHalo.visible=active;}
+ return active;
+}
+function animateCampfire(t){
+ const active=updateCampfireSchedule();campLight.intensity=active?2.5+Math.sin(t*.009)*.4:0;
+ if(!active)return;
+ const seconds=t*.001;
+ for(let i=0;i<campFlames.length;i++){
+  const f=campFlames[i];f.scale.y=.83+.18*Math.sin(seconds*8+i*1.7);f.rotation.z=.12*Math.sin(seconds*5+i);f.material.opacity=.63+.20*Math.sin(seconds*6+i*2);
+ }
+ for(let i=0;i<campEmbers.length;i++){
+  const phase=(seconds*(.22+(i%4)*.045)+i/18)%1,angle=i*2.399;
+  const e=campEmbers[i];e.position.set(Math.cos(angle)*(.23+phase*.6),.38+phase*2.9,Math.sin(angle)*(.23+phase*.6));e.material.opacity=.75*(1-phase);
+ }
+ campGlowMat.opacity=.21+Math.sin(seconds*7)*.035;
+}
+updateCampfireSchedule();
 const stageLights=[];for(let i=0;i<7;i++){let x=-17+i*5.6;let l=new THREE.SpotLight(['#ff64a5','#8c84ff','#c4fb79','#68e8f3'][i%4],110,65,.50,.65);l.position.set(x,9,-19);l.target.position.set(x*.65,0,0);scene.add(l,l.target);stageLights.push(l)}
 // Controlled, pooled lighting + flame and spark bursts. No per-frame geometry allocation.
 const flameGroups=[],emberMat=new THREE.MeshBasicMaterial({color:'#ffc979',transparent:true,opacity:.95,depthWrite:false});
@@ -4351,7 +4411,7 @@ function tick(t){
  const minimalScenery=perfMode==='eco'||(perfMode==='auto'&&perfWeakDevice);
  if(!minimalScenery||t-(updateOcean.lastEco||0)>1000){updateOcean(t);updateOcean.lastEco=t;}
  if(!minimalScenery)animateSky(t);
- updateMoshTrails(t);updateSlamDust(t);updateBubbles(t);animateShow(t);updateFiretruckShow(t);
+ updateMoshTrails(t);updateSlamDust(t);updateBubbles(t);animateShow(t);animateCampfire(t);updateFiretruckShow(t);
  if(!minimalScenery)updateHourlyFireworks(t);
  animateToastSparks(t);
  if(state.id)updateRhythmBoothButton();if(rhythmGame.open)drawRhythmGame();
