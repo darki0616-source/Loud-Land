@@ -2266,9 +2266,10 @@ for(const seat of benchSeats){
  seat.wz=expandWorldZ(seat.wz);
 }
 
-// v159: shared beach-side audience campfire, in front of the left MD shop.
-// World x=-34, z=10.5: audience-side left, ahead of the MD booth and clear of picnic blankets.
-const CAMPFIRE_X=-34,CAMPFIRE_Z=10.5,CAMPFIRE_REST_RADIUS=8.8;
+// v162: relocate the entire campfire talk zone to audience-right (facing the stage).
+// Keep the original depth and group all stones, fire, cushions, and lighting together.
+// The right-side position is clear of the MD booth and the rhythm booth.
+const CAMPFIRE_X=34,CAMPFIRE_Z=10.5,CAMPFIRE_REST_RADIUS=8.8;
 const campfire=new THREE.Group();campfire.position.set(CAMPFIRE_X,0,CAMPFIRE_Z);scene.add(campfire);
 const campStone=new THREE.MeshStandardMaterial({color:'#7f7875',roughness:1,flatShading:true});
 const campWood=new THREE.MeshStandardMaterial({color:'#77533b',roughness:1,flatShading:true});
@@ -2293,17 +2294,43 @@ for(let i=0;i<7;i++){
 }
 const campFireVisual=new THREE.Group();campFireVisual.visible=false;campfire.add(campFireVisual);
 const campFlames=[];
-for(let i=0;i<9;i++){
- const h=1.94+(i%3)*.59,flame=new THREE.Mesh(new THREE.ConeGeometry(.47+(i%2)*.13,h,7),new THREE.MeshBasicMaterial({color:['#ffcc55','#ff8533','#fff1a0'][i%3],transparent:true,opacity:.82,depthWrite:false}));
- flame.position.set(Math.sin(i*2.4)*.40,.36+h*.46,Math.cos(i*2.4)*.40);campFireVisual.add(flame);campFlames.push(flame);
+const campFlameSpecs=[
+ {r:.00,a:0,h:3.45,w:.72,c:'#fff3b1',o:.86,s:0},
+ {r:.12,a:1.1,h:3.10,w:.66,c:'#ffd767',o:.82,s:.9},
+ {r:.18,a:2.4,h:2.95,w:.61,c:'#ffb84d',o:.79,s:1.6},
+ {r:.26,a:3.2,h:2.72,w:.55,c:'#ff9440',o:.76,s:2.3},
+ {r:.30,a:4.4,h:2.55,w:.53,c:'#ff7a35',o:.72,s:2.9},
+ {r:.37,a:5.3,h:2.35,w:.49,c:'#ff642f',o:.68,s:3.5},
+ {r:.24,a:0.6,h:2.10,w:.46,c:'#ffe58b',o:.75,s:4.1},
+ {r:.34,a:1.8,h:1.95,w:.42,c:'#ffb347',o:.71,s:4.8},
+ {r:.40,a:2.8,h:1.82,w:.39,c:'#ff8b36',o:.66,s:5.5},
+ {r:.29,a:3.9,h:1.74,w:.36,c:'#ff6a2f',o:.62,s:6.2},
+ {r:.16,a:4.9,h:1.64,w:.34,c:'#fff0a4',o:.70,s:6.8},
+ {r:.22,a:5.8,h:1.56,w:.31,c:'#ffc857',o:.67,s:7.4}
+];
+for(let i=0;i<campFlameSpecs.length;i++){
+ const spec=campFlameSpecs[i];
+ const flame=new THREE.Mesh(new THREE.ConeGeometry(spec.w,spec.h,8,1,true),new THREE.MeshBasicMaterial({color:spec.c,transparent:true,opacity:spec.o,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide}));
+ const x=Math.cos(spec.a)*spec.r,z=Math.sin(spec.a)*spec.r;
+ flame.position.set(x,.34+spec.h*.46,z);
+ flame.rotation.x=(i%2?-.08:.07);flame.rotation.z=(i%3-1)*.08;
+ flame.userData={baseX:x,baseZ:z,baseY:.34+spec.h*.46,baseH:spec.h,baseW:spec.w,seed:spec.s,swirl:spec.a};
+ campFireVisual.add(flame);campFlames.push(flame);
 }
 const campEmbers=[];
-for(let i=0;i<18;i++){
- const ember=new THREE.Mesh(new THREE.SphereGeometry(.045+(i%4)*.012,5,4),new THREE.MeshBasicMaterial({color:i%3?'#ffc064':'#fff1b8',transparent:true,opacity:.75,depthWrite:false}));
- campFireVisual.add(ember);campEmbers.push(ember);
+for(let i=0;i<28;i++){
+ const ember=new THREE.Mesh(new THREE.SphereGeometry(.04+(i%5)*.011,5,4),new THREE.MeshBasicMaterial({color:i%4<2?'#ffc064':'#fff1b8',transparent:true,opacity:.78,depthWrite:false,blending:THREE.AdditiveBlending}));
+ ember.userData={seed:i*.73,drift:.16+(i%7)*.03};campFireVisual.add(ember);campEmbers.push(ember);
 }
-const campLight=new THREE.PointLight('#ff8b3b',0,18,2);campLight.position.set(0,2.1,0);campfire.add(campLight);
-const campLightHalo=new THREE.Mesh(new THREE.CircleGeometry(2.9,28),campGlowMat);campLightHalo.rotation.x=-Math.PI/2;campLightHalo.position.y=.095;campLightHalo.visible=false;campfire.add(campLightHalo);
+const campSmoke=[];
+for(let i=0;i<10;i++){
+ const smoke=new THREE.Mesh(new THREE.SphereGeometry(.22+(i%3)*.06,6,5),new THREE.MeshBasicMaterial({color:'#8b8080',transparent:true,opacity:.12,depthWrite:false}));
+ smoke.userData={seed:i*.91,drift:.18+(i%4)*.05};campFireVisual.add(smoke);campSmoke.push(smoke);
+}
+const campCoreGlow=new THREE.Sprite(new THREE.SpriteMaterial({color:'#ffbc52',transparent:true,opacity:.78,depthWrite:false,blending:THREE.AdditiveBlending}));
+campCoreGlow.scale.set(2.8,2.8,1);campCoreGlow.position.set(0,1.45,0);campFireVisual.add(campCoreGlow);
+const campLight=new THREE.PointLight('#ff8b3b',0,22,2);campLight.position.set(0,2.25,0);campfire.add(campLight);
+const campLightHalo=new THREE.Mesh(new THREE.CircleGeometry(3.2,32),campGlowMat);campLightHalo.rotation.x=-Math.PI/2;campLightHalo.position.y=.095;campLightHalo.visible=false;campfire.add(campLightHalo);
 let campfireBurning=null; // Force the first schedule evaluation to set flame visibility.
 const campfireKSTClock=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Seoul',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
 function updateCampfireSchedule(){
@@ -2313,17 +2340,41 @@ function updateCampfireSchedule(){
  return active;
 }
 function animateCampfire(t){
- const active=updateCampfireSchedule();campLight.intensity=active?2.5+Math.sin(t*.009)*.4:0;
- if(!active)return;
+ const active=updateCampfireSchedule();
  const seconds=t*.001;
+ campLight.intensity=active?(2.9+Math.sin(t*.012)*.38+Math.sin(t*.025)*.22):0;
+ if(!active)return;
+ const gust=Math.sin(seconds*1.6)*.08+Math.sin(seconds*3.9)*.04;
  for(let i=0;i<campFlames.length;i++){
-  const f=campFlames[i];f.scale.y=.83+.18*Math.sin(seconds*8+i*1.7);f.rotation.z=.12*Math.sin(seconds*5+i);f.material.opacity=.63+.20*Math.sin(seconds*6+i*2);
+  const f=campFlames[i],d=f.userData;
+  const flicker=Math.sin(seconds*(5.8+(i%4)*.7)+d.seed)+.45*Math.sin(seconds*(10.7+(i%3)*1.1)+d.seed*1.7);
+  const swell=.94+flicker*.11;
+  f.position.x=d.baseX+Math.sin(seconds*2.4+d.seed)*.07+gust*(.35+d.baseH*.07);
+  f.position.z=d.baseZ+Math.cos(seconds*2.1+d.seed*1.2)*.055;
+  f.position.y=d.baseY+Math.max(0,Math.sin(seconds*4.6+d.seed))*.08;
+  f.scale.set(.9+Math.sin(seconds*3.6+d.seed)*.06,swell+Math.max(0,Math.sin(seconds*7.2+d.seed))*0.26,.9+Math.cos(seconds*4.1+d.seed)*.06);
+  f.rotation.z=Math.sin(seconds*2.8+d.seed)*.18+gust*.75;
+  f.rotation.x=Math.cos(seconds*2.15+d.seed)*.09;
+  f.material.opacity=Math.min(.94,Math.max(.46,.62+flicker*.10+(d.baseH>2.7?.08:0)));
  }
  for(let i=0;i<campEmbers.length;i++){
-  const phase=(seconds*(.22+(i%4)*.045)+i/18)%1,angle=i*2.399;
-  const e=campEmbers[i];e.position.set(Math.cos(angle)*(.23+phase*.7),.52+phase*4.3,Math.sin(angle)*(.23+phase*.7));e.material.opacity=.75*(1-phase);
+  const e=campEmbers[i],d=e.userData,phase=(seconds*(.24+(i%5)*.05)+d.seed)%1;
+  const wobble=Math.sin(seconds*3.2+d.seed)*d.drift;
+  e.position.set(Math.cos(d.seed*3.8+phase*2.8)*(.18+phase*.45)+wobble*.35,.56+phase*4.9,Math.sin(d.seed*2.7+phase*2.4)*(.18+phase*.34));
+  const scale=.7+.8*(1-phase);
+  e.scale.setScalar(scale);
+  e.material.opacity=.82*(1-phase)*(phase<.16?phase/.16:1);
  }
- campGlowMat.opacity=.21+Math.sin(seconds*7)*.035;
+ for(let i=0;i<campSmoke.length;i++){
+  const s=campSmoke[i],d=s.userData,phase=(seconds*(.10+(i%3)*.016)+d.seed*.2)%1;
+  s.position.set(Math.sin(d.seed+phase*2.2)*(.12+phase*.48)+gust*2.2,.96+phase*4.2,Math.cos(d.seed*1.7+phase*1.9)*(.10+phase*.34));
+  const scale=.85+phase*2.6;
+  s.scale.setScalar(scale);
+  s.material.opacity=(1-phase)*.16*(phase<.2?phase/.2:1);
+ }
+ campCoreGlow.scale.set(2.7+Math.sin(seconds*6.2)*.18,2.95+Math.sin(seconds*7.4)*.22,1);
+ campCoreGlow.material.opacity=.64+Math.sin(seconds*9.4)*.08;
+ campGlowMat.opacity=.24+Math.sin(seconds*7.3)*.045;
 }
 updateCampfireSchedule();
 const stageLights=[];for(let i=0;i<7;i++){let x=-17+i*5.6;let l=new THREE.SpotLight(['#ff64a5','#8c84ff','#c4fb79','#68e8f3'][i%4],110,65,.50,.65);l.position.set(x,9,-19);l.target.position.set(x*.65,0,0);scene.add(l,l.target);stageLights.push(l)}
