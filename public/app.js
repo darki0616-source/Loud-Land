@@ -173,6 +173,15 @@ function ensureRhythmUI(){
  #rhythmHelp{margin-top:0;font-size:11px;line-height:1.3;font-weight:700;text-shadow:0 1px 5px #261147}
 }
 @media (min-width:901px){
+ /* Desktop only: use background, round board and JUDGE artwork. */
+ #rhythmTitle::before{display:none;background-image:none}
+ #rhythmTitle{font-size:clamp(24px,2.3vw,40px);line-height:1.2;padding:2px 0;text-indent:0}
+ #rhythmRank{background-image:none;background-color:rgba(12,14,35,.78);background-size:auto}
+ #rhythmMain{background-image:none;background-color:rgba(11,9,35,.28);isolation:isolate}
+ #rhythmMain::before{content:'';position:absolute;z-index:0;left:50%;top:52%;width:var(--rhythm-pc-board-size,640px);height:var(--rhythm-pc-board-size,640px);transform:translate(-50%,-50%);background:url('/assets/rhythm/play-area.png') center/contain no-repeat;pointer-events:none}
+ #rhythmCanvas{z-index:1}
+ #rhythmHud{z-index:2}
+ #rhythmStart{background-image:linear-gradient(135deg,#ffe36d,#ff76c8);background-color:#ffe36d;background-size:100% 100%;font-size:18px;color:#241133;box-shadow:0 14px 30px rgba(0,0,0,.28)}
  #rhythmShell{padding:18px;gap:14px}
  #rhythmTop{padding:2px 2px 0}
  #rhythmSub{font-size:12px;max-width:none}
@@ -233,6 +242,10 @@ function resizeRhythmCanvas(){
  if(!rhythmUi)return;
  const box=rhythmUi.canvas.getBoundingClientRect();
  const dpr=Math.min(2,window.devicePixelRatio||1);
+ if(window.matchMedia('(min-width:901px)').matches){
+  const boardSize=Math.max(200,Math.min(box.width,box.height)*.96);
+  rhythmUi.overlay.querySelector('#rhythmMain').style.setProperty('--rhythm-pc-board-size',boardSize+'px');
+ }
  const w=Math.max(640,Math.round(box.width*dpr));
  const h=Math.max(360,Math.round(box.height*dpr));
  if(rhythmUi.canvas.width!==w||rhythmUi.canvas.height!==h){
@@ -407,9 +420,14 @@ function drawRhythmGame(){
  ctx.clearRect(0,0,w,h);
  const bg=ctx.createLinearGradient(0,0,0,h);bg.addColorStop(0,'rgba(17,24,42,.22)');bg.addColorStop(1,'rgba(2,4,9,.08)');ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
  const cx=w*.5,cy=h*.52;
- const targetR=Math.min(w,h)*.125;
+ const desktopRhythm=window.matchMedia('(min-width:901px)').matches;
+ // On PC, the drawn timing rings line up with the supplied square board art.
+ // The desktop-only board is 96% of the smaller dimension; its center target
+ // is approximately 19% and its outer rim 45% of the board width.
+ const boardPixels=Math.min(w,h)*.96;
+ const targetR=desktopRhythm?boardPixels*.19:Math.min(w,h)*.125;
  // Preview rings start ~3.8x farther out, giving the player 2.1s to prepare.
- const outerR=Math.min(w,h)*.47;
+ const outerR=desktopRhythm?boardPixels*.45:Math.min(w,h)*.47;
  const elapsed=rhythmGame.running?performance.now()-rhythmGame.startAt:0;
  if(rhythmGame.running){
   handleRhythmMisses();
