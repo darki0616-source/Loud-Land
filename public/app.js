@@ -142,6 +142,36 @@ function ensureRhythmUI(){
 #rhythmStats .score-bump span{animation:rhythmScoreBump .36s ease-out}
 @keyframes rhythmScoreBump{0%{transform:scale(1)}45%{transform:scale(1.23);color:#ffe976}100%{transform:scale(1)}}
 #rhythmDesignNote{display:none}
+/* v155: use supplied visual assets as composed mobile UI, not generic cards. */
+@media (max-width:900px){
+ #rhythmOverlay{background-image:url('/assets/rhythm/background.png');background-position:center center;background-size:cover}
+ #rhythmShell{padding:max(5px,env(safe-area-inset-top)) 5px max(7px,env(safe-area-inset-bottom));gap:5px}
+ #rhythmTop{position:relative;display:block;height:clamp(62px,18vw,100px);flex:none;padding:0}
+ #rhythmTitle{position:absolute;inset:0 46px 0 0;width:auto;height:100%;padding:0;font-size:0;line-height:0;overflow:visible;text-indent:-10000px}
+ #rhythmTitle::before{inset:0;background-image:url('/assets/rhythm/title.png');background-size:contain;background-position:center}
+ #rhythmSub{display:none}
+ #rhythmClose{position:absolute;right:3px;top:6px;min-width:44px;padding:9px 8px;font-size:12px;background:rgba(31,17,67,.78);border:1px solid rgba(255,255,255,.22)}
+ #rhythmBody{display:flex;flex-direction:column;gap:5px;min-height:0}
+ #rhythmRank{flex:none;position:relative;padding:0;border:0;overflow:hidden;width:100%;height:auto;aspect-ratio:1080/300;min-height:0;border-radius:0;background:url('/assets/rhythm/ranking.png') center/100% 100% no-repeat;display:block}
+ #rhythmRankHeader,#rhythmRankMini,#rhythmRewardBox,#rhythmGuide{display:none}
+ #rhythmRankList{position:absolute;left:8.5%;right:8.5%;top:36%;height:33%;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:1.2%;margin:0;padding:0;list-style:none}
+ #rhythmRankList li{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;padding:0;background:transparent;border:0;text-align:center;line-height:1.15;min-width:0;overflow:hidden;text-shadow:0 1px 5px #311251}
+ #rhythmRankList li em{font-size:clamp(8px,2.1vw,12px);font-weight:900;opacity:1;color:#fff6ba}
+ #rhythmRankList li strong{font-size:clamp(8px,2vw,12px);font-weight:800;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#fff}
+ #rhythmRankList li span{font-size:clamp(8px,2.1vw,12px);font-weight:900;color:#fff3ac}
+ #rhythmMain{flex:1;min-height:0;border:0;border-radius:0;background-image:url('/assets/rhythm/play-area.png');background-repeat:no-repeat;background-position:center 54%;background-size:100% auto;background-color:transparent;overflow:hidden}
+ #rhythmStats{left:8px;right:8px;top:5px;z-index:2}
+ #rhythmStats div{padding:5px 4px;background:rgba(28,11,79,.7);border:1px solid rgba(243,166,255,.25);border-radius:12px}
+ #rhythmStats b{font-size:9px}
+ #rhythmStats span{font-size:clamp(17px,4.8vw,24px)}
+ #rhythmJudge{z-index:3;top:11%;min-height:0;width:55%;height:clamp(58px,15vw,110px);background-size:contain;font-size:clamp(20px,6vw,36px);color:#fff;text-shadow:0 1px 4px #271042,0 0 8px #fa7bff}
+ #rhythmComboFlash{top:25%;z-index:3}
+ #rhythmCenter{z-index:4;bottom:4%;width:100%}
+ #rhythmStart{width:min(78%,360px);height:clamp(52px,14vw,83px);padding:0;min-width:0;border:0;background-image:url('/assets/rhythm/start-button.png');background-position:center;background-size:100% 100%;background-repeat:no-repeat;background-color:transparent;font-size:0;color:transparent;box-shadow:none;text-shadow:none}
+ #rhythmStart:active{transform:scale(.97)}
+ #rhythmCenterButton{display:none}
+ #rhythmHelp{margin-top:0;font-size:11px;line-height:1.3;font-weight:700;text-shadow:0 1px 5px #261147}
+}
 @media (min-width:901px){
  #rhythmShell{padding:18px;gap:14px}
  #rhythmTop{padding:2px 2px 0}
@@ -185,7 +215,8 @@ function ensureRhythmUI(){
  rhythmUi.centerBtn.onclick=()=>rhythmHit();
  overlay.addEventListener('pointerdown',e=>{
   if(e.pointerType==='touch'&&e.isPrimary===false){e.preventDefault();return;}
-  if(e.target===rhythmUi.canvas){e.preventDefault();rhythmHit();}
+  if(e.target.closest('button')||e.target.closest('#rhythmRank'))return;
+  if(rhythmGame.running){e.preventDefault();rhythmHit();}
  });
  // iOS Safari may ignore the viewport's user-scalable=no during rapid taps.
  // Block double-tap zoom / multi-touch pinch only while this game screen is open.
