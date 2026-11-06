@@ -2,8 +2,6 @@ import * as THREE from 'https://esm.sh/three@0.160.1';
 import { OrbitControls } from 'https://esm.sh/three@0.160.1/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'https://esm.sh/three@0.160.1/examples/jsm/loaders/GLTFLoader.js';
 import { CSS3DRenderer, CSS3DObject } from 'https://esm.sh/three@0.160.1/examples/jsm/renderers/CSS3DRenderer.js';
-// Camera follow state is required by join even if later scene setup is interrupted.
-let cameraFollowInitialized=false;
 const $=id=>document.getElementById(id), palette=['#ff747d','#67d8d1','#f9c463','#a8a0ff','#90dd81','#ff9ce1','#72b5ff','#eeeeee','#16171d'];
 // Picnic zone layout tuned for mobile: keep the main standing/stage area
 // compact, and place the picnic blankets cleanly in the side rest zone.
@@ -38,11 +36,6 @@ function savedFestivalFlagImage(){try{const value=localStorage.getItem(FLAG_IMAG
 let currentFlagImageData=savedFestivalFlagImage();
 let currentFlagImageId='';
 
-// Keep badge metadata initialized before any asynchronous join or player-list rendering.
-const BADGE_INFO={
- bronze:['브론즈',0],silver:['실버',3600],gold:['골드',18000],
- platinum:['플래티넘',54000],diamond:['다이아',144000],crown:['왕관',360000]
-};
 // Per-tab identity survives refreshes and reconnects without linking people by IP.
 const SESSION_STORAGE_KEY='oneseason-avatar-session-v1';
 const pageId=crypto.randomUUID();
@@ -740,7 +733,7 @@ function updateSkipVoteUI(){
 async function castSkipVote(choice){const vote=state.skipVote;if(!vote||!state.id)return;try{await post('music',{id:state.id,command:'vote-cast',voteId:vote.id,choice})}catch(e){toast(e.message)}}
 function showSkipVoteResult(d){applySkipVote(null,state.skipVoteCooldownUntil);let msg=d.passed?'✅ 과반수 찬성! 요청한 곡으로 이동합니다':d.reason==='timeout'?'투표 시간이 종료되어 현재 곡을 유지합니다':'투표가 부결되어 현재 곡을 유지합니다';notice(msg)}
 setInterval(()=>{updateSkipVoteUI();updateSharedMusicButtons()},500);
-let joining=false;async function join(options={}){const auto=Boolean(options?.auto);if(editingProfile)return updateProfile();if(joining)return;joining=true;manualExit=false;try{let d=await post('join',{sessionKey,pageId,badgeIdentity,flagText:currentFlagText,flagImage:currentFlagImageData,name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender,pattern:chosenPattern,sash:chosenSash,hairStyle:chosenHairStyle,hairColor:chosenHairColor});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);currentFlagImageId=state.me?.flagImage||'';state.pose=state.me?.pose||'stand';cameraFollowInitialized=false;state.players=new Map(d.players.map(p=>[p.id,p]));renderOnlinePlayers();refreshPunkShop();$('joinModal').classList.add('hidden');$('joinError').textContent='';$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='페스티벌 참가 중';$('avatarPreview').querySelector('b').style.background=chosenColor;saveProfile(state.me);applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);if(d.crowdSurf)syncCrowdSurf(d.crowdSurf);listen();$('audioModal').classList.add('hidden');setPersonalAudio(true);showMovementGuide();if(!auto)toast('ONEseason에 오신 것을 환영합니다!')}catch(e){if(auto)$('joinModal').classList.remove('hidden');$('joinError').textContent='입장 실패: '+(e?.message||'연결을 확인해주세요');console.error('ONEseason join error:',e)}finally{joining=false}}
+let joining=false;async function join(options={}){const auto=Boolean(options?.auto);if(editingProfile)return updateProfile();if(joining)return;joining=true;manualExit=false;try{let d=await post('join',{sessionKey,pageId,badgeIdentity,flagText:currentFlagText,flagImage:currentFlagImageData,name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender,pattern:chosenPattern,sash:chosenSash,hairStyle:chosenHairStyle,hairColor:chosenHairColor});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);currentFlagImageId=state.me?.flagImage||'';state.pose=state.me?.pose||'stand';cameraFollowInitialized=false;state.players=new Map(d.players.map(p=>[p.id,p]));renderOnlinePlayers();refreshPunkShop();$('joinModal').classList.add('hidden');$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='페스티벌 참가 중';$('avatarPreview').querySelector('b').style.background=chosenColor;saveProfile(state.me);applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);if(d.crowdSurf)syncCrowdSurf(d.crowdSurf);listen();$('audioModal').classList.add('hidden');setPersonalAudio(true);showMovementGuide();if(!auto)toast('ONEseason에 오신 것을 환영합니다!')}catch(e){if(auto)$('joinModal').classList.remove('hidden');$('joinError').textContent='입장 실패: '+(e?.message||'연결을 확인해주세요');console.error('ONEseason join error:',e)}finally{joining=false}}
 $('audioYes').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(true);toast(state.music.id?'음악 재생을 허용했어요':'음악이 등록되면 바로 재생돼요')};$('audioNo').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(false);toast('내 소리를 끈 상태로 입장했어요')};// First tap must save even if the nickname field currently has keyboard focus.
 // A pointerdown listener runs BEFORE Safari's keyboard dismissal can consume
 // the subsequent click. De-duplicate that click and block duplicate requests.
@@ -872,7 +865,7 @@ function handleDuoEvent(d){
  if(d.type==='duo-end'){finishDuo(d.id);return}
 }
 setInterval(syncDuoStatus,250);
-const sustainedReactions=new Set(['peace','jump','run','headbang','buriburi','groove','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','marshmallow','putyourhandsup','nightfirework']);
+const sustainedReactions=new Set(['peace','jump','run','headbang','buriburi','groove','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','marshmallow','putyourhandsup']);
 // One shared bottom tab group: reactions / dances / chat.
 // Chat stays inside the dock instead of floating over the 3D world.
 function selectBottomMenu(menu){
@@ -905,7 +898,6 @@ function react(a,glowColor=null){
  if(a==='glowstick'&&glowColor===null){openGlowstickPicker();return;}
  if(a==='glowstick'){state.me.glowColor=glowstickColors[glowColor]?glowColor:'rainbow';state.me.glowEnabled=true;updateActionButtons();sendMove();return;}
  if(a==='beatking'&&!state.me.rhythmKing)return toast('박자왕에게만 허용된 리액션입니다.');
- if(a==='nightfirework'&&!nightFireworkAvailable())return toast('폭죽놀이는 새벽 1시부터 4시까지만 사용할 수 있어요.');
  if(a==='marshmallow'&&!campfireReactionAvailable())return toast('모닥불이 켜진 시간(20:00~03:00)에 화덕 가까이에서 사용할 수 있어요.');
  if(currentDuo())return toast('상호작용을 종료한 후 다른 동작을 사용해 주세요.');
  if(slamMotion){slamMotion=null;state.walkTarget=null}if(rockMotion){rockMotion=null;state.walkTarget=null}state.benchTarget=null;
@@ -924,7 +916,7 @@ function react(a,glowColor=null){
  if(state.action===a&&sustainedReactions.has(a)){
   state.action='idle';state.actionUntil=0;state.me.action='idle';
  }else{
-  if((a==='jump'||a==='run'||a==='buriburi'||a==='groove'||a==='windmill'||a==='skanking'||a==='airguitar'||a==='headspin'||a==='cheer'||a==='smoke'||a==='bubblegun'||a==='freestyle'||a==='beatking'||a==='marshmallow'||a==='putyourhandsup'||a==='nightfirework')&&state.pose!=='stand'){
+  if((a==='jump'||a==='run'||a==='buriburi'||a==='groove'||a==='windmill'||a==='skanking'||a==='airguitar'||a==='headspin'||a==='cheer'||a==='smoke'||a==='bubblegun'||a==='freestyle'||a==='beatking'||a==='marshmallow'||a==='putyourhandsup')&&state.pose!=='stand'){
    state.pose='stand';state.me.pose='stand';
   }
   state.action=a;state.me.action=a;if(a==='cheer')playCheer();
@@ -987,35 +979,12 @@ marshmallowButton.innerHTML='🍡 <span>마시멜로 굽기</span>';
 marshmallowButton.style.display='none';
 marshmallowButton.onclick=()=>react('marshmallow');
 $('reactionActions').append(marshmallowButton);
-// v177: Night-only synchronized handheld fireworks reaction (01:00–04:00 KST).
-const nightFireworkButton=document.createElement('button');
-nightFireworkButton.type='button';
-nightFireworkButton.dataset.action='nightfirework';
-nightFireworkButton.innerHTML='🎆 <span>폭죽놀이</span>';
-nightFireworkButton.style.display='none';
-nightFireworkButton.onclick=()=>react('nightfirework');
-$('reactionActions').append(nightFireworkButton);
-const nightFireworkKST=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Seoul',hour:'2-digit',hourCycle:'h23'});
-function nightFireworkAvailable(){
- const hour=Number(nightFireworkKST.format(new Date()));
- return hour>=1&&hour<4;
-}
-function syncNightFirework(){
- const available=nightFireworkAvailable();
- nightFireworkButton.style.display=available?'':'none';
- if(state.me&&state.action==='nightfirework'&&!available){
-  state.action='idle';state.me.action='idle';state.actionUntil=0;
-  updateActionButtons();sendMove();
- }
-}
-setInterval(syncNightFirework,5000);
-syncNightFirework();
 // v174: Arrange reaction controls in the requested display order only.
 // Keep data-action values, keyboard shortcuts and all existing onclick handlers intact.
 const reactionMenuOrder=[
  'peace','wave','clap','putyourhandsup','cheer','jump','run','sit','lie',
  'drink','smoke','snack','toastStart','headbang','bubblegun','glowstick',
- 'flagAction','beatking','nightfirework','marshmallow'
+ 'flagAction','beatking','marshmallow'
 ];
 const reactionMenu=$('reactionActions');
 for(const key of reactionMenuOrder){
@@ -1847,7 +1816,10 @@ function updatePovCamera(){
  camera.lookAt(head.x+dx*15,eyeY+dy*15,head.z+dz*15);
 }
 
-// Badge information is initialized near the module start, before any join or SSE events.
+const BADGE_INFO={
+ bronze:['브론즈',0],silver:['실버',3600],gold:['골드',18000],
+ platinum:['플래티넘',54000],diamond:['다이아',144000],crown:['왕관',360000]
+};
 
 const controls=new OrbitControls(camera,gameTouchSurface);controls.enableDamping=true;controls.dampingFactor=.07;controls.minDistance=3.2;controls.maxDistance=105;controls.maxPolarAngle=Math.PI/2.12;controls.target.set(0,1,4);controls.enablePan=false;
 // Full 360° orbit on mouse and touch. Collide the camera with the actual stage
@@ -1888,7 +1860,7 @@ function keepCameraInFrontOfStage(){
 }
 
 // Keep the local avatar in the center while preserving camera orbit and zoom.
-const cameraFocus=new THREE.Vector3();
+const cameraFocus=new THREE.Vector3();let cameraFollowInitialized=false;
 function followLocalAvatar(){
  if(!state.me)return;
  // Third-person tracking is anchored to the avatar's actual head, rather
@@ -3390,30 +3362,6 @@ function makeAvatar(p){
   glowsticks.push({group:stick,rodMat,haloMat});
  }
  parts.glowsticks=glowsticks;
- // Lightweight shared night fireworks effect: a wrist-held launcher and small
- // repeating overhead bursts. Animations are deterministic from the shared action.
- const nightLauncher=new THREE.Group();parts.nightLauncher=nightLauncher;
- parts.rightElbow.add(nightLauncher);
- nightLauncher.position.set(0,-.39,.065);
- nightLauncher.rotation.set(-Math.PI/2,0,0);
- const nightHandle=new THREE.Mesh(new THREE.CylinderGeometry(.085,.095,.57,8),
-  new THREE.MeshStandardMaterial({color:'#343b61',roughness:.55}));
- nightHandle.rotation.x=Math.PI/2;nightHandle.position.z=.28;nightLauncher.add(nightHandle);
- const nightTip=new THREE.Mesh(new THREE.CylinderGeometry(.095,.095,.14,8),
-  new THREE.MeshBasicMaterial({color:'#fff1bb'}));
- nightTip.rotation.x=Math.PI/2;nightTip.position.z=.59;nightLauncher.add(nightTip);
- nightLauncher.visible=false;
- const nightFireworkColors=['#ff547a','#ffe57b','#81edff','#b28aff','#8bffb0'];
- const nightSparkGeometry=new THREE.SphereGeometry(.065,5,4);
- const nightSparks=[];
- for(let i=0;i<36;i++){
-  const spark=new THREE.Mesh(nightSparkGeometry,
-   new THREE.MeshBasicMaterial({color:nightFireworkColors[i%nightFireworkColors.length],
-    transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending}));
-  spark.visible=false;root.add(spark);nightSparks.push(spark);
- }
- parts.nightSparks=nightSparks;
-
 
  // White festival pennant with black personalized lettering, mounted on a tall hand-held pole.
  // Model is attached to the avatar root so it follows movement but stays upright.
@@ -4098,13 +4046,6 @@ function animateAvatar(a,p,t){
   set('rightElbow',-.10-.12*Math.sin(sec*5.6+.75));
   set('upper',.035*Math.sin(sec*5.6));
  }
- if(act==='nightfirework'){
-  // Hold the launcher above the face, pointing away from the avatar.
-  set('rightShoulder',-2.18,0,.12);
-  set('rightElbow',-.22);
-  set('leftShoulder',-.54,0,-.12);
-  set('upper',-.025+.025*Math.sin(sec*3.5));
- }
  if(act==='marshmallow'){
   const roast=Math.sin(sec*2.1);
   rightHandTarget=new THREE.Vector3(.52,.23+.07*roast,.53);
@@ -4320,31 +4261,6 @@ function animateAvatar(a,p,t){
    const c=key==='rainbow'?new THREE.Color().setHSL((hue+i*.20)%1,1,.62):new THREE.Color(glowstickColors[key]);
    stick.rodMat.color.copy(c);stick.haloMat.color.copy(c);
    stick.haloMat.opacity=.20+.055*Math.sin(sec*8+i);
-  }
- }
- if(P.nightLauncher){
-  const firing=act==='nightfirework';
-  P.nightLauncher.visible=firing;
-  P.nightLauncher.rotation.x=-Math.PI/2+.07*Math.sin(sec*4);
-  if(P.nightSparks){
-   // Continuous 2.6-second loops, staggered for two independent sky bursts.
-   const loop=2.6;
-   for(let i=0;i<P.nightSparks.length;i++){
-    const dot=P.nightSparks[i];
-    if(!firing){dot.visible=false;continue;}
-    const burst=Math.floor(i/18),j=i%18;
-    const phase=((sec+burst*1.3)%loop)/loop;
-    if(phase<.25){dot.visible=false;continue;}
-    const life=(phase-.25)/.75;
-    const a=j*2.399963229728653+burst*.8;
-    const rise=3.2+(burst*.8);
-    const spread=(life**.62)*(1.6+burst*.27);
-    const vertical=Math.sin(a*1.17)*spread*.65-life*life*1.2;
-    dot.position.set(.5+Math.cos(a)*spread,2.45+rise+vertical, .5+Math.sin(a)*spread);
-    dot.scale.setScalar(.55+(1-life)*.75);
-    dot.material.opacity=Math.max(0,Math.sin(Math.PI*life)*.92);
-    dot.visible=true;
-   }
   }
  }
  if(P.marshmallowStick){
@@ -4949,11 +4865,5 @@ document.getElementById('movementGuideDismiss')?.addEventListener('click',()=>do
 // Auto-enter with saved character settings; a failed request leaves the editor open.
 if(savedProfile && typeof savedProfile.name==='string' && savedProfile.name.trim()){
   document.getElementById('joinModal')?.classList.add('hidden');
-  // Auto-enter only after every top-level module declaration and the 3D scene are ready.
-  const autoEnterAfterInit=()=>{
-   join({auto:true}).then(()=>{if(!state.id)document.getElementById('joinModal')?.classList.remove('hidden')}).catch(()=>{document.getElementById('joinModal')?.classList.remove('hidden')});
-  };
-  if(document.readyState==='loading'){
-   window.addEventListener('DOMContentLoaded',()=>requestAnimationFrame(autoEnterAfterInit),{once:true});
-  }else requestAnimationFrame(autoEnterAfterInit);
+  join({auto:true}).then(()=>{if(!state.id)document.getElementById('joinModal')?.classList.remove('hidden')}).catch(()=>{document.getElementById('joinModal')?.classList.remove('hidden')});
 }
