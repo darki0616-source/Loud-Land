@@ -1175,12 +1175,12 @@ function surfPoseAt(event,playerId,now=slamNow()){
 }
 function onRockPlayGo(event){
  // Every client uses the same server timestamp for clink -> raise -> sip -> lower.
- if(event.kind==='toast')toastSequence={startAt:event.startAt,duration:event.duration,participants:[...(event.participants||[])]};
+ if(event.kind==='toast')toastSequence={startAt:event.startAt,duration:event.duration,campfireToast:!!event.campfireToast,participants:[...(event.participants||[])]};
  if(event.kind==='surf')syncCrowdSurf(event);
  const participants=Array.isArray(event.participants)?event.participants:[];
  const index=participants.indexOf(state.id);
  if(index!==-1&&state.me){
-   rockMotion={id:event.id,kind:event.kind,x:event.x,y:event.y,startAt:event.startAt,duration:event.duration,index,count:participants.length,riderId:event.riderId||participants[0]};
+   rockMotion={id:event.id,kind:event.kind,x:event.x,y:event.y,startAt:event.startAt,duration:event.duration,index,count:participants.length,campfireToast:!!event.campfireToast,riderId:event.riderId||participants[0]};
    slamMotion=null;state.walkTarget=null;state.benchTarget=null;
    state.pose='stand';state.me.pose='stand';state.action=event.kind==='surf'?(state.id===event.riderId?'surf-rider':'surf-support'):event.kind==='mosh'?'mosh-charge':event.kind==='circle'?'circle-run':event.kind==='row'?'row-paddle':event.kind==='toast'?'toast-clink':'train-run';state.me.action=state.action;
    // Every moving group action now gathers smoothly, instead of teleporting
@@ -1191,7 +1191,7 @@ function onRockPlayGo(event){
  }
  rockPlay=null;refreshRockUI();refreshSlamUI();
 }
-$('toastStart').onclick=async()=>{if(!state.id||!state.me)return toast('먼저 입장해 주세요');try{const d=await post('rockplay',{id:state.id,command:'start',kind:'toast',x:Math.max(25,Math.min(1375,state.me.x)),y:Math.max(255,Math.min(875,state.me.y))});applyRockPlay(d.event,d.rockCooldowns,d.rockRunningUntil);toast('🥂 짠하기! 5초 동안 참가자를 모집합니다')}catch(e){toast(e.message)}};
+$('toastStart').onclick=async()=>{if(!state.id||!state.me)return toast('먼저 입장해 주세요');try{const d=await post('rockplay',{id:state.id,command:'start',kind:'toast',x:Math.max(25,Math.min(1375,state.me.x)),y:Math.max(255,Math.min(875,state.me.y))});applyRockPlay(d.event,d.rockCooldowns,d.rockRunningUntil);toast(d.event?.campfireToast?'🔥 모닥불 짠하기! 5초 동안 모집한 후 둘러서서 건배해요':'🥂 짠하기! 5초 동안 참가자를 모집합니다')}catch(e){toast(e.message)}};
 for(const [button,kind] of [[circleButton,'circle'],[trainButton,'train'],[moshButton,'mosh'],[rowButton,'row'],[surfButton,'surf']]){
  button.onclick=()=>{
    if(!state.id||rockPlay||slam||rockRunningUntil>slamNow()||rockCooldowns[kind]>slamNow())return;
@@ -1252,16 +1252,14 @@ function rockPathAt(m,elapsed){
  const elapsedFraction=Math.min(1,Math.max(0,elapsed/m.duration));
  if(m.kind==='row'){return groupWorldPathPoint(m,{x:m.x+(m.index%2===0?-21:21),y:m.y+Math.floor(m.index/2)*28-22,dx:0,dy:1})}
  if(m.kind==='toast'){
-  // Keep neighbouring chibi heads apart even with a larger crowd. v133 used
-  // radius 22 server units (~1.28 world units), causing character overlap.
-  // Grow the circle for larger groups so adjacent people retain >=42 units.
   const count=Math.max(1,m.count);
   const angle=2*Math.PI*m.index/count;
-  const radius=Math.max(42,21/Math.sin(Math.PI/Math.max(2,count)));
-  return groupWorldPathPoint(m,{
-   x:m.x+Math.sin(angle)*radius,y:m.y+Math.cos(angle)*radius,
-   dx:-Math.sin(angle),dy:-Math.cos(angle)
-  });
+  // Special campfire cheers: everyone surrounds the actual fire, never its organiser.
+  // Radius >= 4.9 world units leaves the stone ring and nearby cushions clear.
+  const radius=m.campfireToast?Math.max(85,25/Math.sin(Math.PI/Math.max(2,count))):Math.max(42,21/Math.sin(Math.PI/Math.max(2,count)));
+  const point={x:m.x+Math.sin(angle)*radius,y:m.y+Math.cos(angle)*radius,
+   dx:-Math.sin(angle),dy:-Math.cos(angle)};
+  return m.campfireToast?point:groupWorldPathPoint(m,point);
  }
  if(m.kind==='circle'){
    const angle=elapsedFraction*Math.PI*10 + m.index*2*Math.PI/Math.max(1,m.count);
@@ -3456,7 +3454,7 @@ function animateAvatar(a,p,t){
  // Choreography is determined by the server start time, not by the local
  // animation clock. Observers and participants see the same drinking phase.
  const toastElapsed=act==='toast-clink'&&toastSequence?.participants.includes(q.id)
-  ?Math.max(0,Math.min(toastSequence.duration/1000,(slamNow()-toastSequence.startAt)/1000))
+  ?Math.max(0,Math.min(6,(slamNow()-toastSequence.startAt)/1000-(toastSequence.campfireToast?3:0)))
   :0;
  const toastSmooth=(a,b)=>{const u=Math.max(0,Math.min(1,(toastElapsed-a)/(b-a)));return u*u*(3-2*u)};
  const toastDrink=toastSmooth(3.25,4.0)*(1-toastSmooth(4.75,5.5));
@@ -4381,7 +4379,7 @@ function tick(t){
      post('rockplay',{id:state.id,command:'impact',eventId:m.id,phase:2,x:m.x,y:m.y}).catch(()=>{});
     }
    }
-   if(!m.phase&&elapsed>=m.duration){if(m.kind==='toast'){m.phase='done';rockMotion=null;state.action='idle';state.me.action='idle';state.actionUntil=0;sendMove()}else beginRockCelebration(m)}
+   if(!m.phase&&elapsed>=m.duration){if(m.kind==='toast'){m.phase='done';rockMotion=null;state.action='idle';state.me.action='idle';state.actionUntil=0;if(m.campfireToast){state.pose='sit';state.me.pose='sit';state.me.facing=Math.atan2(m.x-state.me.x,m.y-state.me.y);updateActionButtons()}sendMove()}else beginRockCelebration(m)}
    if(m.phase==='done'){
     // Group cheers has finished; do not restart this turn.
    }else if(m.phase==='scatter'){
@@ -4420,7 +4418,7 @@ function tick(t){
     const p=m.kind==='mosh'?moshPathAt(m,elapsed):rockPathAt(m,elapsed);
     // Moshing launches immediately at full speed; other games retain their
     // 1.4-second group gathering animation.
-    const gather=Math.min(1,elapsed/1400);
+    const gather=Math.min(1,elapsed/(m.campfireToast?3000:1400));
     const from=m.gatherFrom||p;
     const smooth=m.kind==='mosh'?p:blendGroupWorld(from,p,gather);
     state.me.x=clampServerX(smooth.x);
@@ -4428,7 +4426,7 @@ function tick(t){
     // Crowd-surf supporters face the middle and never rotate onto the train path.
     state.me.facing=m.kind==='surf'?(m.isSurfRider?0:Math.atan2(m.x-p.x,m.y-p.y)):
      m.kind==='toast'?Math.atan2(m.x-p.x,m.y-p.y):m.kind==='row'?0:Math.atan2(p.dx,p.dy);
-    state.me.action=m.kind==='surf'?(state.id===m.riderId?'surf-rider':'surf-support'):m.kind==='mosh'?'mosh-charge':m.kind==='circle'?'circle-run':m.kind==='row'?'row-paddle':m.kind==='toast'?'toast-clink':'train-run';state.action=state.me.action;
+    state.me.action=m.kind==='surf'?(state.id===m.riderId?'surf-rider':'surf-support'):m.kind==='mosh'?'mosh-charge':m.kind==='circle'?'circle-run':m.kind==='row'?'row-paddle':m.kind==='toast'?(m.campfireToast&&elapsed<3000?'walk':'toast-clink'):'train-run';state.action=state.me.action;
     state.moving=true;
     if(t-state.lastSent>70){state.lastSent=t;sendMove()}
    }
