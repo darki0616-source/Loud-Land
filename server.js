@@ -67,6 +67,18 @@ function voterLeaves(id){if(!skipVote||!skipVote.eligible.has(id))return;skipVot
 
 const DATA_DIR=process.env.DATA_DIR||path.join(__dirname,'data');
 const STATE_PATH=path.join(DATA_DIR,'festival-state.json');
+const RHYTHM_BOOTH={x:1117,y:500,radius:175};
+function kstDate(ts=Date.now()){const d=new Date(ts+9*60*60*1000);return d.toISOString().slice(0,10)}
+let rhythmDay=kstDate();
+const rhythmScores=new Map();
+let rhythmReward=null;
+function rhythmRows(){return [...rhythmScores.entries()].map(([identity,row])=>({identity,name:clean(row.name,18)||'ROCKER',score:Math.max(0,Math.floor(Number(row.score)||0)),updatedAt:Number(row.updatedAt)||0})).sort((a,b)=>b.score-a.score||a.updatedAt-b.updatedAt||a.name.localeCompare(b.name,'ko-KR')).slice(0,100)}
+function playerIsRhythmKing(p){return Boolean(p&&p.badgeIdentity&&rhythmReward&&rhythmReward.date===kstDate()&&rhythmReward.identity===p.badgeIdentity)}
+function syncPlayerRhythmKing(p){if(!p)return false;const on=playerIsRhythmKing(p);if(Boolean(p.rhythmKing)===on)return false;p.rhythmKing=on;return true}
+function publicRhythmState(){maybeRotateRhythmDay();const rows=rhythmRows();return {date:rhythmDay,leaderboard:rows.slice(0,5).map((row,i)=>({rank:i+1,name:row.name,score:row.score})),reward:rhythmReward&&rhythmReward.date===kstDate()?{title:'박자왕',name:rhythmReward.name,score:rhythmReward.score,sourceDate:rhythmReward.sourceDate,date:rhythmReward.date}:null,booth:RHYTHM_BOOTH};}
+function broadcastRhythmState(){broadcast({type:'rhythm-state',rhythm:publicRhythmState()})}
+function maybeRotateRhythmDay(){const today=kstDate();if(rhythmDay===today)return false;const rows=rhythmRows();const winner=rows[0]||null;rhythmReward=winner?{date:today,identity:winner.identity,name:winner.name,score:winner.score,sourceDate:rhythmDay}:null;rhythmDay=today;rhythmScores.clear();let changed=false;for(const person of players.values())if(syncPlayerRhythmKing(person)){broadcast({type:'profile',player:person});changed=true;}scheduleSave();broadcastRhythmState();return changed;}
+function restoreRhythmKingState(){for(const person of players.values())if(syncPlayerRhythmKing(person))broadcast({type:'profile',player:person});}
 // Total online time per stable browser identity, persisted alongside the playlist.
 const badgeStats=new Map();
 // No account required: coins belong to the existing persistent badge identity.
@@ -145,7 +157,7 @@ const SB_KEY=process.env.SUPABASE_SECRET_KEY||'';
 const useSupabase=Boolean(SB_URL&&SB_KEY);
 let restored=false;
 let saveChain=Promise.resolve();
-function stateData(){return {version:5,music,queue:[...queue],history:[...history],nextTrackToken,customMd:Object.fromEntries(customMd),shopStats:Object.fromEntries([...shopStats].map(([k,v])=>[k,{spent:0,refunded:v.refunded||0,owned:v.owned,equipped:v.equipped}])),badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),savedAt:Date.now()}}
+function stateData(){return {version:6,music,queue:[...queue],history:[...history],nextTrackToken,customMd:Object.fromEntries(customMd),shopStats:Object.fromEntries([...shopStats].map(([k,v])=>[k,{spent:0,refunded:v.refunded||0,owned:v.owned,equipped:v.equipped}])),badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),rhythm:{day:rhythmDay,reward:rhythmReward,scores:Object.fromEntries([...rhythmScores].map(([k,v])=>[k,{name:v.name,score:Math.max(0,Math.floor(Number(v.score)||0)),updatedAt:Number(v.updatedAt)||0}]))},savedAt:Date.now()}}
 function applySaved(d){
  if(!d||typeof d!=='object')return;
  if(d.customMd&&typeof d.customMd==='object')for(const [id,r] of Object.entries(d.customMd).slice(0,40)){
@@ -161,6 +173,21 @@ function applySaved(d){
  }
  if(d.badgeStats&&typeof d.badgeStats==='object')for(const [k,v] of Object.entries(d.badgeStats).slice(0,30000)){
   if(/^[a-zA-Z0-9_-]{20,100}$/.test(k)&&Number.isFinite(v)&&v>=0)badgeStats.set(k,{seconds:Math.min(v,315360000)});
+ }
+ if(d.rhythm&&typeof d.rhythm==='object'){
+  rhythmDay=typeof d.rhythm.day==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(d.rhythm.day)?d.rhythm.day:kstDate();
+  rhythmReward=d.rhythm.reward&&typeof d.rhythm.reward==='object'&&typeof d.rhythm.reward.identity==='string'?{
+   date:typeof d.rhythm.reward.date==='string'?d.rhythm.reward.date:kstDate(),
+   identity:d.rhythm.reward.identity,
+   name:clean(d.rhythm.reward.name,18)||'ROCKER',
+   score:Math.max(0,Math.floor(Number(d.rhythm.reward.score)||0)),
+   sourceDate:typeof d.rhythm.reward.sourceDate==='string'?d.rhythm.reward.sourceDate:rhythmDay
+  }:null;
+  rhythmScores.clear();
+  if(d.rhythm.scores&&typeof d.rhythm.scores==='object')for(const [identity,row] of Object.entries(d.rhythm.scores).slice(0,50000)){
+   if(!/^[a-zA-Z0-9_-]{20,100}$/.test(identity)||!row||typeof row!=='object')continue;
+   rhythmScores.set(identity,{name:clean(row.name,18)||'ROCKER',score:Math.max(0,Math.floor(Number(row.score)||0)),updatedAt:Number(row.updatedAt)||0});
+  }
  }
  queue.length=0;history.length=0;
  if(Array.isArray(d.history))history.push(...d.history.filter(x=>x&&/^[\w-]{11}$/.test(x.id||'')).slice(-50));
@@ -187,6 +214,7 @@ async function restorePlaylist(){
   try{applySaved(JSON.parse(fs.readFileSync(STATE_PATH,'utf8')));console.log('Local playlist restored (non-durable)')}catch(err){if(err.code!=='ENOENT')console.warn('Local restore failed:',err.message)}
  }
  restored=true;
+ maybeRotateRhythmDay();
  // One-time v114 migration: legacy spent points were converted into refunded credits.
  // Persist the zero-spend records immediately so restarts never re-deduct them.
  if([...shopStats.values()].some(r=>r.refunded>0))scheduleSave();
@@ -248,7 +276,7 @@ function endDuo(duo){if(!duo||!activeDuos.has(duo.id))return;activeDuos.delete(d
 function clearDuosFor(id){for(const duo of [...activeDuos.values()])if(duo.a===id||duo.b===id)endDuo(duo);for(const [inviteId,invite] of duoInvites)if(invite.from===id||invite.to===id){duoInvites.delete(inviteId);broadcast({type:'duo-invite-ended',id:inviteId,to:invite.to})}}
 function duoDistance(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
 setInterval(()=>{const now=Date.now();for(const duo of [...activeDuos.values()])if(duo.endAt<=now)endDuo(duo);for(const [key,invite] of duoInvites)if(invite.expiresAt<=now){duoInvites.delete(key);broadcast({type:'duo-invite-ended',id:key,to:invite.to})}},700).unref();
-const snapshot=()=>({type:'snapshot',interactions:[...activeDuos.values()].filter(x=>x.endAt>Date.now()),players:[...players.values()],chat:chatHistory,...musicState(),skipVote:publicSkipVote(),skipVoteCooldownUntil,slam:publicSlam(),slamCooldownUntil,rockPlay:publicRock(),crowdSurf:activeSurfRide&&activeSurfRide.startAt+activeSurfRide.duration>Date.now()?activeSurfRide:null,rockCooldowns:{...rockCooldowns},rockRunningUntil,count:players.size});
+const snapshot=()=>({type:'snapshot',interactions:[...activeDuos.values()].filter(x=>x.endAt>Date.now()),players:[...players.values()],chat:chatHistory,...musicState(),skipVote:publicSkipVote(),skipVoteCooldownUntil,slam:publicSlam(),slamCooldownUntil,rockPlay:publicRock(),crowdSurf:activeSurfRide&&activeSurfRide.startAt+activeSurfRide.duration>Date.now()?activeSurfRide:null,rockCooldowns:{...rockCooldowns},rockRunningUntil,rhythm:publicRhythmState(),count:players.size});
 const clamp=(n,min,max)=>Math.min(max,Math.max(min,Number(n)||0));
 const SERVER_X_MIN=20,SERVER_X_MAX=1380,SERVER_Y_MIN=60,SERVER_Y_MAX=1100;
 function cleanup(){const now=Date.now();for(const [id,p] of players)if(now-p.seen>180000){settleBadge(p,Math.min(now,p.seen+45000));settleBadge(p);clearDuosFor(id);players.delete(id);forgetSession(id);voterLeaves(id);if(activeSlam?.participants.delete(id))slamUpdate();rockMemberLeaves(id);pauseForEmpty();const r=clients.get(id);if(r){r.end();clients.delete(id)}broadcast({type:'leave',id,count:players.size})}}
@@ -262,6 +290,7 @@ setInterval(()=>{
  for(const p of players.values())if(p.badgeIdentity&&now-p.seen<=45000)settleBadge(p,now);
  if(changed)console.log('Visitor badge rank updated');
 },60000).unref();
+setInterval(()=>{if(restored)maybeRotateRhythmDay()},30000).unref();
 
 function videoId(input){const v=String(input||'').trim();if(/^[\w-]{11}$/.test(v))return v;try{const u=new URL(v);const host=u.hostname.replace(/^www\./,'');if(host==='youtu.be')return /^[\w-]{11}$/.test(u.pathname.slice(1))?u.pathname.slice(1):null;if(['youtube.com','m.youtube.com','music.youtube.com','youtube-nocookie.com'].includes(host)){const id=u.searchParams.get('v')||u.pathname.match(/\/(?:embed|shorts|live)\/([\w-]{11})/)?.[1];return /^[\w-]{11}$/.test(id||'')?id:null}}catch{}return null}
 // Read the actual public YouTube title server-side; never trust a user-submitted title.
@@ -392,14 +421,17 @@ const server=http.createServer(async(req,res)=>{
           const existingId=sessionPlayers.get(sessionKey);
           const existing=players.get(existingId);
           if(existing){
+            maybeRotateRhythmDay();
             existing.seen=Date.now();
+            syncPlayerRhythmKing(existing);
             if(pageId)pageOwners.set(existingId,pageId);
             return json(res,200,{id:existingId,reused:true,...snapshot()});
           }
           if(existingId)sessionPlayers.delete(sessionKey);
         }
-        const id=crypto.randomUUID(),p={id,badgeSince:Date.now(),badgeTier:'bronze',badgeSeconds:0,name:clean(d.name,18)||'ROCKER',flagText:cleanFlag(d.flagText),flagImage:d.flagImage?storeFlagImage(d.flagImage)||'':'',color:colors.includes(d.color)?d.color:colors[0],...apparel(d),gender:d.gender==='female'?'female':'male',x:clamp(190+Math.random()*880,SERVER_X_MIN,SERVER_X_MAX),y:clamp(390+Math.random()*420,SERVER_Y_MIN,SERVER_Y_MAX),facing:0,action:'idle',pose:'stand',seen:Date.now()};
-        Object.defineProperty(p,'badgeIdentity',{value:badgeIdentity,writable:true,enumerable:false});updateBadge(p);setShopAppearance(p);players.set(id,p);
+        maybeRotateRhythmDay();
+        const id=crypto.randomUUID(),p={id,badgeSince:Date.now(),badgeTier:'bronze',badgeSeconds:0,name:clean(d.name,18)||'ROCKER',flagText:cleanFlag(d.flagText),flagImage:d.flagImage?storeFlagImage(d.flagImage)||'':'',color:colors.includes(d.color)?d.color:colors[0],...apparel(d),gender:d.gender==='female'?'female':'male',x:clamp(190+Math.random()*880,SERVER_X_MIN,SERVER_X_MAX),y:clamp(390+Math.random()*420,SERVER_Y_MIN,SERVER_Y_MAX),facing:0,action:'idle',pose:'stand',seen:Date.now(),rhythmKing:false};
+        Object.defineProperty(p,'badgeIdentity',{value:badgeIdentity,writable:true,enumerable:false});updateBadge(p);syncPlayerRhythmKing(p);setShopAppearance(p);players.set(id,p);
         if(sessionKey){sessionPlayers.set(sessionKey,id);playerSessions.set(id,sessionKey)}
         if(pageId)pageOwners.set(id,pageId);
         resumeForFirst();broadcast({type:'join',player:p,count:players.size});return json(res,200,{id,reused:false,...snapshot()});
@@ -433,7 +465,7 @@ const server=http.createServer(async(req,res)=>{
         broadcast({type:'flag',id:p.id,flagText:p.flagText,flagImage:p.flagImage});
         return json(res,200,{ok:true,flagText:p.flagText,flagImage:p.flagImage});
       }
-      if(url.pathname==='/api/profile'){p.name=clean(d.name,18)||'ROCKER';p.color=colors.includes(d.color)?d.color:p.color;p.gender=d.gender==='female'?'female':'male';Object.assign(p,apparel(d,p));broadcast({type:'profile',player:p});return json(res,200,{ok:true,player:p})}
+      if(url.pathname==='/api/profile'){p.name=clean(d.name,18)||'ROCKER';p.color=colors.includes(d.color)?d.color:p.color;p.gender=d.gender==='female'?'female':'male';Object.assign(p,apparel(d,p));if(p.badgeIdentity&&rhythmScores.has(p.badgeIdentity)){const row=rhythmScores.get(p.badgeIdentity);row.name=p.name;rhythmScores.set(p.badgeIdentity,row);broadcastRhythmState();scheduleSave();}syncPlayerRhythmKing(p);broadcast({type:'profile',player:p});return json(res,200,{ok:true,player:p})}
       if(url.pathname==='/api/duo'){
         const command=clean(d.command,20),now=Date.now();
         if(command==='invite'){
@@ -632,6 +664,24 @@ const server=http.createServer(async(req,res)=>{
         }
         else return json(res,400,{error:'Invalid command'});
         return json(res,200,{ok:true,...musicState()});
+      }
+      if(url.pathname==='/api/rhythm'){
+        maybeRotateRhythmDay();
+        const command=clean(d.command,20);
+        if(command==='state')return json(res,200,{rhythm:publicRhythmState()});
+        if(command==='submit'){
+          if(Math.hypot((p.x||0)-RHYTHM_BOOTH.x,(p.y||0)-RHYTHM_BOOTH.y)>RHYTHM_BOOTH.radius)return json(res,403,{error:'게임부스 근처에서만 플레이할 수 있어요.'});
+          if(!p.badgeIdentity)return json(res,400,{error:'브라우저 저장소를 허용해야 랭킹을 기록할 수 있어요.'});
+          const score=Math.max(0,Math.min(999999,Math.floor(Number(d.score)||0)));
+          const previous=rhythmScores.get(p.badgeIdentity);
+          if(!previous||score>previous.score){
+            rhythmScores.set(p.badgeIdentity,{name:p.name,score,updatedAt:Date.now()});
+            scheduleSave();broadcastRhythmState();
+          }
+          const best=rhythmScores.get(p.badgeIdentity)||{score:score};
+          return json(res,200,{ok:true,best:best.score,rhythm:publicRhythmState()});
+        }
+        return json(res,400,{error:'지원하지 않는 박자게임 명령입니다.'});
       }
       if(url.pathname==='/api/leave'){
         // A late pagehide beacon from a previous page must not kick the newer page.
