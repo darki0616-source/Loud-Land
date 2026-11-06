@@ -453,7 +453,7 @@ function handleDuoEvent(d){
  if(d.type==='duo-end'){finishDuo(d.id);return}
 }
 setInterval(syncDuoStatus,250);
-const sustainedReactions=new Set(['peace','jump','run','headbang','buriburi','groove','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun']);
+const sustainedReactions=new Set(['peace','jump','run','headbang','buriburi','groove','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle']);
 // One shared bottom tab group: reactions / dances / chat.
 // Chat stays inside the dock instead of floating over the 3D world.
 function selectBottomMenu(menu){
@@ -500,7 +500,7 @@ function react(a){
  if(state.action===a&&sustainedReactions.has(a)){
   state.action='idle';state.actionUntil=0;state.me.action='idle';
  }else{
-  if((a==='jump'||a==='run'||a==='buriburi'||a==='groove'||a==='windmill'||a==='skanking'||a==='airguitar'||a==='headspin'||a==='cheer'||a==='smoke'||a==='bubblegun')&&state.pose!=='stand'){
+  if((a==='jump'||a==='run'||a==='buriburi'||a==='groove'||a==='windmill'||a==='skanking'||a==='airguitar'||a==='headspin'||a==='cheer'||a==='smoke'||a==='bubblegun'||a==='freestyle')&&state.pose!=='stand'){
    state.pose='stand';state.me.pose='stand';
   }
   state.action=a;state.me.action=a;if(a==='cheer')playCheer();
@@ -597,7 +597,7 @@ document.addEventListener('keydown',e=>{
  if(!$('joinModal').classList.contains('hidden'))return;
  e.preventDefault();state.keys.delete('enter');selectBottomMenu('chat');$('chatInput').focus();
 },true);
-document.addEventListener('keydown',e=>{if(e.target instanceof HTMLInputElement||e.target instanceof HTMLTextAreaElement||e.target?.isContentEditable)return;let k=e.key.toLowerCase();if(k.startsWith('arrow')||k===' ')e.preventDefault();state.keys.add(k);let acts={'1':'peace','2':'jump','3':'run','4':'wave','5':'clap','6':'sit','7':'lie','8':'drink','9':'snack','0':'headbang','b':'buriburi','g':'groove','v':'windmill','k':'skanking','a':'airguitar','n':'headspin','h':'cheer','c':'smoke','u':'bubblegun'};if(acts[k]&&!e.repeat)react(acts[k])});document.addEventListener('keyup',e=>state.keys.delete(e.key.toLowerCase()));window.addEventListener('blur',()=>state.keys.clear());
+document.addEventListener('keydown',e=>{if(e.target instanceof HTMLInputElement||e.target instanceof HTMLTextAreaElement||e.target?.isContentEditable)return;let k=e.key.toLowerCase();if(k.startsWith('arrow')||k===' ')e.preventDefault();state.keys.add(k);let acts={'1':'peace','2':'jump','3':'run','4':'wave','5':'clap','6':'sit','7':'lie','8':'drink','9':'snack','0':'headbang','b':'buriburi','g':'groove','v':'windmill','k':'skanking','a':'airguitar','n':'headspin','h':'cheer','c':'smoke','u':'bubblegun','f':'freestyle'};if(acts[k]&&!e.repeat)react(acts[k])});document.addEventListener('keyup',e=>state.keys.delete(e.key.toLowerCase()));window.addEventListener('blur',()=>state.keys.clear());
 // CC0 crowd cheering by SFXMint; play only for listeners who enabled audio.
 // The URL is hotlink-permitted by the creator (https://sfxmint.com/sounds/crowd-cheer).
 const cheerAudioUrl='https://sfxmint.com/dl/crowd-cheer-44.mp3';
@@ -2967,6 +2967,46 @@ function animateAvatar(a,p,t){
   set('leftElbow',-.42-.10*side);
   set('rightElbow',-.42+.10*side);
  }
+ if(act==='freestyle'){
+  // Video-based festival freestyle, approximated with a looping 12-second
+  // sequence of lateral weight shifts, loose arm sweeps, knee bends, and
+  // occasional single-leg lifts. All joint poses are blended continuously.
+  // Each row: torso side, torso yaw, torso pitch, left/right arm pitch,
+  // left/right arm spread, left/right hip lift, left/right knee bend.
+  const frames=[
+   [ .22,-.12, .10,-.72,-1.10,-.40, .72,-.12, .05,.14,.17],
+   [-.18, .20,-.04,-.32,-.55,-.86, .38, .10,-.08,.22,.14],
+   [ .31,-.15, .18,-.82,-.12,-.12,1.28,-.05,-.64,.10,.30],
+   [-.27, .26, .05,-.22,-1.02,-1.24, .30,-.70,.06,.18,.15],
+   [ .14,-.20, .13,-1.05,-.25,-.55, .94, .12,-.08,.26,.23],
+   [-.12, .11,-.08,-.28,-.68,-.80, .46,-.05, .08,.30,.19],
+   [ .27,-.15, .12,-1.13,-.18,-.32, .89,-.10,-.22,.22,.25],
+   [-.24, .20, .21,-.30,-1.25,-.58, .85,-.05,-.08,.34,.31],
+   [ .24,-.20, .12,-1.18,-.75,-.32, .64,-.04,-.14,.26,.35],
+   [-.30, .14, .26,-.65,-.30,-1.05,1.20, .08,-.08,.42,.33],
+   [ .16,-.10,-.07,-2.02,-.18,-.50,1.07,-.07,-.18,.20,.26],
+   [-.15, .12, .12,-.28,-1.13,-.67, .77,-.12, .03,.34,.20],
+   [ .22,-.16,.05,-.82,-.60,-.35,.80,-.04,-.20,.20,.25],
+   [-.11, .10,.11,-.50,-.78,-.65,.65,-.18, .03,.21,.20]
+  ];
+  const progress=((sec*1.14)%frames.length+frames.length)%frames.length;
+  const index=Math.floor(progress),phase=progress-index;
+  const smooth=phase*phase*(3-2*phase);
+  const A=frames[index],B=frames[(index+1)%frames.length];
+  const v=i=>A[i]+(B[i]-A[i])*smooth;
+  const pulse=Math.sin(sec*7.15),beat=Math.sin(sec*3.55);
+  set('upper',v(2),v(1),v(0));
+  set('neck',-.045-.10*v(2),-.32*v(1),-.34*v(0));
+  set('leftShoulder',v(3),.13*Math.sin(sec*2.2),v(5));
+  set('rightShoulder',v(4),-.12*Math.sin(sec*2.2),v(6));
+  set('leftElbow',-.42-.16*Math.max(0,beat));
+  set('rightElbow',-.44-.14*Math.max(0,-beat));
+  set('leftHip',v(7)-.12*Math.max(0,beat),0,-.13*v(0));
+  set('rightHip',v(8)-.12*Math.max(0,-beat),0,-.13*v(0));
+  set('leftKnee',v(9)+.12*Math.max(0,beat));
+  set('rightKnee',v(10)+.12*Math.max(0,-beat));
+  height=-.045+Math.abs(pulse)*.075;
+ }
  if(act==='windmill'){
   // One-handed B-boy freeze: tilted inversion, planted left arm, right arm
   // stretched out to the side, scissored legs (one straight, one bent).
@@ -3688,7 +3728,7 @@ function tick(t){
    }
   }
   state.moving=!!(dx||dy);
-  if(state.moving && (state.action==='buriburi'||state.action==='groove'||state.action==='windmill'||state.action==='airguitar'||state.action==='headspin'||state.action==='cheer'||state.action==='smoke') && !slamMotion && !rockMotion){
+  if(state.moving && (state.action==='buriburi'||state.action==='groove'||state.action==='windmill'||state.action==='airguitar'||state.action==='headspin'||state.action==='cheer'||state.action==='smoke'||state.action==='freestyle') && !slamMotion && !rockMotion){
    state.action='idle';state.me.action='walk';state.actionUntil=0;updateActionButtons();
   }
   if(state.moving){
