@@ -2968,11 +2968,9 @@ function animateAvatar(a,p,t){
   set('rightElbow',-.42+.10*side);
  }
  if(act==='freestyle'){
-  // Video-based festival freestyle, approximated with a looping 12-second
-  // sequence of lateral weight shifts, loose arm sweeps, knee bends, and
-  // occasional single-leg lifts. All joint poses are blended continuously.
-  // Each row: torso side, torso yaw, torso pitch, left/right arm pitch,
-  // left/right arm spread, left/right hip lift, left/right knee bend.
+  // v147: larger, more expressive video-inspired freestyle and a complete
+  // 360-degree on-the-spot turn halfway through every seamless 12.28s loop.
+  // All motion is calculated from sec so local/remote avatars animate alike.
   const frames=[
    [ .22,-.12, .10,-.72,-1.10,-.40, .72,-.12, .05,.14,.17],
    [-.18, .20,-.04,-.32,-.55,-.86, .38, .10,-.08,.22,.14],
@@ -2987,26 +2985,35 @@ function animateAvatar(a,p,t){
    [ .16,-.10,-.07,-2.02,-.18,-.50,1.07,-.07,-.18,.20,.26],
    [-.15, .12, .12,-.28,-1.13,-.67, .77,-.12, .03,.34,.20],
    [ .22,-.16,.05,-.82,-.60,-.35,.80,-.04,-.20,.20,.25],
-   [-.11, .10,.11,-.50,-.78,-.65,.65,-.18, .03,.21,.20]
+   [-.11, .10,.11,-.50,-.78,-.65,.65,-.18,.03,.21,.20]
   ];
   const progress=((sec*1.14)%frames.length+frames.length)%frames.length;
   const index=Math.floor(progress),phase=progress-index;
   const smooth=phase*phase*(3-2*phase);
   const A=frames[index],B=frames[(index+1)%frames.length];
   const v=i=>A[i]+(B[i]-A[i])*smooth;
-  const pulse=Math.sin(sec*7.15),beat=Math.sin(sec*3.55);
-  set('upper',v(2),v(1),v(0));
-  set('neck',-.045-.10*v(2),-.32*v(1),-.34*v(0));
-  set('leftShoulder',v(3),.13*Math.sin(sec*2.2),v(5));
-  set('rightShoulder',v(4),-.12*Math.sin(sec*2.2),v(6));
-  set('leftElbow',-.42-.16*Math.max(0,beat));
-  set('rightElbow',-.44-.14*Math.max(0,-beat));
-  set('leftHip',v(7)-.12*Math.max(0,beat),0,-.13*v(0));
-  set('rightHip',v(8)-.12*Math.max(0,-beat),0,-.13*v(0));
-  set('leftKnee',v(9)+.12*Math.max(0,beat));
-  set('rightKnee',v(10)+.12*Math.max(0,-beat));
-  height=-.045+Math.abs(pulse)*.075;
- }
+  const pulse=Math.sin(sec*8.25),beat=Math.sin(sec*4.12);
+  const sway=Math.sin(sec*4.12);
+  // Stronger full-body lean and long arm reaches, while keeping joints
+  // within usable limits for the existing chibi avatar skeleton.
+  set('upper',v(2)*1.55+.075*Math.max(0,beat),v(1)*1.55,v(0)*1.85);
+  set('neck',-.065-.15*v(2),-.48*v(1),-.48*v(0));
+  set('leftShoulder',Math.max(-2.75,v(3)*1.34-.12*Math.max(0,sway)),.22*Math.sin(sec*2.6),Math.max(-1.70,Math.min(1.70,v(5)*1.24)));
+  set('rightShoulder',Math.max(-2.75,v(4)*1.34+.12*Math.min(0,sway)),-.20*Math.sin(sec*2.6),Math.max(-1.70,Math.min(1.70,v(6)*1.24)));
+  set('leftElbow',-.54-.26*Math.max(0,beat));
+  set('rightElbow',-.54-.26*Math.max(0,-beat));
+  set('leftHip',v(7)*1.55-.26*Math.max(0,beat),0,-.22*v(0));
+  set('rightHip',v(8)*1.55-.26*Math.max(0,-beat),0,-.22*v(0));
+  set('leftKnee',v(9)*1.55+.25*Math.max(0,beat));
+  set('rightKnee',v(10)*1.55+.25*Math.max(0,-beat));
+  height=-.035+Math.abs(pulse)*.17;
+  // One full turn through the middle of each 14-keyframe sequence.
+  // This is applied to root yaw below (NOT the torso), and resets
+  // naturally at loop boundaries because 2pi and 0 have the same pose.
+  const turnPhase=Math.max(0,Math.min(1,(progress-6.0)/3.0));
+  const turnEase=turnPhase*turnPhase*(3-2*turnPhase);
+  a.freestyleYaw=Math.PI*2*turnEase;
+ }else{a.freestyleYaw=0;}
  if(act==='windmill'){
   // One-handed B-boy freeze: tilted inversion, planted left arm, right arm
   // stretched out to the side, scissored legs (one straight, one bent).
@@ -3363,9 +3370,15 @@ function animateAvatar(a,p,t){
   a.root.rotation.y=(sec*8.2)%(Math.PI*2);
  }else if(basePose!=='lie'&&act!=='lie'){
   const yaw=duoYaw??(Number(q.facing)||0);
-  a.root.rotation.y=((a.root.rotation.y%(Math.PI*2))+Math.PI*2)%(Math.PI*2);
-  const delta=Math.atan2(Math.sin(yaw-a.root.rotation.y),Math.cos(yaw-a.root.rotation.y));
-  a.root.rotation.y+=delta*.2;
+  if(act==='freestyle'){
+   // Explicit full revolution: wrapping via shortest-angle interpolation
+   // would otherwise erase the spin entirely. All avatars use the same pose clock.
+   a.root.rotation.y=yaw+(a.freestyleYaw||0);
+  }else{
+   a.root.rotation.y=((a.root.rotation.y%(Math.PI*2))+Math.PI*2)%(Math.PI*2);
+   const delta=Math.atan2(Math.sin(yaw-a.root.rotation.y),Math.cos(yaw-a.root.rotation.y));
+   a.root.rotation.y+=delta*.2;
+  }
  }
  if(surfView?.mounted){
   // BARREL ROLL: lay the avatar horizontally with head toward world Z,
