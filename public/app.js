@@ -1460,7 +1460,7 @@ let lastFiretruckAdvanceKey='',lastFiretruckWaterKey='',lastSirenBeat=-1;
 const firetruckAnnouncement=document.createElement('div');
 firetruckAnnouncement.setAttribute('role','status');firetruckAnnouncement.setAttribute('aria-live','polite');
 firetruckAnnouncement.style.cssText='position:fixed;left:50%;top:12%;transform:translateX(-50%);z-index:400;max-width:min(92vw,460px);text-align:center;background:rgba(17,27,48,.88);border:1px solid #98ecff;border-radius:16px;padding:13px 20px;color:white;font-weight:800;font-size:clamp(14px,2.3vw,20px);box-shadow:0 7px 25px #0007;pointer-events:none;display:none';
-firetruckAnnouncement.textContent='🚨 곧 워터쇼가 시작됩니다! 오후 2시';document.body.append(firetruckAnnouncement);
+firetruckAnnouncement.textContent='🚨 곧 워터쇼가 시작됩니다! 오후 2시 10분';document.body.append(firetruckAnnouncement);
 // Short synthesized siren, only on browsers that allow audio following interaction.
 let firetruckSirenContext;
 function playFestivalSiren(){
@@ -1490,7 +1490,7 @@ function updateFiretruckShow(t){
  const parts=koreaClock.formatToParts(now), get=(kind)=>Number(parts.find(p=>p.type===kind)?.value);
  const hours=get('hour'),minutes=get('minute'),seconds=get('second');
  const today=[get('year'),String(get('month')).padStart(2,'0'),String(get('day')).padStart(2,'0')].join('-');
- const warning=hours===13&&minutes===59,active=hours===14&&minutes<5;
+ const warning=hours===14&&minutes===9,active=hours===14&&minutes>=10&&minutes<20;
  firetruckShow.visible=warning||active;firetruckWater.visible=active;
  firetruckAnnouncement.style.display=warning?'block':'none';
  if(warning){
@@ -1498,14 +1498,14 @@ function updateFiretruckShow(t){
   const beat=Math.floor(seconds/12);
   if(lastSirenBeat!==today+':'+beat){lastSirenBeat=today+':'+beat;playFestivalSiren();}
  }
- if(active&&lastFiretruckWaterKey!==today){lastFiretruckWaterKey=today;notice('💦 소방차 워터쇼 시작! 5분간 관객석에 물을 뿌립니다.');}
+ if(active&&lastFiretruckWaterKey!==today){lastFiretruckWaterKey=today;notice('💦 소방차 워터쇼 시작! 10분간 관객석에 물을 뿌립니다.');}
  if(!warning&&!active)return;
  const sec=t*.001;
  truckLamp.color.set(Math.floor(sec*4)%2?'#ff2840':'#ff8c95');
  if(!active)return;
  // 60-second slow vertical sweep: upper audience -> center -> lower audience,
  // with a generous side-to-side sweep so every audience section is covered.
- const elapsed=minutes*60+seconds;
+ const elapsed=(minutes-10)*60+seconds;
  const phase=(elapsed%60)/60;
  const vertical=phase*phase*(3-2*phase);
  firetruckEnd.set(Math.sin(elapsed*.27)*17,1.35,1+vertical*18);
