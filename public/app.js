@@ -3318,15 +3318,16 @@ function makeAvatar(p){
  const glowHaloGeo=new THREE.CylinderGeometry(.14,.14,.83,10,1,true);
  const glowCapMat=new THREE.MeshStandardMaterial({color:'#e8e8ef',roughness:.38,metalness:.32});
  for(const side of ['left','right']){
-  const stick=new THREE.Group();stick.position.set(0,-.79,.035);parts[side+'Elbow'].add(stick);
+  const stick=new THREE.Group();stick.position.set(0,-.39,.065);parts[side+'Elbow'].add(stick);
   const rodMat=new THREE.MeshBasicMaterial({color:'#9dff32',toneMapped:false});
-  const rod=new THREE.Mesh(glowRodGeo,rodMat);rod.position.y=-.04;stick.add(rod);
+  const rod=new THREE.Mesh(glowRodGeo,rodMat);rod.position.y=-.20;stick.add(rod);
   const haloMat=new THREE.MeshBasicMaterial({color:'#9dff32',transparent:true,opacity:.18,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide,toneMapped:false});
-  const halo=new THREE.Mesh(glowHaloGeo,haloMat);halo.position.y=-.04;stick.add(halo);
-  const cap=new THREE.Mesh(new THREE.CylinderGeometry(.086,.086,.11,9),glowCapMat);cap.position.y=.36;stick.add(cap);
-  // Hold the baton horizontally, across the palm instead of parallel to the forearm.
-  // Rotate around the hand-local X axis so its long axis points forward.
-  stick.rotation.set(Math.PI/2,0,side==='left'?.08:-.08);stick.visible=false;
+  const halo=new THREE.Mesh(glowHaloGeo,haloMat);halo.position.y=-.20;stick.add(halo);
+  const cap=new THREE.Mesh(new THREE.CylinderGeometry(.086,.086,.11,9),glowCapMat);cap.position.y=.25;stick.add(cap);
+  // Keep the stick at the actual palm (elbow-local y=-.39).
+  // Point the lighted rod toward avatar-front (+Z), with the grip/cap behind (-Z).
+  // The lit section extends farther in front of the palm than the grip does behind it.
+  stick.rotation.set(-Math.PI/2,0,0);stick.visible=false;
   glowsticks.push({group:stick,rodMat,haloMat});
  }
  parts.glowsticks=glowsticks;
