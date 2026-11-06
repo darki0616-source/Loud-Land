@@ -3318,13 +3318,15 @@ function makeAvatar(p){
  const glowHaloGeo=new THREE.CylinderGeometry(.14,.14,.83,10,1,true);
  const glowCapMat=new THREE.MeshStandardMaterial({color:'#e8e8ef',roughness:.38,metalness:.32});
  for(const side of ['left','right']){
-  const stick=new THREE.Group();stick.position.set(0,-.70,.06);parts[side+'Elbow'].add(stick);
+  const stick=new THREE.Group();stick.position.set(0,-.79,.035);parts[side+'Elbow'].add(stick);
   const rodMat=new THREE.MeshBasicMaterial({color:'#9dff32',toneMapped:false});
   const rod=new THREE.Mesh(glowRodGeo,rodMat);rod.position.y=-.04;stick.add(rod);
   const haloMat=new THREE.MeshBasicMaterial({color:'#9dff32',transparent:true,opacity:.18,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide,toneMapped:false});
   const halo=new THREE.Mesh(glowHaloGeo,haloMat);halo.position.y=-.04;stick.add(halo);
   const cap=new THREE.Mesh(new THREE.CylinderGeometry(.086,.086,.11,9),glowCapMat);cap.position.y=.36;stick.add(cap);
-  stick.rotation.z=side==='left'?.22:-.22;stick.visible=false;
+  // Hold the baton horizontally, across the palm instead of parallel to the forearm.
+  // Rotate around the hand-local X axis so its long axis points forward.
+  stick.rotation.set(Math.PI/2,0,side==='left'?.08:-.08);stick.visible=false;
   glowsticks.push({group:stick,rodMat,haloMat});
  }
  parts.glowsticks=glowsticks;
@@ -4001,12 +4003,14 @@ function animateAvatar(a,p,t){
   P.bottle.scale.setScalar(1.3);
  }
  if(act==='putyourhandsup'){
-  // Both arms sweep forward and back together, independent of equipped glowsticks.
-  const wave=Math.sin(sec*5.6);
-  set('leftShoulder',-.90-.60*wave,0,-.20);
-  set('rightShoulder',-.90-.60*Math.sin(sec*5.6+.40),0,.20);
-  set('leftElbow',-.25-.18*Math.sin(sec*5.6+.3));
-  set('rightElbow',-.25-.18*Math.sin(sec*5.6+.7));
+  // Both arms remain HIGH ABOVE the head while pumping forward and backward.
+  // Swing the raised arms around the shoulder joints rather than lowering them to chest height.
+  const leftBeat=Math.sin(sec*5.6);
+  const rightBeat=Math.sin(sec*5.6+.35);
+  set('leftShoulder',-2.78+.28*leftBeat,0,-.20);
+  set('rightShoulder',-2.78+.28*rightBeat,0,.20);
+  set('leftElbow',-.10-.12*Math.sin(sec*5.6+.4));
+  set('rightElbow',-.10-.12*Math.sin(sec*5.6+.75));
   set('upper',.035*Math.sin(sec*5.6));
  }
  if(act==='marshmallow'){
