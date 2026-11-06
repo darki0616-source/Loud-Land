@@ -77,6 +77,7 @@ function refreshProfilePreview(){if(!state.me)return;$('profileName').textConten
 function toast(msg){$('toast').textContent=msg;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('show'),3000)}
 const RHYTHM_DEFAULT_BOOTH={x:1290,y:1034,radius:135};
 let rhythmUi=null;
+const RHYTHM_APPROACH_MS=2100;
 const rhythmGame={open:false,running:false,startAt:0,duration:45000,beatWindow:220,score:0,combo:0,maxCombo:0,perfect:0,great:0,good:0,miss:0,lastJudge:'READY',lastJudgeColor:'#ffffff',lastJudgeUntil:0,beats:[],beatIndex:0,endSubmitted:false};
 const rhythmFx={bursts:[],lastScore:0,lastJudge:'',audio:null,clickIndex:0};
 function rhythmClickSound(accent=false){if(!state.audioEnabled)return;try{const AudioContextCtor=window.AudioContext||window.webkitAudioContext;if(!AudioContextCtor)return;const ac=rhythmFx.audio||(rhythmFx.audio=new AudioContextCtor());if(ac.state==='suspended')ac.resume().catch(()=>{});const osc=ac.createOscillator(),gain=ac.createGain();const at=ac.currentTime;osc.type=accent?'triangle':'sine';osc.frequency.setValueAtTime(accent?880:620,at);gain.gain.setValueAtTime(.0001,at);gain.gain.exponentialRampToValueAtTime(accent?.11:.07,at+.005);gain.gain.exponentialRampToValueAtTime(.0001,at+.085);osc.connect(gain).connect(ac.destination);osc.start(at);osc.stop(at+.1)}catch{}}
@@ -100,6 +101,9 @@ function ensureRhythmUI(){
 #rhythmBoothHint.show{display:none}
 #rhythmOverlay{position:fixed;inset:0;z-index:90;background:radial-gradient(circle at 50% 20%,rgba(95,121,255,.36),transparent 34%),linear-gradient(180deg,#090c18,#10162b 65%,#0a0d19);color:#fff;display:none}
 #rhythmOverlay.show{display:block}
+#rhythmOverlay,#rhythmCanvas,#rhythmMain,#rhythmHud{touch-action:none;overscroll-behavior:contain;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+#rhythmOverlay button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+#rhythmRank{touch-action:pan-y;overscroll-behavior:contain}
 #rhythmOverlay *{box-sizing:border-box}
 #rhythmShell{position:absolute;inset:0;display:flex;flex-direction:column;padding:18px}
 #rhythmTop{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:4px 0 12px}
@@ -115,7 +119,7 @@ function ensureRhythmUI(){
 #rhythmRankList li span{font-variant-numeric:tabular-nums}
 #rhythmRewardBox,#rhythmGuide{background:rgba(0,0,0,.22);border-radius:16px;padding:12px 13px;font-size:13px;line-height:1.45}
 #rhythmMain{position:relative;background:linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.03));border:1px solid rgba(255,255,255,.12);border-radius:28px;overflow:hidden;min-height:0}
-#rhythmCanvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+#rhythmCanvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
 #rhythmHud{position:absolute;inset:0;pointer-events:none}
 #rhythmStats{position:absolute;left:18px;top:18px;display:flex;gap:10px;flex-wrap:wrap}
 #rhythmStats b{display:block;font-size:11px;opacity:.72}
@@ -158,7 +162,7 @@ function ensureRhythmUI(){
  document.head.append(style);
  const overlay=document.createElement('div');
  overlay.id='rhythmOverlay';
- overlay.innerHTML=`<div id="rhythmShell"><div id="rhythmTop"><div><div id="rhythmTitle">🥁 BEAT CIRCLE · 박자게임</div><div id="rhythmSub">해변 오른쪽 벤치 옆 게임부스에서만 플레이 가능 · 스코어는 1판 기준 · 매일 초기화</div></div><button type="button" id="rhythmClose">나가기</button></div><div id="rhythmBody"><aside id="rhythmRank"><div><h3>오늘의 TOP 5</h3><div style="font-size:12px;opacity:.78;margin-top:4px">랭킹은 오늘 최고 점수 기준입니다.</div></div><ol id="rhythmRankList"></ol><div id="rhythmRewardBox"></div><div id="rhythmGuide"></div></aside><main id="rhythmMain"><canvas id="rhythmCanvas" width="1280" height="720"></canvas><div id="rhythmHud"><div id="rhythmStats"><div><b>SCORE</b><span id="rhythmScore">0</span></div><div><b>COMBO</b><span id="rhythmCombo">0</span></div><div><b>TIME</b><span id="rhythmTime">45.0</span></div></div><div id="rhythmJudge">READY</div><div id="rhythmComboFlash" aria-live="off"></div><div id="rhythmCenter"><button type="button" id="rhythmStart">게임 시작</button><button type="button" id="rhythmCenterButton">SPACE / ENTER / TAP 으로 박자 맞추기</button><div id="rhythmHelp">원 안으로 파동이 들어올 때 박자를 맞춰 누르세요.</div></div></div></main></div></div>`;
+ overlay.innerHTML=`<div id="rhythmShell"><div id="rhythmTop"><div><div id="rhythmTitle">🥁 BEAT CIRCLE · 박자게임</div><div id="rhythmSub">해변 오른쪽 벤치 옆 게임부스에서만 플레이 가능 · 스코어는 1판 기준 · 매일 초기화</div></div><button type="button" id="rhythmClose">나가기</button></div><div id="rhythmBody"><aside id="rhythmRank"><div><h3>오늘의 TOP 5</h3><div style="font-size:12px;opacity:.78;margin-top:4px">랭킹은 오늘 최고 점수 기준입니다.</div></div><ol id="rhythmRankList"></ol><div id="rhythmRewardBox"></div><div id="rhythmGuide"></div></aside><main id="rhythmMain"><canvas id="rhythmCanvas" width="1280" height="720"></canvas><div id="rhythmHud"><div id="rhythmStats"><div><b>SCORE</b><span id="rhythmScore">0</span></div><div><b>COMBO</b><span id="rhythmCombo">0</span></div><div><b>TIME</b><span id="rhythmTime">45.0</span></div></div><div id="rhythmJudge">READY</div><div id="rhythmComboFlash" aria-live="off"></div><div id="rhythmCenter"><button type="button" id="rhythmStart">게임 시작</button><button type="button" id="rhythmCenterButton">SPACE / ENTER / TAP 으로 박자 맞추기</button><div id="rhythmHelp">움직이는 파란 원이 노란 판정 원에 정확히 겹치는 순간 누르세요!</div></div></div></main></div></div>`;
  document.body.append(overlay);
  const boothButton=document.createElement('button');
  boothButton.id='rhythmBoothButton';boothButton.type='button';boothButton.textContent='🥁 박자게임';document.body.append(boothButton);
@@ -174,7 +178,17 @@ function ensureRhythmUI(){
  boothButton.onclick=()=>{if(!nearRhythmBooth())return toast('게임부스 근처에서만 열 수 있어요');openRhythmGame()};
  rhythmUi.start.onclick=()=>startRhythmGame();
  rhythmUi.centerBtn.onclick=()=>rhythmHit();
- overlay.addEventListener('pointerdown',e=>{if(e.target===rhythmUi.canvas)rhythmHit()});
+ overlay.addEventListener('pointerdown',e=>{
+  if(e.pointerType==='touch'&&e.isPrimary===false){e.preventDefault();return;}
+  if(e.target===rhythmUi.canvas){e.preventDefault();rhythmHit();}
+ });
+ // iOS Safari may ignore the viewport's user-scalable=no during rapid taps.
+ // Block double-tap zoom / multi-touch pinch only while this game screen is open.
+ overlay.addEventListener('touchstart',e=>{if(e.touches.length>1)e.preventDefault()},{passive:false});
+ overlay.addEventListener('touchmove',e=>{if(e.touches.length>1)e.preventDefault()},{passive:false});
+ overlay.addEventListener('touchend',e=>{if(e.cancelable&&e.target===rhythmUi.canvas)e.preventDefault()},{passive:false});
+ overlay.addEventListener('gesturestart',e=>e.preventDefault(),{passive:false});
+ overlay.addEventListener('dblclick',e=>e.preventDefault());
  window.addEventListener('resize',resizeRhythmCanvas);
  resizeRhythmCanvas();
  return rhythmUi;
@@ -357,37 +371,65 @@ function drawRhythmGame(){
  ctx.clearRect(0,0,w,h);
  const bg=ctx.createLinearGradient(0,0,0,h);bg.addColorStop(0,'rgba(17,24,42,.22)');bg.addColorStop(1,'rgba(2,4,9,.08)');ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
  const cx=w*.5,cy=h*.52;
- const targetR=Math.min(w,h)*.11;
- const outerR=targetR*1.86;
- ctx.save();
- ctx.globalAlpha=.12;ctx.fillStyle='#ffffff';ctx.beginPath();ctx.arc(cx,cy,targetR*.92,0,Math.PI*2);ctx.fill();
- ctx.strokeStyle='rgba(255,255,255,.17)';ctx.lineWidth=4;ctx.beginPath();ctx.arc(cx,cy,targetR,0,Math.PI*2);ctx.stroke();
- ctx.strokeStyle='rgba(255,255,255,.08)';ctx.lineWidth=3;ctx.beginPath();ctx.arc(cx,cy,outerR,0,Math.PI*2);ctx.stroke();
+ const targetR=Math.min(w,h)*.125;
+ // Preview rings start ~3.8x farther out, giving the player 2.1s to prepare.
+ const outerR=Math.min(w,h)*.47;
+ const elapsed=rhythmGame.running?performance.now()-rhythmGame.startAt:0;
  if(rhythmGame.running){
-  const elapsed=performance.now()-rhythmGame.startAt;
   handleRhythmMisses();
   while(rhythmFx.clickIndex<rhythmGame.beats.length&&elapsed>=rhythmGame.beats[rhythmFx.clickIndex].time){rhythmClickSound(rhythmFx.clickIndex%4===0);rhythmFx.clickIndex++}
+ }
+ const nextBeat=rhythmGame.running?rhythmGame.beats.find(b=>!b.hit&&b.time-elapsed>=-rhythmGame.beatWindow):null;
+ const dt=nextBeat?nextBeat.time-elapsed:Infinity;
+ const hitNow=dt<=85&&dt>=-85;
+ const soon=dt<=260&&dt>85;
+ ctx.save();
+ // Fixed, bold GOLD ring is the hit line. Only the BLUE incoming rings move.
+ ctx.beginPath();ctx.arc(cx,cy,targetR+8,0,Math.PI*2);
+ ctx.strokeStyle=hitNow?'#fff6ac':'#ffdb59';ctx.lineWidth=hitNow?19:12;
+ ctx.shadowColor=hitNow?'#fff4ac':'#ffce48';ctx.shadowBlur=hitNow?36:16;ctx.stroke();ctx.shadowBlur=0;
+ ctx.beginPath();ctx.arc(cx,cy,targetR+2,0,Math.PI*2);ctx.strokeStyle='rgba(255,255,255,.75)';ctx.lineWidth=3;ctx.stroke();
+ // Crosshair provides a fixed positional cue.
+ ctx.strokeStyle='rgba(255,255,255,.5)';ctx.lineWidth=2;
+ for(let i=0;i<4;i++){let a=i*Math.PI/2;ctx.beginPath();ctx.moveTo(cx+Math.cos(a)*(targetR-13),cy+Math.sin(a)*(targetR-13));ctx.lineTo(cx+Math.cos(a)*(targetR+21),cy+Math.sin(a)*(targetR+21));ctx.stroke()}
+ ctx.fillStyle=hitNow?'rgba(255,229,95,.32)':'rgba(255,215,95,.1)';ctx.beginPath();ctx.arc(cx,cy,targetR-7,0,Math.PI*2);ctx.fill();
+ // Draw up to 5 incoming rings, from the edge of the visible board.
+ if(rhythmGame.running){
   for(const beat of rhythmGame.beats){
-   const dt=beat.time-elapsed;
-   if(dt<-260||dt>1400)continue;
-   const progress=1-Math.max(0,Math.min(1,dt/1400));
+   if(beat.hit)continue;
+   const remain=beat.time-elapsed;
+   if(remain<-rhythmGame.beatWindow||remain>RHYTHM_APPROACH_MS)continue;
+   const progress=Math.max(0,Math.min(1,1-remain/RHYTHM_APPROACH_MS));
    const radius=outerR-(outerR-targetR)*progress;
-   const alpha=Math.max(.1,1-progress*.55);
-   ctx.strokeStyle=dt<0?'rgba(255,255,255,.22)':dt<140?'rgba(255,236,133,'+alpha+')':'rgba(129,217,255,'+alpha+')';
-   ctx.lineWidth=10-5*progress;
-   ctx.beginPath();ctx.arc(cx,cy,radius,0,Math.PI*2);ctx.stroke();
+   const alpha=.42+progress*.55;
+   ctx.beginPath();ctx.arc(cx,cy,radius,0,Math.PI*2);
+   ctx.strokeStyle=remain<0?'rgba(255,255,255,.35)':`rgba(99,220,255,${alpha})`;
+   ctx.lineWidth=13+progress*5;
+   ctx.shadowColor='#52d8ff';ctx.shadowBlur=14+progress*9;ctx.stroke();ctx.shadowBlur=0;
   }
-  const pulse=(Math.sin(elapsed*.01)+1)*.5;
-  ctx.globalAlpha=.32+.22*pulse;ctx.fillStyle='#ff79c5';ctx.beginPath();ctx.arc(cx,cy,targetR*.64+targetR*.08*pulse,0,Math.PI*2);ctx.fill();
- }else{
-  ctx.globalAlpha=.24;ctx.fillStyle='#80d9ff';ctx.beginPath();ctx.arc(cx,cy,targetR*.72,0,Math.PI*2);ctx.fill();
+ }
+ const pulse=hitNow?1:Math.max(0,1-Math.abs(dt)/270);
+ ctx.fillStyle=hitNow?'#ffffff':soon?'#fff1a4':'rgba(255,255,255,.93)';
+ ctx.font=`900 ${Math.round(Math.min(w,h)*.055)}px sans-serif`;
+ ctx.textAlign='center';ctx.textBaseline='middle';
+ ctx.shadowColor=hitNow?'#fff172':'#000';ctx.shadowBlur=hitNow?20:8;
+ ctx.fillText(hitNow?'지금!':soon?'준비!':'HIT',cx,cy);
+ ctx.shadowBlur=0;
+ // Horizontal timing countdown: meter reaches 100% at the exact hit moment.
+ if(nextBeat){
+  const barW=Math.min(w*.58,660),barH=11,barX=cx-barW/2,barY=cy+targetR+48;
+  const prog=Math.max(0,Math.min(1,1-dt/RHYTHM_APPROACH_MS));
+  ctx.fillStyle='rgba(255,255,255,.18)';ctx.fillRect(barX,barY,barW,barH);
+  ctx.fillStyle=hitNow?'#fff3a2':'#63dfff';ctx.fillRect(barX,barY,barW*prog,barH);
+  ctx.font=`700 ${Math.round(Math.min(w,h)*.025)}px sans-serif`;
+  ctx.fillStyle='rgba(255,255,255,.9)';ctx.fillText('파란 원과 노란 원이 겹치면 터치!',cx,barY+38);
  }
  ctx.restore();
  const fxNow=performance.now();rhythmFx.bursts=rhythmFx.bursts.filter(p=>fxNow-p.born<p.life);for(const p of rhythmFx.bursts){const t=(fxNow-p.born)/1000,alpha=Math.max(0,1-(fxNow-p.born)/p.life);ctx.globalAlpha=alpha;ctx.fillStyle=p.color;const x=w*(p.x+p.vx*t*.16),y=h*(p.y+p.vy*t*.18+1.2*t*t*.08);ctx.save();ctx.translate(x,y);ctx.rotate(t*4);ctx.fillRect(-p.size/2,-p.size/2,p.size,p.size);ctx.restore()}ctx.globalAlpha=1;
  ctx.fillStyle='rgba(255,255,255,.9)';ctx.textAlign='center';ctx.font=`900 ${Math.round(Math.min(w,h)*.03)}px sans-serif`;
- ctx.fillText('TAP THE BEAT',cx,cy-targetR*1.8);
+ ctx.fillText('BEAT CIRCLE',cx,cy-outerR-20);
  ctx.font=`700 ${Math.round(Math.min(w,h)*.02)}px sans-serif`;
- ctx.fillText(rhythmGame.running?'박자를 맞춰 누르세요':'게임 시작 버튼 또는 화면을 눌러 시작',cx,cy+targetR*1.85);
+ if(!rhythmGame.running)ctx.fillText('시작 버튼을 눌러 도전하세요',cx,cy+targetR*1.85);
  if(!rhythmGame.running&&state.rhythmBest){ctx.fillText(`오늘 내 최고점 ${Number(state.rhythmBest).toLocaleString()}점`,cx,cy+targetR*2.25)}
 }
 
