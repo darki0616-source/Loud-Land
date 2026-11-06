@@ -453,7 +453,7 @@ function handleDuoEvent(d){
  if(d.type==='duo-end'){finishDuo(d.id);return}
 }
 setInterval(syncDuoStatus,250);
-const sustainedReactions=new Set(['peace','jump','run','headbang','buriburi','groove','windmill','skanking','airguitar','headspin','cheer','smoke']);
+const sustainedReactions=new Set(['peace','jump','run','headbang','buriburi','groove','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun']);
 // One shared bottom tab group: reactions / dances / chat.
 // Chat stays inside the dock instead of floating over the 3D world.
 function selectBottomMenu(menu){
@@ -500,7 +500,7 @@ function react(a){
  if(state.action===a&&sustainedReactions.has(a)){
   state.action='idle';state.actionUntil=0;state.me.action='idle';
  }else{
-  if((a==='jump'||a==='run'||a==='buriburi'||a==='groove'||a==='windmill'||a==='skanking'||a==='airguitar'||a==='headspin'||a==='cheer'||a==='smoke')&&state.pose!=='stand'){
+  if((a==='jump'||a==='run'||a==='buriburi'||a==='groove'||a==='windmill'||a==='skanking'||a==='airguitar'||a==='headspin'||a==='cheer'||a==='smoke'||a==='bubblegun')&&state.pose!=='stand'){
    state.pose='stand';state.me.pose='stand';
   }
   state.action=a;state.me.action=a;if(a==='cheer')playCheer();
@@ -597,7 +597,7 @@ document.addEventListener('keydown',e=>{
  if(!$('joinModal').classList.contains('hidden'))return;
  e.preventDefault();state.keys.delete('enter');selectBottomMenu('chat');$('chatInput').focus();
 },true);
-document.addEventListener('keydown',e=>{if(e.target instanceof HTMLInputElement||e.target instanceof HTMLTextAreaElement||e.target?.isContentEditable)return;let k=e.key.toLowerCase();if(k.startsWith('arrow')||k===' ')e.preventDefault();state.keys.add(k);let acts={'1':'peace','2':'jump','3':'run','4':'wave','5':'clap','6':'sit','7':'lie','8':'drink','9':'snack','0':'headbang','b':'buriburi','g':'groove','v':'windmill','k':'skanking','a':'airguitar','n':'headspin','h':'cheer','c':'smoke'};if(acts[k]&&!e.repeat)react(acts[k])});document.addEventListener('keyup',e=>state.keys.delete(e.key.toLowerCase()));window.addEventListener('blur',()=>state.keys.clear());
+document.addEventListener('keydown',e=>{if(e.target instanceof HTMLInputElement||e.target instanceof HTMLTextAreaElement||e.target?.isContentEditable)return;let k=e.key.toLowerCase();if(k.startsWith('arrow')||k===' ')e.preventDefault();state.keys.add(k);let acts={'1':'peace','2':'jump','3':'run','4':'wave','5':'clap','6':'sit','7':'lie','8':'drink','9':'snack','0':'headbang','b':'buriburi','g':'groove','v':'windmill','k':'skanking','a':'airguitar','n':'headspin','h':'cheer','c':'smoke','u':'bubblegun'};if(acts[k]&&!e.repeat)react(acts[k])});document.addEventListener('keyup',e=>state.keys.delete(e.key.toLowerCase()));window.addEventListener('blur',()=>state.keys.clear());
 // CC0 crowd cheering by SFXMint; play only for listeners who enabled audio.
 // The URL is hotlink-permitted by the creator (https://sfxmint.com/sounds/crowd-cheer).
 const cheerAudioUrl='https://sfxmint.com/dl/crowd-cheer-44.mp3';
@@ -1375,7 +1375,7 @@ for(const sx of [-3.7,3.7]){
 cube(47,1.2,1,metal,0,2.05,-17.3);cube(46,1.5,1,dark,0,13.8,-31);cube(1,13.8,1,metal,-22,7.8,-31);cube(1,13.8,1,metal,22,7.8,-31);cube(46,11.8,.6,dark,0,7.2,-31);
 const sign=new THREE.Mesh(new THREE.PlaneGeometry(24,1.6),label('ONEseason',78,'#dcfd8b','#18172e'));sign.position.set(0,13.9,-29.85);scene.add(sign);
 
-// v136: 14:00 KST stage-side festival firetruck & water-cannon show.
+// v143: 13:00, 14:00 and 15:00 KST festival firetruck water shows.
 // Entirely client-rendered and time-gated, so visitors see the same event
 // without extra server polling, database writes or additional asset files.
 const firetruckShow=new THREE.Group();scene.add(firetruckShow);
@@ -1455,12 +1455,19 @@ const waterSplashPositions=new Float32Array(waterSplashCount*3);
 const waterSplashGeo=new THREE.BufferGeometry();waterSplashGeo.setAttribute('position',new THREE.BufferAttribute(waterSplashPositions,3));
 const waterSplash=new THREE.Points(waterSplashGeo,new THREE.PointsMaterial({color:'#f4fbff',size:.95,transparent:true,opacity:.75,depthWrite:false,depthTest:false}));
 waterSplash.frustumCulled=false;waterSplash.renderOrder=160;firetruckWater.add(waterSplash);
+// v142: The video is a CSS3D iframe above the base WebGL canvas.
+// Draw the water on the dedicated transparent foreground WebGL canvas so
+// CSS3D can no longer cover the spray. Fall back to layer 0 if unavailable.
+if(stageForeground){
+ for(const waterEffect of [waterStream,waterSpray,waterSplash])waterEffect.layers.set(1);
+}
+
 const koreaClock=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'});
 let lastFiretruckAdvanceKey='',lastFiretruckWaterKey='',lastSirenBeat=-1;
 const firetruckAnnouncement=document.createElement('div');
 firetruckAnnouncement.setAttribute('role','status');firetruckAnnouncement.setAttribute('aria-live','polite');
 firetruckAnnouncement.style.cssText='position:fixed;left:50%;top:12%;transform:translateX(-50%);z-index:400;max-width:min(92vw,460px);text-align:center;background:rgba(17,27,48,.88);border:1px solid #98ecff;border-radius:16px;padding:13px 20px;color:white;font-weight:800;font-size:clamp(14px,2.3vw,20px);box-shadow:0 7px 25px #0007;pointer-events:none;display:none';
-firetruckAnnouncement.textContent='🚨 곧 워터쇼가 시작됩니다! 오후 2시 10분';document.body.append(firetruckAnnouncement);
+firetruckAnnouncement.textContent='🚨 곧 워터쇼가 시작됩니다!';document.body.append(firetruckAnnouncement);
 // Short synthesized siren, only on browsers that allow audio following interaction.
 let firetruckSirenContext;
 function playFestivalSiren(){
@@ -1490,22 +1497,28 @@ function updateFiretruckShow(t){
  const parts=koreaClock.formatToParts(now), get=(kind)=>Number(parts.find(p=>p.type===kind)?.value);
  const hours=get('hour'),minutes=get('minute'),seconds=get('second');
  const today=[get('year'),String(get('month')).padStart(2,'0'),String(get('day')).padStart(2,'0')].join('-');
- const warning=hours===14&&minutes===9,active=hours===14&&minutes>=10&&minutes<20;
+ // Three daily five-minute shows, with the firetruck and siren one minute prior.
+ const showHours=[13,14,15];
+ const active=showHours.includes(hours)&&minutes<5;
+ const nextShowHour=showHours.includes(hours+1)&&minutes===59?hours+1:null;
+ const warning=nextShowHour!==null;
+ const showKey=today+':'+(warning?nextShowHour:hours);
  firetruckShow.visible=warning||active;firetruckWater.visible=active;
  firetruckAnnouncement.style.display=warning?'block':'none';
  if(warning){
-  if(lastFiretruckAdvanceKey!==today){lastFiretruckAdvanceKey=today;notice('🚨 1분 후 소방차 워터쇼가 시작됩니다!');}
+  firetruckAnnouncement.textContent=`🚨 1분 후 소방차 워터쇼! 오후 ${nextShowHour}시 정각`;
+  if(lastFiretruckAdvanceKey!==showKey){lastFiretruckAdvanceKey=showKey;notice('🚨 1분 후 소방차 워터쇼가 시작됩니다!');}
   const beat=Math.floor(seconds/12);
-  if(lastSirenBeat!==today+':'+beat){lastSirenBeat=today+':'+beat;playFestivalSiren();}
+  if(lastSirenBeat!==showKey+':'+beat){lastSirenBeat=showKey+':'+beat;playFestivalSiren();}
  }
- if(active&&lastFiretruckWaterKey!==today){lastFiretruckWaterKey=today;notice('💦 소방차 워터쇼 시작! 10분간 관객석에 물을 뿌립니다.');}
+ if(active&&lastFiretruckWaterKey!==showKey){lastFiretruckWaterKey=showKey;notice('💦 소방차 워터쇼 시작! 5분간 관객석에 물을 뿌립니다.');}
  if(!warning&&!active)return;
  const sec=t*.001;
  truckLamp.color.set(Math.floor(sec*4)%2?'#ff2840':'#ff8c95');
  if(!active)return;
  // 60-second slow vertical sweep: upper audience -> center -> lower audience,
  // with a generous side-to-side sweep so every audience section is covered.
- const elapsed=(minutes-10)*60+seconds;
+ const elapsed=minutes*60+seconds;
  const phase=(elapsed%60)/60;
  const vertical=phase*phase*(3-2*phase);
  firetruckEnd.set(Math.sin(elapsed*.27)*17,1.35,1+vertical*18);
@@ -2620,6 +2633,28 @@ function makeAvatar(p){
  const stick=child(cigarette,new THREE.CylinderGeometry(.024,.024,.44,8),paper,[0,0,.32]);stick.rotation.x=Math.PI/2;
  child(cigarette,new THREE.SphereGeometry(.028,8,6),ember,[0,0,.55]);
  cigarette.visible=false;
+ // Bubble blaster: fixed to the avatar's right-hand zone, barrel faces +Z.
+ const bubbleGun=new THREE.Group();root.add(bubbleGun);parts.bubbleGun=bubbleGun;
+ bubbleGun.position.set(.72,1.85,.62);bubbleGun.visible=false;
+ const gunBody=new THREE.MeshStandardMaterial({color:'#75d5ee',roughness:.3,metalness:.12});
+ const gunAccent=new THREE.MeshStandardMaterial({color:'#f4a8da',roughness:.4});
+ const gunNozzle=new THREE.MeshStandardMaterial({color:'#f6e8a4',roughness:.34});
+ child(bubbleGun,new THREE.BoxGeometry(.27,.27,.48),gunBody,[0,0,.12]);
+ child(bubbleGun,new THREE.CylinderGeometry(.105,.105,.31,12),gunNozzle,[0,.02,.46]).rotation.x=Math.PI/2;
+ child(bubbleGun,new THREE.BoxGeometry(.11,.31,.12),gunAccent,[0,-.26,-.06]);
+ child(bubbleGun,new THREE.SphereGeometry(.09,10,8),gunAccent,[0,.15,.03]);
+ // Bubbles are attached to the player root, so all spectators see the same effect.
+ // Individual geometry/material ownership ensures safe avatar disposal.
+ parts.soapBubbles=[];
+ const bubbleCount=perfWeakDevice?14:30;
+ const bubbleGeometry=new THREE.SphereGeometry(1,10,8);
+ const soapTints=['#bdf9ff','#d5bbff','#f9d9f1','#c8ffdf'];
+ const soapMaterials=soapTints.map(color=>new THREE.MeshPhongMaterial({color,transparent:true,opacity:.56,shininess:110,specular:'#ffffff',depthWrite:false,side:THREE.FrontSide}));
+ for(let i=0;i<bubbleCount;i++){
+  const b=new THREE.Mesh(bubbleGeometry,soapMaterials[i%soapMaterials.length].clone());
+  b.visible=false;b.renderOrder=36;root.add(b);parts.soapBubbles.push(b);
+ }
+ parts.bubbleBurstOrigin=performance.now();
  parts.smokePuffs=[];
  for(let i=0;i<6;i++){
   const puff=new THREE.Mesh(new THREE.SphereGeometry(1,8,6),new THREE.MeshBasicMaterial({color:'#dbe1e5',transparent:true,opacity:0,depthWrite:false}));
@@ -3025,6 +3060,14 @@ function animateAvatar(a,p,t){
   set('upper',.025,0,.017*Math.sin(sec*2.2));
   set('neck',-.03-.03*inhale);
  }
+ if(act==='bubblegun'){
+  // The right hand points the blaster away from the player, not into the face.
+  rightHandTarget=new THREE.Vector3(.72,.48,.64);
+  ikMode='bubblegun';
+  set('rightShoulder',-.47,0,.18);
+  set('rightElbow',-.50);
+  set('upper',.018,0,.025*Math.sin(sec*2.5));
+ }
  if(act==='cheer'){
   const lift=Math.max(0,Math.sin(sec*10));height=lift*.75;
   set('leftShoulder',-2.65,0,-.26);set('rightShoulder',-2.65,0,.26);
@@ -3179,7 +3222,7 @@ function animateAvatar(a,p,t){
  for(const k of keys){
   if((ikMode==='duo-both'&&['leftShoulder','leftElbow','rightShoulder','rightElbow'].includes(k))||(ikMode==='duo-right'&&['rightShoulder','rightElbow'].includes(k)))continue;
   if(ikMode==='clap'&&['leftShoulder','leftElbow','rightShoulder','rightElbow'].includes(k))continue;
-  if((ikMode==='drink'||ikMode==='wave'||ikMode==='snack'||ikMode==='smoke')&&['rightShoulder','rightElbow'].includes(k))continue;
+  if((ikMode==='drink'||ikMode==='wave'||ikMode==='snack'||ikMode==='smoke'||ikMode==='bubblegun')&&['rightShoulder','rightElbow'].includes(k))continue;
   const target=pose[k],o=P[k];
   o.rotation.x+=(target[0]-o.rotation.x)*alpha;
   o.rotation.y+=(target[1]-o.rotation.y)*alpha;
@@ -3198,6 +3241,7 @@ function animateAvatar(a,p,t){
  else if(ikMode==='wave')placeHandIK(P,'right',rightHandTarget,.64);
  else if(ikMode==='snack')placeHandIK(P,'right',rightHandTarget,.56);
  else if(ikMode==='smoke')placeHandIK(P,'right',rightHandTarget,.66);
+ else if(ikMode==='bubblegun')placeHandIK(P,'right',rightHandTarget,.7);
  // Keep the right hand gripping the tall flag pole during walking or idle.
  // Complex dances temporarily take precedence without deleting the flag.
  const canGripFlag=Boolean(q.flagText||q.flagImage)&&basePose==='stand'&&!duoContext&&
@@ -3254,6 +3298,23 @@ function animateAvatar(a,p,t){
   puff.position.set(c.x-.12+.10*Math.sin(phase*5+i*.7),c.y+.08+phase*.90,c.z+.54+phase*.09);
   puff.scale.setScalar(.08+phase*.22);
   puff.material.opacity=Math.sin(Math.PI*phase)*.26;
+ });
+ P.bubbleGun.visible=act==='bubblegun';
+ // Staggered cycles make a continuous stream of soap bubbles, each starting
+ // at the gun's nozzle, spreading radially as it travels forward and rises.
+ P.soapBubbles.forEach((bubble,i)=>{
+  if(act!=='bubblegun'){bubble.visible=false;return}
+  const phase=(sec*.31+i/P.soapBubbles.length)%1;
+  const seed=i*2.3999632297;
+  const spread=phase*phase*4.7;
+  const dx=Math.sin(seed)*(.28+((i*7)%9)*.08);
+  const dy=Math.cos(seed*1.37)*(.24+((i*3)%7)*.08);
+  bubble.position.set(.72+dx*spread+Math.sin(sec*1.4+i)*phase*.15,
+   1.85+dy*spread+phase*2.0,1.21+phase*8.0);
+  const radius=(.075+(i%5)*.024)*(1+.65*phase);
+  bubble.scale.setScalar(radius);
+  bubble.material.opacity=.56*(1-THREE.MathUtils.smoothstep(phase,.72,1));
+  bubble.visible=true;
  });
  P.rockBubble.visible=act==='peace'||act==='slam-retreat'||act==='slam-celebrate';P.bottle.visible=act==='drink';
  if(P.rockBubble.visible)P.rockBubble.position.y=4.34+Math.sin(sec*7)*.075;
@@ -3766,14 +3827,27 @@ async function sendChatMessage(message){
  try{await post('chat',{id:state.id,message:text});return true}catch(e){toast(e.message);return false}
 }
 document.querySelectorAll('[data-chat]').forEach(b=>b.onclick=()=>sendChatMessage(b.dataset.chat));
+// Return to the reaction dock only after a successful PC Enter-to-send.
+// Clicking the Send button, or submitting from a mobile keyboard, keeps chat open.
+let chatEnterSubmit=false;
+$('chatInput').addEventListener('keydown',e=>{
+ if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing&&e.keyCode!==229&&
+   !('ontouchstart' in window&&navigator.maxTouchPoints>1))chatEnterSubmit=true;
+});
 $('chatForm').addEventListener('submit',async e=>{
  e.preventDefault();const input=$('chatInput');const button=$('chatSend');
+ const closeAfterSend=chatEnterSubmit;
+ chatEnterSubmit=false;
  if(button.disabled)return;
  const message=input.value.trim();if(!message)return;
  button.disabled=true;
  const sent=await sendChatMessage(message);
  button.disabled=false;
- if(sent){input.value='';input.focus()}
+ if(sent){
+  input.value='';
+  if(closeAfterSend)selectBottomMenu('reaction');
+  else input.focus();
+ }
 });
 
 // Keep the festival canvas at a stable layout viewport height. The mobile
