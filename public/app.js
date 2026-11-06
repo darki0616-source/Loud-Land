@@ -587,6 +587,16 @@ $('flagConfirm').addEventListener('click',async()=>{
 });
 refreshFlagButton();
 
+// PC chat shortcut: Enter opens and focuses chat; Enter in the chat form sends.
+document.addEventListener('keydown',e=>{
+ if(e.key!=='Enter'||e.repeat||e.isComposing||e.keyCode===229||!state.id||('ontouchstart' in window&&navigator.maxTouchPoints>1))return;
+ if(e.target instanceof HTMLInputElement||e.target instanceof HTMLTextAreaElement||e.target?.isContentEditable)return;
+ if(e.ctrlKey||e.altKey||e.metaKey||e.shiftKey)return;
+ const focused=e.target;
+ if(focused?.closest?.('button, a, [role="button"], [role="dialog"], select'))return;
+ if(!$('joinModal').classList.contains('hidden'))return;
+ e.preventDefault();state.keys.delete('enter');selectBottomMenu('chat');$('chatInput').focus();
+},true);
 document.addEventListener('keydown',e=>{if(e.target instanceof HTMLInputElement||e.target instanceof HTMLTextAreaElement||e.target?.isContentEditable)return;let k=e.key.toLowerCase();if(k.startsWith('arrow')||k===' ')e.preventDefault();state.keys.add(k);let acts={'1':'peace','2':'jump','3':'run','4':'wave','5':'clap','6':'sit','7':'lie','8':'drink','9':'snack','0':'headbang','b':'buriburi','g':'groove','v':'windmill','k':'skanking','a':'airguitar','n':'headspin','h':'cheer','c':'smoke'};if(acts[k]&&!e.repeat)react(acts[k])});document.addEventListener('keyup',e=>state.keys.delete(e.key.toLowerCase()));window.addEventListener('blur',()=>state.keys.clear());
 // CC0 crowd cheering by SFXMint; play only for listeners who enabled audio.
 // The URL is hotlink-permitted by the creator (https://sfxmint.com/sounds/crowd-cheer).
@@ -1417,61 +1427,111 @@ for(let i=0;i<8;i++){
 const firetruckNozzle=new THREE.Mesh(new THREE.CylinderGeometry(.22,.32,1.65,10),truckSilver);
 firetruckNozzle.position.set(-3.8,4.28,0);firetruckNozzle.rotation.z=-Math.PI/2.9;firetruckShow.add(firetruckNozzle);
 const firetruckStart=new THREE.Vector3(29.8,5.9,-12.5);
-const firetruckEnd=new THREE.Vector3(11.8,7.2,-4.6);
+// The landing point sweeps across the entire audience and progressively moves
+// from the stage-facing (upper) rows to the far (lower) audience rows.
+const firetruckEnd=new THREE.Vector3(0,1.35,6);
 const firetruckArc=new THREE.Vector3();
 function firetruckWaterPoint(progress,out){
  out.lerpVectors(firetruckStart,firetruckEnd,progress);
- out.y+=9.2*4*progress*(1-progress);
+ out.y+=10.6*4*progress*(1-progress);
  return out;
 }
 const waterCurvePoints=[];
-for(let i=0;i<=42;i++)waterCurvePoints.push(firetruckWaterPoint(i/42,new THREE.Vector3()));
+for(let i=0;i<=60;i++)waterCurvePoints.push(firetruckWaterPoint(i/60,new THREE.Vector3()));
 const firetruckWater=new THREE.Group();scene.add(firetruckWater);firetruckWater.visible=false;
-const waterStream=new THREE.Line(new THREE.BufferGeometry().setFromPoints(waterCurvePoints),
- new THREE.LineBasicMaterial({color:'#c9f2ff',transparent:true,opacity:.78,depthWrite:false}));
-firetruckWater.add(waterStream);
-const waterSprayMaterial=new THREE.PointsMaterial({color:'#d9f5ff',size:.34,transparent:true,opacity:.88,depthWrite:false,sizeAttenuation:true});
-const waterSprayCount=perfWeakDevice?190:420;
+const waterStreamGeometry=new THREE.BufferGeometry().setFromPoints(waterCurvePoints);
+const waterStream=new THREE.Line(waterStreamGeometry,
+ new THREE.LineBasicMaterial({color:'#c9f2ff',transparent:true,opacity:.87,depthWrite:false,depthTest:false}));
+waterStream.renderOrder=160;waterStream.frustumCulled=false;firetruckWater.add(waterStream);
+const waterSprayMaterial=new THREE.PointsMaterial({color:'#d9f5ff',size:.60,transparent:true,opacity:.92,depthWrite:false,depthTest:false,sizeAttenuation:true});
+const waterSprayCount=perfWeakDevice?300:760;
 const waterSprayPos=new Float32Array(waterSprayCount*3);
 const waterSprayGeometry=new THREE.BufferGeometry();
 waterSprayGeometry.setAttribute('position',new THREE.BufferAttribute(waterSprayPos,3));
 const waterSpray=new THREE.Points(waterSprayGeometry,waterSprayMaterial);
-waterSpray.frustumCulled=false;firetruckWater.add(waterSpray);
-const waterSplashCount=perfWeakDevice?70:150;
+waterSpray.frustumCulled=false;waterSpray.renderOrder=160;firetruckWater.add(waterSpray);
+const waterSplashCount=perfWeakDevice?120:300;
 const waterSplashPositions=new Float32Array(waterSplashCount*3);
 const waterSplashGeo=new THREE.BufferGeometry();waterSplashGeo.setAttribute('position',new THREE.BufferAttribute(waterSplashPositions,3));
-const waterSplash=new THREE.Points(waterSplashGeo,new THREE.PointsMaterial({color:'#f4fbff',size:.52,transparent:true,opacity:.72,depthWrite:false}));
-waterSplash.frustumCulled=false;firetruckWater.add(waterSplash);
-const koreaClock=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Seoul',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
+const waterSplash=new THREE.Points(waterSplashGeo,new THREE.PointsMaterial({color:'#f4fbff',size:.95,transparent:true,opacity:.75,depthWrite:false,depthTest:false}));
+waterSplash.frustumCulled=false;waterSplash.renderOrder=160;firetruckWater.add(waterSplash);
+const koreaClock=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'});
+let lastFiretruckAdvanceKey='',lastFiretruckWaterKey='',lastSirenBeat=-1;
+const firetruckAnnouncement=document.createElement('div');
+firetruckAnnouncement.setAttribute('role','status');firetruckAnnouncement.setAttribute('aria-live','polite');
+firetruckAnnouncement.style.cssText='position:fixed;left:50%;top:12%;transform:translateX(-50%);z-index:400;max-width:min(92vw,460px);text-align:center;background:rgba(17,27,48,.88);border:1px solid #98ecff;border-radius:16px;padding:13px 20px;color:white;font-weight:800;font-size:clamp(14px,2.3vw,20px);box-shadow:0 7px 25px #0007;pointer-events:none;display:none';
+firetruckAnnouncement.textContent='🚨 곧 워터쇼가 시작됩니다! 오후 2시';document.body.append(firetruckAnnouncement);
+// Short synthesized siren, only on browsers that allow audio following interaction.
+let firetruckSirenContext;
+function playFestivalSiren(){
+ if(!state.id||!state.audioEnabled||document.hidden)return;
+ try{
+  const Ctx=window.AudioContext||window.webkitAudioContext;if(!Ctx)return;
+  firetruckSirenContext??=new Ctx();
+  if(firetruckSirenContext.state!=='running')return;
+  const ctx=firetruckSirenContext,at=ctx.currentTime;
+  const oscillator=ctx.createOscillator(),gain=ctx.createGain();
+  oscillator.type='sine';oscillator.frequency.setValueAtTime(620,at);
+  oscillator.frequency.linearRampToValueAtTime(940,at+.45);
+  oscillator.frequency.linearRampToValueAtTime(620,at+.9);
+  oscillator.frequency.linearRampToValueAtTime(940,at+1.35);
+  oscillator.frequency.linearRampToValueAtTime(620,at+1.8);
+  gain.gain.setValueAtTime(0,at);gain.gain.linearRampToValueAtTime(.075,at+.12);
+  gain.gain.setValueAtTime(.075,at+1.65);gain.gain.linearRampToValueAtTime(0,at+1.85);
+  oscillator.connect(gain);gain.connect(ctx.destination);oscillator.start(at);oscillator.stop(at+1.86);
+  oscillator.onended=()=>{oscillator.disconnect();gain.disconnect()};
+ }catch(e){console.warn('워터쇼 사이렌을 재생할 수 없습니다',e)}
+}
+// Prepare WebAudio on the first real interaction, not via an autoplay bypass.
+window.addEventListener('pointerdown',()=>{if(!state.audioEnabled)return;try{const Ctx=window.AudioContext||window.webkitAudioContext;if(!Ctx)return;firetruckSirenContext??=new Ctx();if(firetruckSirenContext.state==='suspended')firetruckSirenContext.resume().catch(()=>{});}catch{}},{passive:true});
+window.addEventListener('keydown',()=>{if(!state.audioEnabled)return;try{const Ctx=window.AudioContext||window.webkitAudioContext;if(!Ctx)return;firetruckSirenContext??=new Ctx();if(firetruckSirenContext.state==='suspended')firetruckSirenContext.resume().catch(()=>{});}catch{}},{passive:true});
 function updateFiretruckShow(t){
- const clock=koreaClock.formatToParts(new Date(Date.now()+(Number.isFinite(state.serverDelta)?state.serverDelta:0)));
- const hours=Number(clock.find(p=>p.type==='hour')?.value);
- const minutes=Number(clock.find(p=>p.type==='minute')?.value);
- const active=hours===14&&minutes>=0&&minutes<5;
- firetruckShow.visible=active;firetruckWater.visible=active;
- if(!active)return;
+ const now=new Date(Date.now()+(Number.isFinite(state.serverDelta)?state.serverDelta:0));
+ const parts=koreaClock.formatToParts(now), get=(kind)=>Number(parts.find(p=>p.type===kind)?.value);
+ const hours=get('hour'),minutes=get('minute'),seconds=get('second');
+ const today=[get('year'),String(get('month')).padStart(2,'0'),String(get('day')).padStart(2,'0')].join('-');
+ const warning=hours===13&&minutes===59,active=hours===14&&minutes<5;
+ firetruckShow.visible=warning||active;firetruckWater.visible=active;
+ firetruckAnnouncement.style.display=warning?'block':'none';
+ if(warning){
+  if(lastFiretruckAdvanceKey!==today){lastFiretruckAdvanceKey=today;notice('🚨 1분 후 소방차 워터쇼가 시작됩니다!');}
+  const beat=Math.floor(seconds/12);
+  if(lastSirenBeat!==today+':'+beat){lastSirenBeat=today+':'+beat;playFestivalSiren();}
+ }
+ if(active&&lastFiretruckWaterKey!==today){lastFiretruckWaterKey=today;notice('💦 소방차 워터쇼 시작! 5분간 관객석에 물을 뿌립니다.');}
+ if(!warning&&!active)return;
  const sec=t*.001;
- // Rushing animated water stream and diffuse droplets, independent of frame rate.
+ truckLamp.color.set(Math.floor(sec*4)%2?'#ff2840':'#ff8c95');
+ if(!active)return;
+ // 60-second slow vertical sweep: upper audience -> center -> lower audience,
+ // with a generous side-to-side sweep so every audience section is covered.
+ const elapsed=minutes*60+seconds;
+ const phase=(elapsed%60)/60;
+ const vertical=phase*phase*(3-2*phase);
+ firetruckEnd.set(Math.sin(elapsed*.27)*17,1.35,1+vertical*18);
+ const streamPos=waterStreamGeometry.attributes.position;
+ for(let i=0;i<streamPos.count;i++){
+  firetruckWaterPoint(i/(streamPos.count-1),firetruckArc);
+  streamPos.setXYZ(i,firetruckArc.x,firetruckArc.y,firetruckArc.z);
+ }
+ streamPos.needsUpdate=true;
  for(let i=0;i<waterSprayCount;i++){
   const u=(i*.61803398875+sec*.72)%1;
   firetruckWaterPoint(u,firetruckArc);
-  const diffuse=.28+u*1.08;
+  const diffuse=.55+u*2.1;
   waterSprayPos[i*3]=firetruckArc.x+Math.sin(i*12.989+sec*2.8)*diffuse;
   waterSprayPos[i*3+1]=firetruckArc.y+Math.cos(i*7.83+sec*4.1)*diffuse;
   waterSprayPos[i*3+2]=firetruckArc.z+Math.sin(i*5.33+sec*3.6)*diffuse;
  }
  waterSprayGeometry.attributes.position.needsUpdate=true;
  for(let i=0;i<waterSplashCount;i++){
-  const phase=(i*.75487766+sec*.82)%1;
-  const angle=i*2.39996;
-  const radius=phase*(1.9+(i%7)*.28);
+  const v=(i*.75487766+sec*.82)%1,angle=i*2.39996;
+  const radius=v*(3.7+(i%7)*.7);
   waterSplashPositions[i*3]=firetruckEnd.x+Math.cos(angle)*radius;
-  waterSplashPositions[i*3+1]=firetruckEnd.y+1.5*phase-2.0*phase*phase;
+  waterSplashPositions[i*3+1]=Math.max(.15,firetruckEnd.y+1.9*v-2*v*v);
   waterSplashPositions[i*3+2]=firetruckEnd.z+Math.sin(angle)*radius;
  }
  waterSplashGeo.attributes.position.needsUpdate=true;
- // Alternate roof lights while spraying, without affecting other show lights.
- truckLamp.color.set(Math.floor(sec*3)%2?'#ff2840':'#ff8c95');
 }
 
 // Two full-height portrait poster bays just outside the left/right stage pillars.
