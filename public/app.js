@@ -18,7 +18,7 @@ const picnicMatColors=['#f5a5a3','#a7def4','#f5ce80','#b3d9a0','#ceb8f1','#ffd2a
 const mats=picnicSlots.map((slot,i)=>({x:slot.worldX/.058+600,y:500,c:picnicMatColors[i],worldX:slot.worldX,worldZ:slot.worldZ}));
 const state={id:null,me:null,players:new Map(),keys:new Set(),action:'idle',pose:'stand',actionUntil:0,lastSent:0,es:null,music:{id:'',paused:true,position:0,startedAt:0,token:0},queue:[],history:[],serverDelta:0,yt:null,ytReady:false,lastTrack:'',audioEnabled:true,skipVote:null,skipVoteCooldownUntil:0,walkTarget:null,benchTarget:null,moving:false,rhythm:{date:'',leaderboard:[],reward:null,booth:{x:1290,y:1034,radius:135}},rhythmBest:0};
 let slamMode=false,slam=null,slamCooldownUntil=0,slamMotion=null;
-let rockPlacementMode=null,rockPlay=null,rockCooldowns={circle:0,train:0,mosh:0,row:0,toast:0,surf:0},rockRunningUntil=0,rockMotion=null,crowdSurfScene=null,toastSequence=null,freeTrainTrail=null;
+let rockPlacementMode=null,rockPlay=null,rockCooldowns={circle:0,train:0,mosh:0,row:0,toast:0,surf:0,shoulder:0},rockRunningUntil=0,rockMotion=null,crowdSurfScene=null,toastSequence=null,freeTrainTrail=null,shoulderSequence=null;
 let chosenPattern='solid',chosenSash='none',chosenHairStyle='short',chosenHairColor='#4b3932';
 const hairStyles=[['short','가르마 숏컷'],['bob','짧은 보브'],['long','장발'],['buns','번 헤어'],['bob2','레이어드 단발'],['short2','더 짧은 사이드 숏컷'],['basic-short','기본 숏컷'],['basic-bob','기본 단발']];
 // Older custom styles are converted to the closest available Quaternius asset.
@@ -865,7 +865,7 @@ function handleDuoEvent(d){
  if(d.type==='duo-end'){finishDuo(d.id);return}
 }
 setInterval(syncDuoStatus,250);
-const sustainedReactions=new Set(['peace','jump','run','headbang','buriburi','groove','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','marshmallow','putyourhandsup']);
+const sustainedReactions=new Set(['peace','jump','run','headbang','buriburi','groove','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','marshmallow','putyourhandsup','nightfirework']);
 // One shared bottom tab group: reactions / dances / chat.
 // Chat stays inside the dock instead of floating over the 3D world.
 function selectBottomMenu(menu){
@@ -898,6 +898,7 @@ function react(a,glowColor=null){
  if(a==='glowstick'&&glowColor===null){openGlowstickPicker();return;}
  if(a==='glowstick'){state.me.glowColor=glowstickColors[glowColor]?glowColor:'rainbow';state.me.glowEnabled=true;updateActionButtons();sendMove();return;}
  if(a==='beatking'&&!state.me.rhythmKing)return toast('박자왕에게만 허용된 리액션입니다.');
+ if(a==='nightfirework'&&!nightFireworkAvailable())return toast('폭죽놀이는 새벽 1시부터 4시까지만 사용할 수 있어요.');
  if(a==='marshmallow'&&!campfireReactionAvailable())return toast('모닥불이 켜진 시간(20:00~03:00)에 화덕 가까이에서 사용할 수 있어요.');
  if(currentDuo())return toast('상호작용을 종료한 후 다른 동작을 사용해 주세요.');
  if(slamMotion){slamMotion=null;state.walkTarget=null}if(rockMotion){rockMotion=null;state.walkTarget=null}state.benchTarget=null;
@@ -916,7 +917,7 @@ function react(a,glowColor=null){
  if(state.action===a&&sustainedReactions.has(a)){
   state.action='idle';state.actionUntil=0;state.me.action='idle';
  }else{
-  if((a==='jump'||a==='run'||a==='buriburi'||a==='groove'||a==='windmill'||a==='skanking'||a==='airguitar'||a==='headspin'||a==='cheer'||a==='smoke'||a==='bubblegun'||a==='freestyle'||a==='beatking'||a==='marshmallow'||a==='putyourhandsup')&&state.pose!=='stand'){
+  if((a==='jump'||a==='run'||a==='buriburi'||a==='groove'||a==='windmill'||a==='skanking'||a==='airguitar'||a==='headspin'||a==='cheer'||a==='smoke'||a==='bubblegun'||a==='freestyle'||a==='beatking'||a==='marshmallow'||a==='putyourhandsup'||a==='nightfirework')&&state.pose!=='stand'){
    state.pose='stand';state.me.pose='stand';
   }
   state.action=a;state.me.action=a;if(a==='cheer')playCheer();
@@ -979,6 +980,43 @@ marshmallowButton.innerHTML='🍡 <span>마시멜로 굽기</span>';
 marshmallowButton.style.display='none';
 marshmallowButton.onclick=()=>react('marshmallow');
 $('reactionActions').append(marshmallowButton);
+// v177: Night-only synchronized handheld fireworks reaction (01:00–04:00 KST).
+const nightFireworkButton=document.createElement('button');
+nightFireworkButton.type='button';
+nightFireworkButton.dataset.action='nightfirework';
+nightFireworkButton.innerHTML='🎆 <span>폭죽놀이</span>';
+nightFireworkButton.style.display='none';
+nightFireworkButton.onclick=()=>react('nightfirework');
+$('reactionActions').append(nightFireworkButton);
+const nightFireworkKST=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Seoul',hour:'2-digit',hourCycle:'h23'});
+function nightFireworkAvailable(){
+ const hour=Number(nightFireworkKST.format(new Date()));
+ return hour>=1&&hour<4;
+}
+function syncNightFirework(){
+ const available=nightFireworkAvailable();
+ nightFireworkButton.style.display=available?'':'none';
+ if(state.me&&state.action==='nightfirework'&&!available){
+  state.action='idle';state.me.action='idle';state.actionUntil=0;
+  updateActionButtons();sendMove();
+ }
+}
+setInterval(syncNightFirework,5000);
+syncNightFirework();
+// v174: Arrange reaction controls in the requested display order only.
+// Keep data-action values, keyboard shortcuts and all existing onclick handlers intact.
+const reactionMenuOrder=[
+ 'peace','wave','clap','putyourhandsup','cheer','jump','run','sit','lie',
+ 'drink','smoke','snack','toastStart','headbang','bubblegun','glowstick',
+ 'flagAction','beatking','nightfirework','marshmallow'
+];
+const reactionMenu=$('reactionActions');
+for(const key of reactionMenuOrder){
+ const button=key==='toastStart'||key==='flagAction'||key==='beatking'
+  ?(key==='beatking'?beatKingButton:$(key))
+  :reactionMenu.querySelector(`[data-action="${key}"]`);
+ if(button)reactionMenu.append(button);
+}
 function campfireReactionAvailable(){
  if(!state.me)return false;
  const wp=toWorld(state.me);
@@ -1109,7 +1147,7 @@ function refreshSlamUI(){
  slamButton.disabled=!state.id||!!slam||!!rockPlay||slamNow()<rockRunningUntil||remain>0;
  slamButton.classList.toggle('placing',slamMode);
  slamButton.textContent=slamMode?'📍 바닥을 터치하세요':slam?'🔥 슬램 진행 중':remain?`🔥 슬램 ${remain}초`:'🔥 슬램 만들기';
- slamInfo.textContent=rockPlacementMode?(rockPlacementMode==='circle'?'써클핏 위치를 터치하세요':rockPlacementMode==='mosh'?'모싱 위치를 터치하세요':rockPlacementMode==='row'?'노젓기 위치를 터치하세요':rockPlacementMode==='surf'?'크라우드 서핑 위치를 터치하세요':'기차놀이 위치를 터치하세요'):rockPlay?(rockPlay.kind==='circle'?'써클핏 참가자를 모집 중이에요':rockPlay.kind==='mosh'?'모싱 참가자를 모집 중이에요':rockPlay.kind==='row'?'노젓기 참가자를 모집 중이에요':rockPlay.kind==='toast'?'짠하기 참가자를 모집 중이에요':rockPlay.kind==='surf'?'크라우드 서핑 참가자를 모집 중이에요':'기차놀이 참가자를 모집 중이에요'):slamMode?'슬램 위치를 터치하세요':slam?'슬램 참가자를 모집 중이에요':remain?`다음 슬램까지 ${remain}초`:'락놀이 메뉴에서 크라우드 서핑·슬램·써클핏·기차놀이 등을 선택';
+ slamInfo.textContent=rockPlacementMode?(rockPlacementMode==='circle'?'써클핏 위치를 터치하세요':rockPlacementMode==='mosh'?'모싱 위치를 터치하세요':rockPlacementMode==='row'?'노젓기 위치를 터치하세요':rockPlacementMode==='shoulder'?'단체 어깨동무 위치를 터치하세요':rockPlacementMode==='surf'?'크라우드 서핑 위치를 터치하세요':'기차놀이 위치를 터치하세요'):rockPlay?(rockPlay.kind==='circle'?'써클핏 참가자를 모집 중이에요':rockPlay.kind==='mosh'?'모싱 참가자를 모집 중이에요':rockPlay.kind==='row'?'노젓기 참가자를 모집 중이에요':rockPlay.kind==='shoulder'?'단체 어깨동무 참가자를 모집 중이에요':rockPlay.kind==='toast'?'짠하기 참가자를 모집 중이에요':rockPlay.kind==='surf'?'크라우드 서핑 참가자를 모집 중이에요':'기차놀이 참가자를 모집 중이에요'):slamMode?'슬램 위치를 터치하세요':slam?'슬램 참가자를 모집 중이에요':remain?`다음 슬램까지 ${remain}초`:'락놀이 메뉴에서 크라우드 서핑·슬램·써클핏·기차놀이 등을 선택';
  slamInfo.classList.toggle('is-active',!!(rockPlacementMode||rockPlay||slamMode||slam));
 }
 function applySlam(event,cooldown){
@@ -1142,21 +1180,21 @@ function onSlamGo(event){
  }
  slam=null;refreshSlamUI();
 }
-const rockMenuButton=$('rockMenuButton'),rockMenuPanel=$('rockMenuPanel'),circleButton=$('circleButton'),trainButton=$('trainButton'),moshButton=$('moshButton'),rowButton=$('rowButton'),surfButton=$('surfButton');
+const rockMenuButton=$('rockMenuButton'),rockMenuPanel=$('rockMenuPanel'),circleButton=$('circleButton'),trainButton=$('trainButton'),moshButton=$('moshButton'),rowButton=$('rowButton'),shoulderButton=$('shoulderButton'),surfButton=$('surfButton');
 rockMenuButton.onclick=()=>{const show=rockMenuPanel.classList.contains('hidden');rockMenuPanel.classList.toggle('hidden',!show);rockMenuButton.setAttribute('aria-expanded',String(show))};
 function closeRockMenu(){rockMenuPanel.classList.add('hidden');rockMenuButton.setAttribute('aria-expanded','false')}
 function refreshRockUI(){
  const now=slamNow(),occupied=!!rockPlay||!!slam||now<rockRunningUntil;
- for(const [button,kind,name] of [[circleButton,'circle','써클핏'],[trainButton,'train','기차놀이'],[moshButton,'mosh','모싱'],[rowButton,'row','노젓기'],[surfButton,'surf','크라우드 서핑']]){
+ for(const [button,kind,name] of [[circleButton,'circle','써클핏'],[trainButton,'train','기차놀이'],[moshButton,'mosh','모싱'],[rowButton,'row','노젓기'],[shoulderButton,'shoulder','단체 어깨동무'],[surfButton,'surf','크라우드 서핑']]){
    const remaining=Math.max(0,Math.ceil((rockCooldowns[kind]-now)/1000));
    button.disabled=!state.id||occupied||remaining>0;
    button.classList.toggle('placing',rockPlacementMode===kind);
-   button.textContent=rockPlacementMode===kind?'📍 '+name+' 위치 선택':remaining?`⏱ ${name} ${remaining}초`:`${kind==='circle'?'🔄':kind==='mosh'?'🥊':kind==='row'?'🚣':kind==='surf'?'🏄':'🚂'} ${name} 만들기`;
+   button.textContent=rockPlacementMode===kind?'📍 '+name+' 위치 선택':remaining?`⏱ ${name} ${remaining}초`:`${kind==='circle'?'🔄':kind==='mosh'?'🥊':kind==='row'?'🚣':kind==='shoulder'?'🫂':kind==='surf'?'🏄':'🚂'} ${name} 만들기`;
  }
 }
 function applyRockPlay(event,cooldowns,runningUntil){
  if(cooldowns&&typeof cooldowns==='object'){
-  for(const kind of ['circle','train','mosh','row','toast','surf'])if(Number.isFinite(Number(cooldowns[kind])))rockCooldowns[kind]=Number(cooldowns[kind]);
+  for(const kind of ['circle','train','mosh','row','toast','surf','shoulder'])if(Number.isFinite(Number(cooldowns[kind])))rockCooldowns[kind]=Number(cooldowns[kind]);
  }
  if(Number.isFinite(Number(runningUntil)))rockRunningUntil=Number(runningUntil);
  rockPlay=event||null;
@@ -1269,6 +1307,7 @@ function trainCarriageTarget(index){
 function onRockPlayGo(event){
  // Every client uses the same server timestamp for clink -> raise -> sip -> lower.
  if(event.kind==='toast')toastSequence={startAt:event.startAt,duration:event.duration,campfireToast:!!event.campfireToast,participants:[...(event.participants||[])]};
+ if(event.kind==='shoulder')shoulderSequence={startAt:event.startAt,until:event.startAt+event.duration,participants:[...(event.participants||[])]};
  if(event.kind==='surf')syncCrowdSurf(event);
  if(event.kind==='train')beginFreeTrain(event);
  const participants=Array.isArray(event.participants)?event.participants:[];
@@ -1276,7 +1315,7 @@ function onRockPlayGo(event){
  if(index!==-1&&state.me){
    rockMotion={id:event.id,kind:event.kind,x:event.x,y:event.y,startAt:event.startAt,duration:event.duration,index,count:participants.length,campfireToast:!!event.campfireToast,riderId:event.riderId||participants[0],leaderId:event.leaderId||participants[0]};
    slamMotion=null;state.walkTarget=null;state.benchTarget=null;
-   state.pose='stand';state.me.pose='stand';state.action=event.kind==='surf'?(state.id===event.riderId?'surf-rider':'surf-support'):event.kind==='mosh'?'mosh-charge':event.kind==='circle'?'circle-run':event.kind==='row'?'row-paddle':event.kind==='toast'?'toast-clink':'train-run';state.me.action=state.action;
+   state.pose='stand';state.me.pose='stand';state.action=event.kind==='surf'?(state.id===event.riderId?'surf-rider':'surf-support'):event.kind==='mosh'?'mosh-charge':event.kind==='circle'?'circle-run':event.kind==='row'?'row-paddle':event.kind==='shoulder'?'walk':event.kind==='toast'?'toast-clink':'train-run';state.me.action=state.action;
    // Every moving group action now gathers smoothly, instead of teleporting
    // to its first animation point on the first frame.
    rockMotion.gatherFrom={x:state.me.x,y:state.me.y};
@@ -1287,12 +1326,12 @@ function onRockPlayGo(event){
  rockPlay=null;refreshRockUI();refreshSlamUI();
 }
 $('toastStart').onclick=async()=>{if(!state.id||!state.me)return toast('먼저 입장해 주세요');try{const d=await post('rockplay',{id:state.id,command:'start',kind:'toast',x:Math.max(25,Math.min(1375,state.me.x)),y:Math.max(255,Math.min(875,state.me.y))});applyRockPlay(d.event,d.rockCooldowns,d.rockRunningUntil);toast(d.event?.campfireToast?'🔥 모닥불 짠하기! 5초 동안 모집한 후 둘러서서 건배해요':'🥂 짠하기! 5초 동안 참가자를 모집합니다')}catch(e){toast(e.message)}};
-for(const [button,kind] of [[circleButton,'circle'],[trainButton,'train'],[moshButton,'mosh'],[rowButton,'row'],[surfButton,'surf']]){
+for(const [button,kind] of [[circleButton,'circle'],[trainButton,'train'],[moshButton,'mosh'],[rowButton,'row'],[shoulderButton,'shoulder'],[surfButton,'surf']]){
  button.onclick=()=>{
    if(!state.id||rockPlay||slam||rockRunningUntil>slamNow()||rockCooldowns[kind]>slamNow())return;
    rockPlacementMode=rockPlacementMode===kind?null:kind;slamMode=false;
    closeRockMenu();refreshRockUI();refreshSlamUI();
-   slamInfo.textContent=rockPlacementMode?`${kind==='circle'?'써클핏':kind==='mosh'?'모싱':kind==='row'?'노젓기':kind==='surf'?'크라우드 서핑':'기차놀이'} 장소를 터치하세요`:'락놀이 메뉴에서 선택해 주세요';
+   slamInfo.textContent=rockPlacementMode?`${kind==='circle'?'써클핏':kind==='mosh'?'모싱':kind==='row'?'노젓기':kind==='shoulder'?'단체 어깨동무':kind==='surf'?'크라우드 서핑':'기차놀이'} 장소를 터치하세요`:'락놀이 메뉴에서 선택해 주세요';
  };
 }
 // v83: Group action paths are authored in SERVER coordinates but the
@@ -1378,7 +1417,15 @@ function campfireToastGatherAt(m,elapsed,target){
  }
  return serverFromWorld({x,z});
 }
+function shoulderLineTarget(m){
+ // Horizontal line across the audience, evenly spaced around the marker.
+ // Convert offsets in WORLD units; 1.75 world units permits arms to meet.
+ const centre=toWorld({x:m.x,y:m.y});
+ const offset=(m.index-(m.count-1)*.5)*1.75;
+ return serverFromWorld({x:centre.x+offset,z:centre.z});
+}
 function rockPathAt(m,elapsed){
+ if(m.kind==='shoulder')return shoulderLineTarget(m);
  const elapsedFraction=Math.min(1,Math.max(0,elapsed/m.duration));
  if(m.kind==='row'){return groupWorldPathPoint(m,{x:m.x+(m.index%2===0?-21:21),y:m.y+Math.floor(m.index/2)*28-22,dx:0,dy:1})}
  if(m.kind==='toast'){
@@ -1400,18 +1447,26 @@ function rockPathAt(m,elapsed){
  const phase=elapsedFraction*Math.PI*8 - m.index*.42;
  return groupWorldPathPoint(m,{x:m.x+Math.sin(phase)*180,y:m.y+Math.sin(phase*2)*90,dx:180*Math.cos(phase),dy:180*Math.cos(phase*2)});
 }
-// When circle pit or train completes, each participant moves to a distinct
-// outward point and keeps jumping with the 🤘 bubble until manual input.
+// Every completed rock-play (except the campfire's sit-down sequence) scatters
+// from each participant's ACTUAL ending position while visibly skanking with 🤘.
+// The shoulder-linked game keeps its own existing end behaviour.
 function beginRockCelebration(m){
- const angle=(m.kind==='circle'?0:-Math.PI/2)+2*Math.PI*m.index/Math.max(1,m.count);
- const radius=m.kind==='circle'?150:Math.max(58,Math.min(108,40+m.count*6));
+ const origin={x:state.me.x,y:state.me.y};
+ const awayX=origin.x-m.x,awayY=origin.y-m.y;
+ const count=Math.max(1,m.count);
+ const laneAngle=-Math.PI/2+2*Math.PI*m.index/count;
+ // Use a consistent outward route instead of pulling moving participants
+ // back toward the original event centre before they can disperse.
+ const radialAngle=Math.hypot(awayX,awayY)>12?Math.atan2(awayY,awayX):laneAngle;
+ const angle=radialAngle+.18*Math.sin(m.index*2.4);
+ const distance=m.kind==='circle'?100:Math.max(75,Math.min(112,66+count*5));
  m.scatterTarget={
-  x:Math.max(20,Math.min(1380,m.x+Math.cos(angle)*radius)),
-  y:clampServerY(m.y+Math.sin(angle)*radius)
+  x:Math.max(20,Math.min(1380,origin.x+Math.cos(angle)*distance)),
+  y:clampServerY(origin.y+Math.sin(angle)*distance)
  };
  m.phase='scatter';m.phaseStarted=performance.now();
- state.action='slam-retreat';state.me.action='slam-retreat';
- state.actionUntil=Infinity;sendMove();
+ state.action='rock-skank';state.me.action='rock-skank';state.actionUntil=Infinity;
+ state.moving=true;sendMove();
 }
 function finishRockMotion(){
  if(rockMotion?.kind==='train')freeTrainTrail=null;
@@ -1427,11 +1482,11 @@ function updateRockPlayVisual(t){
  const world=toWorld(rockPlay),pos=new THREE.Vector3(world.x,3.6,world.z).project(camera);
  rockFloorPath.visible=rockPlay.kind!=='train';rockFloorPath.position.set(world.x,.09,world.z);
  rockFloorPath.rotation.y=0;
- rockFloorPath.geometry=rockPlay.kind==='row'||rockPlay.kind==='surf'?rockRowGeometry:rockPlay.kind==='circle'||rockPlay.kind==='mosh'||rockPlay.kind==='toast'?rockCircleGeometry:rockTrainGeometry;
+ rockFloorPath.geometry=rockPlay.kind==='row'||rockPlay.kind==='surf'||rockPlay.kind==='shoulder'?rockRowGeometry:rockPlay.kind==='circle'||rockPlay.kind==='mosh'||rockPlay.kind==='toast'?rockCircleGeometry:rockTrainGeometry;
  if(pos.z>=1||pos.z<=-1){slamMarker.hidden=true;return}
  slamMarker.hidden=false;
  slamCount.textContent=String(Math.max(1,Math.ceil(remaining/1000)));
- slamMembers.textContent=`${rockPlay.kind==='circle'?'써클핏':rockPlay.kind==='mosh'?'모싱':rockPlay.kind==='row'?'노젓기':rockPlay.kind==='toast'?'짠하기':rockPlay.kind==='surf'?'크라우드 서핑':'기차놀이'} · ${rockPlay.participants.length}명 참가`;
+ slamMembers.textContent=`${rockPlay.kind==='circle'?'써클핏':rockPlay.kind==='mosh'?'모싱':rockPlay.kind==='row'?'노젓기':rockPlay.kind==='shoulder'?'단체 어깨동무':rockPlay.kind==='toast'?'짠하기':rockPlay.kind==='surf'?'크라우드 서핑':'기차놀이'} · ${rockPlay.participants.length}명 참가`;
  const joined=rockPlay.participants.includes(state.id);
  slamJoin.disabled=joined;slamJoin.textContent=joined?'✓ 참가 완료':'참가하기';
  if(rockPlay.kind==='surf')slamMembers.textContent+=' · 2명 이상 필요';
@@ -3331,6 +3386,30 @@ function makeAvatar(p){
   glowsticks.push({group:stick,rodMat,haloMat});
  }
  parts.glowsticks=glowsticks;
+ // Lightweight shared night fireworks effect: a wrist-held launcher and small
+ // repeating overhead bursts. Animations are deterministic from the shared action.
+ const nightLauncher=new THREE.Group();parts.nightLauncher=nightLauncher;
+ parts.rightElbow.add(nightLauncher);
+ nightLauncher.position.set(0,-.39,.065);
+ nightLauncher.rotation.set(-Math.PI/2,0,0);
+ const nightHandle=new THREE.Mesh(new THREE.CylinderGeometry(.085,.095,.57,8),
+  new THREE.MeshStandardMaterial({color:'#343b61',roughness:.55}));
+ nightHandle.rotation.x=Math.PI/2;nightHandle.position.z=.28;nightLauncher.add(nightHandle);
+ const nightTip=new THREE.Mesh(new THREE.CylinderGeometry(.095,.095,.14,8),
+  new THREE.MeshBasicMaterial({color:'#fff1bb'}));
+ nightTip.rotation.x=Math.PI/2;nightTip.position.z=.59;nightLauncher.add(nightTip);
+ nightLauncher.visible=false;
+ const nightFireworkColors=['#ff547a','#ffe57b','#81edff','#b28aff','#8bffb0'];
+ const nightSparkGeometry=new THREE.SphereGeometry(.065,5,4);
+ const nightSparks=[];
+ for(let i=0;i<36;i++){
+  const spark=new THREE.Mesh(nightSparkGeometry,
+   new THREE.MeshBasicMaterial({color:nightFireworkColors[i%nightFireworkColors.length],
+    transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending}));
+  spark.visible=false;root.add(spark);nightSparks.push(spark);
+ }
+ parts.nightSparks=nightSparks;
+
 
  // White festival pennant with black personalized lettering, mounted on a tall hand-held pole.
  // Model is attached to the avatar root so it follows movement but stays upright.
@@ -3602,7 +3681,8 @@ function animateAvatar(a,p,t){
  const act=surfPose?.action||duoContext?.action||(q.action||'idle'),basePose=surfPose||duoContext?'stand':(q.pose||((act==='sit'||act==='lie')?act:'stand'));
  const surfEvent=crowdSurfScene&&slamNow()<crowdSurfScene.startAt+crowdSurfScene.duration?crowdSurfScene:null;
  const surfView=surfPose;
- const sec=duoContext?(Date.now()+state.serverDelta-duoContext.duo.startAt)/1000:t*.001,pose={};
+ const shoulderSynced=act==='shoulder-headbang'&&shoulderSequence?.participants.includes(q.id)&&slamNow()<=shoulderSequence.until;
+ const sec=shoulderSynced?(slamNow()-shoulderSequence.startAt-3000)*.001:duoContext?(Date.now()+state.serverDelta-duoContext.duo.startAt)/1000:t*.001,pose={};
  // Choreography is determined by the server start time, not by the local
  // animation clock. Observers and participants see the same drinking phase.
  const toastElapsed=act==='toast-clink'&&toastSequence?.participants.includes(q.id)
@@ -3901,7 +3981,7 @@ function animateAvatar(a,p,t){
   set('rightHip',.22,0,.45);
   set('leftKnee',.27);set('rightKnee',.62);
  }
- if(act==='skanking'){
+ if(act==='skanking'||act==='slam-celebrate'||act==='rock-skank'){
   // Four-count ska step, with a real recoil/preparation on counts 2 and 4:
   // 1 right leg forward + left arm forward
   // 2 left leg folds backward + right arm sweeps back
@@ -4014,6 +4094,13 @@ function animateAvatar(a,p,t){
   set('rightElbow',-.10-.12*Math.sin(sec*5.6+.75));
   set('upper',.035*Math.sin(sec*5.6));
  }
+ if(act==='nightfirework'){
+  // Hold the launcher above the face, pointing away from the avatar.
+  set('rightShoulder',-2.18,0,.12);
+  set('rightElbow',-.22);
+  set('leftShoulder',-.54,0,-.12);
+  set('upper',-.025+.025*Math.sin(sec*3.5));
+ }
  if(act==='marshmallow'){
   const roast=Math.sin(sec*2.1);
   rightHandTarget=new THREE.Vector3(.52,.23+.07*roast,.53);
@@ -4029,7 +4116,7 @@ function animateAvatar(a,p,t){
   set('neck',Math.sin(sec*15)*.085,Math.sin(sec*7)*.04,Math.sin(sec*10)*.03);
   set('upper',.025);
  }
- if(act==='headbang'){
+ if(act==='headbang'||act==='shoulder-headbang'){
   // Head and waist are driven by the SAME phase: bow down together,
   // rise together. Never run a separate double-tempo neck oscillation.
   // Keep the slower waist tempo introduced in v131.
@@ -4039,8 +4126,15 @@ function animateAvatar(a,p,t){
    set('neck',-.03+fold*.38);
    set('leftHip',-fold*.17);set('rightHip',-fold*.17);
    set('leftKnee',fold*.24);set('rightKnee',fold*.24);
-   set('leftShoulder',.10+fold*.24,0,-.12);
-   set('rightShoulder',.10+fold*.24,0,.12);
+   if(act==='shoulder-headbang'){
+    // Both arms stay spread across neighbours' shoulders during the bow.
+    set('leftShoulder',-.12-fold*.10,0,-1.28);
+    set('rightShoulder',-.12-fold*.10,0,1.28);
+    set('leftElbow',-.12);set('rightElbow',-.12);
+   }else{
+    set('leftShoulder',.10+fold*.24,0,-.12);
+    set('rightShoulder',.10+fold*.24,0,.12);
+   }
   }else if(basePose==='sit'){
    set('upper',.05+fold*.76);
    set('neck',-.025+fold*.30);
@@ -4052,14 +4146,6 @@ function animateAvatar(a,p,t){
   height=-.24;set('upper',.06);set('leftHip',-1.43);set('rightHip',-1.43);
   set('leftKnee',1.45);set('rightKnee',1.45);
   set('leftShoulder',.16);set('rightShoulder',.16);
- }
- if(act==='slam-celebrate'){
-  // Repeating joyful jumps until the player takes control again.
-  const hop=Math.pow(Math.max(0,Math.sin(sec*10.8)),.85);
-  height=hop*.68;
-  set('leftHip',-.15*(1-hop));set('rightHip',-.15*(1-hop));
-  set('leftKnee',.34*(1-hop));set('rightKnee',.34*(1-hop));
-  set('leftShoulder',-.16,0,-.35);set('rightShoulder',-.16,0,.35);
  }
  if(act==='lie'){
   height=.52;lean=-Math.PI/2;
@@ -4232,6 +4318,31 @@ function animateAvatar(a,p,t){
    stick.haloMat.opacity=.20+.055*Math.sin(sec*8+i);
   }
  }
+ if(P.nightLauncher){
+  const firing=act==='nightfirework';
+  P.nightLauncher.visible=firing;
+  P.nightLauncher.rotation.x=-Math.PI/2+.07*Math.sin(sec*4);
+  if(P.nightSparks){
+   // Continuous 2.6-second loops, staggered for two independent sky bursts.
+   const loop=2.6;
+   for(let i=0;i<P.nightSparks.length;i++){
+    const dot=P.nightSparks[i];
+    if(!firing){dot.visible=false;continue;}
+    const burst=Math.floor(i/18),j=i%18;
+    const phase=((sec+burst*1.3)%loop)/loop;
+    if(phase<.25){dot.visible=false;continue;}
+    const life=(phase-.25)/.75;
+    const a=j*2.399963229728653+burst*.8;
+    const rise=3.2+(burst*.8);
+    const spread=(life**.62)*(1.6+burst*.27);
+    const vertical=Math.sin(a*1.17)*spread*.65-life*life*1.2;
+    dot.position.set(.5+Math.cos(a)*spread,2.45+rise+vertical, .5+Math.sin(a)*spread);
+    dot.scale.setScalar(.55+(1-life)*.75);
+    dot.material.opacity=Math.max(0,Math.sin(Math.PI*life)*.92);
+    dot.visible=true;
+   }
+  }
+ }
  if(P.marshmallowStick){
   P.marshmallowStick.visible=act==='marshmallow';
   if(P.marshmallowStick.visible){
@@ -4239,7 +4350,7 @@ function animateAvatar(a,p,t){
    P.marshmallowStick.rotation.set(-.07+.055*Math.sin(sec*1.7),.10*Math.sin(sec*1.25),.07*Math.sin(sec*1.5));
   }
  }
- P.rockBubble.visible=act==='peace'||act==='slam-retreat'||act==='slam-celebrate';P.bottle.visible=act==='drink';
+ P.rockBubble.visible=act==='peace'||act==='slam-retreat'||act==='slam-celebrate'||act==='rock-skank';P.bottle.visible=act==='drink';
  if(P.rockBubble.visible)P.rockBubble.position.y=4.34+Math.sin(sec*7)*.075;
  if(act==='headspin'){
   // Keep yaw bounded; absolute elapsed page seconds would grow without limit.
@@ -4517,7 +4628,7 @@ function tick(t){
      state.me.x=dest.x;state.me.y=dest.y;
      if(m.phase==='charge'){
       m.phase='retreat';m.phaseStarted=t;
-      state.action='slam-retreat';state.me.action='slam-retreat';
+      state.action='rock-skank';state.me.action='rock-skank';
       // The next frame naturally rotates to the outward retreat direction.
       sendMove();
      }else{
@@ -4531,7 +4642,7 @@ function tick(t){
      state.me.x=clampServerX(next.x);
      state.me.y=clampServerY(next.y);
      state.me.facing=Math.atan2(tx,ty);
-     state.action=m.phase==='charge'?'slam-charge':'slam-retreat';
+     state.action=m.phase==='charge'?'slam-charge':'rock-skank';
      state.me.action=state.action;
      state.moving=true;
     }
@@ -4554,8 +4665,12 @@ function tick(t){
      post('rockplay',{id:state.id,command:'impact',eventId:m.id,phase:2,x:m.x,y:m.y}).catch(()=>{});
     }
    }
-   if(!m.phase&&elapsed>=m.duration){if(m.kind==='train'){freeTrainTrail=null;finishRockMotion()}else if(m.kind==='toast'){m.phase='done';rockMotion=null;state.action='idle';state.me.action='idle';state.actionUntil=0;if(m.campfireToast){state.pose='sit';state.me.pose='sit';state.me.facing=Math.atan2(m.x-state.me.x,m.y-state.me.y);updateActionButtons()}sendMove()}else beginRockCelebration(m)}
-   if(m.phase==='done'){
+   if(!m.phase&&elapsed>=m.duration){if(m.kind==='train'){freeTrainTrail=null;beginRockCelebration(m)}else if(m.kind==='toast'&&m.campfireToast){m.phase='campfire-skank';m.phaseStarted=t;state.action='slam-celebrate';state.me.action='slam-celebrate';state.actionUntil=Infinity;sendMove()}else beginRockCelebration(m)}
+   if(m.phase==='campfire-skank'){
+    // End the special campfire cheers with the same skank + horns, then
+    // honour the pre-existing requirement to sit around the fire.
+    if(t-m.phaseStarted>=2200){rockMotion=null;state.action='idle';state.me.action='idle';state.actionUntil=0;state.pose='sit';state.me.pose='sit';state.me.facing=Math.atan2(m.x-state.me.x,m.y-state.me.y);updateActionButtons();sendMove()}
+   }else if(m.phase==='done'){
     // Group cheers has finished; do not restart this turn.
    }else if(m.phase==='scatter'){
     const target=m.scatterTarget;
@@ -4566,13 +4681,13 @@ function tick(t){
      state.action='slam-celebrate';state.me.action='slam-celebrate';
      state.actionUntil=Infinity;sendMove();
     }else{
-     // Jumping retreat at a gentle, frame-rate-independent pace.
+     // Run outward while performing full skanking steps and showing the horns bubble.
      const next=stepWorldToward(state.me,target,5.5*frameDelta/1000);
      state.me.x=clampServerX(next.x);
      state.me.y=clampServerY(next.y);
      state.me.facing=Math.atan2(tx,ty);
-     state.action='slam-retreat';state.me.action='slam-retreat';
-     state.actionUntil=Infinity;
+     state.action='rock-skank';state.me.action='rock-skank';
+     state.moving=true;state.actionUntil=Infinity;
      if(t-state.lastSent>90){state.lastSent=t;sendMove()}
     }
    }else if(m.phase==='celebrate'){
@@ -4612,17 +4727,17 @@ function tick(t){
     const p=m.kind==='mosh'?moshPathAt(m,elapsed):rockPathAt(m,elapsed);
     // Moshing launches immediately at full speed; other games retain their
     // 1.4-second group gathering animation.
-    const gather=Math.min(1,elapsed/(m.campfireToast?3000:1400));
+    const gather=Math.min(1,elapsed/(m.kind==='shoulder'||m.campfireToast?3000:1400));
     const from=m.gatherFrom||p;
     const smooth=m.kind==='mosh'?p:m.kind==='toast'&&m.campfireToast&&elapsed<3000
      ?campfireToastGatherAt(m,elapsed,p):blendGroupWorld(from,p,gather);
     state.me.x=clampServerX(smooth.x);
     state.me.y=clampServerY(smooth.y);
     // Crowd-surf supporters face the middle and never rotate onto the train path.
-    state.me.facing=m.kind==='surf'?(m.isSurfRider?0:Math.atan2(m.x-p.x,m.y-p.y)):
+    state.me.facing=m.kind==='shoulder'?Math.PI:m.kind==='surf'?(m.isSurfRider?0:Math.atan2(m.x-p.x,m.y-p.y)):
      m.kind==='toast'?Math.atan2(m.x-p.x,m.y-p.y):m.kind==='row'?0:Math.atan2(p.dx,p.dy);
-    state.me.action=m.kind==='surf'?(state.id===m.riderId?'surf-rider':'surf-support'):m.kind==='mosh'?'mosh-charge':m.kind==='circle'?'circle-run':m.kind==='row'?'row-paddle':m.kind==='toast'?(m.campfireToast&&elapsed<3000?'walk':'toast-clink'):'train-run';state.action=state.me.action;
-    state.moving=true;
+    state.me.action=m.kind==='surf'?(state.id===m.riderId?'surf-rider':'surf-support'):m.kind==='mosh'?'mosh-charge':m.kind==='circle'?'circle-run':m.kind==='row'?'row-paddle':m.kind==='shoulder'?(elapsed<3000?'walk':'shoulder-headbang'):m.kind==='toast'?(m.campfireToast&&elapsed<3000?'walk':'toast-clink'):'train-run';state.action=state.me.action;
+    state.moving=m.kind!=='shoulder'||elapsed<3000;
     if(t-state.lastSent>70){state.lastSent=t;sendMove()}
    }
   }
