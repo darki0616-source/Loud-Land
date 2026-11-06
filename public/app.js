@@ -16,7 +16,7 @@ const picnicSlots=[
 ];
 const picnicMatColors=['#f5a5a3','#a7def4','#f5ce80','#b3d9a0','#ceb8f1','#ffd2a5','#b2d8ff'];
 const mats=picnicSlots.map((slot,i)=>({x:slot.worldX/.058+600,y:500,c:picnicMatColors[i],worldX:slot.worldX,worldZ:slot.worldZ}));
-const state={id:null,me:null,players:new Map(),keys:new Set(),action:'idle',pose:'stand',actionUntil:0,lastSent:0,es:null,music:{id:'',paused:true,position:0,startedAt:0,token:0},queue:[],history:[],serverDelta:0,yt:null,ytReady:false,lastTrack:'',audioEnabled:true,skipVote:null,skipVoteCooldownUntil:0,walkTarget:null,benchTarget:null,moving:false};
+const state={id:null,me:null,players:new Map(),keys:new Set(),action:'idle',pose:'stand',actionUntil:0,lastSent:0,es:null,music:{id:'',paused:true,position:0,startedAt:0,token:0},queue:[],history:[],serverDelta:0,yt:null,ytReady:false,lastTrack:'',audioEnabled:true,skipVote:null,skipVoteCooldownUntil:0,walkTarget:null,benchTarget:null,moving:false,rhythm:{date:'',leaderboard:[],reward:null,booth:{x:1117,y:500,radius:175}},rhythmBest:0};
 let slamMode=false,slam=null,slamCooldownUntil=0,slamMotion=null;
 let rockPlacementMode=null,rockPlay=null,rockCooldowns={circle:0,train:0,mosh:0,row:0,toast:0,surf:0},rockRunningUntil=0,rockMotion=null,crowdSurfScene=null,toastSequence=null;
 let chosenPattern='solid',chosenSash='none',chosenHairStyle='short',chosenHairColor='#4b3932';
@@ -75,6 +75,323 @@ let editingProfile=false;
 function refreshProfilePreview(){if(!state.me)return;$('profileName').textContent=state.me.name;$('avatarPreview').querySelector('b').style.background=state.me.color}
 
 function toast(msg){$('toast').textContent=msg;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('show'),3000)}
+const RHYTHM_DEFAULT_BOOTH={x:1117,y:500,radius:175};
+let rhythmUi=null;
+const rhythmGame={open:false,running:false,startAt:0,duration:45000,beatWindow:220,score:0,combo:0,maxCombo:0,perfect:0,great:0,good:0,miss:0,lastJudge:'READY',lastJudgeColor:'#ffffff',lastJudgeUntil:0,beats:[],beatIndex:0,endSubmitted:false};
+const rhythmFx={bursts:[],lastScore:0,lastJudge:'',audio:null,clickIndex:0};
+function rhythmClickSound(accent=false){if(!state.audioEnabled)return;try{const AudioContextCtor=window.AudioContext||window.webkitAudioContext;if(!AudioContextCtor)return;const ac=rhythmFx.audio||(rhythmFx.audio=new AudioContextCtor());if(ac.state==='suspended')ac.resume().catch(()=>{});const osc=ac.createOscillator(),gain=ac.createGain();const at=ac.currentTime;osc.type=accent?'triangle':'sine';osc.frequency.setValueAtTime(accent?880:620,at);gain.gain.setValueAtTime(.0001,at);gain.gain.exponentialRampToValueAtTime(accent?.11:.07,at+.005);gain.gain.exponentialRampToValueAtTime(.0001,at+.085);osc.connect(gain).connect(ac.destination);osc.start(at);osc.stop(at+.1)}catch{}}
+function rhythmBurst(color,rank){const count=rank==='PERFECT'?24:rank==='GREAT'?15:8;for(let i=0;i<count;i++){const a=(i/count)*Math.PI*2+Math.random()*.24,v=1.0+Math.random()*2.8;rhythmFx.bursts.push({x:.5,y:.52,vx:Math.cos(a)*v,vy:Math.sin(a)*v-1.4,born:performance.now(),life:500+Math.random()*650,size:3+Math.random()*6,color})}if(rhythmFx.bursts.length>180)rhythmFx.bursts.splice(0,rhythmFx.bursts.length-180)}
+function flashRhythmCombo(){if(!rhythmUi||rhythmGame.combo===0||rhythmGame.combo%10!==0)return;const el=rhythmUi.comboFlash;el.textContent=`🔥 ${rhythmGame.combo} COMBO!`;el.classList.remove('pop');void el.offsetWidth;el.classList.add('pop')}
+
+function nearRhythmBooth(){
+ const booth=state.rhythm?.booth||RHYTHM_DEFAULT_BOOTH;
+ if(!state.me)return false;
+ return Math.hypot((state.me.x||0)-booth.x,(state.me.y||0)-booth.y)<=((booth.radius||175)+22);
+}
+function ensureRhythmUI(){
+ if(rhythmUi)return rhythmUi;
+ const style=document.createElement('style');
+ style.textContent=`
+
+#rhythmBoothButton{position:fixed;left:14px;bottom:160px;z-index:46;padding:12px 16px;border:none;border-radius:16px;background:linear-gradient(135deg,#8f5bff,#ff5eb9);color:#fff;font-weight:900;box-shadow:0 10px 35px rgba(0,0,0,.28);display:none}
+#rhythmBoothButton.show{display:block}
+#rhythmBoothButton:disabled{opacity:.45}
+#rhythmBoothHint{position:fixed;left:14px;bottom:126px;z-index:46;color:#fff;background:rgba(16,18,32,.72);padding:7px 10px;border-radius:12px;font-size:12px;display:none}
+#rhythmBoothHint.show{display:block}
+#rhythmOverlay{position:fixed;inset:0;z-index:90;background:radial-gradient(circle at 50% 20%,rgba(95,121,255,.36),transparent 34%),linear-gradient(180deg,#090c18,#10162b 65%,#0a0d19);color:#fff;display:none}
+#rhythmOverlay.show{display:block}
+#rhythmOverlay *{box-sizing:border-box}
+#rhythmShell{position:absolute;inset:0;display:flex;flex-direction:column;padding:18px}
+#rhythmTop{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:4px 0 12px}
+#rhythmTitle{font-size:clamp(20px,2.6vw,42px);font-weight:900;letter-spacing:.04em;text-shadow:0 0 18px rgba(255,255,255,.22)}
+#rhythmSub{font-size:12px;opacity:.82}
+#rhythmClose{border:none;border-radius:14px;padding:12px 16px;font-weight:800;background:#ffffff18;color:#fff}
+#rhythmBody{flex:1;display:grid;grid-template-columns:minmax(230px,320px) 1fr;gap:16px;min-height:0}
+#rhythmRank{background:rgba(255,255,255,.08);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.12);border-radius:24px;padding:18px;display:flex;flex-direction:column;gap:14px;overflow:auto}
+#rhythmRank h3{margin:0;font-size:18px}
+#rhythmRankList{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px}
+#rhythmRankList li{display:grid;grid-template-columns:44px 1fr auto;gap:10px;align-items:center;padding:10px 12px;border-radius:14px;background:rgba(255,255,255,.05)}
+#rhythmRankList li strong{font-size:14px}
+#rhythmRankList li span{font-variant-numeric:tabular-nums}
+#rhythmRewardBox,#rhythmGuide{background:rgba(0,0,0,.22);border-radius:16px;padding:12px 13px;font-size:13px;line-height:1.45}
+#rhythmMain{position:relative;background:linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.03));border:1px solid rgba(255,255,255,.12);border-radius:28px;overflow:hidden;min-height:0}
+#rhythmCanvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+#rhythmHud{position:absolute;inset:0;pointer-events:none}
+#rhythmStats{position:absolute;left:18px;top:18px;display:flex;gap:10px;flex-wrap:wrap}
+#rhythmStats b{display:block;font-size:11px;opacity:.72}
+#rhythmStats span{display:block;font-weight:900;font-size:24px}
+#rhythmStats div{pointer-events:auto;background:rgba(8,10,18,.52);backdrop-filter:blur(10px);padding:10px 14px;border-radius:16px;min-width:100px}
+#rhythmJudge{position:absolute;left:50%;top:10%;transform:translateX(-50%);font-weight:900;font-size:clamp(28px,3vw,54px);text-shadow:0 0 20px rgba(255,255,255,.35)}
+#rhythmCenter{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;width:min(80vw,700px)}
+#rhythmHelp{margin-top:300px;font-size:14px;opacity:.88}
+#rhythmStart{pointer-events:auto;margin-top:16px;border:none;border-radius:18px;padding:15px 28px;font-size:18px;font-weight:900;background:linear-gradient(135deg,#ffe36d,#ff76c8);color:#241133;box-shadow:0 14px 30px rgba(0,0,0,.28)}
+#rhythmCenterButton{pointer-events:auto;margin-top:10px;border:none;background:transparent;color:#fff;padding:10px 18px;font-size:16px;font-weight:800}
+#rhythmDesignNote{position:absolute;right:16px;bottom:16px;max-width:min(48vw,430px);font-size:12px;line-height:1.45;background:rgba(10,12,22,.66);border:1px solid rgba(255,255,255,.12);padding:10px 12px;border-radius:14px}
+#rhythmDesignNote strong{display:block;margin-bottom:4px}
+@media (max-width:900px){
+ #rhythmBody{grid-template-columns:1fr;grid-template-rows:auto 1fr}
+ #rhythmRank{max-height:34vh}
+ #rhythmStats{left:10px;top:10px}
+ #rhythmJudge{top:7%}
+ #rhythmHelp{margin-top:220px;font-size:12px}
+ #rhythmDesignNote{max-width:calc(100vw - 34px);font-size:11px}
+}
+/* Optional artist PNGs; absent images leave the built-in dark neon theme intact. */
+#rhythmOverlay{background-image:linear-gradient(180deg,rgba(7,9,25,.33),rgba(7,9,25,.54)),url('/assets/rhythm/background.png');background-position:center;background-size:cover}
+#rhythmTitle{position:relative;isolation:isolate}
+#rhythmTitle::before{content:'';position:absolute;inset:-12px -20px;background:url('/assets/rhythm/title.png') center/contain no-repeat;z-index:-1;pointer-events:none}
+#rhythmRank{background-image:linear-gradient(rgba(12,14,35,.79),rgba(12,14,35,.85)),url('/assets/rhythm/ranking.png');background-position:center;background-size:cover}
+#rhythmMain{background-image:linear-gradient(rgba(5,9,25,.18),rgba(5,9,25,.3)),url('/assets/rhythm/play-area.png');background-position:center;background-size:cover}
+#rhythmStart{background-image:url('/assets/rhythm/start-button.png'),linear-gradient(135deg,#ffe36d,#ff76c8);background-position:center;background-size:100% 100%}
+#rhythmJudge{min-width:min(38vw,360px);min-height:clamp(45px,7vw,130px);display:flex;align-items:center;justify-content:center;background:url('/assets/rhythm/judge.png') center/contain no-repeat;pointer-events:none}
+#rhythmComboFlash{position:absolute;left:50%;top:22%;transform:translate(-50%,-50%) scale(.7);font-size:clamp(18px,3.8vw,58px);font-weight:1000;letter-spacing:.03em;white-space:nowrap;opacity:0;text-shadow:0 0 14px #ff79c6,0 0 34px #984bff;will-change:transform,opacity}
+#rhythmComboFlash.pop{animation:rhythmComboPop .9s cubic-bezier(.2,.6,.2,1) both}
+@keyframes rhythmComboPop{0%{opacity:0;transform:translate(-50%,-50%) scale(.38) rotate(-5deg)}18%{opacity:1;transform:translate(-50%,-50%) scale(1.28) rotate(3deg)}60%{opacity:1;transform:translate(-50%,-58%) scale(1)}100%{opacity:0;transform:translate(-50%,-90%) scale(.8)}}
+#rhythmJudge.judge-pop{animation:rhythmJudgePop .44s ease-out both}
+@keyframes rhythmJudgePop{0%{opacity:.4;transform:translateX(-50%) scale(.7)}45%{opacity:1;transform:translateX(-50%) scale(1.19)}100%{opacity:1;transform:translateX(-50%) scale(1)}}
+#rhythmStats .score-bump span{animation:rhythmScoreBump .36s ease-out}
+@keyframes rhythmScoreBump{0%{transform:scale(1)}45%{transform:scale(1.23);color:#ffe976}100%{transform:scale(1)}}
+#rhythmDesignNote{display:none}
+@media(max-width:900px){#rhythmShell{padding:8px}#rhythmTop{padding:0 3px 5px}#rhythmSub{font-size:10px}#rhythmRank{max-height:23vh;padding:8px;gap:7px}#rhythmRankList{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:3px}#rhythmRankList li{display:flex;flex-direction:column;padding:4px;gap:2px;min-width:0}#rhythmRankList li strong{max-width:100%;overflow:hidden;text-overflow:ellipsis;font-size:10px}#rhythmRankList li span{font-size:10px}#rhythmRewardBox,#rhythmGuide{display:none}#rhythmBody{gap:6px}#rhythmStart{padding:11px 20px}}
+
+`;
+ document.head.append(style);
+ const overlay=document.createElement('div');
+ overlay.id='rhythmOverlay';
+ overlay.innerHTML=`<div id="rhythmShell"><div id="rhythmTop"><div><div id="rhythmTitle">🥁 BEAT CIRCLE · 박자게임</div><div id="rhythmSub">돗자리존 옆 게임부스에서만 플레이 가능 · 스코어는 1판 기준 · 매일 초기화</div></div><button type="button" id="rhythmClose">나가기</button></div><div id="rhythmBody"><aside id="rhythmRank"><div><h3>오늘의 TOP 5</h3><div style="font-size:12px;opacity:.78;margin-top:4px">랭킹은 오늘 최고 점수 기준입니다.</div></div><ol id="rhythmRankList"></ol><div id="rhythmRewardBox"></div><div id="rhythmGuide"></div></aside><main id="rhythmMain"><canvas id="rhythmCanvas" width="1280" height="720"></canvas><div id="rhythmHud"><div id="rhythmStats"><div><b>SCORE</b><span id="rhythmScore">0</span></div><div><b>COMBO</b><span id="rhythmCombo">0</span></div><div><b>TIME</b><span id="rhythmTime">45.0</span></div></div><div id="rhythmJudge">READY</div><div id="rhythmComboFlash" aria-live="off"></div><div id="rhythmCenter"><button type="button" id="rhythmStart">게임 시작</button><button type="button" id="rhythmCenterButton">SPACE / ENTER / TAP 으로 박자 맞추기</button><div id="rhythmHelp">원 안으로 파동이 들어올 때 박자를 맞춰 누르세요.</div></div></div></main></div></div>`;
+ document.body.append(overlay);
+ const boothButton=document.createElement('button');
+ boothButton.id='rhythmBoothButton';boothButton.type='button';boothButton.textContent='🥁 박자게임';document.body.append(boothButton);
+ const hint=document.createElement('div');hint.id='rhythmBoothHint';document.body.append(hint);
+ rhythmUi={
+  overlay,boothButton,hint,
+  canvas:overlay.querySelector('#rhythmCanvas'),ctx:overlay.querySelector('#rhythmCanvas').getContext('2d'),
+  start:overlay.querySelector('#rhythmStart'),judge:overlay.querySelector('#rhythmJudge'),comboFlash:overlay.querySelector('#rhythmComboFlash'),
+  score:overlay.querySelector('#rhythmScore'),combo:overlay.querySelector('#rhythmCombo'),time:overlay.querySelector('#rhythmTime'),
+  centerBtn:overlay.querySelector('#rhythmCenterButton'),rankList:overlay.querySelector('#rhythmRankList'),reward:overlay.querySelector('#rhythmRewardBox'),guide:overlay.querySelector('#rhythmGuide')
+ };
+ overlay.querySelector('#rhythmClose').onclick=()=>closeRhythmGame();
+ boothButton.onclick=()=>{if(!nearRhythmBooth())return toast('게임부스 근처에서만 열 수 있어요');openRhythmGame()};
+ rhythmUi.start.onclick=()=>startRhythmGame();
+ rhythmUi.centerBtn.onclick=()=>rhythmHit();
+ overlay.addEventListener('pointerdown',e=>{if(e.target===rhythmUi.canvas)rhythmHit()});
+ window.addEventListener('resize',resizeRhythmCanvas);
+ resizeRhythmCanvas();
+ return rhythmUi;
+}
+function resizeRhythmCanvas(){
+ if(!rhythmUi)return;
+ const box=rhythmUi.canvas.getBoundingClientRect();
+ const dpr=Math.min(2,window.devicePixelRatio||1);
+ const w=Math.max(640,Math.round(box.width*dpr));
+ const h=Math.max(360,Math.round(box.height*dpr));
+ if(rhythmUi.canvas.width!==w||rhythmUi.canvas.height!==h){
+  rhythmUi.canvas.width=w;rhythmUi.canvas.height=h;
+ }
+}
+function refreshRhythmReactionButton(){
+ const btn=$('beatkingAction');
+ if(!btn)return;
+ const on=Boolean(state.me?.rhythmKing);
+ btn.hidden=!on;
+ if(on)btn.title='Y';
+}
+function updateRhythmLeaderboard(){
+ ensureRhythmUI();
+ const rows=Array.isArray(state.rhythm?.leaderboard)?state.rhythm.leaderboard:[];
+ rhythmUi.rankList.replaceChildren();
+ for(let i=0;i<5;i++){
+  const row=rows[i];
+  const li=document.createElement('li');
+  const rank=document.createElement('em');rank.style.cssText='font-style:normal;font-weight:900;opacity:.76';rank.textContent=`${i+1}위`;const name=document.createElement('strong');name.textContent=row?row.name:'---';const score=document.createElement('span');score.textContent=row?Number(row.score).toLocaleString():'0';li.append(rank,name,score);
+  rhythmUi.rankList.append(li);
+ }
+ const reward=state.rhythm?.reward;
+ rhythmUi.reward.replaceChildren();const rewardHead=document.createElement('strong');rewardHead.textContent='오늘의 박자왕';rewardHead.style.cssText='display:block;margin-bottom:4px';const rewardBody=document.createElement('div');rewardBody.textContent=reward?`${reward.name} · 어제 최고기록 ${Number(reward.score).toLocaleString()}점`:'어제 1등 기록이 아직 없습니다.';rhythmUi.reward.append(rewardHead,rewardBody);if(reward){const extras=document.createElement('div');extras.style.cssText='margin-top:6px;font-size:12px;opacity:.8';extras.textContent='보상: 무지개 칭호 + 공주포즈 리액션';rhythmUi.reward.append(extras)}
+ rhythmUi.guide.innerHTML=`<strong style="display:block;margin-bottom:4px">플레이 규칙</strong>점수는 누적이 아니라 <b>1판 최고 점수</b>만 반영됩니다.<br>매일 0시에 랭킹 초기화, <b>전날 1등 1명</b>에게만 다음날 칭호와 전용 리액션이 지급됩니다.`;
+ refreshRhythmReactionButton();
+}
+function applyRhythmState(rhythm){
+ if(!rhythm)return;
+ state.rhythm={...state.rhythm,...rhythm};
+ updateRhythmLeaderboard();
+ updateRhythmBoothButton();
+}
+function updateRhythmBoothButton(){
+ ensureRhythmUI();
+ const near=nearRhythmBooth();
+ rhythmUi.boothButton.classList.toggle('show',Boolean(state.id));
+ rhythmUi.boothButton.disabled=!near;
+ rhythmUi.boothButton.textContent=near?'🥁 박자게임 입장':'🥁 부스 근처에서 플레이';
+ rhythmUi.hint.classList.toggle('show',Boolean(state.id));
+ rhythmUi.hint.textContent=near?'게임부스 근처입니다. 버튼을 눌러 플레이하세요.':'돗자리존 옆 박자게임 부스로 가야 플레이할 수 있어요.';
+}
+function makeBeatPattern(){
+ const sections=[[124,18],[132,16],[116,14],[142,18],[128,16]];
+ let beats=[],time=1400;
+ for(const [bpm,count] of sections){
+  const interval=60000/bpm;
+  for(let i=0;i<count;i++){beats.push({time,hit:false});time+=interval;}
+ }
+ return beats;
+}
+function updateRhythmScoreUi(){
+ ensureRhythmUI();
+ rhythmUi.score.textContent=Math.round(rhythmGame.score).toLocaleString();
+ rhythmUi.combo.textContent=String(rhythmGame.combo);
+ const remain=rhythmGame.running?Math.max(0,(rhythmGame.duration-(performance.now()-rhythmGame.startAt))/1000):rhythmGame.duration/1000;
+ rhythmUi.time.textContent=remain.toFixed(1);
+ rhythmUi.judge.textContent=rhythmGame.lastJudge;
+ rhythmUi.judge.style.color=rhythmGame.lastJudgeColor||'#fff';
+}
+function openRhythmGame(){
+ ensureRhythmUI();
+ if(!nearRhythmBooth())return toast('게임부스 근처에서만 열 수 있어요');
+ rhythmGame.open=true;
+ rhythmUi.overlay.classList.add('show');
+ selectBottomMenu('reaction');
+ updateRhythmLeaderboard();
+ resizeRhythmCanvas();
+ drawRhythmGame();
+}
+function closeRhythmGame(){
+ rhythmGame.open=false;
+ rhythmGame.running=false;
+ rhythmUi?.overlay.classList.remove('show');
+}
+function startRhythmGame(){
+ ensureRhythmUI();
+ rhythmGame.running=true;
+ rhythmGame.startAt=performance.now();
+ rhythmGame.score=0;rhythmGame.combo=0;rhythmGame.maxCombo=0;
+ rhythmGame.perfect=0;rhythmGame.great=0;rhythmGame.good=0;rhythmGame.miss=0;
+ rhythmGame.lastJudge='START!';rhythmGame.lastJudgeColor='#ffffff';
+ rhythmGame.lastJudgeUntil=performance.now()+900;
+ rhythmGame.beats=makeBeatPattern();
+ rhythmGame.beatIndex=0;
+ rhythmGame.endSubmitted=false;rhythmFx.bursts.length=0;rhythmFx.clickIndex=0;
+ rhythmUi.start.hidden=true;rhythmUi.centerBtn.hidden=true;rhythmUi.overlay.querySelector('#rhythmHelp').hidden=true;
+ updateRhythmScoreUi();
+}
+function judgeScore(diff){
+ diff=Math.abs(diff);
+ if(diff<=45)return ['PERFECT',1000,'#ffe676'];
+ if(diff<=90)return ['GREAT',700,'#7df7ff'];
+ if(diff<=160)return ['GOOD',300,'#ff97d8'];
+ return ['MISS',0,'#ffffff'];
+}
+function rhythmHit(){
+ if(!rhythmGame.open||!nearRhythmBooth())return;
+ if(!rhythmGame.running){startRhythmGame();return;}
+ const now=performance.now()-rhythmGame.startAt;
+ let bestIndex=-1,bestDiff=Infinity;
+ for(let i=Math.max(0,rhythmGame.beatIndex-2);i<rhythmGame.beats.length;i++){
+  const beat=rhythmGame.beats[i];
+  if(beat.hit)continue;
+  const diff=now-beat.time;
+  const ad=Math.abs(diff);
+  if(ad<bestDiff){bestDiff=ad;bestIndex=i;}
+  if(diff<-rhythmGame.beatWindow)break;
+ }
+ if(bestIndex===-1||bestDiff>rhythmGame.beatWindow){
+  rhythmGame.combo=0;rhythmGame.miss++;
+  rhythmGame.lastJudge='MISS';rhythmGame.lastJudgeColor='#ffffff';rhythmGame.lastJudgeUntil=performance.now()+550;
+  updateRhythmScoreUi();
+  return;
+ }
+ const beat=rhythmGame.beats[bestIndex];
+ beat.hit=true;
+ while(rhythmGame.beatIndex<rhythmGame.beats.length&&rhythmGame.beats[rhythmGame.beatIndex].hit)rhythmGame.beatIndex++;
+ const [label,base,color]=judgeScore(now-beat.time);
+ rhythmGame.lastJudge=label;rhythmGame.lastJudgeColor=color;rhythmGame.lastJudgeUntil=performance.now()+600;
+ rhythmBurst(color,label);if(rhythmUi){rhythmUi.judge.classList.remove('judge-pop');void rhythmUi.judge.offsetWidth;rhythmUi.judge.classList.add('judge-pop')}rhythmClickSound(label==='PERFECT');
+ if(base>0){
+  rhythmGame.combo++;
+  rhythmGame.maxCombo=Math.max(rhythmGame.maxCombo,rhythmGame.combo);
+  const bonus=rhythmGame.combo*12;
+  rhythmGame.score+=base+bonus;
+  flashRhythmCombo();if(rhythmUi){const scoreWrap=rhythmUi.score.parentElement;scoreWrap.classList.remove('score-bump');void scoreWrap.offsetWidth;scoreWrap.classList.add('score-bump')}
+  if(label==='PERFECT')rhythmGame.perfect++;
+  else if(label==='GREAT')rhythmGame.great++;
+  else rhythmGame.good++;
+ }else{
+  rhythmGame.combo=0;rhythmGame.miss++;
+ }
+ updateRhythmScoreUi();
+}
+function handleRhythmMisses(){
+ if(!rhythmGame.running)return;
+ const now=performance.now()-rhythmGame.startAt;
+ while(rhythmGame.beatIndex<rhythmGame.beats.length){
+  const beat=rhythmGame.beats[rhythmGame.beatIndex];
+  if(beat.hit){rhythmGame.beatIndex++;continue;}
+  if(now>beat.time+rhythmGame.beatWindow){
+   beat.hit=true;rhythmGame.beatIndex++;rhythmGame.combo=0;rhythmGame.miss++;
+   rhythmGame.lastJudge='MISS';rhythmGame.lastJudgeColor='#ffffff';rhythmGame.lastJudgeUntil=performance.now()+450;
+  }else break;
+ }
+ if(now>=rhythmGame.duration+900)finishRhythmGame();
+ updateRhythmScoreUi();
+}
+async function submitRhythmScore(){
+ if(rhythmGame.endSubmitted||!state.id)return;
+ rhythmGame.endSubmitted=true;
+ try{
+  const result=await post('rhythm',{id:state.id,command:'submit',score:Math.round(rhythmGame.score)});
+  state.rhythmBest=Number(result.best)||Math.round(rhythmGame.score);
+  applyRhythmState(result.rhythm);
+  toast(`게임 종료! ${Math.round(rhythmGame.score).toLocaleString()}점 · 오늘 최고 ${state.rhythmBest.toLocaleString()}점`);
+ }catch(error){toast(error.message||'랭킹 저장 실패');}
+}
+function finishRhythmGame(){
+ if(!rhythmGame.running)return;
+ rhythmGame.running=false;
+ rhythmUi.start.hidden=false;rhythmUi.start.textContent='다시 도전하기';rhythmUi.centerBtn.hidden=false;rhythmUi.overlay.querySelector('#rhythmHelp').hidden=false;
+ rhythmGame.lastJudge=`FINAL ${Math.round(rhythmGame.score).toLocaleString()}`;
+ rhythmGame.lastJudgeColor='#ffe676';
+ updateRhythmScoreUi();
+ void submitRhythmScore();
+}
+function drawRhythmGame(){
+ if(!rhythmUi||!rhythmGame.open)return;
+ const ctx=rhythmUi.ctx,canvas=rhythmUi.canvas,w=canvas.width,h=canvas.height;
+ ctx.clearRect(0,0,w,h);
+ const bg=ctx.createLinearGradient(0,0,0,h);bg.addColorStop(0,'rgba(17,24,42,.22)');bg.addColorStop(1,'rgba(2,4,9,.08)');ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
+ const cx=w*.5,cy=h*.52;
+ const targetR=Math.min(w,h)*.11;
+ const outerR=targetR*1.86;
+ ctx.save();
+ ctx.globalAlpha=.12;ctx.fillStyle='#ffffff';ctx.beginPath();ctx.arc(cx,cy,targetR*.92,0,Math.PI*2);ctx.fill();
+ ctx.strokeStyle='rgba(255,255,255,.17)';ctx.lineWidth=4;ctx.beginPath();ctx.arc(cx,cy,targetR,0,Math.PI*2);ctx.stroke();
+ ctx.strokeStyle='rgba(255,255,255,.08)';ctx.lineWidth=3;ctx.beginPath();ctx.arc(cx,cy,outerR,0,Math.PI*2);ctx.stroke();
+ if(rhythmGame.running){
+  const elapsed=performance.now()-rhythmGame.startAt;
+  handleRhythmMisses();
+  while(rhythmFx.clickIndex<rhythmGame.beats.length&&elapsed>=rhythmGame.beats[rhythmFx.clickIndex].time){rhythmClickSound(rhythmFx.clickIndex%4===0);rhythmFx.clickIndex++}
+  for(const beat of rhythmGame.beats){
+   const dt=beat.time-elapsed;
+   if(dt<-260||dt>1400)continue;
+   const progress=1-Math.max(0,Math.min(1,dt/1400));
+   const radius=outerR-(outerR-targetR)*progress;
+   const alpha=Math.max(.1,1-progress*.55);
+   ctx.strokeStyle=dt<0?'rgba(255,255,255,.22)':dt<140?'rgba(255,236,133,'+alpha+')':'rgba(129,217,255,'+alpha+')';
+   ctx.lineWidth=10-5*progress;
+   ctx.beginPath();ctx.arc(cx,cy,radius,0,Math.PI*2);ctx.stroke();
+  }
+  const pulse=(Math.sin(elapsed*.01)+1)*.5;
+  ctx.globalAlpha=.32+.22*pulse;ctx.fillStyle='#ff79c5';ctx.beginPath();ctx.arc(cx,cy,targetR*.64+targetR*.08*pulse,0,Math.PI*2);ctx.fill();
+ }else{
+  ctx.globalAlpha=.24;ctx.fillStyle='#80d9ff';ctx.beginPath();ctx.arc(cx,cy,targetR*.72,0,Math.PI*2);ctx.fill();
+ }
+ ctx.restore();
+ const fxNow=performance.now();rhythmFx.bursts=rhythmFx.bursts.filter(p=>fxNow-p.born<p.life);for(const p of rhythmFx.bursts){const t=(fxNow-p.born)/1000,alpha=Math.max(0,1-(fxNow-p.born)/p.life);ctx.globalAlpha=alpha;ctx.fillStyle=p.color;const x=w*(p.x+p.vx*t*.16),y=h*(p.y+p.vy*t*.18+1.2*t*t*.08);ctx.save();ctx.translate(x,y);ctx.rotate(t*4);ctx.fillRect(-p.size/2,-p.size/2,p.size,p.size);ctx.restore()}ctx.globalAlpha=1;
+ ctx.fillStyle='rgba(255,255,255,.9)';ctx.textAlign='center';ctx.font=`900 ${Math.round(Math.min(w,h)*.03)}px sans-serif`;
+ ctx.fillText('TAP THE BEAT',cx,cy-targetR*1.8);
+ ctx.font=`700 ${Math.round(Math.min(w,h)*.02)}px sans-serif`;
+ ctx.fillText(rhythmGame.running?'박자를 맞춰 누르세요':'게임 시작 버튼 또는 화면을 눌러 시작',cx,cy+targetR*1.85);
+ if(!rhythmGame.running&&state.rhythmBest){ctx.fillText(`오늘 내 최고점 ${Number(state.rhythmBest).toLocaleString()}점`,cx,cy+targetR*2.25)}
+}
+
 document.querySelectorAll('[data-gender]').forEach(b=>b.onclick=()=>selectGender(b.dataset.gender));
 function colorPicker(){let r=$('colorPicker');r.innerHTML='';palette.forEach(c=>{let b=document.createElement('button');b.style.background=c;b.className=c===chosenColor?'selected':'';b.setAttribute('aria-label','티셔츠 '+c);b.onclick=()=>{chosenColor=c;colorPicker()};r.append(b)})}colorPicker();
 const apparelChoices={pattern:[['solid','단색'],['stripe','가는 줄무늬'],['wide-stripe','넓은 줄무늬']],sash:[['none','없음'],['black','검정'],['purple','보라'],['red','빨강'],['green','초록'],['black-check','검정 체크'],['red-check','빨강 체크'],['yellow','노랑'],['blue','파랑'],['blue-check','파랑 체크'],['yellow-check','노랑 체크'],['purple-check','보라 체크'],['black-dot','검정 · 흰 땡땡이'],['red-dot','빨강 · 흰 땡땡이'],['blue-dot','파랑 · 흰 땡땡이'],['yellow-dot','노랑 · 흰 땡땡이'],['purple-dot','보라 · 흰 땡땡이']]};
@@ -148,7 +465,7 @@ async function restoreSession(){
    if(old){state.me.x=old.x;state.me.y=old.y;state.me.facing=old.facing;state.me.action=old.action;state.me.pose=old.pose;}
    state.players=new Map(d.players.map(x=>[x.id,x]));refreshProfilePreview();renderOnlinePlayers();listen();
    applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);
-   applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);if(d.crowdSurf)syncCrowdSurf(d.crowdSurf);
+   applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);if(d.crowdSurf)syncCrowdSurf(d.crowdSurf);
    sendMove();toast('서버 연결이 자동 복구됐어요');
   }catch(err){console.warn('Automatic rejoin:',err)}
  })().finally(()=>{rejoining=null});return rejoining;
@@ -300,7 +617,7 @@ function showBookingNotice(name,title){
  setTimeout(()=>el.remove(),5200);
 }
 
-function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='snapshot'){state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);syncCrowdSurf(d.crowdSurf);if(Array.isArray(d.chat)){$('chatMessages').replaceChildren();d.chat.forEach(appendChat)};for(const id of duoVfx.keys())removeDuoVfx(id);activeDuos.clear();for(const duo of d.interactions||[])activeDuos.set(duo.id,duo);syncDuoStatus()}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){appendChat(d.entry);showBubble(d.entry)}else if(d.type==='move'){state.players.set(d.player.id,d.player);if(d.player.id===state.id&&currentDuo())state.me={...d.player}}else if(d.type==='flag'){const player=state.players.get(d.id);if(player){player.flagText=d.flagText;player.flagImage=d.flagImage||'';}if(d.id===state.id&&state.me){state.me.flagText=d.flagText;state.me.flagImage=d.flagImage||'';currentFlagText=d.flagText;currentFlagImageId=d.flagImage||'';refreshFlagButton();}}else if(d.type==='badge'){const person=state.players.get(d.id);if(person){person.badgeTier=d.badgeTier;person.badgeSeconds=d.badgeSeconds;if(d.id===state.id&&state.me){state.me.badgeTier=d.badgeTier;state.me.badgeSeconds=d.badgeSeconds;}renderOnlinePlayers();}}else if(d.type==='profile'){state.players.set(d.player.id,d.player);if(d.player.id===state.id){state.me=d.player;refreshProfilePreview();if(!$('punkShop').classList.contains('hidden')||!$('mdWardrobe').hidden)refreshPunkShop()}renderOnlinePlayers()}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers()}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue,d.history);else if(d.type==='slam')applySlam(d.slam,d.cooldownUntil);else if(d.type==='slam-go')onSlamGo(d);else if(d.type==='slam-impact')spawnSlamDust(d.x,d.y);else if(d.type==='toast-spark')spawnToastSpark(d.x,d.y);else if(d.type==='cheer'&&d.playerId!==state.id&&state.audioEnabled)playCheer();else if(d.type==='rockplay')applyRockPlay(d.event,d.rockCooldowns,d.rockRunningUntil);else if(d.type==='rockplay-go')onRockPlayGo(d);else if(d.type==='rockplay-cancel'){applyRockPlay(null,d.rockCooldowns,0);toast(d.reason||'인원이 부족해 취소됐어요.')} else if(d.type==='md-catalog')syncMdCatalog(d.items);else if(d.type==='music-booked')showBookingNotice(d.name,d.title);else if(d.type==='music-control')showMusicControlNotice(d.name,d.command);else if(d.type==='skip-vote')applySkipVote(d.vote,d.cooldownUntil);else if(d.type==='skip-vote-result')showSkipVoteResult(d);else if(d.type.startsWith('duo-'))handleDuoEvent(d)};state.es.onerror=()=>{ /* EventSource retries automatically; heartbeat repairs an expired session. */ }}
+function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='snapshot'){state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);syncCrowdSurf(d.crowdSurf);if(Array.isArray(d.chat)){$('chatMessages').replaceChildren();d.chat.forEach(appendChat)};for(const id of duoVfx.keys())removeDuoVfx(id);activeDuos.clear();for(const duo of d.interactions||[])activeDuos.set(duo.id,duo);syncDuoStatus()}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){appendChat(d.entry);showBubble(d.entry)}else if(d.type==='move'){state.players.set(d.player.id,d.player);if(d.player.id===state.id&&currentDuo())state.me={...d.player}}else if(d.type==='flag'){const player=state.players.get(d.id);if(player){player.flagText=d.flagText;player.flagImage=d.flagImage||'';}if(d.id===state.id&&state.me){state.me.flagText=d.flagText;state.me.flagImage=d.flagImage||'';currentFlagText=d.flagText;currentFlagImageId=d.flagImage||'';refreshFlagButton();}}else if(d.type==='badge'){const person=state.players.get(d.id);if(person){person.badgeTier=d.badgeTier;person.badgeSeconds=d.badgeSeconds;if(d.id===state.id&&state.me){state.me.badgeTier=d.badgeTier;state.me.badgeSeconds=d.badgeSeconds;}renderOnlinePlayers();}}else if(d.type==='profile'){state.players.set(d.player.id,d.player);if(d.player.id===state.id){state.me=d.player;refreshProfilePreview();refreshRhythmReactionButton();if(!$('punkShop').classList.contains('hidden')||!$('mdWardrobe').hidden)refreshPunkShop()}renderOnlinePlayers()}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers()}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue,d.history);else if(d.type==='slam')applySlam(d.slam,d.cooldownUntil);else if(d.type==='slam-go')onSlamGo(d);else if(d.type==='slam-impact')spawnSlamDust(d.x,d.y);else if(d.type==='toast-spark')spawnToastSpark(d.x,d.y);else if(d.type==='cheer'&&d.playerId!==state.id&&state.audioEnabled)playCheer();else if(d.type==='rockplay')applyRockPlay(d.event,d.rockCooldowns,d.rockRunningUntil);else if(d.type==='rockplay-go')onRockPlayGo(d);else if(d.type==='rockplay-cancel'){applyRockPlay(null,d.rockCooldowns,0);toast(d.reason||'인원이 부족해 취소됐어요.')} else if(d.type==='rhythm-state')applyRhythmState(d.rhythm);else if(d.type==='md-catalog')syncMdCatalog(d.items);else if(d.type==='music-booked')showBookingNotice(d.name,d.title);else if(d.type==='music-control')showMusicControlNotice(d.name,d.command);else if(d.type==='skip-vote')applySkipVote(d.vote,d.cooldownUntil);else if(d.type==='skip-vote-result')showSkipVoteResult(d);else if(d.type.startsWith('duo-'))handleDuoEvent(d)};state.es.onerror=()=>{ /* EventSource retries automatically; heartbeat repairs an expired session. */ }}
 function applySkipVote(vote,cooldownUntil){
  state.skipVote=vote||null;if(Number.isFinite(Number(cooldownUntil)))state.skipVoteCooldownUntil=Number(cooldownUntil);
  const overlay=$('skipVoteOverlay');overlay.hidden=!vote;updateSkipVoteUI();updateSharedMusicButtons();
@@ -321,7 +638,7 @@ function updateSkipVoteUI(){
 async function castSkipVote(choice){const vote=state.skipVote;if(!vote||!state.id)return;try{await post('music',{id:state.id,command:'vote-cast',voteId:vote.id,choice})}catch(e){toast(e.message)}}
 function showSkipVoteResult(d){applySkipVote(null,state.skipVoteCooldownUntil);let msg=d.passed?'✅ 과반수 찬성! 요청한 곡으로 이동합니다':d.reason==='timeout'?'투표 시간이 종료되어 현재 곡을 유지합니다':'투표가 부결되어 현재 곡을 유지합니다';notice(msg)}
 setInterval(()=>{updateSkipVoteUI();updateSharedMusicButtons()},500);
-let joining=false;async function join(options={}){const auto=Boolean(options?.auto);if(editingProfile)return updateProfile();if(joining)return;joining=true;manualExit=false;try{let d=await post('join',{sessionKey,pageId,badgeIdentity,flagText:currentFlagText,flagImage:currentFlagImageData,name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender,pattern:chosenPattern,sash:chosenSash,hairStyle:chosenHairStyle,hairColor:chosenHairColor});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);currentFlagImageId=state.me?.flagImage||'';state.pose=state.me?.pose||'stand';cameraFollowInitialized=false;state.players=new Map(d.players.map(p=>[p.id,p]));renderOnlinePlayers();refreshPunkShop();$('joinModal').classList.add('hidden');$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='페스티벌 참가 중';$('avatarPreview').querySelector('b').style.background=chosenColor;saveProfile(state.me);applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);if(d.crowdSurf)syncCrowdSurf(d.crowdSurf);listen();$('audioModal').classList.add('hidden');setPersonalAudio(true);showMovementGuide();if(!auto)toast('ONEseason에 오신 것을 환영합니다!')}catch(e){if(auto)$('joinModal').classList.remove('hidden');$('joinError').textContent='입장 실패: '+(e?.message||'연결을 확인해주세요');console.error('ONEseason join error:',e)}finally{joining=false}}
+let joining=false;async function join(options={}){const auto=Boolean(options?.auto);if(editingProfile)return updateProfile();if(joining)return;joining=true;manualExit=false;try{let d=await post('join',{sessionKey,pageId,badgeIdentity,flagText:currentFlagText,flagImage:currentFlagImageData,name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender,pattern:chosenPattern,sash:chosenSash,hairStyle:chosenHairStyle,hairColor:chosenHairColor});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);currentFlagImageId=state.me?.flagImage||'';state.pose=state.me?.pose||'stand';cameraFollowInitialized=false;state.players=new Map(d.players.map(p=>[p.id,p]));renderOnlinePlayers();refreshPunkShop();$('joinModal').classList.add('hidden');$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='페스티벌 참가 중';$('avatarPreview').querySelector('b').style.background=chosenColor;saveProfile(state.me);applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);if(d.crowdSurf)syncCrowdSurf(d.crowdSurf);listen();$('audioModal').classList.add('hidden');setPersonalAudio(true);showMovementGuide();if(!auto)toast('ONEseason에 오신 것을 환영합니다!')}catch(e){if(auto)$('joinModal').classList.remove('hidden');$('joinError').textContent='입장 실패: '+(e?.message||'연결을 확인해주세요');console.error('ONEseason join error:',e)}finally{joining=false}}
 $('audioYes').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(true);toast(state.music.id?'음악 재생을 허용했어요':'음악이 등록되면 바로 재생돼요')};$('audioNo').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(false);toast('내 소리를 끈 상태로 입장했어요')};// First tap must save even if the nickname field currently has keyboard focus.
 // A pointerdown listener runs BEFORE Safari's keyboard dismissal can consume
 // the subsequent click. De-duplicate that click and block duplicate requests.
@@ -453,7 +770,7 @@ function handleDuoEvent(d){
  if(d.type==='duo-end'){finishDuo(d.id);return}
 }
 setInterval(syncDuoStatus,250);
-const sustainedReactions=new Set(['peace','jump','run','headbang','buriburi','groove','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle']);
+const sustainedReactions=new Set(['peace','jump','run','headbang','buriburi','groove','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking']);
 // One shared bottom tab group: reactions / dances / chat.
 // Chat stays inside the dock instead of floating over the 3D world.
 function selectBottomMenu(menu){
@@ -483,6 +800,7 @@ function updateActionButtons(){
 }
 function react(a){
  if(!state.me)return;
+ if(a==='beatking'&&!state.me.rhythmKing)return toast('박자왕에게만 허용된 리액션입니다.');
  if(currentDuo())return toast('상호작용을 종료한 후 다른 동작을 사용해 주세요.');
  if(slamMotion){slamMotion=null;state.walkTarget=null}if(rockMotion){rockMotion=null;state.walkTarget=null}state.benchTarget=null;
  if(a==='sit'||a==='lie'){
@@ -500,7 +818,7 @@ function react(a){
  if(state.action===a&&sustainedReactions.has(a)){
   state.action='idle';state.actionUntil=0;state.me.action='idle';
  }else{
-  if((a==='jump'||a==='run'||a==='buriburi'||a==='groove'||a==='windmill'||a==='skanking'||a==='airguitar'||a==='headspin'||a==='cheer'||a==='smoke'||a==='bubblegun'||a==='freestyle')&&state.pose!=='stand'){
+  if((a==='jump'||a==='run'||a==='buriburi'||a==='groove'||a==='windmill'||a==='skanking'||a==='airguitar'||a==='headspin'||a==='cheer'||a==='smoke'||a==='bubblegun'||a==='freestyle'||a==='beatking')&&state.pose!=='stand'){
    state.pose='stand';state.me.pose='stand';
   }
   state.action=a;state.me.action=a;if(a==='cheer')playCheer();
@@ -509,6 +827,7 @@ function react(a){
  updateActionButtons();sendMove();
 }
 document.querySelectorAll('[data-action]').forEach(b=>b.onclick=()=>react(b.dataset.action));
+const beatKingButton=document.createElement('button');beatKingButton.id='beatkingAction';beatKingButton.dataset.action='beatking';beatKingButton.hidden=true;beatKingButton.innerHTML='👑 <span>박자왕</span><em>Y</em>';beatKingButton.onclick=()=>react('beatking');$('reactionActions').append(beatKingButton);refreshRhythmReactionButton();
 // Festival flag editor: text or cropped image, both synchronized across visitors.
 let flagDialogMode='new',flagDialogBusy=false,flagEditorMode='text';
 let flagSelectedImage=null,flagSelectedUrl='',flagCropX=0,flagCropY=0,flagCropZoom=1,flagCropPointer=null;
@@ -589,6 +908,7 @@ refreshFlagButton();
 
 // PC chat shortcut: Enter opens and focuses chat; Enter in the chat form sends.
 document.addEventListener('keydown',e=>{
+ if(rhythmGame.open)return;
  if(e.key!=='Enter'||e.repeat||e.isComposing||e.keyCode===229||!state.id||('ontouchstart' in window&&navigator.maxTouchPoints>1))return;
  if(e.target instanceof HTMLInputElement||e.target instanceof HTMLTextAreaElement||e.target?.isContentEditable)return;
  if(e.ctrlKey||e.altKey||e.metaKey||e.shiftKey)return;
@@ -597,7 +917,7 @@ document.addEventListener('keydown',e=>{
  if(!$('joinModal').classList.contains('hidden'))return;
  e.preventDefault();state.keys.delete('enter');selectBottomMenu('chat');$('chatInput').focus();
 },true);
-document.addEventListener('keydown',e=>{if(e.target instanceof HTMLInputElement||e.target instanceof HTMLTextAreaElement||e.target?.isContentEditable)return;let k=e.key.toLowerCase();if(k.startsWith('arrow')||k===' ')e.preventDefault();state.keys.add(k);let acts={'1':'peace','2':'jump','3':'run','4':'wave','5':'clap','6':'sit','7':'lie','8':'drink','9':'snack','0':'headbang','b':'buriburi','g':'groove','v':'windmill','k':'skanking','a':'airguitar','n':'headspin','h':'cheer','c':'smoke','u':'bubblegun','f':'freestyle'};if(acts[k]&&!e.repeat)react(acts[k])});document.addEventListener('keyup',e=>state.keys.delete(e.key.toLowerCase()));window.addEventListener('blur',()=>state.keys.clear());
+document.addEventListener('keydown',e=>{if(rhythmGame.open&&(e.key===' '||e.key==='Enter')){e.preventDefault();if(!e.repeat)rhythmHit();return}if(rhythmGame.open&&e.key==='Escape'){e.preventDefault();closeRhythmGame();return}if(e.target instanceof HTMLInputElement||e.target instanceof HTMLTextAreaElement||e.target?.isContentEditable)return;let k=e.key.toLowerCase();if(k.startsWith('arrow')||k===' ')e.preventDefault();state.keys.add(k);let acts={'1':'peace','2':'jump','3':'run','4':'wave','5':'clap','6':'sit','7':'lie','8':'drink','9':'snack','0':'headbang','b':'buriburi','g':'groove','v':'windmill','k':'skanking','a':'airguitar','n':'headspin','h':'cheer','c':'smoke','u':'bubblegun','f':'freestyle','y':'beatking'};if(acts[k]&&!e.repeat)react(acts[k])});document.addEventListener('keyup',e=>state.keys.delete(e.key.toLowerCase()));window.addEventListener('blur',()=>state.keys.clear());
 // CC0 crowd cheering by SFXMint; play only for listeners who enabled audio.
 // The URL is hotlink-permitted by the creator (https://sfxmint.com/sounds/crowd-cheer).
 const cheerAudioUrl='https://sfxmint.com/dl/crowd-cheer-44.mp3';
@@ -1818,6 +2138,7 @@ for(let x of [-46,48])for(let z of [-9,9,23]){cylinder(.45,.65,5,wood,x,2.5,z);s
 for(let x of [-46,47]){cube(5,2.8,3,mat('#bc7097'),x,1.6,15);cube(5.8,.35,4.1,mat('#f4c783'),x,3.2,15);let banner=new THREE.Mesh(new THREE.PlaneGeometry(4,1.1),label(x<0?'SNACKS':'MERCH',70,'#fbe9dc','#9e446f'));banner.position.set(x,2.2,16.56);scene.add(banner)}
 
 for(let x of [-46,47]){cube(5.5,2.9,3.4,mat('#6b8ac7'),x,1.65,22);cube(6.4,.35,4.5,mat('#f4c783'),x,3.28,22);let banner=new THREE.Mesh(new THREE.PlaneGeometry(4.5,1.1),label(x<0?'FOOD':'REST',68,'#fef7e6','#4c6588'));banner.position.set(x,2.2,23.86);scene.add(banner)}
+const rhythmBooth=new THREE.Group();rhythmBooth.position.set(30,0,26);scene.add(rhythmBooth);const rb=(w,h,d,m,x,y,z)=>{const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);mesh.position.set(x,y,z);rhythmBooth.add(mesh);return mesh};rb(6.4,3.0,4.2,mat('#7a4ed9'),0,1.65,0);rb(7.2,.34,4.8,mat('#ffd36b'),0,3.28,0);rb(2.8,.95,.12,mat('#241736'),0,2.25,2.18);const rhythmBanner=new THREE.Mesh(new THREE.PlaneGeometry(4.9,1.16),label('BEAT BOOTH',64,'#fffaf1','#ff59bc'));rhythmBanner.position.set(0,2.25,2.45);rhythmBooth.add(rhythmBanner);const rhythmSign=new THREE.Mesh(new THREE.PlaneGeometry(5.2,.96),label('RHYTHM GAME',58,'#fff5ea','#4a2575'));rhythmSign.position.set(0,3.95,.12);rhythmBooth.add(rhythmSign);const rbFloor=new THREE.Mesh(new THREE.CircleGeometry(2.5,40),new THREE.MeshBasicMaterial({color:'#ff76c8',transparent:true,opacity:.22}));rbFloor.rotation.x=-Math.PI/2;rbFloor.position.set(0,.05,2.1);rhythmBooth.add(rbFloor);
 // Subtle festival bulbs across the red line: the end of the rock-play zone.
 // Positioned at z=18, NOT along or through the picnic row at z=28.
 const audienceLightBulbColors=['#ffdb8a','#fca5b5','#a8ecff','#c7f591'];
@@ -2747,6 +3068,7 @@ function makeAvatar(p){
  ctx.fillStyle='#fff';ctx.fillText(nickname,beginning+84,65,560);
  const texture=new THREE.CanvasTexture(cv);
  const tag=new THREE.Sprite(new THREE.SpriteMaterial({map:texture,transparent:true,depthTest:false}));tag.scale.set(6,1.04,1);tag.position.y=3.66;root.add(tag);parts.tag=tag;
+ const kingCanvas=document.createElement('canvas');kingCanvas.width=960;kingCanvas.height=160;const kctx=kingCanvas.getContext('2d');const kingGrad=kctx.createLinearGradient(80,0,880,0);kingGrad.addColorStop(0,'#ff6eb7');kingGrad.addColorStop(.25,'#ffcf6a');kingGrad.addColorStop(.5,'#7bf0ff');kingGrad.addColorStop(.75,'#9c83ff');kingGrad.addColorStop(1,'#7dff99');kctx.font='900 86px Arial, sans-serif';kctx.textAlign='center';kctx.textBaseline='middle';kctx.strokeStyle='rgba(25,13,45,.92)';kctx.lineWidth=18;kctx.strokeText('내가 박자왕',480,82);kctx.fillStyle=kingGrad;kctx.fillText('내가 박자왕',480,82);const kingTexture=new THREE.CanvasTexture(kingCanvas);kingTexture.colorSpace=THREE.SRGBColorSpace;const kingTitle=new THREE.Sprite(new THREE.SpriteMaterial({map:kingTexture,transparent:true,depthTest:false}));kingTitle.scale.set(7.4,1.24,1);kingTitle.position.y=4.96;kingTitle.visible=Boolean(p.rhythmKing);root.add(kingTitle);parts.rhythmTitle=kingTitle;parts.rhythmSparkles=[];const sparkleGeo=new THREE.OctahedronGeometry(.12,0);const sparkleColors=['#ff79c5','#ffe46f','#81d9ff','#a688ff','#89ffb0'];for(let i=0;i<16;i++){const star=new THREE.Mesh(sparkleGeo,new THREE.MeshBasicMaterial({color:sparkleColors[i%sparkleColors.length],transparent:true,opacity:.94}));star.visible=false;star.renderOrder=40;root.add(star);parts.rhythmSparkles.push(star);}
  const badgeImage=new Image();badgeImage.src=badgeIconUrl(p.badgeTier);
  badgeImage.onload=()=>{ctx.drawImage(badgeImage,beginning,29,66,66);texture.needsUpdate=true;};
  addForegroundLayer(root);
@@ -2759,7 +3081,7 @@ function makeAvatar(p){
   const crumb=new THREE.Mesh(crumbGeo,crumbMaterials[i%crumbMaterials.length]);crumb.visible=false;
   snackCrumbs.add(crumb);parts.snackCrumbs.push(crumb);
  }
- return {root,parts,color:p.color,lastAction:'idle'};
+ return {root,parts,color:p.color,lastAction:'idle',beatkingYaw:0};
 }
 
 // Chat bubbles are true 3D sprites anchored in world coordinates, independent of avatar pose.
@@ -3092,6 +3414,22 @@ function animateAvatar(a,p,t){
   const turnEase=turnPhase*turnPhase*(3-2*turnPhase);
   a.freestyleYaw=Math.PI*2*turnEase;
  }else{a.freestyleYaw=0;}
+ if(act==='beatking'){
+  const cycle=sec%4.6;
+  const spinPhase=Math.min(1,cycle/2.2);
+  const spinEase=spinPhase*spinPhase*(3-2*spinPhase);
+  a.beatkingYaw=Math.PI*6*spinEase;
+  const twirl=Math.sin(sec*8.5);
+  height=.08+Math.max(0,Math.sin(sec*7.4))*.08;
+  set('upper',-.04,.06*Math.sin(sec*4.2),-.10);
+  set('neck',.09,-.05*Math.sin(sec*4.2),.05);
+  set('leftShoulder',-.96+.12*Math.sin(sec*4.2),0,-.72);
+  set('rightShoulder',-1.34,0,.92);
+  set('leftElbow',-.52);set('rightElbow',-.18);
+  set('leftHip',-.10+.08*Math.max(0,Math.sin(sec*4.2)),0,-.10);
+  set('rightHip',-.10+.08*Math.max(0,-Math.sin(sec*4.2)),0,.10);
+  set('leftKnee',.26+.08*Math.max(0,twirl));set('rightKnee',.26+.08*Math.max(0,-twirl));
+ }else a.beatkingYaw=0;
  if(act==='windmill'){
   // One-handed B-boy freeze: tilted inversion, planted left arm, right arm
   // stretched out to the side, scissored legs (one straight, one bent).
@@ -3441,6 +3779,8 @@ function animateAvatar(a,p,t){
   bubble.material.opacity=.56*(1-THREE.MathUtils.smoothstep(phase,.72,1));
   bubble.visible=true;
  });
+ if(P.rhythmTitle){P.rhythmTitle.visible=Boolean(q.rhythmKing);P.rhythmTitle.position.y=4.96+Math.sin(sec*3.5)*.05;}
+ if(P.rhythmSparkles){P.rhythmSparkles.forEach((spark,i)=>{if(act!=='beatking'){spark.visible=false;return}const phase=(sec*1.8+i/5)%1;const angle=phase*Math.PI*2+i*.7;const band=(i%2?1:-1);spark.visible=true;spark.position.set(Math.cos(angle)*(1.1+phase*.5),1.1+Math.sin(phase*Math.PI*2+band)*1.1+phase*.9,.45+Math.sin(angle*1.4)*.7);const sc=.55+.35*Math.sin(phase*Math.PI);spark.scale.setScalar(sc);spark.rotation.x=sec*2.2+i;spark.rotation.y=sec*3.1+i;});}
  P.rockBubble.visible=act==='peace'||act==='slam-retreat'||act==='slam-celebrate';P.bottle.visible=act==='drink';
  if(P.rockBubble.visible)P.rockBubble.position.y=4.34+Math.sin(sec*7)*.075;
  if(act==='headspin'){
@@ -3452,6 +3792,8 @@ function animateAvatar(a,p,t){
    // Explicit full revolution: wrapping via shortest-angle interpolation
    // would otherwise erase the spin entirely. All avatars use the same pose clock.
    a.root.rotation.y=yaw+(a.freestyleYaw||0);
+  }else if(act==='beatking'){
+   a.root.rotation.y=yaw+(a.beatkingYaw||0);
   }else{
    a.root.rotation.y=((a.root.rotation.y%(Math.PI*2))+Math.PI*2)%(Math.PI*2);
    const delta=Math.atan2(Math.sin(yaw-a.root.rotation.y),Math.cos(yaw-a.root.rotation.y));
@@ -3819,7 +4161,7 @@ function tick(t){
    }
   }
   state.moving=!!(dx||dy);
-  if(state.moving && (state.action==='buriburi'||state.action==='groove'||state.action==='windmill'||state.action==='airguitar'||state.action==='headspin'||state.action==='cheer'||state.action==='smoke'||state.action==='freestyle') && !slamMotion && !rockMotion){
+  if(state.moving && (state.action==='buriburi'||state.action==='groove'||state.action==='windmill'||state.action==='airguitar'||state.action==='headspin'||state.action==='cheer'||state.action==='smoke'||state.action==='freestyle'||state.action==='beatking') && !slamMotion && !rockMotion){
    state.action='idle';state.me.action='walk';state.actionUntil=0;updateActionButtons();
   }
   if(state.moving){
@@ -3868,10 +4210,10 @@ function tick(t){
 
  for(let [id,p] of state.players){
   const current=avatars.get(id);
-  if(current&&(current.color!==p.color||current.name!==p.name||current.badgeTier!==(p.badgeTier||'bronze')||current.gender!==p.gender||current.pattern!==(p.pattern||'solid')||current.sash!==(p.sash||'none')||current.hairStyle!==(p.hairStyle||'short')||current.hairColor!==(p.hairColor||'#4b3932')||current.flagText!==(p.flagText||'')||current.flagImage!==(p.flagImage||'')||JSON.stringify(current.equipped||{})!==JSON.stringify(p.equipped||{}))){
+  if(current&&(current.color!==p.color||current.name!==p.name||current.badgeTier!==(p.badgeTier||'bronze')||current.gender!==p.gender||current.pattern!==(p.pattern||'solid')||current.sash!==(p.sash||'none')||current.hairStyle!==(p.hairStyle||'short')||current.hairColor!==(p.hairColor||'#4b3932')||current.flagText!==(p.flagText||'')||current.flagImage!==(p.flagImage||'')||Boolean(current.rhythmKing)!==Boolean(p.rhythmKing)||JSON.stringify(current.equipped||{})!==JSON.stringify(p.equipped||{}))){
    disposeAvatar(current.root);avatars.delete(id);
   }
-  if(!avatars.has(id)){let a=makeAvatar(p),pos=toWorld(p);a.root.position.set(pos.x,0,pos.z);a.name=p.name;a.badgeTier=p.badgeTier||'bronze';a.gender=p.gender;a.pattern=p.pattern||'solid';a.sash=p.sash||'none';a.hairStyle=p.hairStyle||'short';a.hairColor=p.hairColor||'#4b3932';a.flagText=p.flagText||'';a.flagImage=p.flagImage||'';a.equipped={...(p.equipped||{})};avatars.set(id,a)}
+  if(!avatars.has(id)){let a=makeAvatar(p),pos=toWorld(p);a.root.position.set(pos.x,0,pos.z);a.name=p.name;a.badgeTier=p.badgeTier||'bronze';a.gender=p.gender;a.pattern=p.pattern||'solid';a.sash=p.sash||'none';a.hairStyle=p.hairStyle||'short';a.hairColor=p.hairColor||'#4b3932';a.flagText=p.flagText||'';a.flagImage=p.flagImage||'';a.rhythmKing=Boolean(p.rhythmKing);a.equipped={...(p.equipped||{})};avatars.set(id,a)}
   const avatar=avatars.get(id);
   animateAvatar(avatar,p,t);
   if(avatar.parts.flagPivot?.parent?.visible){
@@ -3902,6 +4244,7 @@ function tick(t){
  updateMoshTrails(t);updateSlamDust(t);updateBubbles(t);animateShow(t);updateFiretruckShow(t);
  if(!minimalScenery)updateHourlyFireworks(t);
  animateToastSparks(t);
+ if(state.id)updateRhythmBoothButton();if(rhythmGame.open)drawRhythmGame();
  if(povEnabled){updatePovCamera();}else{followLocalAvatar();controls.update();keepCameraInFrontOfStage();}
  // Hide only our own avatar in POV, but leave all other avatars visible.
  const selfAvatar=avatars.get(state.id),previousVisible=selfAvatar?.root.visible;
