@@ -16,7 +16,7 @@ const picnicSlots=[
 ];
 const picnicMatColors=['#f5a5a3','#a7def4','#f5ce80','#b3d9a0','#ceb8f1','#ffd2a5','#b2d8ff'];
 const mats=picnicSlots.map((slot,i)=>({x:slot.worldX/.058+600,y:500,c:picnicMatColors[i],worldX:slot.worldX,worldZ:slot.worldZ}));
-const state={id:null,me:null,players:new Map(),keys:new Set(),action:'idle',pose:'stand',actionUntil:0,lastSent:0,es:null,music:{id:'',paused:true,position:0,startedAt:0,token:0},queue:[],history:[],serverDelta:0,yt:null,ytReady:false,lastTrack:'',audioEnabled:true,skipVote:null,skipVoteCooldownUntil:0,walkTarget:null,benchTarget:null,moving:false,rhythm:{date:'',leaderboard:[],reward:null,booth:{x:1117,y:500,radius:175}},rhythmBest:0};
+const state={id:null,me:null,players:new Map(),keys:new Set(),action:'idle',pose:'stand',actionUntil:0,lastSent:0,es:null,music:{id:'',paused:true,position:0,startedAt:0,token:0},queue:[],history:[],serverDelta:0,yt:null,ytReady:false,lastTrack:'',audioEnabled:true,skipVote:null,skipVoteCooldownUntil:0,walkTarget:null,benchTarget:null,moving:false,rhythm:{date:'',leaderboard:[],reward:null,booth:{x:1290,y:1034,radius:135}},rhythmBest:0};
 let slamMode=false,slam=null,slamCooldownUntil=0,slamMotion=null;
 let rockPlacementMode=null,rockPlay=null,rockCooldowns={circle:0,train:0,mosh:0,row:0,toast:0,surf:0},rockRunningUntil=0,rockMotion=null,crowdSurfScene=null,toastSequence=null;
 let chosenPattern='solid',chosenSash='none',chosenHairStyle='short',chosenHairColor='#4b3932';
@@ -75,7 +75,7 @@ let editingProfile=false;
 function refreshProfilePreview(){if(!state.me)return;$('profileName').textContent=state.me.name;$('avatarPreview').querySelector('b').style.background=state.me.color}
 
 function toast(msg){$('toast').textContent=msg;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('show'),3000)}
-const RHYTHM_DEFAULT_BOOTH={x:1117,y:500,radius:175};
+const RHYTHM_DEFAULT_BOOTH={x:1290,y:1034,radius:135};
 let rhythmUi=null;
 const rhythmGame={open:false,running:false,startAt:0,duration:45000,beatWindow:220,score:0,combo:0,maxCombo:0,perfect:0,great:0,good:0,miss:0,lastJudge:'READY',lastJudgeColor:'#ffffff',lastJudgeUntil:0,beats:[],beatIndex:0,endSubmitted:false};
 const rhythmFx={bursts:[],lastScore:0,lastJudge:'',audio:null,clickIndex:0};
@@ -97,7 +97,7 @@ function ensureRhythmUI(){
 #rhythmBoothButton.show{display:block}
 #rhythmBoothButton:disabled{opacity:.45}
 #rhythmBoothHint{position:fixed;left:14px;bottom:126px;z-index:46;color:#fff;background:rgba(16,18,32,.72);padding:7px 10px;border-radius:12px;font-size:12px;display:none}
-#rhythmBoothHint.show{display:block}
+#rhythmBoothHint.show{display:none}
 #rhythmOverlay{position:fixed;inset:0;z-index:90;background:radial-gradient(circle at 50% 20%,rgba(95,121,255,.36),transparent 34%),linear-gradient(180deg,#090c18,#10162b 65%,#0a0d19);color:#fff;display:none}
 #rhythmOverlay.show{display:block}
 #rhythmOverlay *{box-sizing:border-box}
@@ -158,7 +158,7 @@ function ensureRhythmUI(){
  document.head.append(style);
  const overlay=document.createElement('div');
  overlay.id='rhythmOverlay';
- overlay.innerHTML=`<div id="rhythmShell"><div id="rhythmTop"><div><div id="rhythmTitle">🥁 BEAT CIRCLE · 박자게임</div><div id="rhythmSub">돗자리존 옆 게임부스에서만 플레이 가능 · 스코어는 1판 기준 · 매일 초기화</div></div><button type="button" id="rhythmClose">나가기</button></div><div id="rhythmBody"><aside id="rhythmRank"><div><h3>오늘의 TOP 5</h3><div style="font-size:12px;opacity:.78;margin-top:4px">랭킹은 오늘 최고 점수 기준입니다.</div></div><ol id="rhythmRankList"></ol><div id="rhythmRewardBox"></div><div id="rhythmGuide"></div></aside><main id="rhythmMain"><canvas id="rhythmCanvas" width="1280" height="720"></canvas><div id="rhythmHud"><div id="rhythmStats"><div><b>SCORE</b><span id="rhythmScore">0</span></div><div><b>COMBO</b><span id="rhythmCombo">0</span></div><div><b>TIME</b><span id="rhythmTime">45.0</span></div></div><div id="rhythmJudge">READY</div><div id="rhythmComboFlash" aria-live="off"></div><div id="rhythmCenter"><button type="button" id="rhythmStart">게임 시작</button><button type="button" id="rhythmCenterButton">SPACE / ENTER / TAP 으로 박자 맞추기</button><div id="rhythmHelp">원 안으로 파동이 들어올 때 박자를 맞춰 누르세요.</div></div></div></main></div></div>`;
+ overlay.innerHTML=`<div id="rhythmShell"><div id="rhythmTop"><div><div id="rhythmTitle">🥁 BEAT CIRCLE · 박자게임</div><div id="rhythmSub">해변 오른쪽 벤치 옆 게임부스에서만 플레이 가능 · 스코어는 1판 기준 · 매일 초기화</div></div><button type="button" id="rhythmClose">나가기</button></div><div id="rhythmBody"><aside id="rhythmRank"><div><h3>오늘의 TOP 5</h3><div style="font-size:12px;opacity:.78;margin-top:4px">랭킹은 오늘 최고 점수 기준입니다.</div></div><ol id="rhythmRankList"></ol><div id="rhythmRewardBox"></div><div id="rhythmGuide"></div></aside><main id="rhythmMain"><canvas id="rhythmCanvas" width="1280" height="720"></canvas><div id="rhythmHud"><div id="rhythmStats"><div><b>SCORE</b><span id="rhythmScore">0</span></div><div><b>COMBO</b><span id="rhythmCombo">0</span></div><div><b>TIME</b><span id="rhythmTime">45.0</span></div></div><div id="rhythmJudge">READY</div><div id="rhythmComboFlash" aria-live="off"></div><div id="rhythmCenter"><button type="button" id="rhythmStart">게임 시작</button><button type="button" id="rhythmCenterButton">SPACE / ENTER / TAP 으로 박자 맞추기</button><div id="rhythmHelp">원 안으로 파동이 들어올 때 박자를 맞춰 누르세요.</div></div></div></main></div></div>`;
  document.body.append(overlay);
  const boothButton=document.createElement('button');
  boothButton.id='rhythmBoothButton';boothButton.type='button';boothButton.textContent='🥁 박자게임';document.body.append(boothButton);
@@ -220,11 +220,10 @@ function applyRhythmState(rhythm){
 function updateRhythmBoothButton(){
  ensureRhythmUI();
  const near=nearRhythmBooth();
- rhythmUi.boothButton.classList.toggle('show',Boolean(state.id));
+ rhythmUi.boothButton.classList.toggle('show',Boolean(state.id&&near&&!rhythmGame.open));
  rhythmUi.boothButton.disabled=!near;
- rhythmUi.boothButton.textContent=near?'🥁 박자게임 입장':'🥁 부스 근처에서 플레이';
- rhythmUi.hint.classList.toggle('show',Boolean(state.id));
- rhythmUi.hint.textContent=near?'게임부스 근처입니다. 버튼을 눌러 플레이하세요.':'돗자리존 옆 박자게임 부스로 가야 플레이할 수 있어요.';
+ rhythmUi.boothButton.textContent='🎮 게임플레이';
+ rhythmUi.hint.classList.remove('show');
 }
 function makeBeatPattern(){
  const sections=[[124,18],[132,16],[116,14],[142,18],[128,16]];
@@ -2138,7 +2137,7 @@ for(let x of [-46,48])for(let z of [-9,9,23]){cylinder(.45,.65,5,wood,x,2.5,z);s
 for(let x of [-46,47]){cube(5,2.8,3,mat('#bc7097'),x,1.6,15);cube(5.8,.35,4.1,mat('#f4c783'),x,3.2,15);let banner=new THREE.Mesh(new THREE.PlaneGeometry(4,1.1),label(x<0?'SNACKS':'MERCH',70,'#fbe9dc','#9e446f'));banner.position.set(x,2.2,16.56);scene.add(banner)}
 
 for(let x of [-46,47]){cube(5.5,2.9,3.4,mat('#6b8ac7'),x,1.65,22);cube(6.4,.35,4.5,mat('#f4c783'),x,3.28,22);let banner=new THREE.Mesh(new THREE.PlaneGeometry(4.5,1.1),label(x<0?'FOOD':'REST',68,'#fef7e6','#4c6588'));banner.position.set(x,2.2,23.86);scene.add(banner)}
-const rhythmBooth=new THREE.Group();rhythmBooth.position.set(30,0,26);scene.add(rhythmBooth);const rb=(w,h,d,m,x,y,z)=>{const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);mesh.position.set(x,y,z);rhythmBooth.add(mesh);return mesh};rb(6.4,3.0,4.2,mat('#7a4ed9'),0,1.65,0);rb(7.2,.34,4.8,mat('#ffd36b'),0,3.28,0);rb(2.8,.95,.12,mat('#241736'),0,2.25,2.18);const rhythmBanner=new THREE.Mesh(new THREE.PlaneGeometry(4.9,1.16),label('BEAT BOOTH',64,'#fffaf1','#ff59bc'));rhythmBanner.position.set(0,2.25,2.45);rhythmBooth.add(rhythmBanner);const rhythmSign=new THREE.Mesh(new THREE.PlaneGeometry(5.2,.96),label('RHYTHM GAME',58,'#fff5ea','#4a2575'));rhythmSign.position.set(0,3.95,.12);rhythmBooth.add(rhythmSign);const rbFloor=new THREE.Mesh(new THREE.CircleGeometry(2.5,40),new THREE.MeshBasicMaterial({color:'#ff76c8',transparent:true,opacity:.22}));rbFloor.rotation.x=-Math.PI/2;rbFloor.position.set(0,.05,2.1);rhythmBooth.add(rbFloor);
+const rhythmBooth=new THREE.Group();rhythmBooth.position.set(40,0,39);scene.add(rhythmBooth);const rb=(w,h,d,m,x,y,z)=>{const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);mesh.position.set(x,y,z);rhythmBooth.add(mesh);return mesh};rb(6.4,3.0,4.2,mat('#7a4ed9'),0,1.65,0);rb(7.2,.34,4.8,mat('#ffd36b'),0,3.28,0);rb(2.8,.95,.12,mat('#241736'),0,2.25,2.18);const rhythmBanner=new THREE.Mesh(new THREE.PlaneGeometry(4.9,1.16),label('BEAT BOOTH',64,'#fffaf1','#ff59bc'));rhythmBanner.position.set(0,2.25,2.45);rhythmBooth.add(rhythmBanner);const rhythmSign=new THREE.Mesh(new THREE.PlaneGeometry(5.2,.96),label('RHYTHM GAME',58,'#fff5ea','#4a2575'));rhythmSign.position.set(0,3.95,.12);rhythmBooth.add(rhythmSign);const rbFloor=new THREE.Mesh(new THREE.CircleGeometry(2.5,40),new THREE.MeshBasicMaterial({color:'#ff76c8',transparent:true,opacity:.22}));rbFloor.rotation.x=-Math.PI/2;rbFloor.position.set(0,.05,2.1);rhythmBooth.add(rbFloor);
 // Subtle festival bulbs across the red line: the end of the rock-play zone.
 // Positioned at z=18, NOT along or through the picnic row at z=28.
 const audienceLightBulbColors=['#ffdb8a','#fca5b5','#a8ecff','#c7f591'];
