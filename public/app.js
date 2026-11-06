@@ -1365,6 +1365,114 @@ for(const sx of [-3.7,3.7]){
 cube(47,1.2,1,metal,0,2.05,-17.3);cube(46,1.5,1,dark,0,13.8,-31);cube(1,13.8,1,metal,-22,7.8,-31);cube(1,13.8,1,metal,22,7.8,-31);cube(46,11.8,.6,dark,0,7.2,-31);
 const sign=new THREE.Mesh(new THREE.PlaneGeometry(24,1.6),label('ONEseason',78,'#dcfd8b','#18172e'));sign.position.set(0,13.9,-29.85);scene.add(sign);
 
+// v136: 14:00 KST stage-side festival firetruck & water-cannon show.
+// Entirely client-rendered and time-gated, so visitors see the same event
+// without extra server polling, database writes or additional asset files.
+const firetruckShow=new THREE.Group();scene.add(firetruckShow);
+firetruckShow.position.set(35,0,-12.5);
+firetruckShow.visible=false;
+const truckRed=new THREE.MeshStandardMaterial({color:'#b8212e',metalness:.24,roughness:.44});
+const truckDeepRed=new THREE.MeshStandardMaterial({color:'#861c27',metalness:.2,roughness:.5});
+const truckWhite=new THREE.MeshStandardMaterial({color:'#f2f1ec',roughness:.56});
+const truckSilver=new THREE.MeshStandardMaterial({color:'#a8b8c3',metalness:.65,roughness:.29});
+const truckGlass=new THREE.MeshStandardMaterial({color:'#537b92',metalness:.28,roughness:.24});
+const truckRubber=new THREE.MeshStandardMaterial({color:'#20242b',roughness:.98});
+const truckLamp=new THREE.MeshBasicMaterial({color:'#ef384a'});
+function firetruckBox(w,h,d,x,y,z,material){
+ const obj=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),material);
+ obj.position.set(x,y,z);obj.castShadow=false;obj.receiveShadow=true;firetruckShow.add(obj);return obj;
+}
+// Length is along X: the front of the cab points toward the stage (negative X).
+firetruckBox(8.7,.52,3.45,0,.90,0,truckDeepRed);
+firetruckBox(5.05,2.65,3.3,1.72,2.42,0,truckRed); // water tank
+firetruckBox(3.2,2.7,3.2,-2.73,2.30,0,truckRed); // cab
+firetruckBox(.16,1.25,2.65,-4.38,2.70,0,truckGlass); // windshield
+for(const side of [-1,1]){
+ firetruckBox(1.05,1.0,.08,-2.8,2.85,side*1.64,truckGlass);
+ firetruckBox(4.3,.32,.07,1.9,2.13,side*1.67,truckWhite);
+ firetruckBox(.12,1.02,.17,-1.32,2.2,side*1.72,truckSilver);
+ for(const wx of [-2.95,2.5]){
+  const tire=new THREE.Mesh(new THREE.CylinderGeometry(.78,.78,.3,14),truckRubber);
+  tire.rotation.x=Math.PI/2;tire.position.set(wx,.82,side*1.78);firetruckShow.add(tire);
+  const hub=new THREE.Mesh(new THREE.CylinderGeometry(.34,.34,.32,12),truckSilver);
+  hub.rotation.x=Math.PI/2;hub.position.set(wx,.82,side*1.79);firetruckShow.add(hub);
+ }
+}
+firetruckBox(.32,.55,2.65,-4.54,1.3,0,truckSilver); // bumper
+firetruckBox(4.15,.23,2.55,1.65,3.86,0,truckSilver); // top equipment
+for(const x of [-2.2,1.9]){
+ firetruckBox(.62,.22,.6,x,4.01,-.76,truckLamp);
+ firetruckBox(.62,.22,.6,x,4.01,.76,truckLamp);
+}
+const firetruckLadder=new THREE.Group();firetruckLadder.position.set(.7,4.15,0);firetruckShow.add(firetruckLadder);
+for(const zz of [-.55,.55]){
+ const rail=new THREE.Mesh(new THREE.BoxGeometry(4.4,.13,.13),truckSilver);
+ rail.position.set(0,0,zz);firetruckLadder.add(rail);
+}
+for(let i=0;i<8;i++){
+ const rung=new THREE.Mesh(new THREE.BoxGeometry(.13,.12,1.2),truckSilver);
+ rung.position.x=-1.9+i*.54;firetruckLadder.add(rung);
+}
+const firetruckNozzle=new THREE.Mesh(new THREE.CylinderGeometry(.22,.32,1.65,10),truckSilver);
+firetruckNozzle.position.set(-3.8,4.28,0);firetruckNozzle.rotation.z=-Math.PI/2.9;firetruckShow.add(firetruckNozzle);
+const firetruckStart=new THREE.Vector3(30.5,5.0,-12.5);
+const firetruckEnd=new THREE.Vector3(4.1,8.1,-23.9);
+const firetruckArc=new THREE.Vector3();
+function firetruckWaterPoint(progress,out){
+ out.lerpVectors(firetruckStart,firetruckEnd,progress);
+ out.y+=9.2*4*progress*(1-progress);
+ return out;
+}
+const waterCurvePoints=[];
+for(let i=0;i<=42;i++)waterCurvePoints.push(firetruckWaterPoint(i/42,new THREE.Vector3()));
+const firetruckWater=new THREE.Group();scene.add(firetruckWater);firetruckWater.visible=false;
+const waterStream=new THREE.Line(new THREE.BufferGeometry().setFromPoints(waterCurvePoints),
+ new THREE.LineBasicMaterial({color:'#c9f2ff',transparent:true,opacity:.6,depthWrite:false}));
+firetruckWater.add(waterStream);
+const waterSprayMaterial=new THREE.PointsMaterial({color:'#d9f5ff',size:.18,transparent:true,opacity:.82,depthWrite:false,sizeAttenuation:true});
+const waterSprayCount=perfWeakDevice?130:280;
+const waterSprayPos=new Float32Array(waterSprayCount*3);
+const waterSprayGeometry=new THREE.BufferGeometry();
+waterSprayGeometry.setAttribute('position',new THREE.BufferAttribute(waterSprayPos,3));
+const waterSpray=new THREE.Points(waterSprayGeometry,waterSprayMaterial);
+waterSpray.frustumCulled=false;firetruckWater.add(waterSpray);
+const waterSplashCount=perfWeakDevice?40:90;
+const waterSplashPositions=new Float32Array(waterSplashCount*3);
+const waterSplashGeo=new THREE.BufferGeometry();waterSplashGeo.setAttribute('position',new THREE.BufferAttribute(waterSplashPositions,3));
+const waterSplash=new THREE.Points(waterSplashGeo,new THREE.PointsMaterial({color:'#f4fbff',size:.26,transparent:true,opacity:.6,depthWrite:false}));
+waterSplash.frustumCulled=false;firetruckWater.add(waterSplash);
+const koreaClock=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Seoul',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
+function updateFiretruckShow(t){
+ const clock=koreaClock.formatToParts(new Date(Date.now()+(Number.isFinite(state.serverDelta)?state.serverDelta:0)));
+ const hours=Number(clock.find(p=>p.type==='hour')?.value);
+ const minutes=Number(clock.find(p=>p.type==='minute')?.value);
+ const active=hours===14&&minutes>=0&&minutes<5;
+ firetruckShow.visible=active;firetruckWater.visible=active;
+ if(!active)return;
+ const sec=t*.001;
+ // Rushing animated water stream and diffuse droplets, independent of frame rate.
+ for(let i=0;i<waterSprayCount;i++){
+  const u=(i*.61803398875+sec*.72)%1;
+  firetruckWaterPoint(u,firetruckArc);
+  const diffuse=.13+u*.76;
+  waterSprayPos[i*3]=firetruckArc.x+Math.sin(i*12.989+sec*2.8)*diffuse;
+  waterSprayPos[i*3+1]=firetruckArc.y+Math.cos(i*7.83+sec*4.1)*diffuse;
+  waterSprayPos[i*3+2]=firetruckArc.z+Math.sin(i*5.33+sec*3.6)*diffuse;
+ }
+ waterSprayGeometry.attributes.position.needsUpdate=true;
+ for(let i=0;i<waterSplashCount;i++){
+  const phase=(i*.75487766+sec*.82)%1;
+  const angle=i*2.39996;
+  const radius=phase*(1.1+(i%7)*.20);
+  waterSplashPositions[i*3]=firetruckEnd.x+Math.cos(angle)*radius;
+  waterSplashPositions[i*3+1]=firetruckEnd.y+1.5*phase-2.0*phase*phase;
+  waterSplashPositions[i*3+2]=firetruckEnd.z+Math.sin(angle)*radius;
+ }
+ waterSplashGeo.attributes.position.needsUpdate=true;
+ // Alternate roof lights while spraying, without affecting other show lights.
+ truckLamp.color.set(Math.floor(sec*3)%2?'#ff2840':'#ff8c95');
+}
+
 // Two full-height portrait poster bays just outside the left/right stage pillars.
 // Replace public/assets/posters/left.jpg and right.jpg to publish posters to everyone.
 // A missing image retains its local illustrated placeholder, never a broken plane.
@@ -3538,7 +3646,7 @@ function tick(t){
  const minimalScenery=perfMode==='eco'||(perfMode==='auto'&&perfWeakDevice);
  if(!minimalScenery||t-(updateOcean.lastEco||0)>1000){updateOcean(t);updateOcean.lastEco=t;}
  if(!minimalScenery)animateSky(t);
- updateMoshTrails(t);updateSlamDust(t);updateBubbles(t);animateShow(t);
+ updateMoshTrails(t);updateSlamDust(t);updateBubbles(t);animateShow(t);updateFiretruckShow(t);
  if(!minimalScenery)updateHourlyFireworks(t);
  animateToastSparks(t);
  if(povEnabled){updatePovCamera();}else{followLocalAvatar();controls.update();keepCameraInFrontOfStage();}
