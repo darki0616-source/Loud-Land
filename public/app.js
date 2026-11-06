@@ -2291,20 +2291,20 @@ for(let i=0;i<7;i++){
  const cushion=campPart(new THREE.CylinderGeometry(.88,.91,.14,14),new THREE.MeshStandardMaterial({color:['#b98087','#9b9ace','#a9be9e','#d1a477'][i%4],roughness:1}),x,.14,z);
  cushion.scale.z=.78;campCushions.push({x:CAMPFIRE_X+x,z:CAMPFIRE_Z+z});
 }
-const campFireVisual=new THREE.Group();campfire.add(campFireVisual);
+const campFireVisual=new THREE.Group();campFireVisual.visible=false;campfire.add(campFireVisual);
 const campFlames=[];
 for(let i=0;i<9;i++){
- const h=1.08+(i%3)*.33,flame=new THREE.Mesh(new THREE.ConeGeometry(.37+(i%2)*.10,h,7),new THREE.MeshBasicMaterial({color:['#ffcc55','#ff8533','#fff1a0'][i%3],transparent:true,opacity:.82,depthWrite:false}));
- flame.position.set(Math.sin(i*2.4)*.38,.38+h*.46,Math.cos(i*2.4)*.38);campFireVisual.add(flame);campFlames.push(flame);
+ const h=1.94+(i%3)*.59,flame=new THREE.Mesh(new THREE.ConeGeometry(.47+(i%2)*.13,h,7),new THREE.MeshBasicMaterial({color:['#ffcc55','#ff8533','#fff1a0'][i%3],transparent:true,opacity:.82,depthWrite:false}));
+ flame.position.set(Math.sin(i*2.4)*.40,.36+h*.46,Math.cos(i*2.4)*.40);campFireVisual.add(flame);campFlames.push(flame);
 }
 const campEmbers=[];
 for(let i=0;i<18;i++){
  const ember=new THREE.Mesh(new THREE.SphereGeometry(.045+(i%4)*.012,5,4),new THREE.MeshBasicMaterial({color:i%3?'#ffc064':'#fff1b8',transparent:true,opacity:.75,depthWrite:false}));
  campFireVisual.add(ember);campEmbers.push(ember);
 }
-const campLight=new THREE.PointLight('#ff8b3b',0,14,2);campLight.position.set(0,1.45,0);campfire.add(campLight);
-const campLightHalo=new THREE.Mesh(new THREE.CircleGeometry(2.35,28),campGlowMat);campLightHalo.rotation.x=-Math.PI/2;campLightHalo.position.y=.095;campfire.add(campLightHalo);
-let campfireBurning=false;
+const campLight=new THREE.PointLight('#ff8b3b',0,18,2);campLight.position.set(0,2.1,0);campfire.add(campLight);
+const campLightHalo=new THREE.Mesh(new THREE.CircleGeometry(2.9,28),campGlowMat);campLightHalo.rotation.x=-Math.PI/2;campLightHalo.position.y=.095;campLightHalo.visible=false;campfire.add(campLightHalo);
+let campfireBurning=null; // Force the first schedule evaluation to set flame visibility.
 const campfireKSTClock=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Seoul',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
 function updateCampfireSchedule(){
  const hour=Number(campfireKSTClock.format(new Date()).split(':')[0]);
@@ -2321,7 +2321,7 @@ function animateCampfire(t){
  }
  for(let i=0;i<campEmbers.length;i++){
   const phase=(seconds*(.22+(i%4)*.045)+i/18)%1,angle=i*2.399;
-  const e=campEmbers[i];e.position.set(Math.cos(angle)*(.23+phase*.6),.38+phase*2.9,Math.sin(angle)*(.23+phase*.6));e.material.opacity=.75*(1-phase);
+  const e=campEmbers[i];e.position.set(Math.cos(angle)*(.23+phase*.7),.52+phase*4.3,Math.sin(angle)*(.23+phase*.7));e.material.opacity=.75*(1-phase);
  }
  campGlowMat.opacity=.21+Math.sin(seconds*7)*.035;
 }
