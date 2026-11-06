@@ -1035,6 +1035,83 @@ async function refreshPunkShop(){
  try{const r=await post('shop',{id:state.id,command:'status'});punkWallet=r.shop;syncMdCatalog(r.shop.items);drawPunkShop();drawMdWardrobe()}
  catch(e){toast('상점 정보를 불러오지 못했습니다: '+e.message)}
 }
+// v148: front-facing snapshots rendered from the very same THREE avatar model
+// as the playable character. A single reusable WebGL context avoids one GPU
+// context per merchandise card. Only uploaded shirt artwork stays 2D.
+const mdPreviewCache=new Map();
+let mdPreviewRenderer=null,mdPreviewScene=null,mdPreviewCamera=null;
+let mdPreviewQueue=Promise.resolve();
+function mdPreviewSignature(id,slot){
+ const p=state.me||{};
+ return JSON.stringify([id,slot,p.gender||chosenGender,p.color||chosenColor,p.hairStyle||chosenHairStyle,p.hairColor||chosenHairColor,mdCatalogSignature]);
+}
+function mdPreviewTarget(id,slot,emoji,name){
+ const visual=document.createElement('div');visual.className='md-model-preview';
+ if(slot==='shirt'){
+  visual.classList.add('md-flat-preview');
+  if(mdCatalog[id]?.imageUrl){
+   const img=document.createElement('img');img.src=mdCatalog[id].imageUrl;img.alt=name+' 업로드 이미지';img.loading='lazy';visual.append(img);
+  }else{
+   // Built-in shirts have no uploaded image. Preserve their original icon.
+   visual.textContent=emoji;
+  }
+  return visual;
+ }
+ const canvas=document.createElement('canvas');canvas.width=200;canvas.height=174;
+ canvas.setAttribute('role','img');canvas.setAttribute('aria-label',name+' 정면 3D 착용 모습');
+ const ctx=canvas.getContext('2d');
+ visual.append(canvas);
+ // Avoid creating dozens of offscreen avatars while both MD panels are closed.
+ if($('punkShop').classList.contains('hidden')&&$('mdWardrobePanel').hidden)return visual;
+ const key=mdPreviewSignature(id,slot);
+ const cached=mdPreviewCache.get(key);
+ if(cached){ctx.drawImage(cached,0,0,200,174);return visual;}
+ // Defer work and serialize it to keep rendering smooth on mobile.
+ mdPreviewQueue=mdPreviewQueue.catch(()=>{}).then(async()=>{
+  if(!canvas.isConnected)return;
+  const cachedNow=mdPreviewCache.get(key);
+  if(cachedNow){ctx.drawImage(cachedNow,0,0,200,174);return;}
+  try{
+   const p=state.me||{};
+   const hairStyle=normalizeHairStyle(p.hairStyle||chosenHairStyle||'basic-short');
+   if(!['basic-short','basic-bob'].includes(hairStyle))await getHairAsset(hairStyle).catch(()=>{});
+   if(!canvas.isConnected)return;
+   if(!mdPreviewRenderer){
+    mdPreviewRenderer=new THREE.WebGLRenderer({alpha:true,antialias:!perfWeakDevice,powerPreference:'low-power'});
+    mdPreviewRenderer.setSize(200,174,false);mdPreviewRenderer.setPixelRatio(1);
+    mdPreviewRenderer.outputColorSpace=THREE.SRGBColorSpace;
+    mdPreviewScene=new THREE.Scene();mdPreviewScene.background=new THREE.Color('#1b2538');
+    mdPreviewScene.add(new THREE.HemisphereLight('#eef5ff','#62718d',2.3));
+    const keyLight=new THREE.DirectionalLight('#ffffff',2.4);keyLight.position.set(-3,7,6);mdPreviewScene.add(keyLight);
+    mdPreviewCamera=new THREE.PerspectiveCamera(35,200/174,.1,60);
+    mdPreviewCamera.position.set(0,2.3,8.3);mdPreviewCamera.lookAt(0,1.77,0);
+    mdPreviewCamera.layers.enable(1);
+   }
+   // Preview only the selected item, without equipping or purchasing it.
+   const person={...p,id:'md-preview',name:'',gender:p.gender||chosenGender,
+     color:p.color||chosenColor,hairStyle:hairStyle,hairColor:p.hairColor||chosenHairColor,
+     equipped:{[slot]:id},flagText:'',flagImage:'',badgeTier:'none',sash:'none',pattern:'solid'};
+   const avatar=makeAvatar(person),root=avatar.root;
+   mdPreviewScene.add(root);
+   // Give cached imported-hair assets a microtask to attach before capture.
+   await Promise.resolve(); // moves the root out of the live game scene
+   const tag=avatar.parts?.tag;if(tag)tag.visible=false;
+   if(avatar.parts?.flagGroup)avatar.parts.flagGroup.visible=false;
+   root.rotation.set(0,0,0);
+   root.updateMatrixWorld(true);
+   try{
+    mdPreviewRenderer.render(mdPreviewScene,mdPreviewCamera);
+    const image=document.createElement('canvas');image.width=200;image.height=174;
+    image.getContext('2d').drawImage(mdPreviewRenderer.domElement,0,0);
+    mdPreviewCache.set(key,image);
+    if(canvas.isConnected)ctx.drawImage(image,0,0);
+   }finally{
+    mdPreviewScene.remove(root);disposeAvatar(root);
+   }
+  }catch(err){console.warn('3D MD 미리보기 오류:',id,err);if(canvas.isConnected)visual.textContent=emoji;}
+ });
+ return visual;
+}
 function drawPunkShop(){
  const root=$('punkShopGrid');if(!root)return;root.replaceChildren();
  const wallet=punkWallet||{points:0,earned:0,owned:[],equipped:{}};
@@ -1042,7 +1119,7 @@ function drawPunkShop(){
  for(const [id,emoji,title,cost] of PUNK_SHOP_ITEMS){
   const owned=wallet.owned.includes(id);
   const card=document.createElement('article');card.className='punk-item';
-  const visual=document.createElement('div');visual.className='punk-item-visual';if(mdCatalog[id]?.imageUrl){const im=document.createElement('img');im.src=mdCatalog[id].imageUrl;im.alt=title;im.loading='lazy';visual.append(im)}else visual.textContent=emoji;
+  const visual=mdPreviewTarget(id,mdCatalog[id]?.slot||PUNK_SHOP_ITEMS.find(row=>row[0]===id)?.[4],emoji,title);
   const name=document.createElement('strong');name.textContent=title;
   const price=document.createElement('small');price.textContent='테스트 무료 · '+(owned?'착용 가능':cost+' P 상품');
   const button=document.createElement('button');button.type='button';button.disabled=punkShopBusy;
@@ -1065,6 +1142,7 @@ function drawMdWardrobe(){
  for(const [id,emoji,name,cost,slot] of ownedItems){
   const wearing=wallet.equipped?.[slot]===id;
   const card=document.createElement('div');card.className='md-wardrobe-entry';
+  const visual=mdPreviewTarget(id,slot,emoji,name);
   const title=document.createElement('strong');title.textContent=emoji+' '+name;
   const line=document.createElement('small');line.textContent=({'shirt':'티셔츠 위에 표시','head':'머리 장식','neck':'목 장식','eyes':'안경','back':'등 장식','tail':'꼬리 장식','ears':'헤드셋'}[slot]||'장식');
   const btn=document.createElement('button');btn.type='button';btn.textContent=wearing?'벗기':'입기';btn.disabled=punkShopBusy;
@@ -1073,7 +1151,7 @@ function drawMdWardrobe(){
     toast(name+(wearing?' 해제':' 장착')+' 완료');
    }catch(e){toast(e.message)}finally{punkShopBusy=false;drawMdWardrobe()}
   };
-  card.append(title,line,btn);container.append(card);
+  card.append(visual,title,line,btn);container.append(card);
  }
 }
 async function bootstrapMdCatalog(){

@@ -597,3 +597,15 @@ html,body{height:100%;height:100dvh;overflow:hidden!important}
     left:12px;
   }
 }
+
+/* v148: consistent front-facing 3D item previews in shop and wardrobe. */
+.md-model-preview{display:grid;place-items:center;width:100%;height:174px;min-width:0;overflow:hidden;background:#1b2538;border-radius:10px}
+.md-model-preview canvas{display:block;width:100%;height:100%;object-fit:contain}
+.md-model-preview.md-flat-preview{font-size:44px;background:#141b30}
+.md-model-preview.md-flat-preview img{display:block;width:auto;height:auto;max-width:calc(100% - 16px);max-height:154px;object-fit:contain}
+.punk-item .md-model-preview{height:146px}
+.punk-item .md-model-preview canvas{height:146px}
+.punk-item .md-model-preview.md-flat-preview img{max-height:125px}
+.md-wardrobe-entry .md-model-preview{height:150px}
+.md-wardrobe-entry .md-model-preview canvas{height:150px}
+@media(max-width:700px){.punk-item .md-model-preview{height:120px}.punk-item .md-model-preview canvas{height:120px}}
