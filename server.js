@@ -519,7 +519,14 @@ const server=http.createServer(async(req,res)=>{
         p.x=clamp(d.x,SERVER_X_MIN,SERVER_X_MAX);p.y=clamp(d.y,SERVER_Y_MIN,SERVER_Y_MAX);p.facing=clamp(d.facing,-Math.PI,Math.PI);
         p.pose=['stand','sit','lie'].includes(d.pose)?d.pose:'stand';
         if(d.action==='beatking'&&!playerIsRhythmKing(p))d.action='idle';
-        p.action=['idle','walk','peace','jump','run','wave','clap','sit','lie','drink','snack','headbang','buriburi','groove','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','mosh-charge','slam-charge','slam-retreat','slam-celebrate','circle-run','train-run','row-paddle','toast-clink','surf-rider','surf-support'].includes(d.action)?d.action:'idle';
+        // Validate campfire-only reaction server-side so remote spectators cannot see it outside the zone.
+        if(d.action==='marshmallow'){
+          const kstHour=Number(new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Seoul',hour:'2-digit',hourCycle:'h23'}).format(new Date()));
+          const wx=(p.x-600)*.058,wz=(p.y-500)*.058+8;
+          if(!((kstHour>=20||kstHour<3)&&Math.hypot(wx-34,wz-10.5)<=8.8))d.action='idle';
+        }
+
+        p.action=['idle','walk','peace','jump','run','wave','clap','sit','lie','drink','snack','headbang','buriburi','groove','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','marshmallow','mosh-charge','slam-charge','slam-retreat','slam-celebrate','circle-run','train-run','row-paddle','toast-clink','surf-rider','surf-support'].includes(d.action)?d.action:'idle';
         broadcast({type:'move',player:p});
         if(p.action==='cheer'&&previousAction!=='cheer')broadcast({type:'cheer',playerId:id});
         // Fire once, when the FIRST participant changes from charging to retreating.
