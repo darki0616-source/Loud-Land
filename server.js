@@ -67,7 +67,7 @@ function voterLeaves(id){if(!skipVote||!skipVote.eligible.has(id))return;skipVot
 
 const DATA_DIR=process.env.DATA_DIR||path.join(__dirname,'data');
 const STATE_PATH=path.join(DATA_DIR,'festival-state.json');
-const RHYTHM_BOOTH={x:1117,y:500,radius:175};
+const RHYTHM_BOOTH={x:1290,y:1034,radius:135};
 function kstDate(ts=Date.now()){const d=new Date(ts+9*60*60*1000);return d.toISOString().slice(0,10)}
 let rhythmDay=kstDate();
 const rhythmScores=new Map();
@@ -518,7 +518,8 @@ const server=http.createServer(async(req,res)=>{
         const previousAction=p.action;
         p.x=clamp(d.x,SERVER_X_MIN,SERVER_X_MAX);p.y=clamp(d.y,SERVER_Y_MIN,SERVER_Y_MAX);p.facing=clamp(d.facing,-Math.PI,Math.PI);
         p.pose=['stand','sit','lie'].includes(d.pose)?d.pose:'stand';
-        p.action=['idle','walk','peace','jump','run','wave','clap','sit','lie','drink','snack','headbang','buriburi','groove','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','mosh-charge','slam-charge','slam-retreat','slam-celebrate','circle-run','train-run','row-paddle','toast-clink','surf-rider','surf-support'].includes(d.action)?d.action:'idle';
+        if(d.action==='beatking'&&!playerIsRhythmKing(p))d.action='idle';
+        p.action=['idle','walk','peace','jump','run','wave','clap','sit','lie','drink','snack','headbang','buriburi','groove','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','mosh-charge','slam-charge','slam-retreat','slam-celebrate','circle-run','train-run','row-paddle','toast-clink','surf-rider','surf-support'].includes(d.action)?d.action:'idle';
         broadcast({type:'move',player:p});
         if(p.action==='cheer'&&previousAction!=='cheer')broadcast({type:'cheer',playerId:id});
         // Fire once, when the FIRST participant changes from charging to retreating.
