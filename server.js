@@ -530,7 +530,12 @@ const server=http.createServer(async(req,res)=>{
           if(!((kstHour>=20||kstHour<3)&&Math.hypot(wx-34,wz-10.5)<=8.8))d.action='idle';
         }
 
-        p.action=['idle','walk','peace','jump','run','wave','clap','sit','lie','drink','snack','headbang','buriburi','groove','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','marshmallow','putyourhandsup','mosh-charge','slam-charge','slam-retreat','slam-celebrate','circle-run','train-run','row-paddle','toast-clink','surf-rider','surf-support','shoulder-headbang','rock-skank'].includes(d.action)?d.action:'idle';
+        // The fireworks reaction is available only from 01:00 to 04:00 in Korea.
+        if(d.action==='nightfirework'){
+          const kstHour=Number(new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Seoul',hour:'2-digit',hourCycle:'h23'}).format(new Date()));
+          if(kstHour<1||kstHour>=4)d.action='idle';
+        }
+        p.action=['idle','walk','peace','jump','run','wave','clap','sit','lie','drink','snack','headbang','buriburi','groove','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','marshmallow','putyourhandsup','nightfirework','mosh-charge','slam-charge','slam-retreat','slam-celebrate','circle-run','train-run','row-paddle','toast-clink','surf-rider','surf-support','shoulder-headbang','rock-skank'].includes(d.action)?d.action:'idle';
         broadcast({type:'move',player:p});
         if(p.action==='cheer'&&previousAction!=='cheer')broadcast({type:'cheer',playerId:id});
         // Fire once, when the FIRST participant changes from charging to retreating.
