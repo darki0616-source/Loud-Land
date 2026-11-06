@@ -25,12 +25,14 @@ const SLAM_COUNTDOWN_MS=5000,SLAM_COOLDOWN_MS=15000;
 // Circle pit and shoulder-to-shoulder figure-eight train: server-authoritative join roster.
 const ROCK_COUNTDOWN_MS=5000,ROCK_COOLDOWN_MS=15000;
 const ROCK_DURATIONS={circle:20000,train:36000,mosh:4500,row:20000,toast:6000,surf:14000};
+const CAMPFIRE_TOAST_DURATION_MS=9000,CAMPFIRE_SERVER_X=34/.058+600,CAMPFIRE_SERVER_Y=(10.5-8)/.058+500;
+function nearCampfireToast(p){return !!p&&Math.hypot((p.x-600)*.058-34,(p.y-500)*.058+8-10.5)<=8.8;}
 let activeRock=null,rockRunningUntil=0;
 let activeSurfRide=null; // Active 10s crowd-surf choreography; included in snapshots for reconnects.
 const moshDustEvents=new Set();
 // Each rock game has its own 15 second cooldown. The active performance remains exclusive.
 const rockCooldowns={circle:0,train:0,mosh:0,row:0,toast:0,surf:0};
-function publicRock(){return activeRock?{id:activeRock.id,kind:activeRock.kind,x:activeRock.x,y:activeRock.y,endAt:activeRock.endAt,participants:[...activeRock.participants]}:null}
+function publicRock(){return activeRock?{id:activeRock.id,kind:activeRock.kind,x:activeRock.x,y:activeRock.y,endAt:activeRock.endAt,participants:[...activeRock.participants],campfireToast:!!activeRock.campfireToast}:null}
 function rockUpdate(){broadcast({type:'rockplay',event:publicRock(),rockCooldowns:{...rockCooldowns},rockRunningUntil,serverNow:Date.now()})}
 function rockMemberLeaves(id){if(activeRock?.participants.delete(id))rockUpdate()}
 
@@ -567,8 +569,10 @@ const server=http.createServer(async(req,res)=>{
           const x=Number(d.x),y=Number(d.y);
           // Reserve room for a wide loop inside the walkable zone (not the stage or sea).
           if(!Number.isFinite(x)||!Number.isFinite(y)||(kind==='mosh'||kind==='toast'||kind==='surf'?(x<90||x>1310||y<280||y>800):(x<235||x>1165||y<370||y>795)))return json(res,400,{error:kind==='mosh'?'페스티벌 바닥을 선택해 주세요.':'넓은 잔디 광장 안쪽의 바닥을 선택해 주세요.'});
-          const eventId=crypto.randomUUID(),duration=ROCK_DURATIONS[kind];
-          const current={id:eventId,kind,x:Math.round(x),y:Math.round(y),endAt:now+ROCK_COUNTDOWN_MS,initiator:id,participants:new Set([id])};
+          const campfireToast=kind==='toast'&&nearCampfireToast(p);
+          const duration=campfireToast?CAMPFIRE_TOAST_DURATION_MS:ROCK_DURATIONS[kind];
+          const eventId=crypto.randomUUID();
+          const current={id:eventId,kind,x:campfireToast?Math.round(CAMPFIRE_SERVER_X):Math.round(x),y:campfireToast?Math.round(CAMPFIRE_SERVER_Y):Math.round(y),campfireToast,endAt:now+ROCK_COUNTDOWN_MS,initiator:id,participants:new Set([id])};
           activeRock=current;
           rockRunningUntil=current.endAt+duration;
           rockCooldowns[kind]=rockRunningUntil+ROCK_COOLDOWN_MS;
@@ -582,14 +586,14 @@ const server=http.createServer(async(req,res)=>{
               broadcast({type:'rockplay-cancel',id:current.id,kind:'surf',reason:'크라우드 서핑은 시작자 포함 2명 이상이 필요해요.'});
               rockUpdate();return;
             }
-            const launch={type:'rockplay-go',id:current.id,kind:current.kind,x:current.x,y:current.y,startAt:current.endAt,duration,participants,riderId:current.kind==='surf'?current.initiator:null,serverNow:Date.now(),
+            const launch={type:'rockplay-go',id:current.id,kind:current.kind,x:current.x,y:current.y,startAt:current.endAt,duration,participants,campfireToast:!!current.campfireToast,riderId:current.kind==='surf'?current.initiator:null,serverNow:Date.now(),
               origins:current.kind==='surf'?Object.fromEntries(participants.map(pid=>{const actor=players.get(pid);return [pid,{x:actor.x,y:actor.y}]})):undefined};
             if(current.kind==='surf'){
               activeSurfRide={id:launch.id,kind:launch.kind,x:launch.x,y:launch.y,startAt:launch.startAt,duration:launch.duration,participants:[...participants],riderId:launch.riderId,origins:launch.origins};
               setTimeout(()=>{if(activeSurfRide?.id===current.id)activeSurfRide=null},duration+1500).unref();
             }
             broadcast(launch);
-            if(current.kind==='toast'){setTimeout(()=>broadcast({type:'toast-spark',eventId:current.id,x:current.x,y:current.y}),3000).unref()}
+            if(current.kind==='toast'){setTimeout(()=>broadcast({type:'toast-spark',eventId:current.id,x:current.x,y:current.y}),current.campfireToast?6000:3000).unref()}
             activeRock=null;rockUpdate();
           },ROCK_COUNTDOWN_MS);
           rockUpdate();
