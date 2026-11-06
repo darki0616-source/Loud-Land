@@ -24,14 +24,14 @@ let pendingSlamImpact=null; // Last launch roster; exactly one shared first-arri
 const SLAM_COUNTDOWN_MS=5000,SLAM_COOLDOWN_MS=15000;
 // Circle pit and shoulder-to-shoulder figure-eight train: server-authoritative join roster.
 const ROCK_COUNTDOWN_MS=5000,ROCK_COOLDOWN_MS=15000;
-const ROCK_DURATIONS={circle:20000,train:60000,mosh:4500,row:20000,toast:6000,surf:14000};
+const ROCK_DURATIONS={circle:20000,train:60000,mosh:4500,row:20000,toast:6000,surf:14000,shoulder:23000};
 const CAMPFIRE_TOAST_DURATION_MS=9000,CAMPFIRE_SERVER_X=34/.058+600,CAMPFIRE_SERVER_Y=(10.5-8)/.058+500;
 function nearCampfireToast(p){return !!p&&Math.hypot((p.x-600)*.058-34,(p.y-500)*.058+8-10.5)<=8.8;}
 let activeRock=null,rockRunningUntil=0;
 let activeSurfRide=null; // Active 10s crowd-surf choreography; included in snapshots for reconnects.
 const moshDustEvents=new Set();
 // Each rock game has its own 15 second cooldown. The active performance remains exclusive.
-const rockCooldowns={circle:0,train:0,mosh:0,row:0,toast:0,surf:0};
+const rockCooldowns={circle:0,train:0,mosh:0,row:0,toast:0,surf:0,shoulder:0};
 function publicRock(){return activeRock?{id:activeRock.id,kind:activeRock.kind,x:activeRock.x,y:activeRock.y,endAt:activeRock.endAt,participants:[...activeRock.participants],campfireToast:!!activeRock.campfireToast}:null}
 function rockUpdate(){broadcast({type:'rockplay',event:publicRock(),rockCooldowns:{...rockCooldowns},rockRunningUntil,serverNow:Date.now()})}
 function rockMemberLeaves(id){if(activeRock?.participants.delete(id))rockUpdate()}
@@ -530,7 +530,12 @@ const server=http.createServer(async(req,res)=>{
           if(!((kstHour>=20||kstHour<3)&&Math.hypot(wx-34,wz-10.5)<=8.8))d.action='idle';
         }
 
-        p.action=['idle','walk','peace','jump','run','wave','clap','sit','lie','drink','snack','headbang','buriburi','groove','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','marshmallow','putyourhandsup','mosh-charge','slam-charge','slam-retreat','slam-celebrate','circle-run','train-run','row-paddle','toast-clink','surf-rider','surf-support'].includes(d.action)?d.action:'idle';
+        // The fireworks reaction is available only from 01:00 to 04:00 in Korea.
+        if(d.action==='nightfirework'){
+          const kstHour=Number(new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Seoul',hour:'2-digit',hourCycle:'h23'}).format(new Date()));
+          if(kstHour<1||kstHour>=4)d.action='idle';
+        }
+        p.action=['idle','walk','peace','jump','run','wave','clap','sit','lie','drink','snack','headbang','buriburi','groove','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','marshmallow','putyourhandsup','nightfirework','mosh-charge','slam-charge','slam-retreat','slam-celebrate','circle-run','train-run','row-paddle','toast-clink','surf-rider','surf-support','shoulder-headbang','rock-skank'].includes(d.action)?d.action:'idle';
         broadcast({type:'move',player:p});
         if(p.action==='cheer'&&previousAction!=='cheer')broadcast({type:'cheer',playerId:id});
         // Fire once, when the FIRST participant changes from charging to retreating.
@@ -567,10 +572,10 @@ const server=http.createServer(async(req,res)=>{
           const now=Date.now(),kind=String(d.kind||'');
           if(!Object.hasOwn(ROCK_DURATIONS,kind))return json(res,400,{error:'지원하지 않는 락놀이입니다.'});
           if(activeSlam||activeRock||now<rockRunningUntil)return json(res,409,{error:'다른 락놀이가 진행 중이에요.'});
-          if(now<rockCooldowns[kind])return json(res,429,{error:(kind==='circle'?'써클핏':kind==='mosh'?'모싱':kind==='row'?'노젓기':kind==='toast'?'짠하기':kind==='surf'?'크라우드 서핑':'기차놀이')+' 쿨타임이 남아 있어요.'});
+          if(now<rockCooldowns[kind])return json(res,429,{error:(kind==='circle'?'써클핏':kind==='mosh'?'모싱':kind==='row'?'노젓기':kind==='shoulder'?'단체 어깨동무':kind==='toast'?'짠하기':kind==='surf'?'크라우드 서핑':'기차놀이')+' 쿨타임이 남아 있어요.'});
           const x=Number(d.x),y=Number(d.y);
           // Reserve room for a wide loop inside the walkable zone (not the stage or sea).
-          if(!Number.isFinite(x)||!Number.isFinite(y)||(kind==='mosh'||kind==='toast'||kind==='surf'||kind==='train'?(x<90||x>1310||y<280||y>800):(x<235||x>1165||y<370||y>795)))return json(res,400,{error:kind==='mosh'?'페스티벌 바닥을 선택해 주세요.':'넓은 잔디 광장 안쪽의 바닥을 선택해 주세요.'});
+          if(!Number.isFinite(x)||!Number.isFinite(y)||(kind==='mosh'||kind==='toast'||kind==='surf'||kind==='train'||kind==='shoulder'?(x<90||x>1310||y<280||y>800):(x<235||x>1165||y<370||y>795)))return json(res,400,{error:kind==='mosh'?'페스티벌 바닥을 선택해 주세요.':'넓은 잔디 광장 안쪽의 바닥을 선택해 주세요.'});
           const campfireToast=kind==='toast'&&nearCampfireToast(p);
           const duration=campfireToast?CAMPFIRE_TOAST_DURATION_MS:ROCK_DURATIONS[kind];
           const eventId=crypto.randomUUID();
