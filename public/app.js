@@ -3399,16 +3399,36 @@ function makeAvatar(p){
   new THREE.MeshBasicMaterial({color:'#fff1bb'}));
  nightTip.rotation.x=Math.PI/2;nightTip.position.z=.59;nightLauncher.add(nightTip);
  nightLauncher.visible=false;
- const nightFireworkColors=['#ff547a','#ffe57b','#81edff','#b28aff','#8bffb0'];
- const nightSparkGeometry=new THREE.SphereGeometry(.065,5,4);
- const nightSparks=[];
- for(let i=0;i<36;i++){
-  const spark=new THREE.Mesh(nightSparkGeometry,
-   new THREE.MeshBasicMaterial({color:nightFireworkColors[i%nightFireworkColors.length],
-    transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending}));
-  spark.visible=false;root.add(spark);nightSparks.push(spark);
+ // Reuse the same radial glow particle texture and large bursting style as
+ // the hourly fireworks. Each avatar has two reusable, GPU-batched bursts.
+ // These are avatar-local so the effect travels with the person performing it.
+ const nightFireworkColors=['#ff547a','#ffe57b','#81edff','#b28aff','#8bffb0','#ffc16a'];
+ const nightBurstCount=150;
+ const nightBursts=[];
+ for(let j=0;j<2;j++){
+  const positions=new Float32Array(nightBurstCount*3);
+  const colors=new Float32Array(nightBurstCount*3);
+  const geometry=new THREE.BufferGeometry();
+  geometry.setAttribute('position',new THREE.BufferAttribute(positions,3).setUsage(THREE.DynamicDrawUsage));
+  geometry.setAttribute('color',new THREE.BufferAttribute(colors,3));
+  const color=new THREE.Color(nightFireworkColors[j%nightFireworkColors.length]);
+  for(let i=0;i<nightBurstCount;i++){
+   const k=i*3,warm=.75+(i%7)*.035;
+   colors[k]=color.r*warm;colors[k+1]=color.g*warm;colors[k+2]=color.b*warm;
+  }
+  const material=new THREE.PointsMaterial({size:1.7,map:fireworkDot,vertexColors:true,
+   transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending,
+   alphaTest:.015,sizeAttenuation:true,fog:false});
+  const cloud=new THREE.Points(geometry,material);cloud.frustumCulled=false;
+  cloud.renderOrder=38;cloud.visible=false;root.add(cloud);
+  const rocket=new THREE.Sprite(new THREE.SpriteMaterial({map:fireworkDot,
+   color:nightFireworkColors[j%nightFireworkColors.length],transparent:true,
+   opacity:.96,depthWrite:false,blending:THREE.AdditiveBlending}));
+  rocket.scale.set(1.6,1.6,1);rocket.visible=false;root.add(rocket);
+  nightBursts.push({cloud,rocket,positions,originX:j===0?-4.8:5.2,
+   height:j===0?27:32,seed:j*.53});
  }
- parts.nightSparks=nightSparks;
+ parts.nightBursts=nightBursts;
 
 
  // White festival pennant with black personalized lettering, mounted on a tall hand-held pole.
@@ -4322,24 +4342,38 @@ function animateAvatar(a,p,t){
   const firing=act==='nightfirework';
   P.nightLauncher.visible=firing;
   P.nightLauncher.rotation.x=-Math.PI/2+.07*Math.sin(sec*4);
-  if(P.nightSparks){
-   // Continuous 2.6-second loops, staggered for two independent sky bursts.
-   const loop=2.6;
-   for(let i=0;i<P.nightSparks.length;i++){
-    const dot=P.nightSparks[i];
-    if(!firing){dot.visible=false;continue;}
-    const burst=Math.floor(i/18),j=i%18;
-    const phase=((sec+burst*1.3)%loop)/loop;
-    if(phase<.25){dot.visible=false;continue;}
-    const life=(phase-.25)/.75;
-    const a=j*2.399963229728653+burst*.8;
-    const rise=3.2+(burst*.8);
-    const spread=(life**.62)*(1.6+burst*.27);
-    const vertical=Math.sin(a*1.17)*spread*.65-life*life*1.2;
-    dot.position.set(.5+Math.cos(a)*spread,2.45+rise+vertical, .5+Math.sin(a)*spread);
-    dot.scale.setScalar(.55+(1-life)*.75);
-    dot.material.opacity=Math.max(0,Math.sin(Math.PI*life)*.92);
-    dot.visible=true;
+  if(P.nightBursts){
+   // One volley repeats every 5 seconds. Each rocket rises for 0.95 seconds;
+   // the subsequent 3.3-second burst spans ~20-25 world units across the sky.
+   const cycle=5.0;
+   for(let j=0;j<P.nightBursts.length;j++){
+    const f=P.nightBursts[j],phase=(sec+j*2.5)%cycle;
+    if(!firing){f.cloud.visible=false;f.rocket.visible=false;continue;}
+    const rise=.95,burst=phase-rise;
+    f.rocket.visible=phase<rise;
+    if(f.rocket.visible){
+     const u=phase/rise;
+     f.rocket.position.set(f.originX*u,2.5+(f.height-2.5)*u*u,.5);
+     f.rocket.material.opacity=.95-.12*u;
+    }
+    f.cloud.visible=burst>=0&&burst<3.35;
+    if(!f.cloud.visible)continue;
+    const fade=burst<.18?burst/.18:Math.pow(Math.max(0,1-(burst-.18)/3.17),1.15);
+    f.cloud.material.opacity=fade*.97;
+    const drag=(1-Math.exp(-burst*.52))/.52;
+    const pos=f.positions;
+    const count=pos.length/3;
+    for(let i=0;i<count;i++){
+     const v=1-2*(i+.5)/count;
+     const theta=i*2.399963229728653+f.seed;
+     const ring=Math.sqrt(Math.max(0,1-v*v));
+     const speed=7.8+((i*73+j*19)%61)/61*5.6;
+     const k=i*3;
+     pos[k]=f.originX+Math.cos(theta)*ring*speed*drag;
+     pos[k+1]=f.height+v*speed*drag-2.6*burst*burst;
+     pos[k+2]=.5+Math.sin(theta)*ring*speed*drag;
+    }
+    f.cloud.geometry.attributes.position.needsUpdate=true;
    }
   }
  }
