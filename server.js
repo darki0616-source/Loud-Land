@@ -24,7 +24,7 @@ let pendingSlamImpact=null; // Last launch roster; exactly one shared first-arri
 const SLAM_COUNTDOWN_MS=5000,SLAM_COOLDOWN_MS=15000;
 // Circle pit and shoulder-to-shoulder figure-eight train: server-authoritative join roster.
 const ROCK_COUNTDOWN_MS=5000,ROCK_COOLDOWN_MS=15000;
-const ROCK_DURATIONS={circle:20000,train:36000,mosh:4500,row:20000,toast:6000,surf:14000};
+const ROCK_DURATIONS={circle:20000,train:60000,mosh:4500,row:20000,toast:6000,surf:14000};
 const CAMPFIRE_TOAST_DURATION_MS=9000,CAMPFIRE_SERVER_X=34/.058+600,CAMPFIRE_SERVER_Y=(10.5-8)/.058+500;
 function nearCampfireToast(p){return !!p&&Math.hypot((p.x-600)*.058-34,(p.y-500)*.058+8-10.5)<=8.8;}
 let activeRock=null,rockRunningUntil=0;
@@ -568,7 +568,7 @@ const server=http.createServer(async(req,res)=>{
           if(now<rockCooldowns[kind])return json(res,429,{error:(kind==='circle'?'써클핏':kind==='mosh'?'모싱':kind==='row'?'노젓기':kind==='toast'?'짠하기':kind==='surf'?'크라우드 서핑':'기차놀이')+' 쿨타임이 남아 있어요.'});
           const x=Number(d.x),y=Number(d.y);
           // Reserve room for a wide loop inside the walkable zone (not the stage or sea).
-          if(!Number.isFinite(x)||!Number.isFinite(y)||(kind==='mosh'||kind==='toast'||kind==='surf'?(x<90||x>1310||y<280||y>800):(x<235||x>1165||y<370||y>795)))return json(res,400,{error:kind==='mosh'?'페스티벌 바닥을 선택해 주세요.':'넓은 잔디 광장 안쪽의 바닥을 선택해 주세요.'});
+          if(!Number.isFinite(x)||!Number.isFinite(y)||(kind==='mosh'||kind==='toast'||kind==='surf'||kind==='train'?(x<90||x>1310||y<280||y>800):(x<235||x>1165||y<370||y>795)))return json(res,400,{error:kind==='mosh'?'페스티벌 바닥을 선택해 주세요.':'넓은 잔디 광장 안쪽의 바닥을 선택해 주세요.'});
           const campfireToast=kind==='toast'&&nearCampfireToast(p);
           const duration=campfireToast?CAMPFIRE_TOAST_DURATION_MS:ROCK_DURATIONS[kind];
           const eventId=crypto.randomUUID();
@@ -586,8 +586,8 @@ const server=http.createServer(async(req,res)=>{
               broadcast({type:'rockplay-cancel',id:current.id,kind:'surf',reason:'크라우드 서핑은 시작자 포함 2명 이상이 필요해요.'});
               rockUpdate();return;
             }
-            const launch={type:'rockplay-go',id:current.id,kind:current.kind,x:current.x,y:current.y,startAt:current.endAt,duration,participants,campfireToast:!!current.campfireToast,riderId:current.kind==='surf'?current.initiator:null,serverNow:Date.now(),
-              origins:current.kind==='surf'?Object.fromEntries(participants.map(pid=>{const actor=players.get(pid);return [pid,{x:actor.x,y:actor.y}]})):undefined};
+            const launch={type:'rockplay-go',id:current.id,kind:current.kind,x:current.x,y:current.y,startAt:current.endAt,duration,participants,campfireToast:!!current.campfireToast,riderId:current.kind==='surf'?current.initiator:null,leaderId:current.kind==='train'?current.initiator:null,serverNow:Date.now(),
+              origins:(current.kind==='surf'||current.kind==='train')?Object.fromEntries(participants.map(pid=>{const actor=players.get(pid);return [pid,{x:actor.x,y:actor.y}]})):undefined};
             if(current.kind==='surf'){
               activeSurfRide={id:launch.id,kind:launch.kind,x:launch.x,y:launch.y,startAt:launch.startAt,duration:launch.duration,participants:[...participants],riderId:launch.riderId,origins:launch.origins};
               setTimeout(()=>{if(activeSurfRide?.id===current.id)activeSurfRide=null},duration+1500).unref();
