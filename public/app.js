@@ -18,7 +18,7 @@ const picnicMatColors=['#f5a5a3','#a7def4','#f5ce80','#b3d9a0','#ceb8f1','#ffd2a
 const mats=picnicSlots.map((slot,i)=>({x:slot.worldX/.058+600,y:500,c:picnicMatColors[i],worldX:slot.worldX,worldZ:slot.worldZ}));
 const state={id:null,me:null,players:new Map(),keys:new Set(),action:'idle',pose:'stand',actionUntil:0,lastSent:0,es:null,music:{id:'',paused:true,position:0,startedAt:0,token:0},queue:[],history:[],serverDelta:0,yt:null,ytReady:false,lastTrack:'',audioEnabled:true,skipVote:null,skipVoteCooldownUntil:0,walkTarget:null,benchTarget:null,moving:false,rhythm:{date:'',leaderboard:[],reward:null,booth:{x:1290,y:1034,radius:135}},rhythmBest:0};
 let slamMode=false,slam=null,slamCooldownUntil=0,slamMotion=null;
-let rockPlacementMode=null,rockPlay=null,rockCooldowns={circle:0,train:0,mosh:0,row:0,toast:0,surf:0},rockRunningUntil=0,rockMotion=null,crowdSurfScene=null,toastSequence=null;
+let rockPlacementMode=null,rockPlay=null,rockCooldowns={circle:0,train:0,mosh:0,row:0,toast:0,surf:0},rockRunningUntil=0,rockMotion=null,crowdSurfScene=null,toastSequence=null,freeTrainTrail=null;
 let chosenPattern='solid',chosenSash='none',chosenHairStyle='short',chosenHairColor='#4b3932';
 const hairStyles=[['short','가르마 숏컷'],['bob','짧은 보브'],['long','장발'],['buns','번 헤어'],['bob2','레이어드 단발'],['short2','더 짧은 사이드 숏컷'],['basic-short','기본 숏컷'],['basic-bob','기본 단발']];
 // Older custom styles are converted to the closest available Quaternius asset.
@@ -712,7 +712,7 @@ function showBookingNotice(name,title){
  setTimeout(()=>el.remove(),5200);
 }
 
-function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='snapshot'){state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);syncCrowdSurf(d.crowdSurf);if(Array.isArray(d.chat)){$('chatMessages').replaceChildren();d.chat.forEach(appendChat)};for(const id of duoVfx.keys())removeDuoVfx(id);activeDuos.clear();for(const duo of d.interactions||[])activeDuos.set(duo.id,duo);syncDuoStatus()}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){appendChat(d.entry);showBubble(d.entry)}else if(d.type==='move'){state.players.set(d.player.id,d.player);if(d.player.id===state.id&&currentDuo())state.me={...d.player}}else if(d.type==='flag'){const player=state.players.get(d.id);if(player){player.flagText=d.flagText;player.flagImage=d.flagImage||'';}if(d.id===state.id&&state.me){state.me.flagText=d.flagText;state.me.flagImage=d.flagImage||'';currentFlagText=d.flagText;currentFlagImageId=d.flagImage||'';refreshFlagButton();}}else if(d.type==='badge'){const person=state.players.get(d.id);if(person){person.badgeTier=d.badgeTier;person.badgeSeconds=d.badgeSeconds;if(d.id===state.id&&state.me){state.me.badgeTier=d.badgeTier;state.me.badgeSeconds=d.badgeSeconds;}renderOnlinePlayers();}}else if(d.type==='profile'){state.players.set(d.player.id,d.player);if(d.player.id===state.id){state.me=d.player;refreshProfilePreview();refreshRhythmReactionButton();if(!$('punkShop').classList.contains('hidden')||!$('mdWardrobe').hidden)refreshPunkShop()}renderOnlinePlayers()}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers()}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue,d.history);else if(d.type==='slam')applySlam(d.slam,d.cooldownUntil);else if(d.type==='slam-go')onSlamGo(d);else if(d.type==='slam-impact')spawnSlamDust(d.x,d.y);else if(d.type==='toast-spark')spawnToastSpark(d.x,d.y);else if(d.type==='cheer'&&d.playerId!==state.id&&state.audioEnabled)playCheer();else if(d.type==='rockplay')applyRockPlay(d.event,d.rockCooldowns,d.rockRunningUntil);else if(d.type==='rockplay-go')onRockPlayGo(d);else if(d.type==='rockplay-cancel'){applyRockPlay(null,d.rockCooldowns,0);toast(d.reason||'인원이 부족해 취소됐어요.')} else if(d.type==='rhythm-state')applyRhythmState(d.rhythm);else if(d.type==='md-catalog')syncMdCatalog(d.items);else if(d.type==='music-booked')showBookingNotice(d.name,d.title);else if(d.type==='music-control')showMusicControlNotice(d.name,d.command);else if(d.type==='skip-vote')applySkipVote(d.vote,d.cooldownUntil);else if(d.type==='skip-vote-result')showSkipVoteResult(d);else if(d.type.startsWith('duo-'))handleDuoEvent(d)};state.es.onerror=()=>{ /* EventSource retries automatically; heartbeat repairs an expired session. */ }}
+function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='snapshot'){state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);syncCrowdSurf(d.crowdSurf);if(Array.isArray(d.chat)){$('chatMessages').replaceChildren();d.chat.forEach(appendChat)};for(const id of duoVfx.keys())removeDuoVfx(id);activeDuos.clear();for(const duo of d.interactions||[])activeDuos.set(duo.id,duo);syncDuoStatus()}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){appendChat(d.entry);showBubble(d.entry)}else if(d.type==='move'){recordTrainLeader(d.player);state.players.set(d.player.id,d.player);if(d.player.id===state.id&&currentDuo())state.me={...d.player}}else if(d.type==='flag'){const player=state.players.get(d.id);if(player){player.flagText=d.flagText;player.flagImage=d.flagImage||'';}if(d.id===state.id&&state.me){state.me.flagText=d.flagText;state.me.flagImage=d.flagImage||'';currentFlagText=d.flagText;currentFlagImageId=d.flagImage||'';refreshFlagButton();}}else if(d.type==='badge'){const person=state.players.get(d.id);if(person){person.badgeTier=d.badgeTier;person.badgeSeconds=d.badgeSeconds;if(d.id===state.id&&state.me){state.me.badgeTier=d.badgeTier;state.me.badgeSeconds=d.badgeSeconds;}renderOnlinePlayers();}}else if(d.type==='profile'){state.players.set(d.player.id,d.player);if(d.player.id===state.id){state.me=d.player;refreshProfilePreview();refreshRhythmReactionButton();if(!$('punkShop').classList.contains('hidden')||!$('mdWardrobe').hidden)refreshPunkShop()}renderOnlinePlayers()}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers()}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue,d.history);else if(d.type==='slam')applySlam(d.slam,d.cooldownUntil);else if(d.type==='slam-go')onSlamGo(d);else if(d.type==='slam-impact')spawnSlamDust(d.x,d.y);else if(d.type==='toast-spark')spawnToastSpark(d.x,d.y);else if(d.type==='cheer'&&d.playerId!==state.id&&state.audioEnabled)playCheer();else if(d.type==='rockplay')applyRockPlay(d.event,d.rockCooldowns,d.rockRunningUntil);else if(d.type==='rockplay-go')onRockPlayGo(d);else if(d.type==='rockplay-cancel'){applyRockPlay(null,d.rockCooldowns,0);toast(d.reason||'인원이 부족해 취소됐어요.')} else if(d.type==='rhythm-state')applyRhythmState(d.rhythm);else if(d.type==='md-catalog')syncMdCatalog(d.items);else if(d.type==='music-booked')showBookingNotice(d.name,d.title);else if(d.type==='music-control')showMusicControlNotice(d.name,d.command);else if(d.type==='skip-vote')applySkipVote(d.vote,d.cooldownUntil);else if(d.type==='skip-vote-result')showSkipVoteResult(d);else if(d.type.startsWith('duo-'))handleDuoEvent(d)};state.es.onerror=()=>{ /* EventSource retries automatically; heartbeat repairs an expired session. */ }}
 function applySkipVote(vote,cooldownUntil){
  state.skipVote=vote||null;if(Number.isFinite(Number(cooldownUntil)))state.skipVoteCooldownUntil=Number(cooldownUntil);
  const overlay=$('skipVoteOverlay');overlay.hidden=!vote;updateSkipVoteUI();updateSharedMusicButtons();
@@ -1173,19 +1173,66 @@ function surfPoseAt(event,playerId,now=slamNow()){
   action:elapsed<SURF_APPROACH_MS?'run':isRider?'surf-rider':'surf-support',
   facing:isRider?0:Math.atan2(event.x-x,event.y-y)};
 }
+// v167: free-roaming train. The organiser steers; each carriage follows the
+// travelled route, rather than an automatic figure-eight. Shared player move
+// events update the path on every client, including mobile spectators.
+function beginFreeTrain(event){
+ const leaderId=event.leaderId||event.participants?.[0];
+ const origin=event.origins?.[leaderId]||state.players.get(leaderId)||{x:event.x,y:event.y};
+ const start=toWorld(origin),facing=Number(state.players.get(leaderId)?.facing??origin.facing)||0;
+ const points=[];
+ for(let n=24;n>=0;n--){
+  points.push(serverFromWorld({x:start.x-Math.sin(facing)*n,z:start.z-Math.cos(facing)*n}));
+ }
+ freeTrainTrail={id:event.id,leaderId,points,lastAt:performance.now()};
+}
+function recordTrainLeader(player){
+ const trail=freeTrainTrail;
+ if(!trail||!player||player.id!==trail.leaderId)return;
+ if(!rockMotion||rockMotion.kind!=='train'||rockMotion.id!==trail.id)return;
+ const points=trail.points,last=points[points.length-1];
+ const a=toWorld(last),b=toWorld(player);
+ if(Math.hypot(a.x-b.x,a.z-b.z)>.18){
+  points.push({x:player.x,y:player.y});
+  if(points.length>1000)points.shift();
+ }
+ trail.lastAt=performance.now();
+}
+function trainCarriageTarget(index){
+ const trail=freeTrainTrail;
+ if(!trail)return null;
+ const leader=state.players.get(trail.leaderId);
+ if(leader)recordTrainLeader(leader);
+ const pts=trail.points;
+ if(!pts.length)return null;
+ // Distances are measured in rendered-world units to avoid map Z distortion.
+ let remaining=index*2.5;
+ for(let i=pts.length-1;i>0;i--){
+  const a=toWorld(pts[i]),b=toWorld(pts[i-1]);
+  const dist=Math.hypot(a.x-b.x,a.z-b.z);
+  if(dist>=remaining){
+   const ratio=dist?remaining/dist:0;
+   return serverFromWorld({x:a.x+(b.x-a.x)*ratio,z:a.z+(b.z-a.z)*ratio});
+  }
+  remaining-=dist;
+ }
+ return pts[0];
+}
 function onRockPlayGo(event){
  // Every client uses the same server timestamp for clink -> raise -> sip -> lower.
  if(event.kind==='toast')toastSequence={startAt:event.startAt,duration:event.duration,campfireToast:!!event.campfireToast,participants:[...(event.participants||[])]};
  if(event.kind==='surf')syncCrowdSurf(event);
+ if(event.kind==='train')beginFreeTrain(event);
  const participants=Array.isArray(event.participants)?event.participants:[];
  const index=participants.indexOf(state.id);
  if(index!==-1&&state.me){
-   rockMotion={id:event.id,kind:event.kind,x:event.x,y:event.y,startAt:event.startAt,duration:event.duration,index,count:participants.length,campfireToast:!!event.campfireToast,riderId:event.riderId||participants[0]};
+   rockMotion={id:event.id,kind:event.kind,x:event.x,y:event.y,startAt:event.startAt,duration:event.duration,index,count:participants.length,campfireToast:!!event.campfireToast,riderId:event.riderId||participants[0],leaderId:event.leaderId||participants[0]};
    slamMotion=null;state.walkTarget=null;state.benchTarget=null;
    state.pose='stand';state.me.pose='stand';state.action=event.kind==='surf'?(state.id===event.riderId?'surf-rider':'surf-support'):event.kind==='mosh'?'mosh-charge':event.kind==='circle'?'circle-run':event.kind==='row'?'row-paddle':event.kind==='toast'?'toast-clink':'train-run';state.me.action=state.action;
    // Every moving group action now gathers smoothly, instead of teleporting
    // to its first animation point on the first frame.
    rockMotion.gatherFrom={x:state.me.x,y:state.me.y};
+   if(event.kind==='train')toast(state.id===rockMotion.leaderId?'🚂 기차 선두! 키보드 또는 바닥 터치로 자유롭게 이동하세요':'🚂 선두를 따라가는 기차놀이가 시작됐어요');
    if(event.kind==='mosh'){const start={x:state.me.x,y:state.me.y};rockMotion.moshStart=start;rockMotion.moshDestination={x:event.x+(index-participants.length/2)*7,y:event.y};rockMotion.dustA=false;rockMotion.dustB=false;}
    state.actionUntil=Infinity;updateActionButtons();sendMove();
  }
@@ -1248,6 +1295,41 @@ function moshPathAt(m,elapsed){
  }
  return {...serverFromWorld(point),dx:dx*dir,dy:dz*dir};
 }
+// Campfire cheers: approach a safe outer ring, walk around the fire,
+// then step inward to the assigned standing spot. All routing uses WORLD
+// coordinates because the audience extension stretches server Y unevenly.
+function campfireToastGatherAt(m,elapsed,target){
+ const center=toWorld({x:m.x,y:m.y});
+ const from=toWorld(m.gatherFrom||{x:state.me.x,y:state.me.y});
+ const dest=toWorld(target);
+ const startDx=from.x-center.x,startDz=from.z-center.z;
+ const destDx=dest.x-center.x,destDz=dest.z-center.z;
+ const startAngle=Math.atan2(startDz,startDx);
+ const endAngle=Math.atan2(destDz,destDx);
+ const safeRadius=Math.max(6.2,Math.hypot(destDx,destDz)+1.3);
+ const startRadius=Math.hypot(startDx,startDz);
+ const stage=Math.max(0,Math.min(1,elapsed/3000));
+ const ease=t=>{t=Math.min(1,Math.max(0,t));return t*t*(3-2*t)};
+ let x,z;
+ if(stage<.27){
+  // Outward/inward radial travel stays on the user's original side of the fire.
+  const r=startRadius+(safeRadius-startRadius)*ease(stage/.27);
+  x=center.x+Math.cos(startAngle)*r;
+  z=center.z+Math.sin(startAngle)*r;
+ }else if(stage<.83){
+  // Follow the outside of the stone ring, not a chord through its centre.
+  const turn=Math.atan2(Math.sin(endAngle-startAngle),Math.cos(endAngle-startAngle));
+  const angle=startAngle+turn*ease((stage-.27)/.56);
+  x=center.x+Math.cos(angle)*safeRadius;
+  z=center.z+Math.sin(angle)*safeRadius;
+ }else{
+  // Final short step toward the assigned position around the campfire.
+  const alpha=ease((stage-.83)/.17);
+  x=center.x+destDx*(alpha)+(1-alpha)*Math.cos(endAngle)*safeRadius;
+  z=center.z+destDz*(alpha)+(1-alpha)*Math.sin(endAngle)*safeRadius;
+ }
+ return serverFromWorld({x,z});
+}
 function rockPathAt(m,elapsed){
  const elapsedFraction=Math.min(1,Math.max(0,elapsed/m.duration));
  if(m.kind==='row'){return groupWorldPathPoint(m,{x:m.x+(m.index%2===0?-21:21),y:m.y+Math.floor(m.index/2)*28-22,dx:0,dy:1})}
@@ -1284,6 +1366,7 @@ function beginRockCelebration(m){
  state.actionUntil=Infinity;sendMove();
 }
 function finishRockMotion(){
+ if(rockMotion?.kind==='train')freeTrainTrail=null;
  rockMotion=null;state.action='idle';state.me.action='idle';state.actionUntil=0;
  updateActionButtons();sendMove();
 }
@@ -1294,7 +1377,7 @@ function updateRockPlayVisual(t){
  const remaining=rockPlay.endAt-slamNow();
  if(remaining<=0){rockFloorPath.visible=false;return}
  const world=toWorld(rockPlay),pos=new THREE.Vector3(world.x,3.6,world.z).project(camera);
- rockFloorPath.visible=true;rockFloorPath.position.set(world.x,.09,world.z);
+ rockFloorPath.visible=rockPlay.kind!=='train';rockFloorPath.position.set(world.x,.09,world.z);
  rockFloorPath.rotation.y=0;
  rockFloorPath.geometry=rockPlay.kind==='row'||rockPlay.kind==='surf'?rockRowGeometry:rockPlay.kind==='circle'||rockPlay.kind==='mosh'||rockPlay.kind==='toast'?rockCircleGeometry:rockTrainGeometry;
  if(pos.z>=1||pos.z<=-1){slamMarker.hidden=true;return}
@@ -1304,6 +1387,7 @@ function updateRockPlayVisual(t){
  const joined=rockPlay.participants.includes(state.id);
  slamJoin.disabled=joined;slamJoin.textContent=joined?'✓ 참가 완료':'참가하기';
  if(rockPlay.kind==='surf')slamMembers.textContent+=' · 2명 이상 필요';
+ if(rockPlay.kind==='train')slamMembers.textContent+=' · 선두 자유 이동';
  slamMarker.style.left=Math.max(72,Math.min(host.clientWidth-72,(pos.x+1)*.5*host.clientWidth))+'px';
  slamMarker.style.top=Math.max(115,Math.min(host.clientHeight-165,(1-pos.y)*.5*host.clientHeight))+'px';
 }
@@ -4266,7 +4350,7 @@ gameTouchSurface.addEventListener('pointerup',e=>{
  }
  state.benchTarget=null;
  if(slamMotion){slamMotion=null;state.action='idle';state.actionUntil=0;state.me.action='idle'}
- if(rockMotion)finishRockMotion();
+ if(rockMotion&&!(rockMotion.kind==='train'&&rockMotion.leaderId===state.id))finishRockMotion();
  if(state.pose!=='stand'){state.pose='stand';state.me.pose='stand';updateActionButtons()}
  state.walkTarget={x,y};
  // Visual ground marker replaces the full-screen toast (which covered mobile HUD).
@@ -4324,7 +4408,7 @@ function tick(t){
   if(dx||dy){
    state.walkTarget=null;state.benchTarget=null;
    if(slamMotion)finishSlamMotion();
-   if(rockMotion)finishRockMotion();
+   if(rockMotion&&!(rockMotion.kind==='train'&&rockMotion.leaderId===state.id))finishRockMotion();
   }
   if(!dx&&!dy&&slamMotion){
    const m=slamMotion;
@@ -4379,7 +4463,7 @@ function tick(t){
      post('rockplay',{id:state.id,command:'impact',eventId:m.id,phase:2,x:m.x,y:m.y}).catch(()=>{});
     }
    }
-   if(!m.phase&&elapsed>=m.duration){if(m.kind==='toast'){m.phase='done';rockMotion=null;state.action='idle';state.me.action='idle';state.actionUntil=0;if(m.campfireToast){state.pose='sit';state.me.pose='sit';state.me.facing=Math.atan2(m.x-state.me.x,m.y-state.me.y);updateActionButtons()}sendMove()}else beginRockCelebration(m)}
+   if(!m.phase&&elapsed>=m.duration){if(m.kind==='train'){freeTrainTrail=null;finishRockMotion()}else if(m.kind==='toast'){m.phase='done';rockMotion=null;state.action='idle';state.me.action='idle';state.actionUntil=0;if(m.campfireToast){state.pose='sit';state.me.pose='sit';state.me.facing=Math.atan2(m.x-state.me.x,m.y-state.me.y);updateActionButtons()}sendMove()}else beginRockCelebration(m)}
    if(m.phase==='done'){
     // Group cheers has finished; do not restart this turn.
    }else if(m.phase==='scatter'){
@@ -4403,6 +4487,25 @@ function tick(t){
    }else if(m.phase==='celebrate'){
     state.action='slam-celebrate';state.me.action='slam-celebrate';
     state.actionUntil=Infinity;
+   }else if(m.kind==='train'){
+    if(state.id===m.leaderId){
+     // Leader stays where they are when idle; movement uses normal input code below.
+     state.action=(dx||dy||state.walkTarget)?'train-run':'idle';state.me.action=state.action;
+     state.moving=Boolean(dx||dy||state.walkTarget);
+    }else{
+     const dest=trainCarriageTarget(m.index);
+     if(dest){
+      const a=toWorld(state.me),b=toWorld(dest),distance=Math.hypot(b.x-a.x,b.z-a.z);
+      if(distance>.15){
+       const next=stepWorldToward(state.me,dest,Math.min(12,7+distance*.35)*frameDelta/1000);
+       const n=toWorld(next);
+       state.me.x=clampServerX(next.x);state.me.y=clampServerY(next.y);
+       state.me.facing=Math.atan2(n.x-a.x,n.z-a.z);
+       state.action='train-run';state.me.action='train-run';state.moving=true;
+      }else{state.action='idle';state.me.action='idle';state.moving=false;}
+      if(t-state.lastSent>110){state.lastSent=t;sendMove()}
+     }
+    }
    }else if(m.kind==='surf'){
     // Fully separate from generic rock paths, including their 8-shaped train loop.
     const surf=surfPoseAt(crowdSurfScene||m,state.id);
@@ -4420,7 +4523,8 @@ function tick(t){
     // 1.4-second group gathering animation.
     const gather=Math.min(1,elapsed/(m.campfireToast?3000:1400));
     const from=m.gatherFrom||p;
-    const smooth=m.kind==='mosh'?p:blendGroupWorld(from,p,gather);
+    const smooth=m.kind==='mosh'?p:m.kind==='toast'&&m.campfireToast&&elapsed<3000
+     ?campfireToastGatherAt(m,elapsed,p):blendGroupWorld(from,p,gather);
     state.me.x=clampServerX(smooth.x);
     state.me.y=clampServerY(smooth.y);
     // Crowd-surf supporters face the middle and never rotate onto the train path.
@@ -4431,7 +4535,7 @@ function tick(t){
     if(t-state.lastSent>70){state.lastSent=t;sendMove()}
    }
   }
-  if(!dx&&!dy&&!slamMotion&&!rockMotion&&state.walkTarget){
+  if(!dx&&!dy&&!slamMotion&&(!rockMotion||(rockMotion.kind==='train'&&rockMotion.leaderId===state.id))&&state.walkTarget){
    const tx=state.walkTarget.x-state.me.x,ty=state.walkTarget.y-state.me.y,n=Math.hypot(tx,ty);
    if(n>4){dx=tx/n;dy=ty/n}else{
     state.walkTarget=null;
@@ -4443,13 +4547,13 @@ function tick(t){
     }
    }
   }
-  state.moving=!!(dx||dy);
-  if(state.moving && (state.action==='buriburi'||state.action==='groove'||state.action==='windmill'||state.action==='airguitar'||state.action==='headspin'||state.action==='cheer'||state.action==='smoke'||state.action==='freestyle'||state.action==='beatking'||state.action==='marshmallow') && !slamMotion && !rockMotion){
+  state.moving=!!(dx||dy)||(rockMotion?.kind==='train'&&rockMotion.leaderId!==state.id&&state.me.action==='train-run');
+  if(state.moving && (dx||dy) && (state.action==='buriburi'||state.action==='groove'||state.action==='windmill'||state.action==='airguitar'||state.action==='headspin'||state.action==='cheer'||state.action==='smoke'||state.action==='freestyle'||state.action==='beatking'||state.action==='marshmallow') && !slamMotion && !rockMotion){
    state.action='idle';state.me.action='walk';state.actionUntil=0;updateActionButtons();
   }
-  if(state.moving){
+  if(state.moving&&(dx||dy)){
    const n=Math.hypot(dx,dy);
-   if(!slamMotion && !rockMotion){
+   if(!slamMotion && (!rockMotion||(rockMotion.kind==='train'&&rockMotion.leaderId===state.id))){
     // v81: FIX movement through the stretched audience area.
     // v78 expanded 6 metres of map depth to 32 world metres. Moving by
     // fixed SERVER coordinates made the avatar visibly accelerate inside
@@ -4464,7 +4568,7 @@ function tick(t){
     const worldDist=Math.hypot(worldDx,worldDz);
     // Same measured speed on every part of the map: 6.09 world units/s
     // for walking, 9.86 for running. A click never overshoots its target.
-    const worldSpeed=(state.action==='run'?9.86:6.09)*frameDelta/1000;
+    const worldSpeed=(rockMotion?.kind==='train'&&rockMotion.leaderId===state.id?7.5:state.action==='run'?9.86:6.09)*frameDelta/1000;
     const worldStep=Math.min(worldSpeed,worldDist);
     if(worldDist>0.00001){
       const nextX=at.x+worldDx/worldDist*worldStep;
@@ -4488,6 +4592,7 @@ function tick(t){
    state.action='idle';state.me.action=state.moving?'walk':'idle';
    updateActionButtons();
   }
+  if(rockMotion?.kind==='train'&&rockMotion.leaderId===state.id)recordTrainLeader(state.me);
   if(t-state.lastSent>150){state.lastSent=t;sendMove()}
  }
 
