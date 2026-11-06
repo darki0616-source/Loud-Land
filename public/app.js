@@ -1423,26 +1423,21 @@ function rockPathAt(m,elapsed){
  const phase=elapsedFraction*Math.PI*8 - m.index*.42;
  return groupWorldPathPoint(m,{x:m.x+Math.sin(phase)*180,y:m.y+Math.sin(phase*2)*90,dx:180*Math.cos(phase),dy:180*Math.cos(phase*2)});
 }
-// Every completed rock-play (except the campfire's sit-down sequence) scatters
-// from each participant's ACTUAL ending position while visibly skanking with 🤘.
-// The shoulder-linked game keeps its own existing end behaviour.
+// When circle pit or train completes, each participant moves to a distinct
+// outward point and keeps jumping with the 🤘 bubble until manual input.
 function beginRockCelebration(m){
- const origin={x:state.me.x,y:state.me.y};
- const awayX=origin.x-m.x,awayY=origin.y-m.y;
- const count=Math.max(1,m.count);
- const laneAngle=-Math.PI/2+2*Math.PI*m.index/count;
- // Use a consistent outward route instead of pulling moving participants
- // back toward the original event centre before they can disperse.
- const radialAngle=Math.hypot(awayX,awayY)>12?Math.atan2(awayY,awayX):laneAngle;
- const angle=radialAngle+.18*Math.sin(m.index*2.4);
- const distance=m.kind==='circle'?100:Math.max(75,Math.min(112,66+count*5));
+ const angle=(m.kind==='circle'?0:-Math.PI/2)+2*Math.PI*m.index/Math.max(1,m.count);
+ const radius=m.kind==='circle'?150:Math.max(58,Math.min(108,40+m.count*6));
+ // Free train can end far from where the group started; disperse from each
+ // carriage's CURRENT position rather than dragging everyone back to start.
+ const origin=m.kind==='train'?{x:state.me.x,y:state.me.y}:{x:m.x,y:m.y};
  m.scatterTarget={
-  x:Math.max(20,Math.min(1380,origin.x+Math.cos(angle)*distance)),
-  y:clampServerY(origin.y+Math.sin(angle)*distance)
+  x:Math.max(20,Math.min(1380,origin.x+Math.cos(angle)*radius)),
+  y:clampServerY(origin.y+Math.sin(angle)*radius)
  };
  m.phase='scatter';m.phaseStarted=performance.now();
- state.action='rock-skank';state.me.action='rock-skank';state.actionUntil=Infinity;
- state.moving=true;sendMove();
+ state.action='rock-skank';state.me.action='rock-skank';
+ state.actionUntil=Infinity;sendMove();
 }
 function finishRockMotion(){
  if(rockMotion?.kind==='train')freeTrainTrail=null;
@@ -4548,7 +4543,7 @@ function tick(t){
      state.me.x=dest.x;state.me.y=dest.y;
      if(m.phase==='charge'){
       m.phase='retreat';m.phaseStarted=t;
-      state.action='rock-skank';state.me.action='rock-skank';
+      state.action='slam-retreat';state.me.action='slam-retreat';
       // The next frame naturally rotates to the outward retreat direction.
       sendMove();
      }else{
@@ -4562,7 +4557,7 @@ function tick(t){
      state.me.x=clampServerX(next.x);
      state.me.y=clampServerY(next.y);
      state.me.facing=Math.atan2(tx,ty);
-     state.action=m.phase==='charge'?'slam-charge':'rock-skank';
+     state.action=m.phase==='charge'?'slam-charge':'slam-retreat';
      state.me.action=state.action;
      state.moving=true;
     }
@@ -4601,13 +4596,13 @@ function tick(t){
      state.action='slam-celebrate';state.me.action='slam-celebrate';
      state.actionUntil=Infinity;sendMove();
     }else{
-     // Run outward while performing full skanking steps and showing the horns bubble.
+     // Jumping retreat at a gentle, frame-rate-independent pace.
      const next=stepWorldToward(state.me,target,5.5*frameDelta/1000);
      state.me.x=clampServerX(next.x);
      state.me.y=clampServerY(next.y);
      state.me.facing=Math.atan2(tx,ty);
      state.action='rock-skank';state.me.action='rock-skank';
-     state.moving=true;state.actionUntil=Infinity;
+     state.actionUntil=Infinity;
      if(t-state.lastSent>90){state.lastSent=t;sendMove()}
     }
    }else if(m.phase==='celebrate'){
