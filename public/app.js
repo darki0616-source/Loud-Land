@@ -4119,10 +4119,13 @@ function animateAvatar(a,p,t){
   set('neck',-.075+.31*Math.sin(beat*2-.6),-.035*side,-.055*side);
   const leftFold=(1+Math.cos(beat))*.5;
   const rightFold=1-leftFold;
-  // Fold each arm diagonally in and slightly UP toward the upper chest,
-  // keeping both hands in front rather than lifting them above the head.
-  leftHandTarget=new THREE.Vector3(-.20+.085*leftFold,.31+.13*leftFold,.77-.50*leftFold);
-  rightHandTarget=new THREE.Vector3(.20-.085*rightFold,.31+.13*rightFold,.77-.50*rightFold);
+  // v192: hands PUMP vertically along with the folding motion.
+  // When the right elbow folds, its hand travels UP and IN toward the chest;
+  // when it opens, the hand moves DOWN and FORWARD. The left arm alternates.
+  // Both targets remain below the face and close to the centre of the torso.
+  const handLow=.18,handLift=.44;
+  leftHandTarget=new THREE.Vector3(-.22+.11*leftFold,handLow+handLift*leftFold,.82-.57*leftFold);
+  rightHandTarget=new THREE.Vector3(.22-.11*rightFold,handLow+handLift*rightFold,.82-.57*rightFold);
   ikMode='dougie';
  }
  if(act==='freestyle'){
