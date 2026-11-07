@@ -402,9 +402,31 @@ function updateRhythmScoreUi(){
  rhythmUi.judge.textContent=rhythmGame.lastJudge;
  rhythmUi.judge.style.color=rhythmGame.lastJudgeColor||'#fff';
 }
+// Restore the ready screen even when the player closes mid-round.
+// START is hidden by startRhythmGame; previously closeRhythmGame never restored it.
+function resetRhythmReadyScreen(){
+ rhythmGame.running=false;
+ rhythmGame.startAt=0;
+ rhythmGame.beats=[];
+ rhythmGame.beatIndex=0;
+ rhythmGame.lastJudge='READY';
+ rhythmGame.lastJudgeColor='#ffffff';
+ rhythmGame.lastJudgeUntil=0;
+ rhythmFx.bursts.length=0;
+ if(!rhythmUi)return;
+ rhythmUi.start.hidden=false;
+ rhythmUi.start.textContent='게임 시작';
+ rhythmUi.centerBtn.hidden=false;
+ rhythmUi.overlay.querySelector('#rhythmHelp').hidden=false;
+ rhythmUi.judge.classList.remove('judge-pop');
+ rhythmUi.comboFlash.classList.remove('pop');
+ updateRhythmScoreUi();
+}
 function openRhythmGame(){
  ensureRhythmUI();
  if(!nearRhythmBooth())return toast('게임부스 근처에서만 열 수 있어요');
+ // Reopening must always show the START button, including after an interrupted run.
+ resetRhythmReadyScreen();
  rhythmGame.open=true;
  rhythmUi.overlay.classList.add('show');
  selectBottomMenu('reaction');
@@ -415,7 +437,7 @@ function openRhythmGame(){
 function closeRhythmGame(){
  rhythmStopAudio();
  rhythmGame.open=false;
- rhythmGame.running=false;
+ resetRhythmReadyScreen();
  rhythmUi?.overlay.classList.remove('show');
 }
 function startRhythmGame(){
