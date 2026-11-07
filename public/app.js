@@ -3568,24 +3568,31 @@ function makeAvatar(p){
  // arrow that launches forward on a visible arc. Root attachment keeps the
  // projectile and the held prop synchronised for all spectators.
  const heartBow=new THREE.Group();root.add(heartBow);parts.heartBow=heartBow;
- // The avatar looks along +Z. Keep the bow centred on that forward axis
- // and its visible frame in the XY plane (not along either flank).
- heartBow.visible=false;heartBow.position.set(0,1.52,.92);
+ // +Z is the character's actual forward direction. The bow's curved
+ // belly faces +Z, with both limb ends and its drawstring behind the grip.
+ // Position it at the raised LEFT palm, not floating in front of the body.
+ heartBow.visible=false;heartBow.position.set(-.32,1.52,.52);
  const heartBowMat=new THREE.MeshStandardMaterial({color:'#ff7cab',roughness:.38,metalness:.08});
  const heartGripMat=new THREE.MeshStandardMaterial({color:'#fff0f6',roughness:.55,metalness:.06});
  const heartStringMat=new THREE.MeshBasicMaterial({color:'#fff7fd'});
  const bowCurve=new THREE.CatmullRomCurve3([
-  new THREE.Vector3(.06,.51,0),new THREE.Vector3(-.18,.39,0),
-  new THREE.Vector3(-.31,.19,0),new THREE.Vector3(-.35,0,0),
-  new THREE.Vector3(-.31,-.19,0),new THREE.Vector3(-.18,-.39,0),
-  new THREE.Vector3(.06,-.51,0)
+  new THREE.Vector3(0,.54,-.22),new THREE.Vector3(0,.38,-.08),
+  new THREE.Vector3(0,.20,.09),new THREE.Vector3(0,0,.16),
+  new THREE.Vector3(0,-.20,.09),new THREE.Vector3(0,-.38,-.08),
+  new THREE.Vector3(0,-.54,-.22)
  ]);
- const bowArc=new THREE.Mesh(new THREE.TubeGeometry(bowCurve,28,.040,8,false),heartBowMat);
+ const bowArc=new THREE.Mesh(new THREE.TubeGeometry(bowCurve,30,.042,8,false),heartBowMat);
  heartBow.add(bowArc);
- const bowGrip=new THREE.Mesh(new THREE.CylinderGeometry(.045,.045,.28,8),heartGripMat);
- bowGrip.position.set(-.35,0,0);heartBow.add(bowGrip);
- const bowString=new THREE.Mesh(new THREE.CylinderGeometry(.008,.008,1.02,6),heartStringMat);
- bowString.position.x=.06;heartBow.add(bowString);parts.heartBowString=bowString;
+ const bowGrip=new THREE.Mesh(new THREE.CylinderGeometry(.052,.052,.25,10),heartGripMat);
+ bowGrip.position.set(0,0,.16);heartBow.add(bowGrip);
+ // Two sections can bend BACKWARD as the right hand draws the string.
+ // A single scaled cylinder cannot represent a properly drawn bowstring.
+ const bowStrings=[];
+ for(let i=0;i<2;i++){
+  const strand=new THREE.Mesh(new THREE.CylinderGeometry(.009,.009,1,6),heartStringMat);
+  heartBow.add(strand);bowStrings.push(strand);
+ }
+ parts.heartBowStrings=bowStrings;
  function makeHeartArrow(){
   const g=new THREE.Group();
   // +Z is the direction of flight. The arrow remains horizontal in the
@@ -4185,8 +4192,9 @@ function animateAvatar(a,p,t){
   const draw=THREE.MathUtils.clamp(phase/.95,0,1);
   const release=THREE.MathUtils.clamp((phase-1.02)/.16,0,1);
   const pull=draw*(1-release);
-  leftHandTarget=new THREE.Vector3(-.29,.49,.57);
-  rightHandTarget=new THREE.Vector3(.26,.48,.56-.34*pull);
+  // LEFT hand braces the bow at its rounded front grip; RIGHT hand draws the nock.
+  leftHandTarget=new THREE.Vector3(-.32,.49,.68);
+  rightHandTarget=new THREE.Vector3(.02,.49,.30-.34*pull);
   ikMode='heartbow';
   set('upper',-.03+.03*Math.sin(sec*3.2));
   set('neck',-.02,.05,0);
@@ -4420,13 +4428,22 @@ function animateAvatar(a,p,t){
    const draw=THREE.MathUtils.clamp(phase/.95,0,1);
    const release=THREE.MathUtils.clamp((phase-1.02)/.16,0,1);
    const pull=draw*(1-release);
-   P.heartBow.position.set(0,1.52+.015*Math.sin(sec*3.2),.92);
-   P.heartBow.rotation.set(.02*Math.sin(sec*2.5),0,0);
-   if(P.heartBowString)P.heartBowString.scale.y=1-.08*pull;
+   P.heartBow.position.set(-.32,1.52+.015*Math.sin(sec*3.2),.52);
+   P.heartBow.rotation.set(0,0,0);
+   if(P.heartBowStrings){
+    const nock=new THREE.Vector3(0,0,-.22-.34*pull);
+    const stringEnds=[new THREE.Vector3(0,.54,-.22),new THREE.Vector3(0,-.54,-.22)];
+    for(let i=0;i<2;i++){
+     const strand=P.heartBowStrings[i],v=stringEnds[i].clone().sub(nock);
+     strand.position.copy(stringEnds[i]).add(nock).multiplyScalar(.5);
+     strand.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),v.clone().normalize());
+     strand.scale.set(1,v.length(),1);
+    }
+   }
    if(P.heartHeldArrow){
     P.heartHeldArrow.visible=phase<1.14;
     if(P.heartHeldArrow.visible){
-     P.heartHeldArrow.position.set(0,0,.08-.34*pull);
+     P.heartHeldArrow.position.set(0,0,-.22-.34*pull);
      P.heartHeldArrow.rotation.set(0,0,0);
     }
    }
@@ -4436,7 +4453,7 @@ function animateAvatar(a,p,t){
     P.heartFlightArrow.visible=visible;
     if(visible){
      const u=fly/1.25;
-     P.heartFlightArrow.position.set(0,1.53+2.45*u-2.75*u*u,1.02+8.9*u);
+     P.heartFlightArrow.position.set(-.32,1.52+2.45*u-2.75*u*u,.52+8.9*u);
      // Tip pitches along the parabolic flight path; never rolls sideways.
      P.heartFlightArrow.rotation.set(-Math.atan2(2.45-5.5*u,8.9),0,0);
     }
