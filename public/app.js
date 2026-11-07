@@ -4103,30 +4103,30 @@ function animateAvatar(a,p,t){
   set('rightElbow',-.42+.10*side);
  }
  if(act==='dougie'){
-  // Slow, grounded hip-hop Dougie variation. One left/right hip sway cycle
-  // takes ~3.5 seconds; the matching shoulder rises on the SAME side.
+  // v189: extra-slow forward-reaching hip-hop Dougie. One full weight-shift
+  // cycle is still ~3.5s; a same-side shoulder rises with the moving pelvis.
   const beat=sec*1.80;
-  const side=Math.sin(beat); // positive = hip travels to avatar's RIGHT
+  const side=Math.sin(beat); // positive: pelvis/right shoulder lift to right
   const pulse=(1-Math.cos(beat*2))*.5;
-  // Wide stance stays planted; only a slight knee pulse and weight shift.
-  height=-.045+.025*pulse;
-  set('leftHip',-.09+.04*Math.max(0,-side),0,-.24);
-  set('rightHip',-.09+.04*Math.max(0,side),0,.24);
-  set('leftKnee',.26+.04*pulse);
-  set('rightKnee',.26+.04*pulse);
-  // Waist leans subtly BACK (-X rotation); pelvis-right/shoulder-right
-  // and pelvis-left/shoulder-left move as one slow weighted groove.
-  set('upper',-.13+.016*pulse,.035*side,.14*side);
-  // Deliberate head nod on each slow hip-hop backbeat.
-  set('neck',-.045+.115*Math.sin(beat*2-.6),-.022*side,-.035*side);
-  // Both arms start extended outward. Alternate one elbow folding at a
-  // time, then stretching out; avoid any overhead/hair-brushing gesture.
+  // Widen the stance, alternating a deep, visible knee bend with straightening.
+  // Maintain a low floor clearance instead of translating the whole avatar.
+  height=-.085+.095*pulse;
+  set('leftHip',-.13+.07*Math.max(0,-side),0,-.24);
+  set('rightHip',-.13+.07*Math.max(0,side),0,.24);
+  set('leftKnee',.14+.42*(1-pulse)+.07*Math.max(0,-side));
+  set('rightKnee',.14+.42*(1-pulse)+.07*Math.max(0,side));
+  // Slightly more backward lean than v188; shoulders and hips follow the same sway.
+  set('upper',-.24+.025*pulse,.040*side,.17*side);
+  // Amplified, slow head nod in time with the alternating arm bends.
+  set('neck',-.075+.29*Math.sin(beat*2-.6),-.025*side,-.045*side);
+  // Both arms reach FORWARD (+Z); alternating elbows fold prominently back
+  // toward the chest, then re-extend, while the shoulders remain front-facing.
   const leftFold=(1+Math.cos(beat))*.5;
   const rightFold=1-leftFold;
-  set('leftShoulder',-.38+.06*pulse,0,-1.08-.08*side);
-  set('rightShoulder',-.38+.06*pulse,0,1.08-.08*side);
-  set('leftElbow',-.10-1.10*leftFold);
-  set('rightElbow',-.10-1.10*rightFold);
+  set('leftShoulder',-1.38+.055*pulse,0,-.22-.075*side);
+  set('rightShoulder',-1.38+.055*pulse,0,.22-.075*side);
+  set('leftElbow',-.05-1.65*leftFold);
+  set('rightElbow',-.05-1.65*rightFold);
  }
  if(act==='freestyle'){
   // v147: larger, more expressive video-inspired freestyle and a complete
