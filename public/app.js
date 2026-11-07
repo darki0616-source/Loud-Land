@@ -3345,7 +3345,7 @@ function makeAvatar(p){
  }
 
  if(look.head==='angel-halo'){
-  const haloGroup=new THREE.Group();haloGroup.position.set(0,1.58,.12);neck.add(haloGroup);
+  const haloGroup=new THREE.Group();haloGroup.position.set(0,.95,.12);neck.add(haloGroup);
   const ringOuter=new THREE.Mesh(
    new THREE.TorusGeometry(.48,.07,10,40),
    new THREE.MeshStandardMaterial({color:'#f4d98b',emissive:'#ffe49b',emissiveIntensity:.32,roughness:.18,metalness:.46})
@@ -3525,21 +3525,40 @@ function makeAvatar(p){
  }
 
  if(look.back==='butterfly-wings'){
+  // Each side has matching painted front and rear surfaces. A simple
+  // DoubleSide material alone exposed the unpainted border from behind.
   const wings=new THREE.Group();wings.position.set(0,.60,-.58);upper.add(wings);parts.mdWings=wings;
-  const edgeMat=mat('#7a5fd3',.72),fillA=mat('#f3a6d8',.76),fillB=mat('#8ed7ff',.74),dotMat=mat('#fff6ff',.88);
-  const makeWing=(side)=>{
-   const pts=[[0,0],[.22,.23],[.60,.34],[1.02,.78],[1.18,.30],[.92,.12],[1.12,-.18],[.70,-.10],[.36,-.34],[.12,-.18]];
+  const edgeMat=new THREE.MeshStandardMaterial({color:'#7a5fd3',side:THREE.DoubleSide,roughness:.72}),
+        fillA=new THREE.MeshStandardMaterial({color:'#f3a6d8',side:THREE.DoubleSide,roughness:.76}),
+        fillB=new THREE.MeshStandardMaterial({color:'#8ed7ff',side:THREE.DoubleSide,roughness:.74}),
+        dotMat=new THREE.MeshStandardMaterial({color:'#fff6ff',side:THREE.DoubleSide,roughness:.80}),
+        accentMat=new THREE.MeshStandardMaterial({color:'#ffe187',side:THREE.DoubleSide,roughness:.75});
+  const shapeFrom=(points,side)=>{
    const shape=new THREE.Shape();
-   pts.forEach(([x,y],i)=>{const px=side*x; if(i===0)shape.moveTo(px,y); else shape.lineTo(px,y);}); shape.closePath();
-   const upperWing=child(wings,new THREE.ShapeGeometry(shape),edgeMat,[side*.23,.22,-.02]); upperWing.material.side=THREE.DoubleSide;
-   const upperFill=child(wings,new THREE.ShapeGeometry(shape),side<0?fillA:fillB,[side*.23,.22,.006],[.82,.82,1]); upperFill.material.side=THREE.DoubleSide;
-   const lowerPts=[[0,0],[.20,-.06],[.46,-.12],[.84,-.36],[.92,-.62],[.58,-.56],[.28,-.72],[.08,-.44]];
-   const lowerShape=new THREE.Shape();
-   lowerPts.forEach(([x,y],i)=>{const px=side*x; if(i===0)lowerShape.moveTo(px,y); else lowerShape.lineTo(px,y);}); lowerShape.closePath();
-   const lowerWing=child(wings,new THREE.ShapeGeometry(lowerShape),edgeMat,[side*.18,-.02,-.03]); lowerWing.material.side=THREE.DoubleSide;
-   const lowerFill=child(wings,new THREE.ShapeGeometry(lowerShape),side<0?fillB:fillA,[side*.18,-.02,.004],[.82,.82,1]); lowerFill.material.side=THREE.DoubleSide;
-   for(const [dx,dy] of [[.30,.26],[.58,.18],[.42,-.16],[.66,-.35]]){
-    const dot=child(wings,new THREE.CircleGeometry(.035,12),dotMat,[side*dx,dy,.02]); dot.material.side=THREE.DoubleSide;
+   points.forEach(([x,y],i)=>i?shape.lineTo(side*x,y):shape.moveTo(side*x,y));
+   shape.closePath();return shape;
+  };
+  const upperPts=[[0,0],[.22,.23],[.60,.34],[1.02,.78],[1.18,.30],[.92,.12],[1.12,-.18],[.70,-.10],[.36,-.34],[.12,-.18]];
+  const lowerPts=[[0,0],[.20,-.06],[.46,-.12],[.84,-.36],[.92,-.62],[.58,-.56],[.28,-.72],[.08,-.44]];
+  const makeWing=(side)=>{
+   const topShape=shapeFrom(upperPts,side),bottomShape=shapeFrom(lowerPts,side);
+   // Match the old silhouette and color treatment on BOTH sides, placing
+   // colored plates slightly closer to each viewing direction than the rim.
+   for(const face of [-1,1]){
+    const baseZ=face*.055;
+    child(wings,new THREE.ShapeGeometry(topShape),edgeMat,[side*.23,.22,baseZ]);
+    child(wings,new THREE.ShapeGeometry(topShape),side<0?fillA:fillB,
+      [side*.23,.22,baseZ+face*.012],[.82,.82,1]);
+    child(wings,new THREE.ShapeGeometry(bottomShape),edgeMat,[side*.18,-.02,baseZ]);
+    child(wings,new THREE.ShapeGeometry(bottomShape),side<0?fillB:fillA,
+      [side*.18,-.02,baseZ+face*.012],[.82,.82,1]);
+    for(const [dx,dy,r,color] of [
+     [.30,.26,.043,dotMat],[.58,.18,.055,accentMat],
+     [.42,-.16,.037,dotMat],[.66,-.35,.046,accentMat]
+    ]){
+     child(wings,new THREE.CircleGeometry(r,14),color,
+       [side*dx,dy,baseZ+face*.027]);
+    }
    }
   };
   makeWing(-1);makeWing(1);
