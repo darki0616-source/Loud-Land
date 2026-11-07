@@ -4103,24 +4103,30 @@ function animateAvatar(a,p,t){
   set('rightElbow',-.42+.10*side);
  }
  if(act==='dougie'){
-  // Dougie: low, loose shoulder bounces, alternating side steps and a hand
-  // sweeping close to the hair. Four-beat loop, continuous for every avatar.
-  const beat=sec*4.7;
-  const side=Math.sin(beat),counter=-side;
-  const bounce=(1-Math.cos(beat*2))*.5;
-  const brush=(Math.sin(beat*.5+1.05)+1)*.5;
-  height=-.045+.09*bounce;
-  set('upper',.055+.095*bounce,.12*side,.16*side);
-  set('neck',-.04-.06*bounce,-.085*side,-.10*side);
-  set('leftHip',-.15+.22*Math.max(0,side),0,-.11*side);
-  set('rightHip',-.15+.22*Math.max(0,counter),0,-.11*side);
-  set('leftKnee',.23+.14*Math.max(0,counter));
-  set('rightKnee',.23+.14*Math.max(0,side));
-  // Relaxed alternating arm swings, with a head-brushing hand every other beat.
-  set('leftShoulder',-.38-.26*side,0,-.37+.20*side);
-  set('leftElbow',-.62-.16*side);
-  set('rightShoulder',-.50-.23*counter-1.0*brush,0,.36-.20*side);
-  set('rightElbow',-.62-.28*brush);
+  // Slow, grounded hip-hop Dougie variation. One left/right hip sway cycle
+  // takes ~3.5 seconds; the matching shoulder rises on the SAME side.
+  const beat=sec*1.80;
+  const side=Math.sin(beat); // positive = hip travels to avatar's RIGHT
+  const pulse=(1-Math.cos(beat*2))*.5;
+  // Wide stance stays planted; only a slight knee pulse and weight shift.
+  height=-.045+.025*pulse;
+  set('leftHip',-.09+.04*Math.max(0,-side),0,-.24);
+  set('rightHip',-.09+.04*Math.max(0,side),0,.24);
+  set('leftKnee',.26+.04*pulse);
+  set('rightKnee',.26+.04*pulse);
+  // Waist leans subtly BACK (-X rotation); pelvis-right/shoulder-right
+  // and pelvis-left/shoulder-left move as one slow weighted groove.
+  set('upper',-.13+.016*pulse,.035*side,.14*side);
+  // Deliberate head nod on each slow hip-hop backbeat.
+  set('neck',-.045+.115*Math.sin(beat*2-.6),-.022*side,-.035*side);
+  // Both arms start extended outward. Alternate one elbow folding at a
+  // time, then stretching out; avoid any overhead/hair-brushing gesture.
+  const leftFold=(1+Math.cos(beat))*.5;
+  const rightFold=1-leftFold;
+  set('leftShoulder',-.38+.06*pulse,0,-1.08-.08*side);
+  set('rightShoulder',-.38+.06*pulse,0,1.08-.08*side);
+  set('leftElbow',-.10-1.10*leftFold);
+  set('rightElbow',-.10-1.10*rightFold);
  }
  if(act==='freestyle'){
   // v147: larger, more expressive video-inspired freestyle and a complete
@@ -4470,9 +4476,15 @@ function animateAvatar(a,p,t){
   // Allow gestures with shoulder and head while resting on the back.
   if(act==='headbang')set('neck',-.02+((1-Math.cos(sec*5.2))*.5)*.17,0,0);
  }
- // Only the Buriburi dance slides the torso laterally; return smoothly on exit.
- const hipSlide=act==='buriburi'?Math.sin(sec*9.5)*.14:0;
- P.upper.position.x+=(hipSlide-P.upper.position.x)*.38;
+ // Dougie's hips drift side-to-side while the feet stay spread. Move the
+ // hip joints together rather than pushing the whole avatar across the map.
+ // Restore the rig's base joint offsets smoothly when changing dances.
+ const dougieSide=act==='dougie'?Math.sin(sec*1.80):0;
+ const hipDrift=act==='dougie'?.10*dougieSide:0;
+ P.leftHip.position.x+=(-.21-(act==='dougie'?.105:0)+hipDrift-P.leftHip.position.x)*.28;
+ P.rightHip.position.x+=(.21+(act==='dougie'?.105:0)+hipDrift-P.rightHip.position.x)*.28;
+ const hipSlide=act==='buriburi'?Math.sin(sec*9.5)*.14:act==='dougie'?-.045*dougieSide:0;
+ P.upper.position.x+=(hipSlide-P.upper.position.x)*.28;
  const alpha=act===a.lastAction?.25:.17;
  for(const k of keys){
   if((ikMode==='duo-both'&&['leftShoulder','leftElbow','rightShoulder','rightElbow'].includes(k))||(ikMode==='duo-right'&&['rightShoulder','rightElbow'].includes(k)))continue;
