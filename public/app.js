@@ -4116,7 +4116,7 @@ function animateAvatar(a,p,t){
   set('leftKnee',.12+.81*kneeDip+.10*Math.max(0,-side));
   set('rightKnee',.12+.81*kneeDip+.10*Math.max(0,side));
   set('upper',-.28+.035*pulse,.055*side,.19*side);
-  set('neck',-.075+.31*Math.sin(beat*2-.6),-.035*side,-.055*side);
+  set('neck',-.075+.40*Math.sin(beat*2-.6),-.035*side,-.055*side);
   const leftFold=(1+Math.cos(beat))*.5;
   const rightFold=1-leftFold;
   // v192: hands PUMP vertically along with the folding motion.
