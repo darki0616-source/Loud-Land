@@ -125,7 +125,8 @@ function rhythmStopAudio(){
   try{bus.gain.cancelScheduledValues(0);bus.gain.setValueAtTime(0,rhythmFx.audio.currentTime);}catch{}
   // Already scheduled sounds are silent immediately; old bus is GC-safe after nodes end.
  }
- try{if(state.ytReady&&state.yt)state.yt.setVolume(75)}catch{}
+ // Restore the listener's previous music state after a round ends.
+ applyFestivalAudioMix();
 }
 function rhythmSetAudioEnabled(){
  if(rhythmFx.musicBus&&rhythmFx.audio){
@@ -138,7 +139,7 @@ function rhythmStartAudio(){
  const ac=rhythmAudioContext();if(!ac)return;
  const bus=ac.createGain();bus.gain.value=.82;bus.connect(ac.destination);
  rhythmFx.musicBus=bus;rhythmFx.clickIndex=0;
- try{if(state.ytReady&&state.yt)state.yt.setVolume(20)}catch{}
+ applyFestivalAudioMix();
  // Look ahead while audio is running; oscillator/buffer start times are tied
  // to the actual performance-clock hit timestamps, not animation frames.
  rhythmFx.scheduler=setInterval(rhythmScheduleAudio,35);
@@ -435,6 +436,7 @@ function openRhythmGame(){
  drawRhythmGame();
 }
 function closeRhythmGame(){
+ rhythmGame.running=false;
  rhythmStopAudio();
  rhythmGame.open=false;
  resetRhythmReadyScreen();
@@ -453,6 +455,7 @@ function startRhythmGame(){
  rhythmGame.beatIndex=0;
  rhythmGame.endSubmitted=false;rhythmFx.bursts.length=0;rhythmFx.clickIndex=0;
  rhythmStartAudio();
+ applyFestivalAudioMix();
  rhythmUi.start.hidden=true;rhythmUi.centerBtn.hidden=true;rhythmUi.overlay.querySelector('#rhythmHelp').hidden=true;
  updateRhythmScoreUi();
 }
@@ -735,7 +738,32 @@ function renderQueue(){
 }
 let reportedToken=0;
 function reportDuration(){if(!state.id||!state.ytReady||!state.music.id)return;const duration=state.yt.getDuration();if(duration>1&&reportedToken!==state.music.token){reportedToken=state.music.token;post('music',{id:state.id,command:'duration',token:state.music.token,duration}).catch(()=>{})}}
-function syncVideo(force=false){let m=state.music;if(!m.id||!state.ytReady)return;let sec=m.paused?m.position:Math.max(0,(Date.now()+state.serverDelta-m.startedAt)/1000);try{if(state.lastTrack!==String(m.token)+':'+m.id){state.lastTrack=String(m.token)+':'+m.id;reportedToken=0;if(state.audioEnabled&&!m.paused){state.yt.unMute();state.yt.loadVideoById({videoId:m.id,startSeconds:sec})}else{state.yt.mute();state.yt.loadVideoById({videoId:m.id,startSeconds:sec})}return}if(force||Math.abs(state.yt.getCurrentTime()-sec)>3)state.yt.seekTo(sec,true);if(state.audioEnabled)state.yt.unMute();else state.yt.mute();if(m.paused)state.yt.pauseVideo();else if(state.yt.getPlayerState()!==1)state.yt.playVideo()}catch(e){console.warn(e)}}
+// Local-only mix. Keep the YouTube player's playback going silently during
+// rhythm gameplay; muting is not broadcast to other festival participants.
+function applyFestivalAudioMix(){
+ if(!state.ytReady||!state.yt)return;
+ try{
+  if(!state.audioEnabled||rhythmGame.running)state.yt.mute();
+  else{state.yt.setVolume(75);state.yt.unMute();}
+ }catch(e){console.warn('local audio mix',e);}
+}
+function syncVideo(force=false){
+ let m=state.music;
+ if(!m.id||!state.ytReady)return;
+ let sec=m.paused?m.position:Math.max(0,(Date.now()+state.serverDelta-m.startedAt)/1000);
+ try{
+  if(state.lastTrack!==String(m.token)+':'+m.id){
+   state.lastTrack=String(m.token)+':'+m.id;reportedToken=0;
+   applyFestivalAudioMix();
+   state.yt.loadVideoById({videoId:m.id,startSeconds:sec});
+   return;
+  }
+  if(force||Math.abs(state.yt.getCurrentTime()-sec)>3)state.yt.seekTo(sec,true);
+  applyFestivalAudioMix();
+  if(m.paused)state.yt.pauseVideo();
+  else if(state.yt.getPlayerState()!==1)state.yt.playVideo();
+ }catch(e){console.warn(e);}
+}
 window.onYouTubeIframeAPIReady=()=>{state.yt=new YT.Player('youtubePlayer',{height:'100%',width:'100%',playerVars:{playsinline:1,controls:1,rel:0,origin:location.origin},events:{onReady:()=>{state.ytReady=true;syncVideo(true)},onStateChange:e=>{if(e.data===YT.PlayerState.PLAYING||e.data===YT.PlayerState.CUED)reportDuration();if(e.data===YT.PlayerState.ENDED&&state.id&&state.music.id)post('music',{id:state.id,command:'ended',token:state.music.token}).catch(()=>{})},onError:()=>toast('영상이 임베드 재생을 허용하지 않습니다')}})};
 async function musicCommand(command,extra={}){if(!state.id)return toast('먼저 입장해주세요');try{let d=await post('music',{id:state.id,command,...extra});applyMusic(d.music,d.serverNow,d.queue,d.history);toast('공유 음악이 업데이트되었습니다')}catch(e){toast(e.message)}}
 // YouTube search: display cards with safe textContent and enqueue through
@@ -795,7 +823,7 @@ $('playLink').onclick=()=>musicCommand('enqueue',{url:$('videoUrl').value});$('s
  const mutedNotice=$('audioMutedNotice');
  if(mutedNotice)mutedNotice.hidden=Boolean(state.audioEnabled);
 }
-function setPersonalAudio(enabled){state.audioEnabled=Boolean(enabled);try{if(state.ytReady){if(enabled){state.yt.unMute();state.yt.setVolume(rhythmGame.running?20:75)}else state.yt.mute()}}catch(e){}rhythmSetAudioEnabled();if(state.audioEnabled&&rhythmGame.running&&!rhythmFx.musicBus)rhythmStartAudio();syncVideo(true);updatePersonalAudioButton()}
+function setPersonalAudio(enabled){state.audioEnabled=Boolean(enabled);applyFestivalAudioMix();rhythmSetAudioEnabled();if(state.audioEnabled&&rhythmGame.running&&!rhythmFx.musicBus)rhythmStartAudio();syncVideo(true);updatePersonalAudioButton()}
 function togglePersonalAudio(){
  setPersonalAudio(!state.audioEnabled);
  toast(state.audioEnabled?'이 기기의 소리를 켰어요':'이 기기의 소리를 껐어요 (다른 사람 음악은 계속 재생돼요)');
