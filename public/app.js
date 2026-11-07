@@ -1797,7 +1797,11 @@ let PUNK_SHOP_ITEMS=[
  ['heart-band','💗','하트 머리띠',100,'head'],
  ['round-glasses','👓','둥근 안경',80,'eyes'],
  ['back-guitar','🎸','등에 메는 기타',220,'back'],
- ['angel-wings','🤍','천사 날개',280,'back']
+ ['angel-wings','🤍','천사 날개',280,'back'],
+ ['star-glasses','⭐','별모양 선글라스',120,'eyes'],
+ ['angel-halo','😇','천사 링',130,'head'],
+ ['butterfly-wings','🦋','나비 날개',260,'back'],
+ ['bunny-ears','🐰','토끼 귀',125,'head']
 ];
 let mdCatalog={}, mdCatalogSignature='';
 function syncMdCatalog(items){
@@ -3339,6 +3343,36 @@ function makeAvatar(p){
    }
   }
  }
+
+ if(look.head==='angel-halo'){
+  const haloGroup=new THREE.Group();haloGroup.position.set(0,1.58,.12);neck.add(haloGroup);
+  const ringOuter=new THREE.Mesh(
+   new THREE.TorusGeometry(.48,.07,10,40),
+   new THREE.MeshStandardMaterial({color:'#f4d98b',emissive:'#ffe49b',emissiveIntensity:.32,roughness:.18,metalness:.46})
+  );
+  ringOuter.rotation.x=Math.PI/2;haloGroup.add(ringOuter);
+  const ringGlow=new THREE.Mesh(
+   new THREE.TorusGeometry(.54,.03,8,40),
+   new THREE.MeshBasicMaterial({color:'#fff4bd',transparent:true,opacity:.50,blending:THREE.AdditiveBlending,depthWrite:false,toneMapped:false})
+  );
+  ringGlow.rotation.x=Math.PI/2;haloGroup.add(ringGlow);
+  for(const side of [-1,1]){
+   const support=child(haloGroup,new THREE.CylinderGeometry(.014,.014,.26,6),mat('#f6ead2',.40),[side*.09,-.12,-.03]);
+   support.rotation.z=side*.10;
+  }
+ }
+ if(look.head==='bunny-ears'){
+  const band=child(neck,new THREE.TorusGeometry(.73,.055,8,32,Math.PI),mat('#f6f1f6',.88),[0,.29,.25]);
+  const innerMat=mat('#f7b4cc',.80),outerMat=mat('#fff8fb',.94);
+  for(const side of [-1,1]){
+   const earRoot=new THREE.Group();earRoot.position.set(side*.34,1.06,.28);neck.add(earRoot);
+   earRoot.rotation.z=-side*.18;
+   const outer=child(earRoot,new THREE.CapsuleGeometry(.12,.60,6,10),outerMat,[0,.40,0],[1.0,1.45,.42]);
+   outer.rotation.z=side*.10;
+   const inner=child(earRoot,new THREE.CapsuleGeometry(.055,.44,5,9),innerMat,[0,.41,.055],[1.0,1.22,.34]);
+   inner.rotation.z=side*.10;
+  }
+ }
  if(['chain','choker'].includes(look.neck)){
   // Head radius is about .8 and extends over the neck, so neckwear must sit
   // on the FRONT of the torso (positive Z), not behind the oversized head.
@@ -3394,6 +3428,28 @@ function makeAvatar(p){
   };
   batWing(-1);batWing(1);
   child(neck,new THREE.BoxGeometry(.18,.06,.06),black,[0,.23,.835]);
+ }
+
+ if(look.eyes==='star-glasses'){
+  const frame=mat('#191620',.30),lensMat=new THREE.MeshBasicMaterial({color:'#ffd95e',side:THREE.DoubleSide,toneMapped:false});
+  const makeStar=(cx)=>{
+   const shape=new THREE.Shape();
+   const outer=.27, inner=.12;
+   for(let i=0;i<10;i++){
+    const r=i%2===0?outer:inner;
+    const a=-Math.PI/2 + i*Math.PI/5;
+    const x=Math.cos(a)*r, y=Math.sin(a)*r;
+    if(i===0)shape.moveTo(x,y); else shape.lineTo(x,y);
+   }
+   shape.closePath();
+   const lens=child(neck,new THREE.ShapeGeometry(shape),lensMat,[cx,.16,.82]);
+   const border=child(neck,new THREE.ShapeGeometry(shape),frame,[cx,.16,.812],[1.16,1.16,1]);
+   border.material.side=THREE.DoubleSide;
+  };
+  makeStar(-.35);makeStar(.35);
+  child(neck,new THREE.BoxGeometry(.16,.05,.05),frame,[0,.18,.82]);
+  child(neck,new THREE.BoxGeometry(.20,.05,.05),frame,[-.66,.16,.55]);
+  child(neck,new THREE.BoxGeometry(.20,.05,.05),frame,[.66,.16,.55]);
  }
  if(['flame-glasses','round-glasses'].includes(look.eyes)){
   const frame=mat(look.eyes==='round-glasses'?'#bdad91':'#231d29',.29),
@@ -3466,6 +3522,28 @@ function makeAvatar(p){
     f.rotation.z=side*(-.91+t*.80);
    }
   }
+ }
+
+ if(look.back==='butterfly-wings'){
+  const wings=new THREE.Group();wings.position.set(0,.60,-.58);upper.add(wings);parts.mdWings=wings;
+  const edgeMat=mat('#7a5fd3',.72),fillA=mat('#f3a6d8',.76),fillB=mat('#8ed7ff',.74),dotMat=mat('#fff6ff',.88);
+  const makeWing=(side)=>{
+   const pts=[[0,0],[.22,.23],[.60,.34],[1.02,.78],[1.18,.30],[.92,.12],[1.12,-.18],[.70,-.10],[.36,-.34],[.12,-.18]];
+   const shape=new THREE.Shape();
+   pts.forEach(([x,y],i)=>{const px=side*x; if(i===0)shape.moveTo(px,y); else shape.lineTo(px,y);}); shape.closePath();
+   const upperWing=child(wings,new THREE.ShapeGeometry(shape),edgeMat,[side*.23,.22,-.02]); upperWing.material.side=THREE.DoubleSide;
+   const upperFill=child(wings,new THREE.ShapeGeometry(shape),side<0?fillA:fillB,[side*.23,.22,.006],[.82,.82,1]); upperFill.material.side=THREE.DoubleSide;
+   const lowerPts=[[0,0],[.20,-.06],[.46,-.12],[.84,-.36],[.92,-.62],[.58,-.56],[.28,-.72],[.08,-.44]];
+   const lowerShape=new THREE.Shape();
+   lowerPts.forEach(([x,y],i)=>{const px=side*x; if(i===0)lowerShape.moveTo(px,y); else lowerShape.lineTo(px,y);}); lowerShape.closePath();
+   const lowerWing=child(wings,new THREE.ShapeGeometry(lowerShape),edgeMat,[side*.18,-.02,-.03]); lowerWing.material.side=THREE.DoubleSide;
+   const lowerFill=child(wings,new THREE.ShapeGeometry(lowerShape),side<0?fillB:fillA,[side*.18,-.02,.004],[.82,.82,1]); lowerFill.material.side=THREE.DoubleSide;
+   for(const [dx,dy] of [[.30,.26],[.58,.18],[.42,-.16],[.66,-.35]]){
+    const dot=child(wings,new THREE.CircleGeometry(.035,12),dotMat,[side*dx,dy,.02]); dot.material.side=THREE.DoubleSide;
+   }
+  };
+  makeWing(-1);makeWing(1);
+  child(wings,new THREE.CapsuleGeometry(.07,.30,4,8),mat('#5d4c84',.62),[0,.06,-.05]);
  }
  if(look.back==='back-guitar'){
   // Guitar hangs diagonally on the rear torso with a visible strap. Entire rig
