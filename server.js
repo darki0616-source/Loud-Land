@@ -104,7 +104,11 @@ const PUNK_ITEMS={
  'heart-band':{name:'하트 머리띠',slot:'head',cost:100},
  'round-glasses':{name:'둥근 안경',slot:'eyes',cost:80},
  'back-guitar':{name:'등에 메는 기타',slot:'back',cost:220},
- 'angel-wings':{name:'천사 날개',slot:'back',cost:280}
+ 'angel-wings':{name:'천사 날개',slot:'back',cost:280},
+ 'star-glasses':{name:'별모양 선글라스',slot:'eyes',cost:120},
+ 'angel-halo':{name:'천사 링',slot:'head',cost:130},
+ 'butterfly-wings':{name:'나비 날개',slot:'back',cost:260},
+ 'bunny-ears':{name:'토끼 귀',slot:'head',cost:125}
 };
 const SHOP_SLOTS=['shirt','head','neck','eyes','back','tail','ears'];
 const customMd=new Map();
