@@ -4103,10 +4103,10 @@ function animateAvatar(a,p,t){
   set('rightElbow',-.42+.10*side);
  }
  if(act==='dougie'){
-  // v190: twice the v189 tempo (3.60 rad/s, ~1.75s per sway).
+  // v191: 22% faster than v190 (4.40 rad/s, ~1.43s per sway).
   // Two hands reach FORWARD close together, alternating a deep pull inward
   // towards the torso rather than folding upward above the shoulders.
-  const beat=sec*3.60;
+  const beat=sec*4.40;
   const side=Math.sin(beat); // pelvis + matching shoulder rise together
   const pulse=(1-Math.cos(beat*2))*.5;
   const kneeDip=1-pulse;
@@ -4119,10 +4119,10 @@ function animateAvatar(a,p,t){
   set('neck',-.075+.31*Math.sin(beat*2-.6),-.035*side,-.055*side);
   const leftFold=(1+Math.cos(beat))*.5;
   const rightFold=1-leftFold;
-  // Both arms stay close together in front; alternating hands move BACK
-  // towards the middle of the chest, not upwards towards the face.
-  leftHandTarget=new THREE.Vector3(-.20+.045*leftFold,.31-.035*leftFold,.77-.57*leftFold);
-  rightHandTarget=new THREE.Vector3(.20-.045*rightFold,.31-.035*rightFold,.77-.57*rightFold);
+  // Fold each arm diagonally in and slightly UP toward the upper chest,
+  // keeping both hands in front rather than lifting them above the head.
+  leftHandTarget=new THREE.Vector3(-.20+.085*leftFold,.31+.13*leftFold,.77-.50*leftFold);
+  rightHandTarget=new THREE.Vector3(.20-.085*rightFold,.31+.13*rightFold,.77-.50*rightFold);
   ikMode='dougie';
  }
  if(act==='freestyle'){
@@ -4476,7 +4476,7 @@ function animateAvatar(a,p,t){
  // Dougie's hips drift side-to-side while the feet stay spread. Move the
  // hip joints together rather than pushing the whole avatar across the map.
  // Restore the rig's base joint offsets smoothly when changing dances.
- const dougieSide=act==='dougie'?Math.sin(sec*3.60):0;
+ const dougieSide=act==='dougie'?Math.sin(sec*4.40):0;
  const hipDrift=act==='dougie'?.10*dougieSide:0;
  P.leftHip.position.x+=(-.21-(act==='dougie'?.105:0)+hipDrift-P.leftHip.position.x)*.28;
  P.rightHip.position.x+=(.21+(act==='dougie'?.105:0)+hipDrift-P.rightHip.position.x)*.28;
