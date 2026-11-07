@@ -1015,7 +1015,7 @@ function handleDuoEvent(d){
  if(d.type==='duo-end'){finishDuo(d.id);return}
 }
 setInterval(syncDuoStatus,250);
-const sustainedReactions=new Set(['peace','jump','run','headbang','buriburi','groove','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','marshmallow','putyourhandsup','nightfirework','heartbow']);
+const sustainedReactions=new Set(['peace','jump','run','headbang','buriburi','groove','dougie','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','marshmallow','putyourhandsup','nightfirework','heartbow']);
 // One shared bottom tab group: reactions / dances / chat.
 // Chat stays inside the dock instead of floating over the 3D world.
 function selectBottomMenu(menu){
@@ -4101,6 +4101,26 @@ function animateAvatar(a,p,t){
   set('rightShoulder',-.22-.18*side,0,.32+.09*side);
   set('leftElbow',-.42-.10*side);
   set('rightElbow',-.42+.10*side);
+ }
+ if(act==='dougie'){
+  // Dougie: low, loose shoulder bounces, alternating side steps and a hand
+  // sweeping close to the hair. Four-beat loop, continuous for every avatar.
+  const beat=sec*4.7;
+  const side=Math.sin(beat),counter=-side;
+  const bounce=(1-Math.cos(beat*2))*.5;
+  const brush=(Math.sin(beat*.5+1.05)+1)*.5;
+  height=-.045+.09*bounce;
+  set('upper',.055+.095*bounce,.12*side,.16*side);
+  set('neck',-.04-.06*bounce,-.085*side,-.10*side);
+  set('leftHip',-.15+.22*Math.max(0,side),0,-.11*side);
+  set('rightHip',-.15+.22*Math.max(0,counter),0,-.11*side);
+  set('leftKnee',.23+.14*Math.max(0,counter));
+  set('rightKnee',.23+.14*Math.max(0,side));
+  // Relaxed alternating arm swings, with a head-brushing hand every other beat.
+  set('leftShoulder',-.38-.26*side,0,-.37+.20*side);
+  set('leftElbow',-.62-.16*side);
+  set('rightShoulder',-.50-.23*counter-1.0*brush,0,.36-.20*side);
+  set('rightElbow',-.62-.28*brush);
  }
  if(act==='freestyle'){
   // v147: larger, more expressive video-inspired freestyle and a complete
