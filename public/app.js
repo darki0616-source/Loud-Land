@@ -79,8 +79,104 @@ const RHYTHM_DEFAULT_BOOTH={x:1290,y:1034,radius:135};
 let rhythmUi=null;
 const RHYTHM_APPROACH_MS=2100;
 const rhythmGame={open:false,running:false,startAt:0,duration:45000,beatWindow:220,score:0,combo:0,maxCombo:0,perfect:0,great:0,good:0,miss:0,lastJudge:'READY',lastJudgeColor:'#ffffff',lastJudgeUntil:0,beats:[],beatIndex:0,endSubmitted:false};
-const rhythmFx={bursts:[],lastScore:0,lastJudge:'',audio:null,clickIndex:0};
-function rhythmClickSound(accent=false){if(!state.audioEnabled)return;try{const AudioContextCtor=window.AudioContext||window.webkitAudioContext;if(!AudioContextCtor)return;const ac=rhythmFx.audio||(rhythmFx.audio=new AudioContextCtor());if(ac.state==='suspended')ac.resume().catch(()=>{});const osc=ac.createOscillator(),gain=ac.createGain();const at=ac.currentTime;osc.type=accent?'triangle':'sine';osc.frequency.setValueAtTime(accent?880:620,at);gain.gain.setValueAtTime(.0001,at);gain.gain.exponentialRampToValueAtTime(accent?.11:.07,at+.005);gain.gain.exponentialRampToValueAtTime(.0001,at+.085);osc.connect(gain).connect(ac.destination);osc.start(at);osc.stop(at+.1)}catch{}}
+// The drum track is generated from the exact note schedule used by the scoring engine.
+// Each note sounds at its hit timestamp; the five speed sections need no independent timer.
+const rhythmFx={bursts:[],lastScore:0,lastJudge:'',audio:null,clickIndex:0,musicBus:null,noise:null,scheduler:null};
+function rhythmAudioContext(){
+ try{
+  const C=window.AudioContext||window.webkitAudioContext;
+  if(!C)return null;
+  if(!rhythmFx.audio)rhythmFx.audio=new C();
+  if(rhythmFx.audio.state==='suspended')rhythmFx.audio.resume().catch(()=>{});
+  return rhythmFx.audio;
+ }catch{return null;}
+}
+function rhythmNoise(ac){
+ if(rhythmFx.noise)return rhythmFx.noise;
+ const b=ac.createBuffer(1,Math.floor(ac.sampleRate*.26),ac.sampleRate),d=b.getChannelData(0);
+ let last=0;for(let i=0;i<d.length;i++){const v=Math.random()*2-1;last=(last*.68+v*.32);d[i]=last;}
+ rhythmFx.noise=b;return b;
+}
+function rhythmDrumSound(ac,at,type,volume=1){
+ const bus=rhythmFx.musicBus;if(!bus)return;
+ if(type==='kick'){
+  const o=ac.createOscillator(),g=ac.createGain();o.type='sine';
+  o.frequency.setValueAtTime(150,at);o.frequency.exponentialRampToValueAtTime(48,at+.105);
+  g.gain.setValueAtTime(.0001,at);g.gain.exponentialRampToValueAtTime(.40*volume,at+.008);
+  g.gain.exponentialRampToValueAtTime(.0001,at+.27);
+  o.connect(g).connect(bus);o.start(at);o.stop(at+.29);
+ }else{
+  const src=ac.createBufferSource(),filter=ac.createBiquadFilter(),g=ac.createGain();
+  src.buffer=rhythmNoise(ac);filter.type='highpass';filter.frequency.value=type==='snare'?1100:4700;
+  g.gain.setValueAtTime(.0001,at);g.gain.exponentialRampToValueAtTime((type==='snare'?.19:.052)*volume,at+.003);
+  g.gain.exponentialRampToValueAtTime(.0001,at+(type==='snare'?.135:.042));
+  src.connect(filter).connect(g).connect(bus);src.start(at);src.stop(at+(type==='snare'?.15:.06));
+  if(type==='snare'){
+   const o=ac.createOscillator(),tone=ac.createGain();o.type='triangle';o.frequency.value=180;
+   tone.gain.setValueAtTime(.11*volume,at);tone.gain.exponentialRampToValueAtTime(.0001,at+.095);
+   o.connect(tone).connect(bus);o.start(at);o.stop(at+.11);
+  }
+ }
+}
+function rhythmStopAudio(){
+ if(rhythmFx.scheduler!==null){clearInterval(rhythmFx.scheduler);rhythmFx.scheduler=null;}
+ if(rhythmFx.musicBus){
+  const bus=rhythmFx.musicBus;rhythmFx.musicBus=null;
+  try{bus.gain.cancelScheduledValues(0);bus.gain.setValueAtTime(0,rhythmFx.audio.currentTime);}catch{}
+  // Already scheduled sounds are silent immediately; old bus is GC-safe after nodes end.
+ }
+ try{if(state.ytReady&&state.yt)state.yt.setVolume(75)}catch{}
+}
+function rhythmSetAudioEnabled(){
+ if(rhythmFx.musicBus&&rhythmFx.audio){
+  rhythmFx.musicBus.gain.setTargetAtTime(state.audioEnabled?.82:0,rhythmFx.audio.currentTime,.014);
+ }
+}
+function rhythmStartAudio(){
+ rhythmStopAudio();
+ if(!state.audioEnabled)return;
+ const ac=rhythmAudioContext();if(!ac)return;
+ const bus=ac.createGain();bus.gain.value=.82;bus.connect(ac.destination);
+ rhythmFx.musicBus=bus;rhythmFx.clickIndex=0;
+ try{if(state.ytReady&&state.yt)state.yt.setVolume(20)}catch{}
+ // Look ahead while audio is running; oscillator/buffer start times are tied
+ // to the actual performance-clock hit timestamps, not animation frames.
+ rhythmFx.scheduler=setInterval(rhythmScheduleAudio,35);
+ rhythmScheduleAudio();
+}
+function rhythmScheduleAudio(){
+ if(!rhythmGame.running||!rhythmFx.musicBus||!state.audioEnabled)return;
+ const ac=rhythmFx.audio;if(!ac||ac.state!=='running')return;
+ const elapsed=performance.now()-rhythmGame.startAt,lookahead=240;
+ while(rhythmFx.clickIndex<rhythmGame.beats.length){
+  const i=rhythmFx.clickIndex,beat=rhythmGame.beats[i],delay=beat.time-elapsed;
+  if(delay>lookahead)break;
+  rhythmFx.clickIndex++;
+  // After a background pause, don't play a burst of all missed notes.
+  if(delay< -80)continue;
+  const at=ac.currentTime+Math.max(.004,delay/1000);
+  rhythmDrumSound(ac,at,beat.measureBeat%4===0?'kick':beat.measureBeat%4===2?'kick':'snare',beat.measureBeat%4===0?1.12:1);
+  rhythmDrumSound(ac,at,'hat',1);
+  // Half-beat hi-hats use the next note's exact timestamp and stop at boundaries.
+  const next=rhythmGame.beats[i+1];
+  if(next&&next.section===beat.section){
+   const half=(next.time-beat.time)/2000;
+   rhythmDrumSound(ac,at+half,'hat',.53);
+  }
+ }
+}
+function rhythmClickSound(accent=false){
+ // Score confirmation is deliberately quieter than the backing drums;
+ // hit sounds cannot shift the tempo or double-trigger the backing kick.
+ if(!state.audioEnabled)return;
+ const ac=rhythmAudioContext();if(!ac)return;
+ const o=ac.createOscillator(),g=ac.createGain(),at=ac.currentTime+.004;
+ o.type='triangle';o.frequency.setValueAtTime(accent?940:690,at);
+ o.frequency.exponentialRampToValueAtTime(accent?1180:820,at+.055);
+ g.gain.setValueAtTime(.0001,at);g.gain.exponentialRampToValueAtTime(accent?.07:.043,at+.004);
+ g.gain.exponentialRampToValueAtTime(.0001,at+.075);
+ o.connect(g).connect(ac.destination);o.start(at);o.stop(at+.085);
+}
 function rhythmBurst(color,rank){const count=rank==='PERFECT'?24:rank==='GREAT'?15:8;for(let i=0;i<count;i++){const a=(i/count)*Math.PI*2+Math.random()*.24,v=1.0+Math.random()*2.8;rhythmFx.bursts.push({x:.5,y:.52,vx:Math.cos(a)*v,vy:Math.sin(a)*v-1.4,born:performance.now(),life:500+Math.random()*650,size:3+Math.random()*6,color})}if(rhythmFx.bursts.length>180)rhythmFx.bursts.splice(0,rhythmFx.bursts.length-180)}
 function flashRhythmCombo(){if(!rhythmUi||rhythmGame.combo===0||rhythmGame.combo%10!==0)return;const el=rhythmUi.comboFlash;el.textContent=`🔥 ${rhythmGame.combo} COMBO!`;el.classList.remove('pop');void el.offsetWidth;el.classList.add('pop')}
 
@@ -291,9 +387,9 @@ function updateRhythmBoothButton(){
 function makeBeatPattern(){
  const sections=[[124,18],[132,16],[116,14],[142,18],[128,16]];
  let beats=[],time=1400;
- for(const [bpm,count] of sections){
-  const interval=60000/bpm;
-  for(let i=0;i<count;i++){beats.push({time,hit:false});time+=interval;}
+ for(let section=0;section<sections.length;section++){
+  const [bpm,count]=sections[section],interval=60000/bpm;
+  for(let i=0;i<count;i++){beats.push({time,hit:false,section,measureBeat:i%4,bpm});time+=interval;}
  }
  return beats;
 }
@@ -317,12 +413,14 @@ function openRhythmGame(){
  drawRhythmGame();
 }
 function closeRhythmGame(){
+ rhythmStopAudio();
  rhythmGame.open=false;
  rhythmGame.running=false;
  rhythmUi?.overlay.classList.remove('show');
 }
 function startRhythmGame(){
  ensureRhythmUI();
+ rhythmStopAudio();
  rhythmGame.running=true;
  rhythmGame.startAt=performance.now();
  rhythmGame.score=0;rhythmGame.combo=0;rhythmGame.maxCombo=0;
@@ -332,6 +430,7 @@ function startRhythmGame(){
  rhythmGame.beats=makeBeatPattern();
  rhythmGame.beatIndex=0;
  rhythmGame.endSubmitted=false;rhythmFx.bursts.length=0;rhythmFx.clickIndex=0;
+ rhythmStartAudio();
  rhythmUi.start.hidden=true;rhythmUi.centerBtn.hidden=true;rhythmUi.overlay.querySelector('#rhythmHelp').hidden=true;
  updateRhythmScoreUi();
 }
@@ -408,6 +507,7 @@ async function submitRhythmScore(){
 function finishRhythmGame(){
  if(!rhythmGame.running)return;
  rhythmGame.running=false;
+ rhythmStopAudio();
  rhythmUi.start.hidden=false;rhythmUi.start.textContent='다시 도전하기';rhythmUi.centerBtn.hidden=false;rhythmUi.overlay.querySelector('#rhythmHelp').hidden=false;
  rhythmGame.lastJudge=`FINAL ${Math.round(rhythmGame.score).toLocaleString()}`;
  rhythmGame.lastJudgeColor='#ffe676';
@@ -431,7 +531,7 @@ function drawRhythmGame(){
  const elapsed=rhythmGame.running?performance.now()-rhythmGame.startAt:0;
  if(rhythmGame.running){
   handleRhythmMisses();
-  while(rhythmFx.clickIndex<rhythmGame.beats.length&&elapsed>=rhythmGame.beats[rhythmFx.clickIndex].time){rhythmClickSound(rhythmFx.clickIndex%4===0);rhythmFx.clickIndex++}
+  // The drum scheduler follows beat.time independently of canvas frame rate.
  }
  const nextBeat=rhythmGame.running?rhythmGame.beats.find(b=>!b.hit&&b.time-elapsed>=-rhythmGame.beatWindow):null;
  const dt=nextBeat?nextBeat.time-elapsed:Infinity;
@@ -673,7 +773,7 @@ $('playLink').onclick=()=>musicCommand('enqueue',{url:$('videoUrl').value});$('s
  const mutedNotice=$('audioMutedNotice');
  if(mutedNotice)mutedNotice.hidden=Boolean(state.audioEnabled);
 }
-function setPersonalAudio(enabled){state.audioEnabled=Boolean(enabled);try{if(state.ytReady){if(enabled){state.yt.unMute();state.yt.setVolume(75)}else state.yt.mute()}}catch(e){}syncVideo(true);updatePersonalAudioButton()}
+function setPersonalAudio(enabled){state.audioEnabled=Boolean(enabled);try{if(state.ytReady){if(enabled){state.yt.unMute();state.yt.setVolume(rhythmGame.running?20:75)}else state.yt.mute()}}catch(e){}rhythmSetAudioEnabled();if(state.audioEnabled&&rhythmGame.running&&!rhythmFx.musicBus)rhythmStartAudio();syncVideo(true);updatePersonalAudioButton()}
 function togglePersonalAudio(){
  setPersonalAudio(!state.audioEnabled);
  toast(state.audioEnabled?'이 기기의 소리를 켰어요':'이 기기의 소리를 껐어요 (다른 사람 음악은 계속 재생돼요)');
