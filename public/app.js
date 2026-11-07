@@ -865,7 +865,7 @@ function handleDuoEvent(d){
  if(d.type==='duo-end'){finishDuo(d.id);return}
 }
 setInterval(syncDuoStatus,250);
-const sustainedReactions=new Set(['peace','jump','run','headbang','buriburi','groove','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','marshmallow','putyourhandsup','nightfirework']);
+const sustainedReactions=new Set(['peace','jump','run','headbang','buriburi','groove','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','marshmallow','putyourhandsup','nightfirework','heartbow']);
 // One shared bottom tab group: reactions / dances / chat.
 // Chat stays inside the dock instead of floating over the 3D world.
 function selectBottomMenu(menu){
@@ -917,7 +917,7 @@ function react(a,glowColor=null){
  if(state.action===a&&sustainedReactions.has(a)){
   state.action='idle';state.actionUntil=0;state.me.action='idle';
  }else{
-  if((a==='jump'||a==='run'||a==='buriburi'||a==='groove'||a==='windmill'||a==='skanking'||a==='airguitar'||a==='headspin'||a==='cheer'||a==='smoke'||a==='bubblegun'||a==='freestyle'||a==='beatking'||a==='marshmallow'||a==='putyourhandsup'||a==='nightfirework')&&state.pose!=='stand'){
+  if((a==='jump'||a==='run'||a==='buriburi'||a==='groove'||a==='windmill'||a==='skanking'||a==='airguitar'||a==='headspin'||a==='cheer'||a==='smoke'||a==='bubblegun'||a==='freestyle'||a==='beatking'||a==='marshmallow'||a==='putyourhandsup'||a==='nightfirework'||a==='heartbow')&&state.pose!=='stand'){
    state.pose='stand';state.me.pose='stand';
   }
   state.action=a;state.me.action=a;if(a==='cheer')playCheer();
@@ -988,6 +988,12 @@ nightFireworkButton.innerHTML='🎆 <span>폭죽놀이</span>';
 nightFireworkButton.style.display='none';
 nightFireworkButton.onclick=()=>react('nightfirework');
 $('reactionActions').append(nightFireworkButton);
+const heartBowButton=document.createElement('button');
+heartBowButton.type='button';
+heartBowButton.dataset.action='heartbow';
+heartBowButton.innerHTML='🏹 <span>하트활쏘기</span>';
+heartBowButton.onclick=()=>react('heartbow');
+$('reactionActions').append(heartBowButton);
 const nightFireworkKST=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Seoul',hour:'2-digit',hourCycle:'h23'});
 function nightFireworkAvailable(){
  const hour=Number(nightFireworkKST.format(new Date()));
@@ -1007,7 +1013,7 @@ syncNightFirework();
 // Keep data-action values, keyboard shortcuts and all existing onclick handlers intact.
 const reactionMenuOrder=[
  'peace','wave','clap','putyourhandsup','cheer','jump','run','sit','lie',
- 'drink','smoke','snack','toastStart','headbang','bubblegun','glowstick',
+ 'drink','smoke','snack','toastStart','headbang','bubblegun','heartbow','glowstick',
  'flagAction','beatking','nightfirework','marshmallow'
 ];
 const reactionMenu=$('reactionActions');
@@ -3558,6 +3564,35 @@ function makeAvatar(p){
   b.visible=false;b.renderOrder=36;root.add(b);parts.soapBubbles.push(b);
  }
  parts.bubbleBurstOrigin=performance.now();
+ // Heart bow reaction: a pastel bow held at chest height, with a heart-tipped
+ // arrow that launches forward on a visible arc. Root attachment keeps the
+ // projectile and the held prop synchronised for all spectators.
+ const heartBow=new THREE.Group();root.add(heartBow);parts.heartBow=heartBow;
+ heartBow.visible=false;heartBow.position.set(-.08,1.52,.56);
+ const heartBowMat=new THREE.MeshStandardMaterial({color:'#ff7cab',roughness:.38,metalness:.08});
+ const heartGripMat=new THREE.MeshStandardMaterial({color:'#fff0f6',roughness:.55,metalness:.06});
+ const heartStringMat=new THREE.MeshBasicMaterial({color:'#fff7fd'});
+ const bowArc=new THREE.Mesh(new THREE.TorusGeometry(.48,.038,7,28,Math.PI*1.04),heartBowMat);
+ bowArc.rotation.z=Math.PI/2;heartBow.add(bowArc);
+ const bowGrip=new THREE.Mesh(new THREE.CylinderGeometry(.045,.045,.32,8),heartGripMat);
+ heartBow.add(bowGrip);
+ const bowString=new THREE.Mesh(new THREE.CylinderGeometry(.008,.008,.88,6),heartStringMat);
+ heartBow.add(bowString);parts.heartBowString=bowString;
+ function makeHeartArrow(){
+  const g=new THREE.Group();
+  const shaft=child(g,new THREE.CylinderGeometry(.022,.022,1.34,8),new THREE.MeshStandardMaterial({color:'#f4d9c8',roughness:.84}),[0,0,.18]);
+  shaft.rotation.x=Math.PI/2;
+  const fletchMat=new THREE.MeshStandardMaterial({color:'#f7a0c0',roughness:.68});
+  const leftFletch=child(g,new THREE.ConeGeometry(.075,.18,8),fletchMat,[-.06,0,-.44]);leftFletch.rotation.z=Math.PI/2;
+  const rightFletch=child(g,new THREE.ConeGeometry(.075,.18,8),fletchMat,[.06,0,-.44]);rightFletch.rotation.z=-Math.PI/2;
+  const heartMat=new THREE.MeshStandardMaterial({color:'#ff5b98',roughness:.36,emissive:'#ff7fb2',emissiveIntensity:.12});
+  child(g,new THREE.SphereGeometry(.085,10,8),heartMat,[-.06,.055,.92]);
+  child(g,new THREE.SphereGeometry(.085,10,8),heartMat,[.06,.055,.92]);
+  const heartPoint=child(g,new THREE.ConeGeometry(.13,.20,12),heartMat,[0,-.055,.92]);heartPoint.rotation.z=Math.PI;
+  return g;
+ }
+ const heartHeldArrow=makeHeartArrow();heartBow.add(heartHeldArrow);parts.heartHeldArrow=heartHeldArrow;
+ const heartFlightArrow=makeHeartArrow();root.add(heartFlightArrow);heartFlightArrow.visible=false;parts.heartFlightArrow=heartFlightArrow;
  parts.smokePuffs=[];
  for(let i=0;i<6;i++){
   const puff=new THREE.Mesh(new THREE.SphereGeometry(1,8,6),new THREE.MeshBasicMaterial({color:'#dbe1e5',transparent:true,opacity:0,depthWrite:false}));
@@ -4121,6 +4156,18 @@ function animateAvatar(a,p,t){
   set('leftShoulder',-.54,0,-.12);
   set('upper',-.025+.025*Math.sin(sec*3.5));
  }
+ if(act==='heartbow'){
+  const cycle=2.65;
+  const phase=sec%cycle;
+  const draw=THREE.MathUtils.clamp(phase/.95,0,1);
+  const release=THREE.MathUtils.clamp((phase-1.02)/.16,0,1);
+  const pull=draw*(1-release);
+  leftHandTarget=new THREE.Vector3(-.29,.49,.57);
+  rightHandTarget=new THREE.Vector3(.26,.48,.56-.34*pull);
+  ikMode='heartbow';
+  set('upper',-.03+.03*Math.sin(sec*3.2));
+  set('neck',-.02,.05,0);
+ }
  if(act==='marshmallow'){
   const roast=Math.sin(sec*2.1);
   rightHandTarget=new THREE.Vector3(.52,.23+.07*roast,.53);
@@ -4228,7 +4275,7 @@ function animateAvatar(a,p,t){
  const alpha=act===a.lastAction?.25:.17;
  for(const k of keys){
   if((ikMode==='duo-both'&&['leftShoulder','leftElbow','rightShoulder','rightElbow'].includes(k))||(ikMode==='duo-right'&&['rightShoulder','rightElbow'].includes(k)))continue;
-  if(ikMode==='clap'&&['leftShoulder','leftElbow','rightShoulder','rightElbow'].includes(k))continue;
+  if((ikMode==='clap'||ikMode==='heartbow')&&['leftShoulder','leftElbow','rightShoulder','rightElbow'].includes(k))continue;
   if((ikMode==='drink'||ikMode==='wave'||ikMode==='snack'||ikMode==='smoke'||ikMode==='bubblegun'||ikMode==='marshmallow')&&['rightShoulder','rightElbow'].includes(k))continue;
   const target=pose[k],o=P[k];
   o.rotation.x+=(target[0]-o.rotation.x)*alpha;
@@ -4244,6 +4291,9 @@ function animateAvatar(a,p,t){
  }else if(ikMode==='clap'){
   placeHandIK(P,'left',leftHandTarget,.58);
   placeHandIK(P,'right',rightHandTarget,.58);
+ }else if(ikMode==='heartbow'){
+  placeHandIK(P,'left',leftHandTarget,.62);
+  placeHandIK(P,'right',rightHandTarget,.7);
  }else if(ikMode==='drink')placeHandIK(P,'right',rightHandTarget,.58);
  else if(ikMode==='wave')placeHandIK(P,'right',rightHandTarget,.64);
  else if(ikMode==='snack')placeHandIK(P,'right',rightHandTarget,.56);
@@ -4336,6 +4386,40 @@ function animateAvatar(a,p,t){
    const c=key==='rainbow'?new THREE.Color().setHSL((hue+i*.20)%1,1,.62):new THREE.Color(glowstickColors[key]);
    stick.rodMat.color.copy(c);stick.haloMat.color.copy(c);
    stick.haloMat.opacity=.20+.055*Math.sin(sec*8+i);
+  }
+ }
+ if(P.heartBow){
+  const active=act==='heartbow';
+  P.heartBow.visible=active;
+  if(active){
+   const cycle=2.65;
+   const phase=sec%cycle;
+   const draw=THREE.MathUtils.clamp(phase/.95,0,1);
+   const release=THREE.MathUtils.clamp((phase-1.02)/.16,0,1);
+   const pull=draw*(1-release);
+   P.heartBow.position.set(-.08,1.52+.015*Math.sin(sec*3.2),.56);
+   P.heartBow.rotation.set(.02*Math.sin(sec*2.5),-.08,.10);
+   if(P.heartBowString)P.heartBowString.scale.y=1-.08*pull;
+   if(P.heartHeldArrow){
+    P.heartHeldArrow.visible=phase<1.14;
+    if(P.heartHeldArrow.visible){
+     P.heartHeldArrow.position.set(.10,0,.08-.34*pull);
+     P.heartHeldArrow.rotation.set(0,0,0);
+    }
+   }
+   if(P.heartFlightArrow){
+    const fly=phase-1.08;
+    const visible=fly>=0&&fly<1.25;
+    P.heartFlightArrow.visible=visible;
+    if(visible){
+     const u=fly/1.25;
+     P.heartFlightArrow.position.set(.02+.55*u,1.53+2.45*u-2.75*u*u,1.02+8.9*u);
+     P.heartFlightArrow.rotation.set(.58*(u-.45),-.06,.02);
+    }
+   }
+  }else{
+   if(P.heartHeldArrow)P.heartHeldArrow.visible=false;
+   if(P.heartFlightArrow)P.heartFlightArrow.visible=false;
   }
  }
  if(P.nightLauncher){
@@ -4788,7 +4872,7 @@ function tick(t){
    }
   }
   state.moving=!!(dx||dy)||(rockMotion?.kind==='train'&&rockMotion.leaderId!==state.id&&state.me.action==='train-run');
-  if(state.moving && (dx||dy) && (state.action==='buriburi'||state.action==='groove'||state.action==='windmill'||state.action==='airguitar'||state.action==='headspin'||state.action==='cheer'||state.action==='smoke'||state.action==='freestyle'||state.action==='beatking'||state.action==='marshmallow') && !slamMotion && !rockMotion){
+  if(state.moving && (dx||dy) && (state.action==='buriburi'||state.action==='groove'||state.action==='windmill'||state.action==='airguitar'||state.action==='headspin'||state.action==='cheer'||state.action==='smoke'||state.action==='freestyle'||state.action==='beatking'||state.action==='marshmallow'||state.action==='heartbow') && !slamMotion && !rockMotion){
    state.action='idle';state.me.action='walk';state.actionUntil=0;updateActionButtons();
   }
   if(state.moving&&(dx||dy)){
