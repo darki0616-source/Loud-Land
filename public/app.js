@@ -4103,30 +4103,27 @@ function animateAvatar(a,p,t){
   set('rightElbow',-.42+.10*side);
  }
  if(act==='dougie'){
-  // v189: extra-slow forward-reaching hip-hop Dougie. One full weight-shift
-  // cycle is still ~3.5s; a same-side shoulder rises with the moving pelvis.
-  const beat=sec*1.80;
-  const side=Math.sin(beat); // positive: pelvis/right shoulder lift to right
+  // v190: twice the v189 tempo (3.60 rad/s, ~1.75s per sway).
+  // Two hands reach FORWARD close together, alternating a deep pull inward
+  // towards the torso rather than folding upward above the shoulders.
+  const beat=sec*3.60;
+  const side=Math.sin(beat); // pelvis + matching shoulder rise together
   const pulse=(1-Math.cos(beat*2))*.5;
-  // Widen the stance, alternating a deep, visible knee bend with straightening.
-  // Maintain a low floor clearance instead of translating the whole avatar.
-  height=-.085+.095*pulse;
-  set('leftHip',-.13+.07*Math.max(0,-side),0,-.24);
-  set('rightHip',-.13+.07*Math.max(0,side),0,.24);
-  set('leftKnee',.14+.42*(1-pulse)+.07*Math.max(0,-side));
-  set('rightKnee',.14+.42*(1-pulse)+.07*Math.max(0,side));
-  // Slightly more backward lean than v188; shoulders and hips follow the same sway.
-  set('upper',-.24+.025*pulse,.040*side,.17*side);
-  // Amplified, slow head nod in time with the alternating arm bends.
-  set('neck',-.075+.29*Math.sin(beat*2-.6),-.025*side,-.045*side);
-  // Both arms reach FORWARD (+Z); alternating elbows fold prominently back
-  // toward the chest, then re-extend, while the shoulders remain front-facing.
+  const kneeDip=1-pulse;
+  height=-.15+.14*pulse;
+  set('leftHip',-.18+.085*Math.max(0,-side),0,-.27);
+  set('rightHip',-.18+.085*Math.max(0,side),0,.27);
+  set('leftKnee',.12+.81*kneeDip+.10*Math.max(0,-side));
+  set('rightKnee',.12+.81*kneeDip+.10*Math.max(0,side));
+  set('upper',-.28+.035*pulse,.055*side,.19*side);
+  set('neck',-.075+.31*Math.sin(beat*2-.6),-.035*side,-.055*side);
   const leftFold=(1+Math.cos(beat))*.5;
   const rightFold=1-leftFold;
-  set('leftShoulder',-1.38+.055*pulse,0,-.22-.075*side);
-  set('rightShoulder',-1.38+.055*pulse,0,.22-.075*side);
-  set('leftElbow',-.05-1.65*leftFold);
-  set('rightElbow',-.05-1.65*rightFold);
+  // Both arms stay close together in front; alternating hands move BACK
+  // towards the middle of the chest, not upwards towards the face.
+  leftHandTarget=new THREE.Vector3(-.20+.045*leftFold,.31-.035*leftFold,.77-.57*leftFold);
+  rightHandTarget=new THREE.Vector3(.20-.045*rightFold,.31-.035*rightFold,.77-.57*rightFold);
+  ikMode='dougie';
  }
  if(act==='freestyle'){
   // v147: larger, more expressive video-inspired freestyle and a complete
@@ -4479,7 +4476,7 @@ function animateAvatar(a,p,t){
  // Dougie's hips drift side-to-side while the feet stay spread. Move the
  // hip joints together rather than pushing the whole avatar across the map.
  // Restore the rig's base joint offsets smoothly when changing dances.
- const dougieSide=act==='dougie'?Math.sin(sec*1.80):0;
+ const dougieSide=act==='dougie'?Math.sin(sec*3.60):0;
  const hipDrift=act==='dougie'?.10*dougieSide:0;
  P.leftHip.position.x+=(-.21-(act==='dougie'?.105:0)+hipDrift-P.leftHip.position.x)*.28;
  P.rightHip.position.x+=(.21+(act==='dougie'?.105:0)+hipDrift-P.rightHip.position.x)*.28;
@@ -4488,7 +4485,7 @@ function animateAvatar(a,p,t){
  const alpha=act===a.lastAction?.25:.17;
  for(const k of keys){
   if((ikMode==='duo-both'&&['leftShoulder','leftElbow','rightShoulder','rightElbow'].includes(k))||(ikMode==='duo-right'&&['rightShoulder','rightElbow'].includes(k)))continue;
-  if((ikMode==='clap'||ikMode==='heartbow')&&['leftShoulder','leftElbow','rightShoulder','rightElbow'].includes(k))continue;
+  if((ikMode==='clap'||ikMode==='heartbow'||ikMode==='dougie')&&['leftShoulder','leftElbow','rightShoulder','rightElbow'].includes(k))continue;
   if((ikMode==='drink'||ikMode==='wave'||ikMode==='snack'||ikMode==='smoke'||ikMode==='bubblegun'||ikMode==='marshmallow')&&['rightShoulder','rightElbow'].includes(k))continue;
   const target=pose[k],o=P[k];
   o.rotation.x+=(target[0]-o.rotation.x)*alpha;
@@ -4507,6 +4504,9 @@ function animateAvatar(a,p,t){
  }else if(ikMode==='heartbow'){
   placeHandIK(P,'left',leftHandTarget,.62);
   placeHandIK(P,'right',rightHandTarget,.7);
+ }else if(ikMode==='dougie'){
+  placeHandIK(P,'left',leftHandTarget,.83);
+  placeHandIK(P,'right',rightHandTarget,.83);
  }else if(ikMode==='drink')placeHandIK(P,'right',rightHandTarget,.58);
  else if(ikMode==='wave')placeHandIK(P,'right',rightHandTarget,.64);
  else if(ikMode==='snack')placeHandIK(P,'right',rightHandTarget,.56);
