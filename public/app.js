@@ -3568,27 +3568,50 @@ function makeAvatar(p){
  // arrow that launches forward on a visible arc. Root attachment keeps the
  // projectile and the held prop synchronised for all spectators.
  const heartBow=new THREE.Group();root.add(heartBow);parts.heartBow=heartBow;
- heartBow.visible=false;heartBow.position.set(-.08,1.52,.56);
+ // The avatar looks along +Z. Keep the bow centred on that forward axis
+ // and its visible frame in the XY plane (not along either flank).
+ heartBow.visible=false;heartBow.position.set(0,1.52,.92);
  const heartBowMat=new THREE.MeshStandardMaterial({color:'#ff7cab',roughness:.38,metalness:.08});
  const heartGripMat=new THREE.MeshStandardMaterial({color:'#fff0f6',roughness:.55,metalness:.06});
  const heartStringMat=new THREE.MeshBasicMaterial({color:'#fff7fd'});
- const bowArc=new THREE.Mesh(new THREE.TorusGeometry(.48,.038,7,28,Math.PI*1.04),heartBowMat);
- bowArc.rotation.z=Math.PI/2;heartBow.add(bowArc);
- const bowGrip=new THREE.Mesh(new THREE.CylinderGeometry(.045,.045,.32,8),heartGripMat);
- heartBow.add(bowGrip);
- const bowString=new THREE.Mesh(new THREE.CylinderGeometry(.008,.008,.88,6),heartStringMat);
- heartBow.add(bowString);parts.heartBowString=bowString;
+ const bowCurve=new THREE.CatmullRomCurve3([
+  new THREE.Vector3(.06,.51,0),new THREE.Vector3(-.18,.39,0),
+  new THREE.Vector3(-.31,.19,0),new THREE.Vector3(-.35,0,0),
+  new THREE.Vector3(-.31,-.19,0),new THREE.Vector3(-.18,-.39,0),
+  new THREE.Vector3(.06,-.51,0)
+ ]);
+ const bowArc=new THREE.Mesh(new THREE.TubeGeometry(bowCurve,28,.040,8,false),heartBowMat);
+ heartBow.add(bowArc);
+ const bowGrip=new THREE.Mesh(new THREE.CylinderGeometry(.045,.045,.28,8),heartGripMat);
+ bowGrip.position.set(-.35,0,0);heartBow.add(bowGrip);
+ const bowString=new THREE.Mesh(new THREE.CylinderGeometry(.008,.008,1.02,6),heartStringMat);
+ bowString.position.x=.06;heartBow.add(bowString);parts.heartBowString=bowString;
  function makeHeartArrow(){
   const g=new THREE.Group();
+  // +Z is the direction of flight. The arrow remains horizontal in the
+  // character's local space so its pointed heart tip leads the shaft.
   const shaft=child(g,new THREE.CylinderGeometry(.022,.022,1.34,8),new THREE.MeshStandardMaterial({color:'#f4d9c8',roughness:.84}),[0,0,.18]);
   shaft.rotation.x=Math.PI/2;
   const fletchMat=new THREE.MeshStandardMaterial({color:'#f7a0c0',roughness:.68});
   const leftFletch=child(g,new THREE.ConeGeometry(.075,.18,8),fletchMat,[-.06,0,-.44]);leftFletch.rotation.z=Math.PI/2;
   const rightFletch=child(g,new THREE.ConeGeometry(.075,.18,8),fletchMat,[.06,0,-.44]);rightFletch.rotation.z=-Math.PI/2;
-  const heartMat=new THREE.MeshStandardMaterial({color:'#ff5b98',roughness:.36,emissive:'#ff7fb2',emissiveIntensity:.12});
-  child(g,new THREE.SphereGeometry(.085,10,8),heartMat,[-.06,.055,.92]);
-  child(g,new THREE.SphereGeometry(.085,10,8),heartMat,[.06,.055,.92]);
-  const heartPoint=child(g,new THREE.ConeGeometry(.13,.20,12),heartMat,[0,-.055,.92]);heartPoint.rotation.z=Math.PI;
+  // A single true heart silhouette, rather than spheres and an upside-down
+  // cone. Its flat face lies in the YZ plane: visible from either SIDE.
+  // The lower heart point is rotated to FACE FORWARD (+Z).
+  const heartShape=new THREE.Shape();
+  heartShape.moveTo(0,-.255);
+  heartShape.bezierCurveTo(-.055,-.158,-.205,-.055,-.205,.09);
+  heartShape.bezierCurveTo(-.205,.252,-.048,.252,0,.125);
+  heartShape.bezierCurveTo(.048,.252,.205,.252,.205,.09);
+  heartShape.bezierCurveTo(.205,-.055,.055,-.158,0,-.255);
+  const heartGeometry=new THREE.ExtrudeGeometry(heartShape,{depth:.073,bevelEnabled:true,bevelThickness:.014,bevelSize:.016,bevelSegments:2,steps:1,curveSegments:12});
+  heartGeometry.translate(0,0,-.0365);
+  // local heart width -> world Y, local heart height -> world -Z,
+  // extrusion depth -> world -X; proper right-handed orientation.
+  const heartAxes=new THREE.Matrix4().makeBasis(new THREE.Vector3(0,1,0),new THREE.Vector3(0,0,-1),new THREE.Vector3(-1,0,0));
+  heartGeometry.applyMatrix4(heartAxes);
+  const heartMat=new THREE.MeshStandardMaterial({color:'#ff5b98',roughness:.36,metalness:.06,emissive:'#ff7fb2',emissiveIntensity:.12,side:THREE.DoubleSide});
+  const heartTip=new THREE.Mesh(heartGeometry,heartMat);heartTip.position.z=.94;g.add(heartTip);
   return g;
  }
  const heartHeldArrow=makeHeartArrow();heartBow.add(heartHeldArrow);parts.heartHeldArrow=heartHeldArrow;
@@ -4397,13 +4420,13 @@ function animateAvatar(a,p,t){
    const draw=THREE.MathUtils.clamp(phase/.95,0,1);
    const release=THREE.MathUtils.clamp((phase-1.02)/.16,0,1);
    const pull=draw*(1-release);
-   P.heartBow.position.set(-.08,1.52+.015*Math.sin(sec*3.2),.56);
-   P.heartBow.rotation.set(.02*Math.sin(sec*2.5),-.08,.10);
+   P.heartBow.position.set(0,1.52+.015*Math.sin(sec*3.2),.92);
+   P.heartBow.rotation.set(.02*Math.sin(sec*2.5),0,0);
    if(P.heartBowString)P.heartBowString.scale.y=1-.08*pull;
    if(P.heartHeldArrow){
     P.heartHeldArrow.visible=phase<1.14;
     if(P.heartHeldArrow.visible){
-     P.heartHeldArrow.position.set(.10,0,.08-.34*pull);
+     P.heartHeldArrow.position.set(0,0,.08-.34*pull);
      P.heartHeldArrow.rotation.set(0,0,0);
     }
    }
@@ -4413,8 +4436,9 @@ function animateAvatar(a,p,t){
     P.heartFlightArrow.visible=visible;
     if(visible){
      const u=fly/1.25;
-     P.heartFlightArrow.position.set(.02+.55*u,1.53+2.45*u-2.75*u*u,1.02+8.9*u);
-     P.heartFlightArrow.rotation.set(.58*(u-.45),-.06,.02);
+     P.heartFlightArrow.position.set(0,1.53+2.45*u-2.75*u*u,1.02+8.9*u);
+     // Tip pitches along the parabolic flight path; never rolls sideways.
+     P.heartFlightArrow.rotation.set(-Math.atan2(2.45-5.5*u,8.9),0,0);
     }
    }
   }else{
