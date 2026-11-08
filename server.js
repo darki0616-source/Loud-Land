@@ -436,7 +436,7 @@ const server=http.createServer(async(req,res)=>{
           if(existingId)sessionPlayers.delete(sessionKey);
         }
         maybeRotateRhythmDay();
-        const id=crypto.randomUUID(),p={id,badgeSince:Date.now(),badgeTier:'bronze',badgeSeconds:0,name:clean(d.name,18)||'ROCKER',flagText:cleanFlag(d.flagText),flagImage:d.flagImage?storeFlagImage(d.flagImage)||'':'',color:colors.includes(d.color)?d.color:colors[0],...apparel(d),gender:d.gender==='female'?'female':'male',x:clamp(190+Math.random()*880,SERVER_X_MIN,SERVER_X_MAX),y:clamp(390+Math.random()*420,SERVER_Y_MIN,SERVER_Y_MAX),facing:0,action:'idle',pose:'stand',glowColor:'lime',glowEnabled:false,seen:Date.now(),rhythmKing:false};
+        const id=crypto.randomUUID(),p={id,badgeSince:Date.now(),badgeTier:'bronze',badgeSeconds:0,name:clean(d.name,18)||'ROCKER',flagText:cleanFlag(d.flagText),flagImage:d.flagImage?storeFlagImage(d.flagImage)||'':'',color:colors.includes(d.color)?d.color:colors[0],...apparel(d),gender:d.gender==='female'?'female':'male',x:clamp(190+Math.random()*880,SERVER_X_MIN,SERVER_X_MAX),y:clamp(390+Math.random()*420,SERVER_Y_MIN,SERVER_Y_MAX),facing:0,action:'idle',pose:'stand',glowColor:'lime',glowEnabled:false,headbangBpm:120,headbangBeatAt:Date.now(),seen:Date.now(),rhythmKing:false};
         Object.defineProperty(p,'badgeIdentity',{value:badgeIdentity,writable:true,enumerable:false});updateBadge(p);syncPlayerRhythmKing(p);setShopAppearance(p);players.set(id,p);
         if(sessionKey){sessionPlayers.set(sessionKey,id);playerSessions.set(id,sessionKey)}
         if(pageId)pageOwners.set(id,pageId);
@@ -526,6 +526,9 @@ const server=http.createServer(async(req,res)=>{
         p.pose=['stand','sit','lie'].includes(d.pose)?d.pose:'stand';
         p.glowEnabled=d.glowEnabled===true;
         p.glowColor=['red','pink','blue','lime','yellow','white','rainbow'].includes(d.glowColor)?d.glowColor:'lime';
+        p.headbangBpm=Number.isFinite(Number(d.headbangBpm))&&Number(d.headbangBpm)>0?clamp(d.headbangBpm,40,240):120;
+        const beatAt=Number(d.headbangBeatAt);
+        p.headbangBeatAt=Number.isFinite(beatAt)&&Math.abs(beatAt-Date.now())<86400000?beatAt:Date.now();
         if(d.action==='beatking'&&!playerIsRhythmKing(p))d.action='idle';
         // Validate campfire-only reaction server-side so remote spectators cannot see it outside the zone.
         if(d.action==='marshmallow'){
