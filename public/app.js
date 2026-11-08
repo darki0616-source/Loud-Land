@@ -3500,13 +3500,15 @@ const sharedStringInstrumentPromises=new Map();
 const stringInstrumentConfig={
  electricguitar:{
   url:'/assets/instruments/guitar_v221.glb?v=221',
-  scale:1.22,angle:1.18,offset:[-.05,.67,.78],
+  scale:1.22,angle:1.18,rotX:0,rotY:0,offset:[-.05,.67,.78],
   neckHand:[-.51,.80,.90],strumHand:[.48,.36,.91],strumAmplitude:.19
  },
  bassguitar:{
   url:'/assets/instruments/bass_v221.glb?v=221',
-  scale:1.18,angle:2.54,offset:[-.07,.54,.79],
-  neckHand:[-.65,.61,.92],strumHand:[.51,.26,.93],strumAmplitude:.16
+  // v223: twist the neck/left-hand side inward so the strumming hand is no
+  // longer moving inside the instrument body on the live avatar.
+  scale:1.18,angle:2.54,rotX:0.00,rotY:-0.52,offset:[-.07,.54,.79],
+  neckHand:[-.60,.63,.89],strumHand:[.57,.26,1.02],strumAmplitude:.16
  }
 };
 function getStringInstrumentTemplate(kind){
@@ -3559,7 +3561,9 @@ function attachStringInstrumentToAvatar(avatar,kind){
   const fallback=makeFallbackStringInstrument(kind);
   // The fallback geometry is vertical for both guitar and bass. Keep it at a
   // matching up-left diagonal even when the GLB fails to download.
-  fallback.rotation.z=1.18;
+  fallback.rotation.z=config.angle||1.18;
+  fallback.rotation.x=config.rotX||0;
+  fallback.rotation.y=config.rotY||0;
   fallback.scale.setScalar(config.scale);
   if(stageForeground)addForegroundLayer(fallback);
   pivot.add(fallback);
@@ -3574,6 +3578,8 @@ function attachStringInstrumentToAvatar(avatar,kind){
   if(!avatar.root.parent)return;
   const pivot=P.stringInstrumentPivots[kind],model=template.clone(true);
   model.scale.setScalar(config.scale);
+  model.rotation.x=config.rotX||0;
+  model.rotation.y=config.rotY||0;
   model.rotation.z=config.angle;
   model.traverse(obj=>{if(obj.isMesh){obj.castShadow=false;obj.receiveShadow=false;}});
   pivot.add(model);P.stringInstrumentModels[kind]=model;
