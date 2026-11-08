@@ -3437,8 +3437,8 @@ const hairAssetSources={bob2:'long',short2:'short'};
 // These dimensions were fitted to the existing chibi skull in front/side views.
 // Other styles retain their original Quaternius source and fit configuration.
 const customHairAssets={
- bob:'/assets/hair/bob_colorready.glb?v=212',
- buns:'/assets/hair/buns_colorready.glb?v=212'
+ bob:'/assets/hair/bob_shaded_v213.glb?v=213',
+ buns:'/assets/hair/buns_shaded_v213.glb?v=213'
 };
 const customHairFit={
  bob:{width:1.82,height:1.58,depth:1.80,top:1.06,forward:.02},
@@ -3581,21 +3581,23 @@ function attachImportedHair(neck,style,color){
    fit.top-(center.y+size.y/2)*sy,
    -center.z*sz+fit.forward);
   if(mirrored)hair.rotation.y=-.12;
-  // v212: custom bob/buns must NOT multiply the chosen hair color by any
-  // imported vertex-color/texture/PBR data.  In the v210 assets COLOR_0 was
-  // embedded in the geometry.  The new GLBs omit it, and we also strip any
-  // unexpected color attribute from each cloned avatar mesh for safety.
-  // An unlit tinted material guarantees bright white/mint/orange/green are
-  // visible at night as well as day, independently from stage lighting.
+  // v213: v212 removed vertex colors but its MeshBasicMaterial was unlit,
+  // making the sculpted layers appear flat.  Restore physically-lit material
+  // with smooth normals and subtle specular highlights, while keeping a faint
+  // emissive contribution so selected hair colors remain legible at night.
   const selectedHairColor=hairColors.some(([,hex])=>hex===color)?color:'#4b3932';
   hair.traverse(mesh=>{
    if(!mesh.isMesh)return;
    if(custom){
     mesh.geometry=mesh.geometry.clone();
     mesh.geometry.deleteAttribute('color');
-    mesh.material=new THREE.MeshBasicMaterial({
-     color:selectedHairColor,side:THREE.DoubleSide,
-     toneMapped:false,depthWrite:true,fog:true
+    if(!mesh.geometry.getAttribute('normal'))mesh.geometry.computeVertexNormals();
+    const tint=new THREE.Color(selectedHairColor);
+    mesh.material=new THREE.MeshStandardMaterial({
+     color:tint,roughness:.56,metalness:.035,
+     emissive:tint.clone(),emissiveIntensity:.11,
+     side:THREE.DoubleSide,vertexColors:false,
+     depthWrite:true,fog:true
     });
    }else{
     const tint=new THREE.Color(selectedHairColor);
@@ -3624,7 +3626,7 @@ function attachImportedHair(neck,style,color){
  }).catch(err=>{console.warn('Hair asset load failed:',style,err)});
  return holder;
 }
-// Preload bob/buns from the new v210 GLBs; the other styles reuse
+// Preload the shaded custom bob/buns GLBs; the other styles reuse
 // their existing Quaternius assets. A missing GLB falls back to the old hair.
 for(const style of ['short','bob','long','buns'])getHairAsset(style).catch(()=>{});
 // Rounded chibi avatar: larger soft head, painted-on face, short unified hairstyle,
