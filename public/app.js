@@ -3580,7 +3580,7 @@ for(const style of ['short','bob','long','buns'])getHairAsset(style).catch(()=>{
 // Imported mesh skinning is retargeted from those motions instead of replacing
 // the stable gameplay code, so server messages and stage/camera code are untouched.
 const importedToonLoader=new GLTFLoader();
-const importedToonUrl='/assets/avatar/tiny_toon_mixamo_optimized.glb?v=206';
+const importedToonUrl='/assets/avatar/tiny_toon_mixamo_optimized.glb?v=207';
 // Emergency opt-out for visual testing: append ?avatar=legacy to the game URL.
 const importedAvatarMode=new URLSearchParams(location.search).get('avatar')||'rig';
 const enableImportedToon=importedAvatarMode!=='legacy';
@@ -3595,7 +3595,7 @@ function reportToonStatus(label,reason=''){
   avatarDiagnosticNode.style.cssText='position:fixed;right:10px;top:10px;z-index:9000;max-width:280px;white-space:pre-wrap;overflow-wrap:anywhere;padding:10px 12px;border-radius:10px;background:rgba(16,23,35,.93);color:#e8ffaf;border:1px solid #c8fa83;font:12px/1.4 ui-monospace,monospace;pointer-events:none;';
   document.body.append(avatarDiagnosticNode);
  }
- avatarDiagnosticNode.textContent=`Avatar v206: ${label}\nloading ${avatarDiagnostics.loading} / loaded ${avatarDiagnostics.loaded} / rendered ${avatarDiagnostics.rendered} / failed ${avatarDiagnostics.failed}\n${avatarDiagnostics.reason}`;
+ avatarDiagnosticNode.textContent=`Avatar v207: ${label}\nloading ${avatarDiagnostics.loading} / loaded ${avatarDiagnostics.loaded} / rendered ${avatarDiagnostics.rendered} / failed ${avatarDiagnostics.failed}\n${avatarDiagnostics.reason}`;
 }
 let importedToonAsset=null,importedToonLoading=null;
 function getImportedToon(){
@@ -3708,17 +3708,33 @@ function attachImportedToon(root,parts,profile){
    skinned.visible=true;
    if(skinned.material)skinned.material.side=THREE.DoubleSide;
   }
-  const allBones={};model.traverse(o=>{if(o.isBone)allBones[o.name.split(':').pop()]=o;});
+  // GLTFLoader sanitizes node names (for example, the original GLB bone
+  // 'mixamorig:Spine' is exposed as 'mixamorigSpine' in three.js). The old
+  // split(':').pop() lookup only worked for untouched Blender names, which
+  // made EVERY joint miss and triggered 'Missing rig bones / 0 usable bones'.
+  // Resolve by stable Mixamo suffix instead of depending on punctuation.
+  const boneName=(name)=>String(name||'')
+   .replace(/^(?:mixamorig)(?:[_:.\-])?/i,'')
+   .replace(/[^a-z0-9]/gi,'').toLowerCase();
+  const allBones={};
+  const rawBoneNames=[];
+  model.traverse(o=>{
+   if(!o.isBone)return;
+   rawBoneNames.push(o.name);
+   const key=boneName(o.name);
+   if(key&&!allBones[key])allBones[key]=o;
+  });
+  const findBone=(name)=>allBones[boneName(name)]||null;
   const animated=[];
   // Meshy exported a Running action whose arm bind posture is nearly sideways.
   // Normalize its upper arms to a relaxed downward idle stance BEFORE applying
   // ONEseason's existing shoulder motions; otherwise idle looks like a T-pose.
   const modelWorldInverse=model.getWorldQuaternion(new THREE.Quaternion()).invert();
   for(const [targetName,driverName,weight] of Object.values(toonBoneMapping)){
-   const bone=allBones[targetName];if(!bone||!parts[driverName])continue;
+   const bone=findBone(targetName);if(!bone||!parts[driverName])continue;
    const rest=bone.quaternion.clone();
    if(targetName==='RightArm'||targetName==='LeftArm'){
-    const child=allBones[targetName==='RightArm'?'RightForeArm':'LeftForeArm'];
+    const child=findBone(targetName==='RightArm'?'RightForeArm':'LeftForeArm');
     if(child){
      const relParentRotation=modelWorldInverse.clone().multiply(bone.parent.getWorldQuaternion(new THREE.Quaternion()));
      const side=targetName==='RightArm'?-1:1;
@@ -3730,7 +3746,11 @@ function attachImportedToon(root,parts,profile){
    }
    animated.push({bone,driver:parts[driverName],rest,weight});
   }
-  if(animated.length<9){console.warn('Mixamo joints incomplete; old avatar stays visible');holder.remove(model);avatarDiagnostics.failed++;reportToonStatus('Missing rig bones',animated.length+' usable bones');return;}
+  if(animated.length<9){
+   const info=`${animated.length} usable / ${rawBoneNames.length} total bones; examples: ${rawBoneNames.slice(0,5).join(', ')}`;
+   console.warn('Mixamo joints incomplete; old avatar stays visible:',info);
+   holder.remove(model);avatarDiagnostics.failed++;reportToonStatus('Missing rig bones',info);return;
+  }
   parts.importedToon={holder,model,mesh,animated,allBones,hasRendered:false};
   // v206: The old avatar stays rendered until the imported character has
   // actually reached a WebGL draw call. A successful GLB download alone is NOT
@@ -3749,7 +3769,7 @@ function attachImportedToon(root,parts,profile){
     avatarDiagnostics.rendered++;reportToonStatus('Rig rendered');
    };
   }
-  avatarDiagnostics.loaded++;reportToonStatus('Rig loaded — checking draw',`${animated.length} bones; ${mesh.length} skinned meshes`);
+  avatarDiagnostics.loaded++;reportToonStatus('Rig loaded — checking draw',`${animated.length} mapped / ${rawBoneNames.length} total bones; ${mesh.length} skinned meshes`);
  }).catch(err=>{
   avatarDiagnostics.loading=Math.max(0,avatarDiagnostics.loading-1);
   holder.visible=false;
