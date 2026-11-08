@@ -3149,15 +3149,21 @@ function animateToastSparks(t){for(let i=toastSparks.length-1;i>=0;i--){const p=
 // Real Quaternius Universal Base Characters glTF hair assets (CC0) supplied by the user.
 // Each geometry is loaded once. Avatar instances clone it and tint the surface locally.
 const hairLoader=new GLTFLoader(),hairAssetCache=new Map();
-// v200: Lightweight customer-supplied 3D angel wings. Keep one decoded glTF
-// template for every avatar instead of downloading the heavy original per user.
-const angelWingsLoader=new GLTFLoader();
+// v201: Shared glTF models for both existing wing MD slots. Load lazily so
+// entering the festival never depends on an external accessory GLB download.
+const importedWingLoader=new GLTFLoader();
 const sharedWingResources=new WeakSet();
-let angelWingTemplatePromise=null;
-function getAngelWingsModel(){
- if(!angelWingTemplatePromise){
-  angelWingTemplatePromise=new Promise((resolve,reject)=>{
-   angelWingsLoader.load('/assets/md/angel_wings_optimized.glb',g=>{
+const importedWingTemplatePromises=new Map();
+const importedWingTypes={
+ angel:{url:'/assets/md/angel_wings_optimized.glb?v=201',scale:[1.43,1.36,.67],offset:[0,0,-.07]},
+ fallen:{url:'/assets/md/devil_wings_optimized.glb?v=201',scale:[1.48,2.15,.80],offset:[0,.02,-.08]}
+};
+function getImportedWingModel(kind){
+ const setting=importedWingTypes[kind];
+ if(!setting)return Promise.reject(new Error('Unknown MD wing type'));
+ if(!importedWingTemplatePromises.has(kind)){
+  const load=new Promise((resolve,reject)=>{
+   importedWingLoader.load(setting.url,g=>{
     g.scene.traverse(obj=>{
      if(!obj.isMesh)return;
      if(obj.geometry)sharedWingResources.add(obj.geometry);
@@ -3165,31 +3171,39 @@ function getAngelWingsModel(){
       if(!material)continue;
       material.side=THREE.DoubleSide;
       sharedWingResources.add(material);
+      // Meshes share glTF material textures across every player's avatar.
+      if(material.map)sharedWingResources.add(material.map);
+      if(material.normalMap)sharedWingResources.add(material.normalMap);
+      if(material.roughnessMap)sharedWingResources.add(material.roughnessMap);
+      if(material.metalnessMap)sharedWingResources.add(material.metalnessMap);
      }
     });
     resolve(g.scene);
    },undefined,reject);
+  }).catch(error=>{
+   importedWingTemplatePromises.delete(kind); // retry next time if a load fails
+   throw error;
   });
+  importedWingTemplatePromises.set(kind,load);
  }
- return angelWingTemplatePromise;
+ return importedWingTemplatePromises.get(kind);
 }
-function attachCustomAngelWings(holder,avatarRoot){
- // The built-in geometry is a visible fallback until the model finishes loading.
- getAngelWingsModel().then(template=>{
-  if(!avatarRoot.parent||!holder.parent)return; // user already left or avatar rebuilt
+function attachImportedWings(holder,avatarRoot,kind){
+ // Existing procedural wings remain visible until the new glTF is ready.
+ getImportedWingModel(kind).then(template=>{
+  if(!avatarRoot.parent||!holder.parent)return;
+  const setting=importedWingTypes[kind];
   const model=template.clone(true);
-  // Source axes: wings spread across X, up is +Y, front/back along Z.
-  // Keep a slightly flattened depth so the feather structure sits on the back.
-  model.position.set(0,0,-.07);
-  model.scale.set(1.43,1.36,.67);
+  model.position.set(...setting.offset);
+  model.scale.set(...setting.scale);
   model.traverse(obj=>{
    if(obj.isMesh){obj.castShadow=false;obj.receiveShadow=false;}
   });
-  // Retain the procedural feathers in the avatar as a network-load fallback.
-  for(const child of holder.children)child.visible=false;
+  // Hide fallback feathers only after successful load.
+  for(const item of holder.children)item.visible=false;
   holder.add(model);
   if(stageForeground)addForegroundLayer(model);
- }).catch(err=>console.warn('Angel wing model loading failed; keeping fallback.',err));
+ }).catch(error=>console.warn('MD wing load failed; preserving fallback:',kind,error));
 }
 
 // Fits are measured against the visible avatar head (radius .81; top Y ~= .90).
@@ -3755,6 +3769,7 @@ function makeAvatar(p){
     feather.rotation.z=side*(-.90+progress*.76);
    }
   }
+  attachImportedWings(wingGroup,root,'fallen');
  }
  if(look.back==='angel-wings'){
   const white=mat('#f2f1ec',.94),feather=mat('#d6e5f3',.93),outline=mat('#c2cede',.82);
@@ -3768,7 +3783,7 @@ function makeAvatar(p){
     f.rotation.z=side*(-.91+t*.80);
    }
   }
-  attachCustomAngelWings(wings,root);
+  attachImportedWings(wings,root,'angel');
  }
 
  if(look.back==='butterfly-wings'){
@@ -5281,7 +5296,7 @@ function disposeAvatar(root){
  // Per-avatar resources are created anew, while imported hair geometry is cloned.
  for(const geometry of geometries)if(!sharedWingResources.has(geometry))geometry.dispose();
  for(const material of materials)if(!sharedWingResources.has(material))material.dispose();
- for(const texture of textures)texture.dispose();
+ for(const texture of textures)if(!sharedWingResources.has(texture))texture.dispose();
 }
 function tick(t){
  // Skip complete draw passes on slower hardware, without changing time-based
