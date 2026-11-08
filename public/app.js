@@ -3500,15 +3500,16 @@ const sharedStringInstrumentPromises=new Map();
 const stringInstrumentConfig={
  electricguitar:{
   url:'/assets/instruments/guitar_v221.glb?v=221',
-  scale:1.22,angle:1.18,rotX:0,rotY:0,offset:[-.05,.67,.78],
-  neckHand:[-.51,.80,.90],strumHand:[.48,.36,.91],strumAmplitude:.19
+  // v225: guitar neck now points diagonally to the player's RIGHT.
+  scale:1.22,angle:-1.18,rotX:0,rotY:0,offset:[-.05,.67,.78],
+  neckHand:[.51,.80,.90],strumHand:[-.48,.36,.91],strumAmplitude:.19
  },
  bassguitar:{
   url:'/assets/instruments/bass_v221.glb?v=221',
-  // v224: reverse the v223 Y-axis twist so the opposite side of the bass
-  // faces inward toward the player; retain the current string-hand targets.
-  scale:1.18,angle:2.54,rotX:0.00,rotY:0.52,offset:[-.07,.54,.79],
-  neckHand:[-.60,.63,.89],strumHand:[.57,.26,1.02],strumAmplitude:.16
+  // Bass GLB's long axis is local +X (not +Y like the guitar). A ~.60
+  // rotation places its neck at right-up, preserving the v224 inward tilt.
+  scale:1.18,angle:0.60,rotX:0.00,rotY:0.52,offset:[-.07,.54,.79],
+  neckHand:[.60,.63,.89],strumHand:[-.57,.26,1.02],strumAmplitude:.16
  }
 };
 function getStringInstrumentTemplate(kind){
@@ -3559,9 +3560,10 @@ function attachStringInstrumentToAvatar(avatar,kind){
   P.upper.add(pivot);pivot.position.set(...config.offset);
   P.stringInstrumentPivots[kind]=pivot;
   const fallback=makeFallbackStringInstrument(kind);
-  // The fallback geometry is vertical for both guitar and bass. Keep it at a
-  // matching up-left diagonal even when the GLB fails to download.
-  fallback.rotation.z=config.angle||1.18;
+  // Use the same per-instrument angle even if an imported GLB fails to load.
+  // Fallback neck points along +Y; imported bass neck points along +X.
+  // Rotate the fallback bass 90 degrees to keep its neck on the same side.
+  fallback.rotation.z=kind==='bassguitar'?config.angle-Math.PI/2:config.angle;
   fallback.rotation.x=config.rotX||0;
   fallback.rotation.y=config.rotY||0;
   fallback.scale.setScalar(config.scale);
@@ -4917,8 +4919,8 @@ function animateAvatar(a,p,t){
   height=-.035+rebound;
  }
  if(act==='electricguitar'||act==='bassguitar'){
-  // Guitar/bass: hold the neck with the left hand; the right wrist strums
-  // vigorously up and down while remaining in front of the torso.
+  // v225: neck points RIGHT; the RIGHT hand holds the fretboard, and the
+  // LEFT hand strums on the opposite lower side of the guitar/bass.
   const bass=act==='bassguitar';
   const strum=Math.sin(sec*(bass?15.6:21.4));
   const pulse=Math.sin(sec*(bass?4.2:5.4));
@@ -4929,12 +4931,9 @@ function animateAvatar(a,p,t){
   set('rightHip',-.10+.07*Math.max(0,-pulse),0,.10);
   set('leftKnee',.18+.09*Math.max(0,pulse));
   set('rightKnee',.18+.09*Math.max(0,-pulse));
-  // Instrument locations were raised and enlarged in v222. Keep the neck
-  // hand planted on the fretboard and move the picking hand near the strings,
-  // with a visible alternating vertical stroke in front of the guitar body.
   const guitarFit=stringInstrumentConfig[act];
-  leftHandTarget=new THREE.Vector3(...guitarFit.neckHand);
-  rightHandTarget=new THREE.Vector3(
+  rightHandTarget=new THREE.Vector3(...guitarFit.neckHand);
+  leftHandTarget=new THREE.Vector3(
    guitarFit.strumHand[0],
    guitarFit.strumHand[1]+strum*guitarFit.strumAmplitude,
    guitarFit.strumHand[2]
@@ -5402,7 +5401,8 @@ function animateAvatar(a,p,t){
  else if(ikMode==='drum'){
   placeHandIK(P,'left',leftHandTarget,.80);placeHandIK(P,'right',rightHandTarget,.80);
  }else if(ikMode==='string-instrument'){
-  placeHandIK(P,'left',leftHandTarget,.80);placeHandIK(P,'right',rightHandTarget,.86);
+  // v225: left wrist actively strums, right wrist grips the neck.
+  placeHandIK(P,'left',leftHandTarget,.86);placeHandIK(P,'right',rightHandTarget,.80);
  }else if(ikMode==='airguitar'){
   placeHandIK(P,'left',leftHandTarget,.68);
   placeHandIK(P,'right',rightHandTarget,.78);
