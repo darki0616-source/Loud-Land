@@ -118,6 +118,38 @@ function adminAuthorized(req){
  const a=Buffer.from(provided),b=Buffer.from(MD_ADMIN_KEY);
  return Boolean(MD_ADMIN_KEY&&a.length===b.length&&crypto.timingSafeEqual(a,b));
 }
+
+// v231: announcement administrator can use a dedicated key or the existing
+// MD_ADMIN_KEY. No admin credentials are ever exposed in game snapshots.
+const NOTICE_ADMIN_KEY=process.env.NOTICE_ADMIN_KEY||MD_ADMIN_KEY;
+function noticeAdminAuthorized(req){
+ const provided=String(req.headers['x-notice-admin-key']||'');
+ const a=Buffer.from(provided,'utf8'),b=Buffer.from(NOTICE_ADMIN_KEY,'utf8');
+ return !!(NOTICE_ADMIN_KEY&&a.length===b.length&&crypto.timingSafeEqual(a,b));
+}
+const ENTRY_NOTICE_MAX=16, TICKER_NOTICE_MAX=30, NOTICE_TEXT_MAX=260;
+const entranceNotices=[],tickerNotices=[],immediateNoticeHistory=[];
+let tickerIntervalMinutes=10, tickerCursor=0, tickerTimer=null, nextTickerAt=0;
+const noticeText=value=>String(value??'').replace(/[\x00-\x09\x0b-\x1f\x7f<>]/g,'').replace(/\s+/g,' ').trim().slice(0,NOTICE_TEXT_MAX);
+const noticeId=()=>crypto.randomUUID();
+function publicNoticeState(){return {entry:entranceNotices.map(n=>({id:n.id,text:n.text})),intervalMinutes:tickerIntervalMinutes};}
+function adminNoticeState(){return {...publicNoticeState(),ticker:tickerNotices.map(n=>({...n})),immediateHistory:immediateNoticeHistory.map(n=>({...n})),nextTickerAt};}
+function resetNoticeTicker(){
+ if(tickerTimer)clearTimeout(tickerTimer);
+ tickerTimer=null;nextTickerAt=0;
+ if(!tickerNotices.length)return;
+ nextTickerAt=Date.now()+tickerIntervalMinutes*60_000;
+ tickerTimer=setTimeout(()=>{
+  tickerTimer=null;
+  if(tickerNotices.length){
+   const n=tickerNotices[tickerCursor%tickerNotices.length];
+   tickerCursor=(tickerCursor+1)%tickerNotices.length;
+   broadcast({type:'festival-notice',kind:'ticker',id:noticeId(),text:n.text,at:Date.now()});
+  }
+  resetNoticeTicker();
+ },tickerIntervalMinutes*60_000);
+ tickerTimer.unref();
+}
 function publicMdItems(){
  const items={...PUNK_ITEMS};
  for(const [id,item] of customMd)items[id]={name:item.name,slot:'shirt',cost:0,shirtColor:item.shirtColor,imageUrl:'/api/md-image/'+id,custom:true};
@@ -163,9 +195,24 @@ const SB_KEY=process.env.SUPABASE_SECRET_KEY||'';
 const useSupabase=Boolean(SB_URL&&SB_KEY);
 let restored=false;
 let saveChain=Promise.resolve();
-function stateData(){return {version:6,music,queue:[...queue],history:[...history],nextTrackToken,customMd:Object.fromEntries(customMd),shopStats:Object.fromEntries([...shopStats].map(([k,v])=>[k,{spent:0,refunded:v.refunded||0,owned:v.owned,equipped:v.equipped}])),badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),rhythm:{day:rhythmDay,reward:rhythmReward,scores:Object.fromEntries([...rhythmScores].map(([k,v])=>[k,{name:v.name,score:Math.max(0,Math.floor(Number(v.score)||0)),updatedAt:Number(v.updatedAt)||0}]))},savedAt:Date.now()}}
+function stateData(){return {version:7,announcements:{entry:entranceNotices,ticker:tickerNotices,intervalMinutes:tickerIntervalMinutes,immediateHistory:immediateNoticeHistory},music,queue:[...queue],history:[...history],nextTrackToken,customMd:Object.fromEntries(customMd),shopStats:Object.fromEntries([...shopStats].map(([k,v])=>[k,{spent:0,refunded:v.refunded||0,owned:v.owned,equipped:v.equipped}])),badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),rhythm:{day:rhythmDay,reward:rhythmReward,scores:Object.fromEntries([...rhythmScores].map(([k,v])=>[k,{name:v.name,score:Math.max(0,Math.floor(Number(v.score)||0)),updatedAt:Number(v.updatedAt)||0}]))},savedAt:Date.now()}}
 function applySaved(d){
  if(!d||typeof d!=='object')return;
+ if(d.announcements&&typeof d.announcements==='object'){
+  const cfg=d.announcements;
+  const restoreNotices=(source,target,max)=>{
+   target.length=0;
+   if(!Array.isArray(source))return;
+   for(const item of source.slice(0,max)){
+    const text=noticeText(item?.text);
+    if(text)target.push({id:typeof item.id==='string'&&/^[a-z0-9-]{10,48}$/.test(item.id)?item.id:noticeId(),text,at:Number(item.at)||Date.now()});
+   }
+  };
+  restoreNotices(cfg.entry,entranceNotices,ENTRY_NOTICE_MAX);
+  restoreNotices(cfg.ticker,tickerNotices,TICKER_NOTICE_MAX);
+  restoreNotices(cfg.immediateHistory,immediateNoticeHistory,25);
+  tickerIntervalMinutes=[1,10,30].includes(Number(cfg.intervalMinutes))?Number(cfg.intervalMinutes):10;
+ }
  if(d.customMd&&typeof d.customMd==='object')for(const [id,r] of Object.entries(d.customMd).slice(0,40)){
   if(!/^md-[a-f0-9]{16}$/.test(id)||!r||typeof r!=='object')continue;
   if(!/^data:image\/webp;base64,[A-Za-z0-9+/=]+$/.test(r.image||'')||r.image.length>145000)continue;
@@ -220,6 +267,7 @@ async function restorePlaylist(){
   try{applySaved(JSON.parse(fs.readFileSync(STATE_PATH,'utf8')));console.log('Local playlist restored (non-durable)')}catch(err){if(err.code!=='ENOENT')console.warn('Local restore failed:',err.message)}
  }
  restored=true;
+ resetNoticeTicker();
  maybeRotateRhythmDay();
  // One-time v114 migration: legacy spent points were converted into refunded credits.
  // Persist the zero-spend records immediately so restarts never re-deduct them.
@@ -282,7 +330,7 @@ function endDuo(duo){if(!duo||!activeDuos.has(duo.id))return;activeDuos.delete(d
 function clearDuosFor(id){for(const duo of [...activeDuos.values()])if(duo.a===id||duo.b===id)endDuo(duo);for(const [inviteId,invite] of duoInvites)if(invite.from===id||invite.to===id){duoInvites.delete(inviteId);broadcast({type:'duo-invite-ended',id:inviteId,to:invite.to})}}
 function duoDistance(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
 setInterval(()=>{const now=Date.now();for(const duo of [...activeDuos.values()])if(duo.endAt<=now)endDuo(duo);for(const [key,invite] of duoInvites)if(invite.expiresAt<=now){duoInvites.delete(key);broadcast({type:'duo-invite-ended',id:key,to:invite.to})}},700).unref();
-const snapshot=()=>({type:'snapshot',interactions:[...activeDuos.values()].filter(x=>x.endAt>Date.now()),players:[...players.values()],chat:chatHistory,...musicState(),skipVote:publicSkipVote(),skipVoteCooldownUntil,slam:publicSlam(),slamCooldownUntil,rockPlay:publicRock(),crowdSurf:activeSurfRide&&activeSurfRide.startAt+activeSurfRide.duration>Date.now()?activeSurfRide:null,rockCooldowns:{...rockCooldowns},rockRunningUntil,rhythm:publicRhythmState(),count:players.size});
+const snapshot=()=>({type:'snapshot',announcements:publicNoticeState(),interactions:[...activeDuos.values()].filter(x=>x.endAt>Date.now()),players:[...players.values()],chat:chatHistory,...musicState(),skipVote:publicSkipVote(),skipVoteCooldownUntil,slam:publicSlam(),slamCooldownUntil,rockPlay:publicRock(),crowdSurf:activeSurfRide&&activeSurfRide.startAt+activeSurfRide.duration>Date.now()?activeSurfRide:null,rockCooldowns:{...rockCooldowns},rockRunningUntil,rhythm:publicRhythmState(),count:players.size});
 const clamp=(n,min,max)=>Math.min(max,Math.max(min,Number(n)||0));
 const SERVER_X_MIN=20,SERVER_X_MAX=1380,SERVER_Y_MIN=60,SERVER_Y_MAX=1100;
 function cleanup(){const now=Date.now();for(const [id,p] of players)if(now-p.seen>180000){settleBadge(p,Math.min(now,p.seen+45000));settleBadge(p);clearDuosFor(id);players.delete(id);forgetSession(id);voterLeaves(id);if(activeSlam?.participants.delete(id))slamUpdate();rockMemberLeaves(id);pauseForEmpty();const r=clients.get(id);if(r){r.end();clients.delete(id)}broadcast({type:'leave',id,count:players.size})}}
@@ -389,6 +437,51 @@ const server=http.createServer(async(req,res)=>{
   if(url.pathname.startsWith('/api/')&&req.method==='POST'){
     try{
       const d=await receive(req);
+      if(url.pathname==='/api/notice-admin'){
+       if(!NOTICE_ADMIN_KEY)return json(res,503,{error:'Render 환경변수 NOTICE_ADMIN_KEY 또는 MD_ADMIN_KEY를 설정해 주세요.'});
+       if(!noticeAdminAuthorized(req))return json(res,403,{error:'관리자 키가 올바르지 않습니다.'});
+       const command=String(d.command||'');
+       if(command==='list')return json(res,200,{ok:true,...adminNoticeState()});
+       if(command==='immediate'){
+        const text=noticeText(d.text);
+        if(!text)return json(res,400,{error:'공지 내용을 입력해 주세요.'});
+        const notice={id:noticeId(),text,at:Date.now()};
+        immediateNoticeHistory.unshift(notice);immediateNoticeHistory.splice(25);
+        // Live viewers get a prominent, dismissible banner immediately.
+        broadcast({type:'festival-notice',kind:'immediate',...notice});
+        scheduleSave();
+        return json(res,200,{ok:true,recipients:clients.size,...adminNoticeState()});
+       }
+       if(command==='add-entry'||command==='add-ticker'){
+        const list=command==='add-entry'?entranceNotices:tickerNotices;
+        const maximum=command==='add-entry'?ENTRY_NOTICE_MAX:TICKER_NOTICE_MAX;
+        if(list.length>=maximum)return json(res,400,{error:'해당 공지 목록의 등록 한도를 초과했습니다.'});
+        const text=noticeText(d.text);
+        if(!text)return json(res,400,{error:'공지 내용을 입력해 주세요.'});
+        list.push({id:noticeId(),text,at:Date.now()});
+        if(command==='add-ticker')resetNoticeTicker();
+        scheduleSave();
+        return json(res,200,{ok:true,...adminNoticeState()});
+       }
+       if(command==='delete'){
+        const category=String(d.category||'');
+        const list=category==='entry'?entranceNotices:category==='ticker'?tickerNotices:category==='immediate'?immediateNoticeHistory:null;
+        if(!list)return json(res,400,{error:'삭제할 공지 유형이 잘못됐어요.'});
+        const i=list.findIndex(n=>n.id===d.noticeId);
+        if(i<0)return json(res,404,{error:'삭제할 공지를 찾을 수 없어요.'});
+        list.splice(i,1);
+        if(category==='ticker'){tickerCursor=0;resetNoticeTicker();}
+        scheduleSave();
+        return json(res,200,{ok:true,...adminNoticeState()});
+       }
+       if(command==='set-interval'){
+        const minutes=Number(d.minutes);
+        if(![1,10,30].includes(minutes))return json(res,400,{error:'간격은 1분, 10분, 30분만 가능합니다.'});
+        tickerIntervalMinutes=minutes;tickerCursor=0;resetNoticeTicker();scheduleSave();
+        return json(res,200,{ok:true,...adminNoticeState()});
+       }
+       return json(res,400,{error:'알 수 없는 공지 관리자 명령입니다.'});
+      }
       if(url.pathname==='/api/md-admin'){
        if(!MD_ADMIN_KEY)return json(res,503,{error:'Render 환경변수 MD_ADMIN_KEY를 설정해 주세요.'});
        if(!adminAuthorized(req))return json(res,403,{error:'관리자 키가 올바르지 않습니다.'});

@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>ONEseason · 공지 관리자</title>
+<style>
+:root{color-scheme:dark;font:15px/1.55 system-ui,-apple-system,"Apple SD Gothic Neo",sans-serif;background:#111728;color:#f1f6ff}
+*{box-sizing:border-box}body{margin:0;padding:24px 14px 70px}
+main{max-width:800px;margin:auto}h1{font-size:26px;margin:0 0 9px;line-height:1.3}h2{font-size:18px;margin:0 0 8px}h3{font-size:14px;margin:22px 0 7px}
+p{color:#b1c0d4;margin:0 0 10px}small{color:#aab8c9}header{margin-bottom:20px}header b{color:#ddfa8f}
+section{background:#202a42;border:1px solid #455571;border-radius:16px;padding:20px;margin:14px 0}
+label{display:block;font-weight:800;margin-bottom:8px;font-size:13px}textarea,input,select{font:inherit;color:#f5f9ff;background:#101929;border:1px solid #66758d;border-radius:10px;padding:11px;width:100%;max-width:100%}
+textarea{min-height:85px;resize:vertical}input{min-height:45px}select{width:auto;min-width:170px;height:44px}
+input:focus-visible,textarea:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid #d8fb8e;outline-offset:2px}
+button{border:0;border-radius:10px;background:#d7fa81;color:#18231c;padding:11px 18px;min-height:42px;font-size:14px;font-weight:850;cursor:pointer}
+button:hover{filter:brightness(1.06)}button:disabled{opacity:.5;cursor:wait}.secondary{background:#384963;color:#e6f1ff}.danger{background:#f3a0a7;color:#441d29}.small-btn{padding:6px 11px;min-height:36px;white-space:nowrap}
+.actions{display:flex;gap:9px;flex-wrap:wrap;align-items:center;margin-top:10px}.saved{border-top:1px solid #435470;margin-top:18px;padding-top:8px}
+.row{display:flex;align-items:flex-start;gap:12px;padding:12px 0;border-bottom:1px solid #42506a}.row:last-child{border-bottom:0}
+.notice-content{flex:1;min-width:0;overflow-wrap:anywhere}.notice-content b{font-size:13px;color:#eaf5fb;font-weight:650}.notice-content small{display:block;margin-top:4px;font-size:11px;color:#96a9c2}
+#feedback{min-height:24px;margin:10px 0 0;font-weight:800;color:#dcfa8e;white-space:pre-wrap}#feedback.error{color:#ffb1bb}
+.tag{display:inline-block;font-size:11px;border:1px solid #57718b;border-radius:30px;padding:2px 10px;color:#d0e5ff;background:#273852}
+.hint{border-left:3px solid #d7fa81;padding:8px 12px;background:#141e32;color:#d2ddeb;border-radius:6px;margin-top:9px}
+#intervalInfo{margin:7px 0;font-size:13px;color:#c2d1e3}.split{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:600px){h1{font-size:22px}section{padding:17px}.split{grid-template-columns:1fr}}
+</style></head><body><main>
+<header><span class="tag">관리자 전용</span><h1>✳ ONE<b>season</b> 공지 관리자</h1><p>실시간 전체 공지, 입장 안내, 상단 흐르는 공지를 각각 관리할 수 있어요.</p></header>
+<section><h2>🔐 관리자 인증</h2><p>Render 환경변수 <code>NOTICE_ADMIN_KEY</code>를 사용하며, 설정하지 않은 경우 기존 <code>MD_ADMIN_KEY</code>를 사용할 수 있어요. 비밀번호는 이 페이지에 저장되지 않아요.</p>
+<label for="adminKey">관리자 키</label><input id="adminKey" type="password" autocomplete="off" spellcheck="false" placeholder="Render에 등록한 관리자 키">
+<div class="actions"><button id="verify" type="button">관리자 인증 · 불러오기</button><button class="secondary" id="refresh" type="button">목록 새로고침</button></div><div id="feedback" role="status" aria-live="polite"></div></section>
+<section><h2>📣 즉시 전체 공지</h2><p>전송하면 <b>현재 접속 중인 모든 사용자</b>에게 팝업이 바로 나타나요. 새로 입장한 사람에게 자동 반복되지는 않아요.</p>
+<label for="immediateText">내용 (최대 260자)</label><textarea id="immediateText" maxlength="260" placeholder="예: 10분 후 단체사진 촬영이 시작됩니다!"></textarea>
+<div class="actions"><button id="sendImmediate" type="button">지금 전체 서버에 띄우기</button></div>
+<div class="saved"><h3>전송 기록 <small>(기록 삭제는 이미 전송된 공지를 취소하지 않음)</small></h3><div id="immediateList"></div></div></section>
+<section><h2>🎟 입장 공지</h2><p>신규 입장뿐 아니라 <b>새로고침·자동입장</b> 때마다 이 내용을 팝업으로 보여줘요. 여러 개를 등록하면 하나의 팝업에 차례로 표시돼요.</p>
+<label for="entryText">입장할 때 보여줄 내용</label><textarea id="entryText" maxlength="260" placeholder="예: ONEseason에 오신 것을 환영합니다. 이용 규칙을 확인해 주세요."></textarea>
+<div class="actions"><button id="addEntry" type="button">입장 공지 추가</button></div>
+<div class="saved"><h3>등록된 입장 공지</h3><div id="entryList"></div></div></section>
+<section><h2>📢 상단 흐르는 공지</h2><p>접속 중인 모든 사용자 화면 <b>맨 위에서 오른쪽 → 왼쪽</b>으로 흐르는 공지예요. 등록된 내용을 순서대로 하나씩 표시해요.</p>
+<div class="split"><div><label for="interval">반복 간격</label><select id="interval"><option value="1">1분마다</option><option value="10" selected>10분마다</option><option value="30">30분마다</option></select></div>
+<div><label>주기 설정</label><button id="applyInterval" type="button">간격 적용</button></div></div>
+<div id="intervalInfo">등록된 공지가 없으면 반복 표시하지 않아요.</div>
+<label for="tickerText">상단에 흘러갈 내용</label><textarea id="tickerText" maxlength="260" placeholder="예: 매 정각 불꽃놀이! 친구와 함께 감상하세요."></textarea>
+<div class="actions"><button id="addTicker" type="button">흐르는 공지 추가</button></div>
+<div class="saved"><h3>등록된 흐르는 공지</h3><div id="tickerList"></div></div>
+<p class="hint">공지 간격을 바꾸거나 흐르는 공지를 추가·삭제하면 다음 공지까지의 시간이 새로 시작돼요. 설정과 목록은 서버 저장소에 보관돼요.</p></section>
+<p>관리자 키는 GitHub 소스에 넣지 마세요. 운영 서버의 Supabase 설정을 유지해야 Render 재시작 후에도 공지 목록이 남아요.</p>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+let noticeState=null;
+function feedback(text,error=false){$('feedback').textContent=text;$('feedback').classList.toggle('error',!!error)}
+async function api(command,extra={}){
+ const key=$('adminKey').value;if(!key)throw Error('관리자 키를 먼저 입력해 주세요.');
+ const response=await fetch('/api/notice-admin',{method:'POST',headers:{'Content-Type':'application/json','x-notice-admin-key':key},body:JSON.stringify({command,...extra})});
+ let result;try{result=await response.json()}catch{throw Error('서버 응답을 읽지 못했습니다.')}
+ if(!response.ok)throw Error(result.error||'요청 실패');return result;
+}
+function listInto(listId,items,category){
+ const root=$(listId);root.replaceChildren();
+ if(!Array.isArray(items)||!items.length){const empty=document.createElement('p');empty.textContent='등록된 공지가 없습니다.';root.append(empty);return}
+ for(const item of items){
+  const row=document.createElement('div');row.className='row';
+  const info=document.createElement('div');info.className='notice-content';
+  const title=document.createElement('b');title.textContent=item.text;info.append(title);
+  if(item.at){const time=document.createElement('small');time.textContent=new Date(item.at).toLocaleString('ko-KR');info.append(time)}
+  const del=document.createElement('button');del.className='danger small-btn';del.textContent='삭제';
+  del.addEventListener('click',async()=>{if(!confirm('이 공지를 삭제할까요?'))return;del.disabled=true;
+   try{draw(await api('delete',{category,noticeId:item.id}));feedback('공지 삭제 완료.')}catch(e){feedback(e.message,true)}finally{del.disabled=false}
+  });row.append(info,del);root.append(row)
+ }
+}
+function draw(d){noticeState=d;
+ $('interval').value=String(d.intervalMinutes||10);
+ listInto('entryList',d.entry,'entry');listInto('tickerList',d.ticker,'ticker');listInto('immediateList',d.immediateHistory,'immediate');
+ const next=Number(d.nextTickerAt)||0;
+ $('intervalInfo').textContent=next?'다음 공지 예상: '+new Date(next).toLocaleString('ko-KR')+' · '+d.intervalMinutes+'분 간격':'등록된 흐르는 공지가 없으면 반복 표시하지 않아요.';
+}
+async function run(button,command,extra={},success='저장 완료'){
+ const b=$(button);b.disabled=true;
+ try{const d=await api(command,extra);draw(d);feedback(success);return true}
+ catch(e){feedback(e.message,true);return false}finally{b.disabled=false}
+}
+$('verify').onclick=()=>run('verify','list',{},'인증 성공. 공지 목록을 불러왔어요.');
+$('refresh').onclick=()=>run('refresh','list',{},'목록을 새로고침했어요.');
+$('sendImmediate').onclick=async()=>{const text=$('immediateText').value.trim();if(!text)return feedback('공지 내용을 입력해 주세요.',true);
+ if(!confirm('현재 접속 중인 모든 사용자에게 즉시 공지를 띄울까요?'))return;
+ const ok=await run('sendImmediate','immediate',{text},'즉시 공지를 전송했어요.');if(ok)$('immediateText').value='';
+};
+$('addEntry').onclick=async()=>{const text=$('entryText').value.trim();if(!text)return feedback('공지 내용을 입력해 주세요.',true);
+ if(await run('addEntry','add-entry',{text},'입장 공지를 추가했어요.'))$('entryText').value='';
+};
+$('addTicker').onclick=async()=>{const text=$('tickerText').value.trim();if(!text)return feedback('공지 내용을 입력해 주세요.',true);
+ if(await run('addTicker','add-ticker',{text},'흐르는 공지를 추가했어요.'))$('tickerText').value='';
+};
+$('applyInterval').onclick=()=>run('applyInterval','set-interval',{minutes:Number($('interval').value)},'반복 간격을 적용했어요.');
+</script></body></html>

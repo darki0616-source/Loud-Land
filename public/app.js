@@ -884,7 +884,80 @@ function showBookingNotice(name,title){
  setTimeout(()=>el.remove(),5200);
 }
 
-function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='snapshot'){state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);syncCrowdSurf(d.crowdSurf);if(Array.isArray(d.chat)){$('chatMessages').replaceChildren();d.chat.forEach(appendChat)};for(const id of duoVfx.keys())removeDuoVfx(id);activeDuos.clear();for(const duo of d.interactions||[])activeDuos.set(duo.id,duo);syncDuoStatus()}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){appendChat(d.entry);showBubble(d.entry)}else if(d.type==='move'){recordTrainLeader(d.player);state.players.set(d.player.id,d.player);if(d.player.id===state.id&&currentDuo())state.me={...d.player}}else if(d.type==='flag'){const player=state.players.get(d.id);if(player){player.flagText=d.flagText;player.flagImage=d.flagImage||'';}if(d.id===state.id&&state.me){state.me.flagText=d.flagText;state.me.flagImage=d.flagImage||'';currentFlagText=d.flagText;currentFlagImageId=d.flagImage||'';refreshFlagButton();}}else if(d.type==='badge'){const person=state.players.get(d.id);if(person){person.badgeTier=d.badgeTier;person.badgeSeconds=d.badgeSeconds;if(d.id===state.id&&state.me){state.me.badgeTier=d.badgeTier;state.me.badgeSeconds=d.badgeSeconds;}renderOnlinePlayers();}}else if(d.type==='profile'){state.players.set(d.player.id,d.player);if(d.player.id===state.id){state.me=d.player;refreshProfilePreview();refreshRhythmReactionButton();if(!$('punkShop').classList.contains('hidden')||!$('mdWardrobe').hidden)refreshPunkShop()}renderOnlinePlayers()}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers()}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue,d.history);else if(d.type==='slam')applySlam(d.slam,d.cooldownUntil);else if(d.type==='slam-go')onSlamGo(d);else if(d.type==='slam-impact')spawnSlamDust(d.x,d.y);else if(d.type==='toast-spark')spawnToastSpark(d.x,d.y);else if(d.type==='cheer'&&d.playerId!==state.id&&state.audioEnabled)playCheer();else if(d.type==='rockplay')applyRockPlay(d.event,d.rockCooldowns,d.rockRunningUntil);else if(d.type==='rockplay-go')onRockPlayGo(d);else if(d.type==='rockplay-cancel'){applyRockPlay(null,d.rockCooldowns,0);toast(d.reason||'인원이 부족해 취소됐어요.')} else if(d.type==='rhythm-state')applyRhythmState(d.rhythm);else if(d.type==='md-catalog')syncMdCatalog(d.items);else if(d.type==='music-booked')showBookingNotice(d.name,d.title);else if(d.type==='music-control')showMusicControlNotice(d.name,d.command);else if(d.type==='skip-vote')applySkipVote(d.vote,d.cooldownUntil);else if(d.type==='skip-vote-result')showSkipVoteResult(d);else if(d.type.startsWith('duo-'))handleDuoEvent(d)};state.es.onerror=()=>{ /* EventSource retries automatically; heartbeat repairs an expired session. */ }}
+// v231: server-driven festival notices. Entry notices display once on every
+// successful page entry (including refresh and auto-entry). SSE reconnects do
+// not re-open entry notices. Never interpret administrator text as HTML.
+const liveNoticeIds=new Set(),festivalPopupQueue=[];
+let festivalPopupActive=null,festivalPopupTimer=null,tickerTimer=null,tickerActive=false;
+const tickerQueue=[];
+function showFestivalPopup(){
+ if(festivalPopupActive||!festivalPopupQueue.length)return;
+ const item=festivalPopupQueue.shift();festivalPopupActive=item;
+ const host=$('festivalNoticePopup');
+ $('festivalNoticePopupTitle').textContent=item.title;
+ $('festivalNoticePopupBody').textContent=item.text;
+ $('festivalNoticePopupClose').textContent='확인';
+ host.hidden=false;
+ clearTimeout(festivalPopupTimer);
+ // Live broadcasts close automatically so they do not block the festival.
+ if(item.autoClose)festivalPopupTimer=setTimeout(closeFestivalPopup,14000);
+}
+function closeFestivalPopup(){
+ clearTimeout(festivalPopupTimer);festivalPopupTimer=null;
+ $('festivalNoticePopup').hidden=true;
+ festivalPopupActive=null;
+ showFestivalPopup();
+}
+$('festivalNoticePopupClose').addEventListener('click',closeFestivalPopup);
+function queueFestivalPopup(title,text,autoClose=false){
+ if(!text)return;
+ const item={title,text,autoClose};
+ if(autoClose){
+  // Admin's live broadcast takes priority over an unread entry notice.
+  if(festivalPopupActive){
+   clearTimeout(festivalPopupTimer);
+   festivalPopupQueue.unshift(festivalPopupActive);
+   festivalPopupActive=null;
+   $('festivalNoticePopup').hidden=true;
+  }
+  festivalPopupQueue.unshift(item);
+ }else festivalPopupQueue.push(item);
+ showFestivalPopup();
+}
+function playFestivalTicker(){
+ if(tickerActive||!tickerQueue.length)return;
+ tickerActive=true;
+ const text=tickerQueue.shift();
+ const outer=$('festivalNoticeTicker');const label=$('festivalNoticeTickerText');
+ label.textContent='📢  '+text;
+ const duration=Math.max(14,Math.min(36,11+text.length*.22));
+ outer.hidden=false;
+ label.style.animation='none';
+ // Force the CSS marquee to restart when successive notices use same element.
+ void label.offsetWidth;
+ label.style.animation=`festival-marquee ${duration}s linear forwards`;
+ clearTimeout(tickerTimer);
+ tickerTimer=setTimeout(()=>{outer.hidden=true;tickerActive=false;playFestivalTicker()},duration*1000+150);
+}
+function queueFestivalTicker(text){
+ if(!text)return;
+ tickerQueue.push(text);
+ if(tickerQueue.length>12)tickerQueue.shift();
+ playFestivalTicker();
+}
+function showEntryAnnouncements(items){
+ if(!Array.isArray(items)||!items.length)return;
+ const texts=items.map(n=>typeof n?.text==='string'?n.text.trim():'').filter(Boolean);
+ if(texts.length)queueFestivalPopup('📢 ONEseason 입장 공지',texts.join('\n\n'),false);
+}
+function handleLiveAnnouncement(event){
+ const text=String(event?.text||'').trim();if(!text)return;
+ const id=String(event.id||'');
+ if(id){if(liveNoticeIds.has(id))return;liveNoticeIds.add(id);if(liveNoticeIds.size>300)liveNoticeIds.clear();}
+ if(event.kind==='immediate')queueFestivalPopup('📣 ONEseason 전체 공지',text,true);
+ else if(event.kind==='ticker')queueFestivalTicker(text);
+}
+function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='snapshot'){state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);syncCrowdSurf(d.crowdSurf);if(Array.isArray(d.chat)){$('chatMessages').replaceChildren();d.chat.forEach(appendChat)};for(const id of duoVfx.keys())removeDuoVfx(id);activeDuos.clear();for(const duo of d.interactions||[])activeDuos.set(duo.id,duo);syncDuoStatus()}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){appendChat(d.entry);showBubble(d.entry)}else if(d.type==='move'){recordTrainLeader(d.player);state.players.set(d.player.id,d.player);if(d.player.id===state.id&&currentDuo())state.me={...d.player}}else if(d.type==='flag'){const player=state.players.get(d.id);if(player){player.flagText=d.flagText;player.flagImage=d.flagImage||'';}if(d.id===state.id&&state.me){state.me.flagText=d.flagText;state.me.flagImage=d.flagImage||'';currentFlagText=d.flagText;currentFlagImageId=d.flagImage||'';refreshFlagButton();}}else if(d.type==='badge'){const person=state.players.get(d.id);if(person){person.badgeTier=d.badgeTier;person.badgeSeconds=d.badgeSeconds;if(d.id===state.id&&state.me){state.me.badgeTier=d.badgeTier;state.me.badgeSeconds=d.badgeSeconds;}renderOnlinePlayers();}}else if(d.type==='profile'){state.players.set(d.player.id,d.player);if(d.player.id===state.id){state.me=d.player;refreshProfilePreview();refreshRhythmReactionButton();if(!$('punkShop').classList.contains('hidden')||!$('mdWardrobe').hidden)refreshPunkShop()}renderOnlinePlayers()}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers()}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue,d.history);else if(d.type==='slam')applySlam(d.slam,d.cooldownUntil);else if(d.type==='slam-go')onSlamGo(d);else if(d.type==='slam-impact')spawnSlamDust(d.x,d.y);else if(d.type==='toast-spark')spawnToastSpark(d.x,d.y);else if(d.type==='cheer'&&d.playerId!==state.id&&state.audioEnabled)playCheer();else if(d.type==='rockplay')applyRockPlay(d.event,d.rockCooldowns,d.rockRunningUntil);else if(d.type==='rockplay-go')onRockPlayGo(d);else if(d.type==='rockplay-cancel'){applyRockPlay(null,d.rockCooldowns,0);toast(d.reason||'인원이 부족해 취소됐어요.')} else if(d.type==='rhythm-state')applyRhythmState(d.rhythm);else if(d.type==='md-catalog')syncMdCatalog(d.items);else if(d.type==='music-booked')showBookingNotice(d.name,d.title);else if(d.type==='music-control')showMusicControlNotice(d.name,d.command);else if(d.type==='skip-vote')applySkipVote(d.vote,d.cooldownUntil);else if(d.type==='skip-vote-result')showSkipVoteResult(d);else if(d.type==='festival-notice')handleLiveAnnouncement(d);else if(d.type.startsWith('duo-'))handleDuoEvent(d)};state.es.onerror=()=>{ /* EventSource retries automatically; heartbeat repairs an expired session. */ }}
 function applySkipVote(vote,cooldownUntil){
  state.skipVote=vote||null;if(Number.isFinite(Number(cooldownUntil)))state.skipVoteCooldownUntil=Number(cooldownUntil);
  const overlay=$('skipVoteOverlay');overlay.hidden=!vote;updateSkipVoteUI();updateSharedMusicButtons();
@@ -905,7 +978,7 @@ function updateSkipVoteUI(){
 async function castSkipVote(choice){const vote=state.skipVote;if(!vote||!state.id)return;try{await post('music',{id:state.id,command:'vote-cast',voteId:vote.id,choice})}catch(e){toast(e.message)}}
 function showSkipVoteResult(d){applySkipVote(null,state.skipVoteCooldownUntil);let msg=d.passed?'✅ 과반수 찬성! 요청한 곡으로 이동합니다':d.reason==='timeout'?'투표 시간이 종료되어 현재 곡을 유지합니다':'투표가 부결되어 현재 곡을 유지합니다';notice(msg)}
 setInterval(()=>{updateSkipVoteUI();updateSharedMusicButtons()},500);
-let joining=false;async function join(options={}){const auto=Boolean(options?.auto);if(editingProfile)return updateProfile();if(joining)return;joining=true;manualExit=false;try{let d=await post('join',{sessionKey,pageId,badgeIdentity,flagText:currentFlagText,flagImage:currentFlagImageData,name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender,pattern:chosenPattern,sash:chosenSash,hairStyle:chosenHairStyle,hairColor:chosenHairColor});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);currentFlagImageId=state.me?.flagImage||'';state.pose=state.me?.pose||'stand';cameraFollowInitialized=false;state.players=new Map(d.players.map(p=>[p.id,p]));renderOnlinePlayers();refreshPunkShop();$('joinModal').classList.add('hidden');$('reopenJoin').hidden=true;$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='페스티벌 참가 중';$('avatarPreview').querySelector('b').style.background=chosenColor;saveProfile(state.me);applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);if(d.crowdSurf)syncCrowdSurf(d.crowdSurf);listen();$('audioModal').classList.add('hidden');setPersonalAudio(true);showMovementGuide();if(!auto)toast('ONEseason에 오신 것을 환영합니다!')}catch(e){if(auto)$('joinModal').classList.remove('hidden');$('joinError').textContent='입장 실패: '+(e?.message||'연결을 확인해주세요');console.error('ONEseason join error:',e)}finally{joining=false}}
+let joining=false;async function join(options={}){const auto=Boolean(options?.auto);if(editingProfile)return updateProfile();if(joining)return;joining=true;manualExit=false;try{let d=await post('join',{sessionKey,pageId,badgeIdentity,flagText:currentFlagText,flagImage:currentFlagImageData,name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender,pattern:chosenPattern,sash:chosenSash,hairStyle:chosenHairStyle,hairColor:chosenHairColor});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);currentFlagImageId=state.me?.flagImage||'';state.pose=state.me?.pose||'stand';cameraFollowInitialized=false;state.players=new Map(d.players.map(p=>[p.id,p]));renderOnlinePlayers();refreshPunkShop();$('joinModal').classList.add('hidden');$('reopenJoin').hidden=true;$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='페스티벌 참가 중';$('avatarPreview').querySelector('b').style.background=chosenColor;saveProfile(state.me);applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);if(d.crowdSurf)syncCrowdSurf(d.crowdSurf);listen();$('audioModal').classList.add('hidden');setPersonalAudio(true);showMovementGuide();showEntryAnnouncements(d.announcements?.entry);if(!auto)toast('ONEseason에 오신 것을 환영합니다!')}catch(e){if(auto)$('joinModal').classList.remove('hidden');$('joinError').textContent='입장 실패: '+(e?.message||'연결을 확인해주세요');console.error('ONEseason join error:',e)}finally{joining=false}}
 $('audioYes').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(true);toast(state.music.id?'음악 재생을 허용했어요':'음악이 등록되면 바로 재생돼요')};$('audioNo').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(false);toast('내 소리를 끈 상태로 입장했어요')};// First tap must save even if the nickname field currently has keyboard focus.
 // A pointerdown listener runs BEFORE Safari's keyboard dismissal can consume
 // the subsequent click. De-duplicate that click and block duplicate requests.

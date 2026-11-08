@@ -56,4 +56,12 @@
  </div>
 </div></div>
 <button id="reopenJoin" type="button" hidden>🎟 입장 화면 열기</button>
-<div aria-labelledby="audioModalTitle" aria-modal="true" class="modal hidden" id="audioModal" role="dialog"><div class="audio-box"><div class="audio-mark">♫</div><h2 id="audioModalTitle">음악을 재생할까요?</h2><p>입장과 함께 무대에서 재생 중인 음악을 들을 수 있어요.<br/>원하지 않으면 나중에 「음악 / 예약」에서 소리를 켤 수 있어요.</p><div class="audio-buttons"><button class="audio-yes" id="audioYes">🔊 허용</button><button class="audio-no" id="audioNo">아니오</button></div></div></div><div class="toast" id="toast"></div><script src="app.js" type="module"></script></body></html>
+<div aria-labelledby="audioModalTitle" aria-modal="true" class="modal hidden" id="audioModal" role="dialog"><div class="audio-box"><div class="audio-mark">♫</div><h2 id="audioModalTitle">음악을 재생할까요?</h2><p>입장과 함께 무대에서 재생 중인 음악을 들을 수 있어요.<br/>원하지 않으면 나중에 「음악 / 예약」에서 소리를 켤 수 있어요.</p><div class="audio-buttons"><button class="audio-yes" id="audioYes">🔊 허용</button><button class="audio-no" id="audioNo">아니오</button></div></div></div><div id="festivalNoticeTicker" class="festival-notice-ticker" role="status" aria-label="ONEseason 흐르는 공지" hidden>
+  <div class="festival-notice-tag">📢 공지사항</div><div class="festival-notice-window"><span id="festivalNoticeTickerText"></span></div>
+</div>
+<div id="festivalNoticePopup" class="festival-notice-popup" role="dialog" aria-modal="true" aria-labelledby="festivalNoticePopupTitle" hidden>
+  <div class="festival-notice-card"><div class="festival-notice-card-top"><strong id="festivalNoticePopupTitle">📢 ONEseason 공지</strong></div>
+    <p id="festivalNoticePopupBody"></p><button type="button" id="festivalNoticePopupClose">확인</button>
+  </div>
+</div>
+<div class="toast" id="toast"></div><script src="app.js" type="module"></script></body></html>
