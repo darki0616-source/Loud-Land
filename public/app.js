@@ -32,7 +32,7 @@ let headbangTapTimes=[],headbangHintShown=false,headbangMoveTimer=null;
 let slamMode=false,slam=null,slamCooldownUntil=0,slamMotion=null;
 let rockPlacementMode=null,rockPlay=null,rockCooldowns={circle:0,train:0,mosh:0,row:0,toast:0,surf:0,shoulder:0},rockRunningUntil=0,rockMotion=null,crowdSurfScene=null,toastSequence=null,freeTrainTrail=null,shoulderSequence=null;
 let chosenPattern='solid',chosenSash='none',chosenHairStyle='short',chosenHairColor='#4b3932';
-const hairStyles=[['short','가르마 숏컷'],['bob','짧은 보브'],['long','장발'],['buns','번 헤어'],['bob2','레이어드 단발'],['short2','더 짧은 사이드 숏컷'],['basic-short','기본 숏컷'],['basic-bob','기본 단발']];
+const hairStyles=[['short','가르마 숏컷'],['bob','단발'],['long','장발'],['buns','번 헤어'],['bob2','레이어드 단발'],['short2','더 짧은 사이드 숏컷'],['basic-short','기본 숏컷'],['basic-bob','기본 단발']];
 // Older custom styles are converted to the closest available Quaternius asset.
 const legacyHairMap={wavy:'long',ponytail:'buns',mohawk:'short',spiky:'short',curly:'bob',buzz:'basic-short'};
 const normalizeHairStyle=style=>hairStyles.some(([id])=>id===style)?style:(legacyHairMap[style]||'short');
@@ -3433,17 +3433,38 @@ const hairFit={
  short2:{width:1.90,height:1.12,depth:1.70,top:.895,forward:.008}
 };
 const hairAssetSources={bob2:'long',short2:'short'};
+// v210: The user's standalone 3D hair assets replace only bob and buns.
+// These dimensions were fitted to the existing chibi skull in front/side views.
+// Other styles retain their original Quaternius source and fit configuration.
+const customHairAssets={
+ bob:'/assets/hair/bob_custom.glb?v=210',
+ buns:'/assets/hair/buns_custom.glb?v=210'
+};
+const customHairFit={
+ bob:{width:1.82,height:1.58,depth:1.80,top:1.06,forward:.02},
+ buns:{width:2.35,height:1.65,depth:1.91,top:1.40,forward:.02}
+};
 function getHairAsset(style){
  style=normalizeHairStyle(style);
  const source=hairAssetSources[style]||style;
  if(!hairAssetCache.has(source)){
-  hairAssetCache.set(source,new Promise((resolve,reject)=>{
-   hairLoader.load('/assets/hair/'+source+'.gltf',g=>{
+  const load=(url,custom)=>new Promise((resolve,reject)=>{
+   hairLoader.load(url,g=>{
     g.scene.updateMatrixWorld(true);
     const bounds=new THREE.Box3().setFromObject(g.scene),size=bounds.getSize(new THREE.Vector3()),center=bounds.getCenter(new THREE.Vector3());
-    resolve({scene:g.scene,size,center});
+    if(bounds.isEmpty()||Math.min(size.x,size.y,size.z)<.001){reject(new Error('Empty hair geometry: '+url));return;}
+    resolve({scene:g.scene,size,center,custom});
    },undefined,reject);
-  }));
+  });
+  const customUrl=customHairAssets[source];
+  const promise=(customUrl
+   ?load(customUrl,true).catch(error=>{
+     console.warn('v210 hair unavailable; falling back to previous style:',source,error);
+     return load('/assets/hair/'+source+'.gltf',false);
+    })
+   :load('/assets/hair/'+source+'.gltf',false))
+  .catch(error=>{hairAssetCache.delete(source);throw error;});
+  hairAssetCache.set(source,promise);
  }
  return hairAssetCache.get(source);
 }
@@ -3546,9 +3567,9 @@ function fitImportedHairToHead(hair,holder,style){
 function attachImportedHair(neck,style,color){
  const holder=new THREE.Group();neck.add(holder);
  if(stageForeground)holder.layers.set(1);
- getHairAsset(style).then(({scene,size,center})=>{
+ getHairAsset(style).then(({scene,size,center,custom})=>{
   if(!neck.parent)return;
-  const hair=scene.clone(true),fit=hairFit[style];
+  const hair=scene.clone(true),fit=custom?customHairFit[style]:hairFit[style];
   const sx=fit.width/Math.max(size.x,.001);
   const sy=fit.height/Math.max(size.y,.001);
   const sz=fit.depth/Math.max(size.z,.001);
@@ -3567,16 +3588,23 @@ function attachImportedHair(neck,style,color){
    if(stageForeground)mesh.layers.set(1);
   });
   holder.add(hair);
-  // Transform hierarchy must be current before fitting model-space vertices.
-  holder.updateWorldMatrix(true,true);
-  const corrected=fitImportedHairToHead(hair,holder,style);
+  // These two imported hairstyles were measured directly against the head.
+  // Keep their sculpted strands intact (no corrective vertex stretching).
+  // Clone geometry per avatar because disposeAvatar() releases avatar meshes.
+  let corrected=0;
+  if(custom){
+   hair.traverse(mesh=>{if(mesh.isMesh&&mesh.geometry)mesh.geometry=mesh.geometry.clone();});
+  }else{
+   holder.updateWorldMatrix(true,true);
+   corrected=fitImportedHairToHead(hair,holder,style);
+   if(corrected===0)console.warn('Hair fit adjusted no vertices:',style);
+  }
   if(stageForeground)addForegroundLayer(hair); // async children need explicit layer setup
-  if(corrected===0)console.warn('Hair fit adjusted no vertices:',style);
  }).catch(err=>{console.warn('Hair asset load failed:',style,err)});
  return holder;
 }
-// The original four external assets are preloaded; new options reuse and
-// remap two of these source files, so there are no new asset dependencies.
+// Preload bob/buns from the new v210 GLBs; the other styles reuse
+// their existing Quaternius assets. A missing GLB falls back to the old hair.
 for(const style of ['short','bob','long','buns'])getHairAsset(style).catch(()=>{});
 // Rounded chibi avatar: larger soft head, painted-on face, short unified hairstyle,
 // surface-colored clothing, and inexpensive shoulder/elbow/hip/knee rig.
