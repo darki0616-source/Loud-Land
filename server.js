@@ -248,7 +248,7 @@ const hats=['none'];
 const hairStyles=['short','bob','long','buns','bob2','short2','basic-short','basic-bob'];
 const oldHairMap={wavy:'long',ponytail:'buns',mohawk:'short',spiky:'short',curly:'bob',buzz:'basic-short'};
 const safeHairStyle=v=>hairStyles.includes(v)?v:(oldHairMap[v]||'short');
-const hairColors=['#25222a','#4b3932','#85533e','#edc46b','#d34c53','#4d86d5','#9965c9','#e89bc2'];
+const hairColors=['#25222a','#4b3932','#85533e','#edc46b','#d34c53','#4d86d5','#9965c9','#e89bc2','#f8f8f5','#41bb58','#ff973e','#79e4cc'];
 function apparel(d,fallback={}){return {
  pattern:patterns.includes(d.pattern)?d.pattern:(fallback.pattern||'solid'),
  sash:sashes.includes(d.sash)?d.sash:(fallback.sash||'none'),
