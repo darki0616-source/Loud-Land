@@ -3460,13 +3460,16 @@ const customHairAssets={
 const customHairFit={
  bob:{width:1.82,height:1.58,depth:1.80,top:1.06,forward:.02},
  buns:{width:2.35,height:1.65,depth:1.91,top:1.40,forward:.02},
- verylong:{baked:true},
- hippie:{baked:true},
- ponytail:{baked:true},
- longpart:{baked:true},
- longshaggy:{baked:true},
- windswept:{baked:true},
- shaggy:{baked:true},
+ // v217: keep the seven user-supplied styles in their hand-fitted base pose,
+ // but DO run the head-shell push-out so any strands embedded in the live
+ // server avatar skull are moved outward automatically. Do NOT add scalp caps.
+ verylong:{baked:true,pushout:true,liner:false},
+ hippie:{baked:true,pushout:true,liner:false},
+ ponytail:{baked:true,pushout:true,liner:false},
+ longpart:{baked:true,pushout:true,liner:false},
+ longshaggy:{baked:true,pushout:true,liner:false},
+ windswept:{baked:true,pushout:true,liner:false},
+ shaggy:{baked:true,pushout:true,liner:false},
 };
 function getHairAsset(style){
  style=normalizeHairStyle(style);
@@ -3652,7 +3655,7 @@ function attachImportedHair(neck,style,color){
   // Many artist-sculpted hair downloads have open crowns or separated locks.
   // A close-fitting scalp liner hides exposed grey scalp from *every* camera
   // angle while the real strands remain a separate 3D shape with lit shading.
-  if(custom&&fit?.baked){
+  if(custom&&fit?.liner){
    const liner=makeScalpLiner(selectedHairColor,style);
    liner.name='ONEseasonFittedScalp';
    holder.add(liner);
@@ -3663,11 +3666,15 @@ function attachImportedHair(neck,style,color){
   // Keep their sculpted strands intact (no corrective vertex stretching).
   // Clone geometry per avatar because disposeAvatar() releases avatar meshes.
   let corrected=0;
+  holder.updateWorldMatrix(true,true);
   if(custom){
+   if(fit?.pushout){
+    corrected=fitImportedHairToHead(hair,holder,style);
+    if(corrected===0)console.warn('Custom hair push-out adjusted no vertices:',style);
+   }
    // Geometry has already been cloned above, before its vertex colors were
    // removed, so do not clone it twice or discard that modification.
   }else{
-   holder.updateWorldMatrix(true,true);
    corrected=fitImportedHairToHead(hair,holder,style);
    if(corrected===0)console.warn('Hair fit adjusted no vertices:',style);
   }
