@@ -3505,12 +3505,10 @@ const stringInstrumentConfig={
   neckHand:[.51,.80,.90],strumHand:[-.48,.36,.91],strumAmplitude:.19
  },
  bassguitar:{
-  url:'/assets/instruments/bass_v221.glb?v=221',
-  // v229: the bass has its original long axis along +X whereas the electric
-  // guitar's neck points along +Y. Add 90 degrees ONLY to compensate for the
-  // model's source orientation: both instruments then share the same VISIBLE
-  // tilt, torso-local placement, size and left/right hand targets.
-  scale:1.22,angle:-1.18+Math.PI/2,rotX:0,rotY:0,offset:[-.05,.67,.78],
+  // v230: new user-supplied Gibson-style bass; the neck follows +Y, like
+  // the electric guitar, so NO 90-degree compensation is needed anymore.
+  url:'/assets/instruments/bass_v230.glb?v=230',
+  scale:1.22,angle:-1.18,rotX:0,rotY:0,offset:[-.05,.67,.78],
   neckHand:[.51,.80,.90],strumHand:[-.48,.36,.91],strumAmplitude:.19
  }
 };
@@ -3562,10 +3560,9 @@ function attachStringInstrumentToAvatar(avatar,kind){
   P.upper.add(pivot);pivot.position.set(...config.offset);
   P.stringInstrumentPivots[kind]=pivot;
   const fallback=makeFallbackStringInstrument(kind);
-  // Use the same per-instrument angle even if an imported GLB fails to load.
-  // Fallback neck points along +Y; imported bass neck points along +X.
-  // Rotate the fallback bass 90 degrees to keep its neck on the same side.
-  fallback.rotation.z=kind==='bassguitar'?config.angle-Math.PI/2:config.angle;
+  // v230: both source instruments now point their neck along +Y.
+  // The fallback uses the same tilt if a GLB cannot be loaded.
+  fallback.rotation.z=config.angle;
   fallback.rotation.x=config.rotX||0;
   fallback.rotation.y=config.rotY||0;
   fallback.scale.setScalar(config.scale);
