@@ -32,9 +32,9 @@ let headbangTapTimes=[],headbangHintShown=false,headbangMoveTimer=null;
 let slamMode=false,slam=null,slamCooldownUntil=0,slamMotion=null;
 let rockPlacementMode=null,rockPlay=null,rockCooldowns={circle:0,train:0,mosh:0,row:0,toast:0,surf:0,shoulder:0},rockRunningUntil=0,rockMotion=null,crowdSurfScene=null,toastSequence=null,freeTrainTrail=null,shoulderSequence=null;
 let chosenPattern='solid',chosenSash='none',chosenHairStyle='short',chosenHairColor='#4b3932';
-const hairStyles=[['short','가르마 숏컷'],['bob','단발'],['long','장발'],['buns','번 헤어'],['bob2','레이어드 단발'],['short2','더 짧은 사이드 숏컷'],['basic-short','기본 숏컷'],['basic-bob','기본 단발'],['verylong','아주 긴머리'],['hippie','히피펌'],['ponytail','포니테일'],['longpart','가르마 장발'],['longshaggy','긴 더벅머리'],['windswept','바람머리'],['shaggy','더벅머리']];
+const hairStyles=[['short','가르마 숏컷'],['bob','단발'],['bob209','보브컷'],['long','장발'],['buns','번 헤어'],['bob2','레이어드 단발'],['short2','더 짧은 사이드 숏컷'],['verylong','히메컷'],['hippie','히피펌'],['ponytail','포니테일'],['longpart','가르마 장발'],['longshaggy','긴 더벅머리'],['windswept','바람머리'],['shaggy','더벅머리']];
 // Older custom styles are converted to the closest available Quaternius asset.
-const legacyHairMap={wavy:'long',ponytail:'buns',mohawk:'short',spiky:'short',curly:'bob',buzz:'basic-short'};
+const legacyHairMap={wavy:'long',mohawk:'short',spiky:'short',curly:'bob209',buzz:'short','basic-short':'short','basic-bob':'bob209'};
 const normalizeHairStyle=style=>hairStyles.some(([id])=>id===style)?style:(legacyHairMap[style]||'short');
 const hairColors=[['검정','#25222a'],['진갈색','#4b3932'],['갈색','#85533e'],['금발','#edc46b'],['빨강','#d34c53'],['파랑','#4d86d5'],['보라','#9965c9'],['분홍','#e89bc2'],['흰색','#f8f8f5'],['초록색','#41bb58'],['주황색','#ff973e'],['민트색','#79e4cc']];
 let chosenColor=palette[0],chosenGender='male',toastTimer;const avatars=new Map();const activeBubbles=new Map();
@@ -3435,6 +3435,7 @@ const hairFit={
  // and shorten that specific asset; use the scalp liner to close its opening.
  short:{width:1.95,height:1.31,depth:1.85,top:.970,forward:.020},
  bob:{width:1.82,height:1.13,depth:1.76,top:.785,forward:.000},
+ bob209:{width:1.82,height:1.13,depth:1.76,top:.785,forward:.000},
  long:{width:2.16,height:2.30,depth:2.04,top:.915,forward:.030},
  buns:{width:2.36,height:1.62,depth:2.17,top:1.005,forward:.020},
  // Two distinct shape variations made from the licensed Quaternius assets.
@@ -3443,6 +3444,8 @@ const hairFit={
  short2:{width:1.90,height:1.12,depth:1.70,top:.895,forward:.008}
 };
 const hairAssetSources={bob2:'long',short2:'short'};
+// The v209 '짧은 보브' uses the original bob.gltf, not the current custom '단발' GLB.
+const legacyHairGltfFiles={bob209:'bob'};
 // v210: The user's standalone 3D hair assets replace only bob and buns.
 // These dimensions were fitted to the existing chibi skull in front/side views.
 // Other styles retain their original Quaternius source and fit configuration.
@@ -3494,7 +3497,7 @@ function getHairAsset(style){
      const fallback=['verylong','hippie','ponytail','longpart','longshaggy','windswept','shaggy'].includes(source)?'long':source;
      return load('/assets/hair/'+fallback+'.gltf',false);
     })
-   :load('/assets/hair/'+source+'.gltf',false))
+   :load('/assets/hair/'+(legacyHairGltfFiles[source]||source)+'.gltf',false))
   .catch(error=>{hairAssetCache.delete(source);throw error;});
   hairAssetCache.set(source,promise);
  }
@@ -3573,7 +3576,7 @@ function fitImportedHairToHead(hair,holder,style){
    }
    // Bob-specific cling fit: bring side/crown verts ONTO the head shell so
    // the hairstyle no longer hovers away from the cheeks and temples.
-   if(style==='bob'){
+   if(style==='bob'||style==='bob209'){
     const inBobBand = local.y>-.02 && local.y<.92 && Math.abs(local.x)<.95 && Math.abs(local.z)<.82;
     const isTempleOrCrown = Math.abs(local.x)>.24 || local.y>.36;
     if(inBobBand && isTempleOrCrown && ellipsoidRadius>.78 && ellipsoidRadius<1.25){
@@ -3686,7 +3689,7 @@ function attachImportedHair(neck,style,color){
 // their existing Quaternius assets. A missing GLB falls back to the old hair.
 // v215: preload only the small legacy/default styles. The seven user-provided
 // GLBs are large, so download them on selection rather than blocking entry.
-for(const style of ['short','bob','long','buns'])getHairAsset(style).catch(()=>{});
+for(const style of ['short','bob','bob209','long','buns'])getHairAsset(style).catch(()=>{});
 // Rounded chibi avatar: larger soft head, painted-on face, short unified hairstyle,
 // surface-colored clothing, and inexpensive shoulder/elbow/hip/knee rig.
 function makeAvatar(p){
