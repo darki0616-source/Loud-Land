@@ -3506,13 +3506,12 @@ const stringInstrumentConfig={
  },
  bassguitar:{
   url:'/assets/instruments/bass_v221.glb?v=221',
-  // Bass GLB's long axis is local +X (not +Y like the guitar). A ~.60
-  // rotation places its neck at right-up, preserving the v224 inward tilt.
-  // v227: invert the tilt so the viewer's left side rises and the right
-  // side drops. Maintain the inward-facing yaw and overall height/size.
-  scale:1.18,angle:-0.60,rotX:0.00,rotY:0.52,offset:[-.07,.54,.79],
-  // Right hand remains on the lower neck, left hand strums the raised body.
-  neckHand:[.60,.35,.89],strumHand:[-.57,.53,1.02],strumAmplitude:.16
+  // v229: the bass has its original long axis along +X whereas the electric
+  // guitar's neck points along +Y. Add 90 degrees ONLY to compensate for the
+  // model's source orientation: both instruments then share the same VISIBLE
+  // tilt, torso-local placement, size and left/right hand targets.
+  scale:1.22,angle:-1.18+Math.PI/2,rotX:0,rotY:0,offset:[-.05,.67,.78],
+  neckHand:[.51,.80,.90],strumHand:[-.48,.36,.91],strumAmplitude:.19
  }
 };
 function getStringInstrumentTemplate(kind){
@@ -3628,15 +3627,15 @@ function makeFallbackVocalMic(){
  const pole=new THREE.Mesh(new THREE.CylinderGeometry(.028,.036,1.98,10),metal);
  pole.position.y=1.08;stand.add(pole);
  const boom=new THREE.Mesh(new THREE.CylinderGeometry(.030,.030,.48,10),metal);
- boom.rotation.x=Math.PI/2;boom.position.set(0,2.10,.20);stand.add(boom);
+ boom.rotation.x=-Math.PI/2;boom.position.set(0,2.10,-.20);stand.add(boom);
  const head=new THREE.Mesh(new THREE.CapsuleGeometry(.09,.14,5,12),grille);
- head.rotation.x=Math.PI/2;head.position.set(0,2.12,.45);stand.add(head);
+ head.rotation.x=-Math.PI/2;head.position.set(0,2.12,-.45);stand.add(head);
  return stand;
 }
 function attachVocalMicToAvatar(avatar){
  const P=avatar.parts;
  if(!P.vocalMicPivot){
-  const pivot=new THREE.Group();pivot.position.set(0,0,.58);
+  const pivot=new THREE.Group();pivot.position.set(0,0,.92);
   avatar.root.add(pivot);P.vocalMicPivot=pivot;
   P.vocalMicFallback=makeFallbackVocalMic();pivot.add(P.vocalMicFallback);
   if(stageForeground)addForegroundLayer(P.vocalMicFallback);
@@ -3649,7 +3648,7 @@ function attachVocalMicToAvatar(avatar){
   // GLB is two metres tall, centred at its midpoint. Base on the ground,
   // rotate the mic head toward +Z, in front of the singer's mouth.
   model.scale.setScalar(1.13);
-  model.rotation.y=-Math.PI/2;
+  model.rotation.y=Math.PI/2;
   model.position.set(0,1.14,0);
   model.traverse(obj=>{if(obj.isMesh){obj.castShadow=false;obj.receiveShadow=true;}});
   P.vocalMicPivot.add(model);P.vocalMicModel=model;
@@ -5020,8 +5019,8 @@ function animateAvatar(a,p,t){
   set('leftHip',-.04);set('rightHip',-.04);
   set('leftKnee',.08);set('rightKnee',.08);
   // Arm reach stays inside the chibi two-bone IK length (0.79 each).
-  leftHandTarget=new THREE.Vector3(-.10,.45,.57);
-  rightHandTarget=new THREE.Vector3(.10,.32,.57);
+  leftHandTarget=new THREE.Vector3(-.10,.45,.72);
+  rightHandTarget=new THREE.Vector3(.10,.32,.72);
   ikMode='vocal';
  }
  if(act==='drum'){
