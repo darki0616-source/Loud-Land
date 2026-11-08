@@ -717,10 +717,10 @@ setInterval(async()=>{if(!state.id||manualExit)return;try{const r=await fetch('/
 window.addEventListener('online',()=>{if(state.id&&!manualExit)restoreConnection()});
 function restoreConnection(){if(!state.id)return;listen();fetch('/api/heartbeat',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id:state.id})}).then(r=>{if(r.status===401)return restoreSession()}).catch(()=>{})}
 
-function applyMusic(m,serverNow,queue,history){const oldMusic=state.music;state.music=m;if(Array.isArray(queue))state.queue=queue;if(Array.isArray(history))state.history=history;updateFestivalBoard();renderQueue();if(serverNow)state.serverDelta=serverNow-Date.now();$('songTitle').textContent=m.id?m.title||'유튜브 영상':'등록된 음악 없음';$('songCredit').textContent=m.id?`DJ ${m.changedBy||'알 수 없음'} · ${m.paused?'일시정지':'재생 중'}`:'첫 번째 DJ가 되어보세요';$('screenPlaceholder').style.display=m.id?'none':'flex';updateSharedMusicButtons();if(oldMusic?.id!==m.id||oldMusic?.token!==m.token||oldMusic?.startedAt!==m.startedAt||oldMusic?.paused!==m.paused)syncHeadbangSong();updateHeadbangControls();syncVideo(true)}
+function applyMusic(m,serverNow,queue,history){const oldMusic=state.music;state.music=m;if(Array.isArray(queue))state.queue=queue;if(Array.isArray(history))state.history=history;updateFestivalBoard();renderQueue();if(serverNow)state.serverDelta=serverNow-Date.now();$('songTitle').textContent=m.id?m.title||'유튜브 영상':'등록된 음악 없음';$('songCredit').textContent=m.id?`DJ ${m.changedBy||'알 수 없음'} · ${m.isLive?'🔴 LIVE · ':''}${m.paused?'일시정지':'재생 중'}`:'첫 번째 DJ가 되어보세요';$('screenPlaceholder').style.display=m.id?'none':'flex';updateSharedMusicButtons();if(oldMusic?.id!==m.id||oldMusic?.token!==m.token||oldMusic?.startedAt!==m.startedAt||oldMusic?.paused!==m.paused)syncHeadbangSong();updateHeadbangControls();syncVideo(true)}
 function updateSharedMusicButtons(){const side=$('skipMusic');if(side)side.disabled=!state.music?.id}
 
-function updateFestivalBoard(){let m=state.music||{};const title=document.getElementById('boardCurrent');const next=document.getElementById('boardNext');const status=document.getElementById('boardStatus');if(title)title.textContent=m.title||'현재 재생 중인 곡 없음';if(next)next.textContent=state.queue?.length?state.queue[0].title:'예약된 곡 없음';if(status)status.textContent=m.id?(m.paused?'일시정지':'공연 중'):'공연 대기 중';}
+function updateFestivalBoard(){let m=state.music||{};const title=document.getElementById('boardCurrent');const next=document.getElementById('boardNext');const status=document.getElementById('boardStatus');if(title)title.textContent=m.title||'현재 재생 중인 곡 없음';if(next)next.textContent=state.queue?.length?state.queue[0].title:'예약된 곡 없음';if(status)status.textContent=m.id?(m.paused?'일시정지':m.isLive?'🔴 생방송 중':'공연 중'):'공연 대기 중';}
 function renderQueue(){
  updateFestivalBoard();
  const upcoming=$('queueList'),history=$('historyList');
@@ -733,7 +733,7 @@ function renderQueue(){
   li.className='track-item '+(source==='now'?'track-current':'track-muted');
   const button=document.createElement('button');
   button.type='button';
-  button.textContent=(source==='now'?'▶ ':source==='history'?'↶ ':'♫ ')+(track.title||'제목 없는 곡')+(track.addedBy?' · '+track.addedBy:'');
+  button.textContent=(source==='now'?'▶ ':source==='history'?'↶ ':'♫ ')+(track.isLive?'🔴 LIVE · ':'')+(track.title||'제목 없는 곡')+(track.addedBy?' · '+track.addedBy:'');
   if(source!=='now'){
    button.title='이 곡을 재생할지 접속자 투표를 시작합니다';
    button.onclick=()=>musicCommand('vote-select',{source,index,videoId:track.id});
@@ -743,7 +743,7 @@ function renderQueue(){
   }
   li.append(button);container.append(li);
  };
- if(state.music?.id)addTrack(upcoming,{id:state.music.id,title:state.music.title,addedBy:state.music.changedBy},0,'now');
+ if(state.music?.id)addTrack(upcoming,{id:state.music.id,title:state.music.title,addedBy:state.music.changedBy,isLive:state.music.isLive},0,'now');
  else{
   const li=document.createElement('li');li.className='track-empty';li.textContent='현재 재생 중인 곡이 없습니다';upcoming.append(li);
  }
@@ -758,8 +758,25 @@ function renderQueue(){
   const li=document.createElement('li');li.className='track-empty';li.textContent='이전 재생 기록이 없습니다';history.append(li);
  }
 }
-let reportedToken=0;
-function reportDuration(){if(!state.id||!state.ytReady||!state.music.id)return;const duration=state.yt.getDuration();if(duration>1&&reportedToken!==state.music.token){reportedToken=state.music.token;post('music',{id:state.id,command:'duration',token:state.music.token,duration}).catch(()=>{})}}
+let reportedToken=0,lastLiveEdgeCheck=0;
+function reportDuration(){
+ if(!state.id||!state.ytReady||!state.music.id||state.music.isLive)return;
+ const duration=state.yt.getDuration();
+ if(duration>1&&reportedToken!==state.music.token){reportedToken=state.music.token;post('music',{id:state.id,command:'duration',token:state.music.token,duration}).catch(()=>{})}
+}
+function syncLiveEdge(){
+ // For a livestream the iframe's duration is elapsed broadcast time, NOT the
+ // VOD duration; only seek when clearly behind, and never send it to /duration.
+ if(!state.music?.isLive||!state.ytReady||state.yt.getPlayerState()!==1)return;
+ const now=Date.now();if(now-lastLiveEdgeCheck<15000)return;
+ lastLiveEdgeCheck=now;
+ try{
+  const end=state.yt.getDuration(),at=state.yt.getCurrentTime();
+  if(Number.isFinite(end)&&end>0&&Number.isFinite(at)&&end-at>22){
+   state.yt.seekTo(Math.max(0,end-4),true);
+  }
+ }catch(error){console.warn('LIVE edge sync',error)}
+}
 // Local-only mix. Keep the YouTube player's playback going silently during
 // rhythm gameplay; muting is not broadcast to other festival participants.
 function applyFestivalAudioMix(){
@@ -770,23 +787,29 @@ function applyFestivalAudioMix(){
  }catch(e){console.warn('local audio mix',e);}
 }
 function syncVideo(force=false){
- let m=state.music;
+ const m=state.music;
  if(!m.id||!state.ytReady)return;
- let sec=m.paused?m.position:Math.max(0,(Date.now()+state.serverDelta-m.startedAt)/1000);
+ const live=m.isLive===true;
+ const sec=m.paused?m.position:Math.max(0,(Date.now()+state.serverDelta-m.startedAt)/1000);
  try{
   if(state.lastTrack!==String(m.token)+':'+m.id){
-   state.lastTrack=String(m.token)+':'+m.id;reportedToken=0;
+   state.lastTrack=String(m.token)+':'+m.id;reportedToken=0;lastLiveEdgeCheck=0;
    applyFestivalAudioMix();
-   state.yt.loadVideoById({videoId:m.id,startSeconds:sec});
+   // LIVE: omit startSeconds. YouTube starts at the CURRENT broadcast point,
+   // rather than seeking by the elapsed time since ONEseason queued the link.
+   if(live)state.yt.loadVideoById({videoId:m.id});
+   else state.yt.loadVideoById({videoId:m.id,startSeconds:sec});
    return;
   }
-  if(force||Math.abs(state.yt.getCurrentTime()-sec)>3)state.yt.seekTo(sec,true);
+  // Only VOD uses ONEseason's elapsed song time and periodic seekTo sync.
+  if(!live&&(force||Math.abs(state.yt.getCurrentTime()-sec)>3))state.yt.seekTo(sec,true);
   applyFestivalAudioMix();
   if(m.paused)state.yt.pauseVideo();
   else if(state.yt.getPlayerState()!==1)state.yt.playVideo();
+  if(live)syncLiveEdge();
  }catch(e){console.warn(e);}
 }
-window.onYouTubeIframeAPIReady=()=>{state.yt=new YT.Player('youtubePlayer',{height:'100%',width:'100%',playerVars:{playsinline:1,controls:1,rel:0,origin:location.origin},events:{onReady:()=>{state.ytReady=true;syncVideo(true)},onStateChange:e=>{if(e.data===YT.PlayerState.PLAYING||e.data===YT.PlayerState.CUED)reportDuration();if(e.data===YT.PlayerState.ENDED&&state.id&&state.music.id)post('music',{id:state.id,command:'ended',token:state.music.token}).catch(()=>{})},onError:()=>toast('영상이 임베드 재생을 허용하지 않습니다')}})};
+window.onYouTubeIframeAPIReady=()=>{state.yt=new YT.Player('youtubePlayer',{height:'100%',width:'100%',playerVars:{playsinline:1,controls:1,rel:0,origin:location.origin},events:{onReady:()=>{state.ytReady=true;syncVideo(true)},onStateChange:e=>{if(e.data===YT.PlayerState.PLAYING||e.data===YT.PlayerState.CUED)reportDuration();if(e.data===YT.PlayerState.PLAYING)syncLiveEdge();if(e.data===YT.PlayerState.ENDED&&state.id&&state.music.id)post('music',{id:state.id,command:'ended',token:state.music.token}).catch(()=>{})},onError:()=>toast('영상이 임베드 재생을 허용하지 않습니다')}})};
 async function musicCommand(command,extra={}){if(!state.id)return toast('먼저 입장해주세요');try{let d=await post('music',{id:state.id,command,...extra});applyMusic(d.music,d.serverNow,d.queue,d.history);toast('공유 음악이 업데이트되었습니다')}catch(e){toast(e.message)}}
 // YouTube search: display cards with safe textContent and enqueue through
 // the same queue endpoint as pasted links (no new playback code).
@@ -811,14 +834,14 @@ async function searchYouTube(){
    const row=document.createElement('div');row.className='yt-search-item';
    const img=document.createElement('img');img.src=item.thumb;img.alt='';img.loading='lazy';img.referrerPolicy='no-referrer';
    const detail=document.createElement('div');detail.className='yt-search-item-text';
-   const title=document.createElement('strong');title.textContent=item.title;
+   const title=document.createElement('strong');title.textContent=(item.isLive?'🔴 LIVE · ':'')+item.title;
    const channel=document.createElement('small');channel.textContent=item.channel;
    detail.append(title,channel);
    const add=document.createElement('button');add.type='button';add.textContent='예약';
    add.onclick=async()=>{
     if(!state.id)return toast('입장 후 예약할 수 있어요.');
     add.disabled=true;add.textContent='등록 중';
-    try{const d=await post('music',{id:state.id,command:'enqueue',url:'https://www.youtube.com/watch?v='+item.id});applyMusic(d.music,d.serverNow,d.queue,d.history);add.textContent='예약 완료';toast('음악을 예약했어요.');}
+    try{const d=await post('music',{id:state.id,command:'enqueue',url:'https://www.youtube.com/watch?v='+item.id,isLive:item.isLive===true});applyMusic(d.music,d.serverNow,d.queue,d.history);add.textContent='예약 완료';toast('음악을 예약했어요.');}
     catch(e){add.disabled=false;add.textContent='예약';toast(e.message)}
    };
    row.append(img,detail,add);list.append(row);
@@ -828,7 +851,7 @@ async function searchYouTube(){
 }
 $('ytSearchButton').addEventListener('click',searchYouTube);
 $('ytSearchInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();searchYouTube()}});
-$('playLink').onclick=()=>musicCommand('enqueue',{url:$('videoUrl').value});$('skipMusic').onclick=()=>musicCommand('skip');$('skipVoteYes').onclick=()=>castSkipVote('yes');$('skipVoteNo').onclick=()=>castSkipVote('no');function updatePersonalAudioButton(){
+$('playLink').onclick=()=>musicCommand('enqueue',{url:$('videoUrl').value,isLive:$('ytLiveToggle').checked});$('skipMusic').onclick=()=>musicCommand('skip');$('skipVoteYes').onclick=()=>castSkipVote('yes');$('skipVoteNo').onclick=()=>castSkipVote('no');function updatePersonalAudioButton(){
  const btn=$('enableAudio');
  if(btn){
   btn.textContent=state.audioEnabled?'🔇 내 소리 끄기':'🔊 내 소리 켜기';
@@ -6284,7 +6307,7 @@ function tick(t){
  }
 }
 function resize(){let w=host.clientWidth,h=host.clientHeight;if(!w||!h)return;camera.aspect=w/h;camera.updateProjectionMatrix();renderer.setSize(w,h,false);cssRenderer.setSize(w,h);if(stageForeground)stageForeground.setSize(w,h,false)}new ResizeObserver(resize).observe(host);resize();requestAnimationFrame(tick);
-setInterval(()=>{syncVideo();reportDuration();let m=state.music;if(!m.id)return;let sec=m.paused?m.position:(Date.now()+state.serverDelta-m.startedAt)/1000;let dur=state.ytReady?state.yt.getDuration():0;$('progressFill').style.width=dur?Math.min(100,sec/dur*100)+'%':'0%'},5000);
+setInterval(()=>{syncVideo();reportDuration();let m=state.music;if(!m.id)return;let sec=m.paused?m.position:(Date.now()+state.serverDelta-m.startedAt)/1000;let dur=state.ytReady?state.yt.getDuration():0;$('progressFill').style.width=m.isLive?'100%':dur?Math.min(100,sec/dur*100)+'%':'0%'},5000);
 window.addEventListener('pagehide',()=>{if(state.id)navigator.sendBeacon('/api/leave',new Blob([JSON.stringify({id:state.id,pageId})],{type:'application/json'}))});
 
 const ytScript=document.createElement('script');ytScript.src='https://www.youtube.com/iframe_api';document.head.appendChild(ytScript);

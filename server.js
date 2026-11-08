@@ -41,9 +41,9 @@ function slamUpdate(){broadcast({type:'slam',slam:publicSlam(),cooldownUntil:sla
 
 // Quick replies remain available, and players may also send short free-text messages.
 const MAX_CHAT_LENGTH=80;
-let music = {id:'', title:'', startedAt:0, paused:true, position:0, changedBy:'', token:0, duration:0};
+let music = {id:'', title:'', startedAt:0, paused:true, position:0, changedBy:'', token:0, duration:0, isLive:false};
 const queue=[]; const history=[]; let nextTrackToken=1;
-function trackRef(t){return t&&{id:t.id,title:t.title,addedBy:t.addedBy}}
+function trackRef(t){return t&&{id:t.id,title:t.title,addedBy:t.addedBy,isLive:t.isLive===true}}
 // Choosing a specific queued or previously played track requires a strict-majority vote.
 // Advancing to the next queued track is an immediate action available to any visitor.
 const SKIP_VOTE_MS=20000; // Voting lasts up to 20s; no cooldown between votes.
@@ -246,8 +246,9 @@ function applySaved(d){
  if(Array.isArray(d.history))history.push(...d.history.filter(x=>x&&/^[\w-]{11}$/.test(x.id||'')).slice(-50));
  if(Array.isArray(d.queue))queue.push(...d.queue.filter(x=>x&&/^[\w-]{11}$/.test(x.id||'')).slice(0,50));
  if(d.music&&/^[\w-]{11}$/.test(d.music.id||'')){
-  music={...music,...d.music};
-  if(!music.paused)music.position=Math.max(0,(Date.now()-Number(music.startedAt||Date.now()))/1000);
+  music={...music,...d.music,isLive:d.music.isLive===true};
+  if(music.isLive){music.duration=0;music.position=0;}
+  if(!music.paused)music.position=music.isLive?0:Math.max(0,(Date.now()-Number(music.startedAt||Date.now()))/1000);
   music.paused=true; // Never consume the queue while nobody is present.
  }
  nextTrackToken=Math.max(1,Number(d.nextTrackToken)||1,Number(music.token||0)+1);
@@ -281,14 +282,14 @@ function saveNow(){
  return saveChain;
 }
 function scheduleSave(){clearTimeout(saveTimeout);saveTimeout=setTimeout(()=>{void saveNow()},120);saveTimeout.unref()}
-function pauseForEmpty(){if(players.size===0&&music.id&&!music.paused){music.position=Math.max(0,(Date.now()-music.startedAt)/1000);music.paused=true;scheduleSave()}}
-function resumeForFirst(){if(players.size===1&&music.id&&music.paused){music.startedAt=Date.now()-Math.max(0,music.position||0)*1000;music.paused=false;scheduleSave()}}
+function pauseForEmpty(){if(players.size===0&&music.id&&!music.paused){music.position=music.isLive?0:Math.max(0,(Date.now()-music.startedAt)/1000);music.paused=true;scheduleSave()}}
+function resumeForFirst(){if(players.size===1&&music.id&&music.paused){music.startedAt=music.isLive?Date.now():Date.now()-Math.max(0,music.position||0)*1000;music.paused=false;scheduleSave()}}
 process.on('SIGTERM',()=>{pauseForEmpty();clearTimeout(saveTimeout);Promise.race([saveNow(),new Promise(r=>setTimeout(r,2500))]).finally(()=>server.close(()=>process.exit(0)))});
 
 const musicState=()=>({music,queue:queue.map(trackRef),history:history.map(trackRef),serverNow:Date.now()});
-function nextTrack(){if(skipVote)finishSkipVote(false,'track-changed');if(music.id){history.push({id:music.id,title:music.title,addedBy:music.changedBy});if(history.length>50)history.shift()}const entry=queue.shift();if(entry){music={id:entry.id,title:entry.title,startedAt:Date.now(),paused:false,position:0,changedBy:entry.addedBy,token:nextTrackToken++,duration:0}}else{music={id:'',title:'',startedAt:0,paused:true,position:0,changedBy:'',token:nextTrackToken++,duration:0}}broadcast({type:'music',...musicState()});scheduleSave()}
+function nextTrack(){if(skipVote)finishSkipVote(false,'track-changed');if(music.id){history.push({id:music.id,title:music.title,addedBy:music.changedBy,isLive:music.isLive===true});if(history.length>50)history.shift()}const entry=queue.shift();if(entry){music={id:entry.id,title:entry.title,startedAt:Date.now(),paused:false,position:0,changedBy:entry.addedBy,token:nextTrackToken++,duration:0,isLive:entry.isLive===true}}else{music={id:'',title:'',startedAt:0,paused:true,position:0,changedBy:'',token:nextTrackToken++,duration:0,isLive:false}}broadcast({type:'music',...musicState()});scheduleSave()}
 // End-of-track fallback based on reported duration, independent of any one viewer.
-setInterval(()=>{if(music.id&&!music.paused&&music.duration>0&&(Date.now()-music.startedAt)/1000>music.duration+1)nextTrack()},1500).unref();
+setInterval(()=>{if(music.id&&!music.isLive&&!music.paused&&music.duration>0&&(Date.now()-music.startedAt)/1000>music.duration+1)nextTrack()},1500).unref();
 const colors = ['#ff747d','#67d8d1','#f9c463','#a8a0ff','#90dd81','#ff9ce1','#72b5ff','#eeeeee','#262631','#373943','#a5e1f9','#f1d9a7','#16171d'];
 const patterns=['solid','stripe','wide-stripe'];
 const sashes=['none','black','purple','red','green','black-check','red-check','yellow','blue','blue-check','yellow-check','purple-check','black-dot','red-dot','blue-dot','yellow-dot','purple-dot'];
@@ -371,12 +372,37 @@ async function youtubeSearch(query){
   const items=(payload.items||[]).filter(x=>/^[\w-]{11}$/.test(x?.id?.videoId||'')).map(x=>({
    id:x.id.videoId,title:String(x.snippet?.title||'제목 없음').slice(0,180),
    channel:String(x.snippet?.channelTitle||'').slice(0,100),
-   thumb:'https://i.ytimg.com/vi/'+x.id.videoId+'/mqdefault.jpg'
+   thumb:'https://i.ytimg.com/vi/'+x.id.videoId+'/mqdefault.jpg',
+   isLive:x.snippet?.liveBroadcastContent==='live'
   }));
   ytSearchCache.set(key,{time:Date.now(),items});
   if(ytSearchCache.size>100)ytSearchCache.delete(ytSearchCache.keys().next().value);
   return items;
  }finally{clearTimeout(timer)}
+}
+// v233: Detect active YouTube livestreams through the official videos.list API.
+// Without YOUTUBE_API_KEY, /live/ links or the visitor's explicit LIVE switch
+// still reliably identify a stream; never infer LIVE from title keywords.
+const ytLiveCache=new Map();
+function livePathHint(value){
+ try {const u=new URL(String(value||''));return /^(www\.)?(youtube\.com|m\.youtube\.com)$/.test(u.hostname)&&/^\/live\/[\w-]{11}\/?$/.test(u.pathname)}catch{return false}
+}
+async function youtubeIsLive(id){
+ if(!YOUTUBE_API_KEY)return null;
+ const cached=ytLiveCache.get(id);
+ if(cached&&Date.now()-cached.at<(cached.isLive?60000:300000))return cached.isLive;
+ const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),4200);
+ try{
+  const params=new URLSearchParams({part:'snippet,liveStreamingDetails',id,key:YOUTUBE_API_KEY});
+  const response=await fetch('https://www.googleapis.com/youtube/v3/videos?'+params.toString(),{signal:controller.signal});
+  if(!response.ok)return null;
+  const info=(await response.json()).items?.[0];
+  if(!info)return null;
+  const isLive=info.snippet?.liveBroadcastContent==='live'||!!(info.liveStreamingDetails?.actualStartTime&&!info.liveStreamingDetails?.actualEndTime);
+  ytLiveCache.set(id,{isLive,at:Date.now()});
+  if(ytLiveCache.size>256)ytLiveCache.delete(ytLiveCache.keys().next().value);
+  return isLive;
+ }catch{return null}finally{clearTimeout(timer)}
 }
 const videoTitleCache = new Map();
 async function getVideoTitle(id){
@@ -739,17 +765,20 @@ const server=http.createServer(async(req,res)=>{
         if(d.command==='enqueue'||d.command==='play'){
           const vid=videoId(d.url||d.videoId);if(!vid)return json(res,400,{error:'유효한 유튜브 링크를 입력하세요.'});
           if(queue.length>=50)return json(res,400,{error:'대기열은 최대 50곡입니다.'});
-          const entry={id:vid,title:await getVideoTitle(vid),addedBy:p.name};
+          const rawLink=d.url||d.videoId;
+          const [title,detectedLive]=await Promise.all([getVideoTitle(vid),youtubeIsLive(vid)]);
+          // Manual LIVE option and youtube.com/live/ links work without an API key.
+          const entry={id:vid,title,addedBy:p.name,isLive:d.isLive===true||livePathHint(rawLink)||detectedLive===true};
           // Always append to the shared queue; automatically start when nothing is playing.
           queue.push(entry);scheduleSave();if(!music.id)nextTrack();else broadcast({type:'music',...musicState()});
           broadcast({type:'music-booked',name:p.name,title:entry.title,videoId:entry.id,at:Date.now()});
         } else if(d.command==='duration'&&music.id&&Number(d.token)===music.token){
-          const duration=Number(d.duration);if(Number.isFinite(duration)&&duration>=2&&duration<=86400){music.duration=duration;scheduleSave();if(!music.paused&&(Date.now()-music.startedAt)/1000>duration+1)nextTrack()}
+          const duration=Number(d.duration);if(!music.isLive&&Number.isFinite(duration)&&duration>=2&&duration<=86400){music.duration=duration;scheduleSave();if(!music.paused&&(Date.now()-music.startedAt)/1000>duration+1)nextTrack()}
         }
         else if(d.command==='ended'&&music.id&&Number(d.token)===music.token){
           // A viewer may report ending a little early due to clock drift; don't skip prematurely.
           const elapsed=music.paused?music.position:(Date.now()-music.startedAt)/1000;
-          if(!music.duration||elapsed>=music.duration-3)nextTrack();
+          if(music.isLive||!music.duration||elapsed>=music.duration-3)nextTrack();
         }
         else if(d.command==='skip'){
           if(!music.id)return json(res,409,{error:'재생 중인 곡이 없습니다.'});
