@@ -3437,8 +3437,8 @@ const hairAssetSources={bob2:'long',short2:'short'};
 // These dimensions were fitted to the existing chibi skull in front/side views.
 // Other styles retain their original Quaternius source and fit configuration.
 const customHairAssets={
- bob:'/assets/hair/bob_custom.glb?v=210',
- buns:'/assets/hair/buns_custom.glb?v=210'
+ bob:'/assets/hair/bob_colorready.glb?v=212',
+ buns:'/assets/hair/buns_colorready.glb?v=212'
 };
 const customHairFit={
  bob:{width:1.82,height:1.58,depth:1.80,top:1.06,forward:.02},
@@ -3581,20 +3581,29 @@ function attachImportedHair(neck,style,color){
    fit.top-(center.y+size.y/2)*sy,
    -center.z*sz+fit.forward);
   if(mirrored)hair.rotation.y=-.12;
-  // v211: GLB hair meshes must not inherit any dark source material or
-  // texture. Give every mesh a fresh user-selected tint (including the two
-  // v210 custom GLBs). A small emissive contribution preserves the chosen
-  // hue under the festival's very dark nighttime lighting.
+  // v212: custom bob/buns must NOT multiply the chosen hair color by any
+  // imported vertex-color/texture/PBR data.  In the v210 assets COLOR_0 was
+  // embedded in the geometry.  The new GLBs omit it, and we also strip any
+  // unexpected color attribute from each cloned avatar mesh for safety.
+  // An unlit tinted material guarantees bright white/mint/orange/green are
+  // visible at night as well as day, independently from stage lighting.
   const selectedHairColor=hairColors.some(([,hex])=>hex===color)?color:'#4b3932';
   hair.traverse(mesh=>{
    if(!mesh.isMesh)return;
-   const tint=new THREE.Color(selectedHairColor);
-   mesh.material=new THREE.MeshStandardMaterial({
-    color:tint,emissive:tint.clone(),emissiveIntensity:.35,
-    roughness:.83,metalness:0,side:THREE.DoubleSide,
-    vertexColors:false
-   });
-   mesh.material.needsUpdate=true;
+   if(custom){
+    mesh.geometry=mesh.geometry.clone();
+    mesh.geometry.deleteAttribute('color');
+    mesh.material=new THREE.MeshBasicMaterial({
+     color:selectedHairColor,side:THREE.DoubleSide,
+     toneMapped:false,depthWrite:true,fog:true
+    });
+   }else{
+    const tint=new THREE.Color(selectedHairColor);
+    mesh.material=new THREE.MeshStandardMaterial({
+     color:tint,emissive:tint.clone(),emissiveIntensity:.35,
+     roughness:.83,metalness:0,side:THREE.DoubleSide,vertexColors:false
+    });
+   }
    mesh.castShadow=true;mesh.receiveShadow=true;
    if(stageForeground)mesh.layers.set(1);
   });
@@ -3604,7 +3613,8 @@ function attachImportedHair(neck,style,color){
   // Clone geometry per avatar because disposeAvatar() releases avatar meshes.
   let corrected=0;
   if(custom){
-   hair.traverse(mesh=>{if(mesh.isMesh&&mesh.geometry)mesh.geometry=mesh.geometry.clone();});
+   // Geometry has already been cloned above, before its vertex colors were
+   // removed, so do not clone it twice or discard that modification.
   }else{
    holder.updateWorldMatrix(true,true);
    corrected=fitImportedHairToHead(hair,holder,style);
