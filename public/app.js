@@ -2414,7 +2414,50 @@ const nearbyCity=[
  [-25,-74,9,14,9,3,5,-.04,1],[25,-74,9,14,9,3,5,.04,3],
  [39,-72,11,17,9,3,5,-.03,2],[53,-72,10,13,10,3,4,-.03,0]
 ];
-nearbyCity.forEach(v=>createBackdropBuilding(...v));
+// v204: user-provided apartment GLB replaces all outer-map buildings.
+// A single InstancedMesh shares one geometry and two texture maps across the
+// skyline, avoiding 30+ separate meshes/materials on mobile. The emissive
+// texture colors *only the existing glass areas* and is enabled at night.
+const importedCityEmissiveMaterials=[];
+new GLTFLoader().load('/assets/world/apart_side_optimized.glb?v=204',gltf=>{
+ const sourceMesh=gltf.scene.getObjectByProperty('isMesh',true)||gltf.scene.children.find(n=>n.isMesh);
+ if(!sourceMesh||!sourceMesh.geometry){
+  console.warn('외곽 건물 메시가 없어 기본 건물을 사용합니다.');
+  nearbyCity.forEach(v=>createBackdropBuilding(...v));return;
+ }
+ const bounds=new THREE.Box3().setFromObject(gltf.scene);
+ const size=bounds.getSize(new THREE.Vector3());
+ if(bounds.isEmpty()||Math.min(size.x,size.y,size.z)<.001){
+  console.warn('외곽 건물 크기를 읽지 못해 기본 건물을 사용합니다.');
+  nearbyCity.forEach(v=>createBackdropBuilding(...v));return;
+ }
+ const windows=sourceMesh.material.clone();
+ windows.metalness=.03;windows.roughness=.90;
+ windows.emissive.set('#ffffff');
+ windows.emissiveIntensity=skyPeriod==='night'?2.1:0;
+ windows.color.set(skyPeriod==='night'?'#a4b1c5':'#ffffff');
+ importedCityEmissiveMaterials.push(windows);
+ const city=new THREE.InstancedMesh(sourceMesh.geometry,windows,nearbyCity.length);
+ city.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+ city.frustumCulled=false; // Instances span both map edges; base mesh bounds are insufficient.
+ city.castShadow=false;city.receiveShadow=false;
+ const dummy=new THREE.Object3D();
+ const center=bounds.getCenter(new THREE.Vector3());
+ nearbyCity.forEach(([x,z,w,h,d,,,rot,variant],i)=>{
+  // Keep the original lots and ground level, with limited vertical stretch
+  // where a particularly tall building occupied the lot previously.
+  const sx=w/size.x,sz=d/size.z,sy=Math.min(h/size.y,sx*1.32);
+  dummy.position.set(x-center.x*sx,-bounds.min.y*sy+.015,z-center.z*sz);
+  dummy.scale.set(sx,sy,sz);
+  dummy.rotation.set(0,rot+(variant%2?Math.PI:0),0);
+  dummy.updateMatrix();city.setMatrixAt(i,dummy.matrix);
+ });
+ city.instanceMatrix.needsUpdate=true;
+ backdropGroup.add(city);
+},undefined,error=>{
+ console.warn('외곽 건물 GLB 로드 실패, 기본 건물을 사용합니다.',error);
+ nearbyCity.forEach(v=>createBackdropBuilding(...v));
+});
 // Recreate the dramatic v89 mountain silhouette, in a separate distant row.
 // Center mountains are shifted farther back so not a single building sits inside
 // their mesh footprint. Mountain height and broad shoulders match the v89 style.
@@ -2910,7 +2953,7 @@ importedMapleLoader.load('/assets/world/maple_tree.glb?v=203',gltf=>{
   scene.add(tree);
  });
 },undefined,error=>console.warn('양옆 나무 모델을 불러오지 못했습니다.',error));
-for(let x of [-46,47]){cube(5,2.8,3,mat('#bc7097'),x,1.6,15);cube(5.8,.35,4.1,mat('#f4c783'),x,3.2,15);let banner=new THREE.Mesh(new THREE.PlaneGeometry(4,1.1),label(x<0?'SNACKS':'MERCH',70,'#fbe9dc','#9e446f'));banner.position.set(x,2.2,16.56);scene.add(banner)}
+// v204: side SNACKS/MERCH kiosks removed; the separate MD shop stays.
 
 // v203: replace both side restroom buildings with the user's imported GLB.
 const importedRestroomLoader=new GLTFLoader();
@@ -2935,6 +2978,38 @@ importedRestroomLoader.load('/assets/world/rest_room.glb?v=203',gltf=>{
  });
 },undefined,error=>console.warn('화장실 모델을 불러오지 못했습니다.',error));
 const rhythmBooth=new THREE.Group();rhythmBooth.position.set(40,0,39);scene.add(rhythmBooth);const rb=(w,h,d,m,x,y,z)=>{const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);mesh.position.set(x,y,z);rhythmBooth.add(mesh);return mesh};rb(6.4,3.0,4.2,mat('#7a4ed9'),0,1.65,0);rb(7.2,.34,4.8,mat('#ffd36b'),0,3.28,0);rb(2.8,.95,.12,mat('#241736'),0,2.25,2.18);const rhythmBanner=new THREE.Mesh(new THREE.PlaneGeometry(4.9,1.16),label('BEAT BOOTH',64,'#fffaf1','#ff59bc'));rhythmBanner.position.set(0,2.25,2.45);rhythmBooth.add(rhythmBanner);const rhythmSign=new THREE.Mesh(new THREE.PlaneGeometry(5.2,.96),label('RHYTHM GAME',58,'#fff5ea','#4a2575'));rhythmSign.position.set(0,3.95,.12);rhythmBooth.add(rhythmSign);const rbFloor=new THREE.Mesh(new THREE.CircleGeometry(2.5,40),new THREE.MeshBasicMaterial({color:'#ff76c8',transparent:true,opacity:.22}));rbFloor.rotation.x=-Math.PI/2;rbFloor.position.set(0,.05,2.1);rhythmBooth.add(rbFloor);
+// v204: reuse the imported market-tent model for the rhythm booth too.
+// Its X-facing opening is rotated toward the audience (+Z) as for the MD shop.
+// All proximity checks still refer to the server's original beat-booth position.
+const rhythmBoothTargets=[];
+new GLTFLoader().load('/assets/world/market_tent_optimized.glb?v=202',gltf=>{
+ const tent=gltf.scene,bounds=new THREE.Box3().setFromObject(tent);
+ const size=bounds.getSize(new THREE.Vector3());
+ if(bounds.isEmpty()||Math.min(size.x,size.y,size.z)<.001){
+  console.warn('박자게임 텐트 메시의 크기를 읽을 수 없어 기존 게임부스를 유지합니다.');return;
+ }
+ const scale=4.85/size.y;
+ const center=bounds.getCenter(new THREE.Vector3());
+ const turn=-Math.PI/2;
+ const rotatedCenter=center.clone().applyAxisAngle(new THREE.Vector3(0,1,0),turn);
+ tent.rotation.y=turn;
+ tent.scale.setScalar(scale);
+ tent.position.set(-rotatedCenter.x*scale,-bounds.min.y*scale+.055,-rotatedCenter.z*scale);
+ const picks=[];
+ tent.traverse(node=>{if(node.isMesh){node.castShadow=false;node.receiveShadow=true;picks.push(node)}});
+ if(!picks.length)return;
+ for(const node of [...rhythmBooth.children])rhythmBooth.remove(node);
+ rhythmBooth.add(tent);
+ rhythmBoothTargets.push(...picks);
+ const frontZ=size.x*scale*.5+.12;
+ const title=new THREE.Mesh(new THREE.PlaneGeometry(4.4,.68),label('BEAT BOOTH',58,'#fffaf1','#4b286d'));
+ title.position.set(0,3.38,frontZ);rhythmBooth.add(title);rhythmBoothTargets.push(title);
+ const playSign=new THREE.Mesh(new THREE.PlaneGeometry(3.9,.6),label('RHYTHM GAME',52,'#fffaf1','#a6479b'));
+ playSign.position.set(0,2.57,frontZ+.018);rhythmBooth.add(playSign);rhythmBoothTargets.push(playSign);
+ const clickPanel=new THREE.Mesh(new THREE.PlaneGeometry(Math.max(4.0,size.z*scale*.92),3.65),
+  new THREE.MeshBasicMaterial({color:'#ffffff',transparent:true,opacity:0,depthWrite:false,side:THREE.DoubleSide}));
+ clickPanel.position.set(0,2.0,frontZ+.038);rhythmBooth.add(clickPanel);rhythmBoothTargets.push(clickPanel);
+},undefined,error=>console.warn('박자게임 텐트를 불러오지 못해 기존 부스를 사용합니다.',error));
 // Subtle festival bulbs across the red line: the end of the rock-play zone.
 // Positioned at z=18, NOT along or through the picnic row at z=28.
 const audienceLightBulbColors=['#ffdb8a','#fca5b5','#a8ecff','#c7f591'];
@@ -3235,6 +3310,7 @@ function updateEnvironment(force=false){
  hemi.color.set(p.hemiSky);hemi.groundColor.set(p.ground);hemi.intensity=p.hemi;
  grass.color.set(p.grass);sandMat.color.set(p.sand);wetSandMat.color.set(p.wet);oceanMat.color.set(p.ocean);oceanMat.emissive.set(p.ocean);oceanMat.emissive.multiplyScalar(phase==='night'?0.18:.05);
  buildingBodyMats.forEach((m,i)=>m.color.set(p.building).multiplyScalar([1,1.07,.96,1.12,1.02][i%5]));buildingRoofMats.forEach(m=>m.color.set(p.roof));buildingWindowMats.forEach(m=>{m.color.set(p.window);m.opacity=p.windowOpacity});mountainMats.forEach(m=>m.color.set(p.mountain));
+ importedCityEmissiveMaterials.forEach(m=>{m.emissiveIntensity=phase==='night'?2.1:0;m.color.set(phase==='night'?'#a4b1c5':'#ffffff')});
  sunOrb.material.color.set(p.sunColor);sunLight.color.set(p.sunLight);sunLight.intensity=p.sun;moonLight.intensity=p.moon;stageAccentFactor=p.stage;
  if(weatherBadge)weatherBadge.innerHTML=p.badge;
  let sunProgress=null;
@@ -5356,6 +5432,7 @@ gameTouchSurface.addEventListener('pointerup',e=>{
  const bounds=renderer.domElement.getBoundingClientRect();pointer.set(((e.clientX-bounds.left)/bounds.width)*2-1,-((e.clientY-bounds.top)/bounds.height)*2+1);
  groundRay.setFromCamera(pointer,camera);
  if(!rockPlacementMode&&!slamMode&&groundRay.intersectObjects(mdBoothTargets,false).length){openPunkShop();return;}
+ if(!rockPlacementMode&&!slamMode&&rhythmBoothTargets.length&&groundRay.intersectObjects(rhythmBoothTargets,false).length){if(nearRhythmBooth())openRhythmGame();else toast('박자게임 부스에 가까이 와주세요');return;}
  if(!groundRay.ray.intersectPlane(groundPlane,hit))return;
  const x=clampServerX(hit.x/.058+600),y=clampServerY((contractWorldZ(hit.z)-8)/.058+500);
  if(rockPlacementMode){
