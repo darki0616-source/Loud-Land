@@ -1044,7 +1044,7 @@ function handleDuoEvent(d){
  if(d.type==='duo-end'){finishDuo(d.id);return}
 }
 setInterval(syncDuoStatus,250);
-const sustainedReactions=new Set(['peace','jump','run','headbang','buriburi','groove','dougie','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','marshmallow','putyourhandsup','nightfirework','heartbow','drum','electricguitar','bassguitar']);
+const sustainedReactions=new Set(['peace','jump','run','headbang','buriburi','groove','dougie','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','marshmallow','putyourhandsup','nightfirework','heartbow','drum','electricguitar','bassguitar','vocal']);
 // One shared bottom tab group: reactions / dances / chat.
 // Chat stays inside the dock instead of floating over the 3D world.
 function selectBottomMenu(menu){
@@ -1097,7 +1097,7 @@ function react(a,glowColor=null){
  if(state.action===a&&sustainedReactions.has(a)){
   state.action='idle';state.actionUntil=0;state.me.action='idle';
  }else{
-  if((a==='jump'||a==='run'||a==='buriburi'||a==='groove'||a==='windmill'||a==='skanking'||a==='airguitar'||a==='headspin'||a==='cheer'||a==='smoke'||a==='bubblegun'||a==='freestyle'||a==='beatking'||a==='marshmallow'||a==='putyourhandsup'||a==='nightfirework'||a==='heartbow'||a==='drum'||a==='electricguitar'||a==='bassguitar')&&state.pose!=='stand'){
+  if((a==='jump'||a==='run'||a==='buriburi'||a==='groove'||a==='windmill'||a==='skanking'||a==='airguitar'||a==='headspin'||a==='cheer'||a==='smoke'||a==='bubblegun'||a==='freestyle'||a==='beatking'||a==='marshmallow'||a==='putyourhandsup'||a==='nightfirework'||a==='heartbow'||a==='drum'||a==='electricguitar'||a==='bassguitar'||a==='vocal')&&state.pose!=='stand'){
    state.pose='stand';state.me.pose='stand';
   }
   state.action=a;state.me.action=a;if(a==='headbang'){applyHeadbangToSelf();if(!headbangHintShown&&headbangConfig.mode==='music'&&headbangConfig.source==='fallback'){headbangHintShown=true;openHeadbangSettings()}}if(a==='cheer')playCheer();
@@ -3508,8 +3508,11 @@ const stringInstrumentConfig={
   url:'/assets/instruments/bass_v221.glb?v=221',
   // Bass GLB's long axis is local +X (not +Y like the guitar). A ~.60
   // rotation places its neck at right-up, preserving the v224 inward tilt.
-  scale:1.18,angle:0.60,rotX:0.00,rotY:0.52,offset:[-.07,.54,.79],
-  neckHand:[.60,.63,.89],strumHand:[-.57,.26,1.02],strumAmplitude:.16
+  // v227: invert the tilt so the viewer's left side rises and the right
+  // side drops. Maintain the inward-facing yaw and overall height/size.
+  scale:1.18,angle:-0.60,rotX:0.00,rotY:0.52,offset:[-.07,.54,.79],
+  // Right hand remains on the lower neck, left hand strums the raised body.
+  neckHand:[.60,.35,.89],strumHand:[-.57,.53,1.02],strumAmplitude:.16
  }
 };
 function getStringInstrumentTemplate(kind){
@@ -3589,6 +3592,71 @@ function attachStringInstrumentToAvatar(avatar,kind){
   if(stageForeground)addForegroundLayer(model);
  }).catch(error=>{if(!P.stringInstrumentFailures)P.stringInstrumentFailures={};P.stringInstrumentFailures[kind]=true;console.warn('Instrument GLB failed; keeping fallback:',kind,error);})
  .finally(()=>{P.stringInstrumentLoading[kind]=false});
+}
+// v226: shared standing microphone model for the synchronized vocal action.
+// The stand is ROOT-local (grounded on the floor), not attached to the head
+// or upper torso, so only the performer nods while the stand stays vertical.
+const vocalMicLoader=new GLTFLoader();
+let sharedVocalMicPromise=null;
+function getSharedVocalMic(){
+ if(!sharedVocalMicPromise){
+  sharedVocalMicPromise=new Promise((resolve,reject)=>{
+   vocalMicLoader.load('/assets/instruments/vocal_mic_v226.glb?v=226',g=>{
+    const template=g.scene;
+    template.traverse(obj=>{
+     if(!obj.isMesh)return;
+     if(obj.geometry)sharedWingResources.add(obj.geometry);
+     for(const m of (Array.isArray(obj.material)?obj.material:[obj.material])){
+      if(!m)continue;
+      sharedWingResources.add(m);
+      for(const key of ['map','normalMap','roughnessMap','metalnessMap','emissiveMap'])
+       if(m[key])sharedWingResources.add(m[key]);
+     }
+    });
+    resolve(template);
+   },undefined,reject);
+  }).catch(error=>{sharedVocalMicPromise=null;throw error});
+ }
+ return sharedVocalMicPromise;
+}
+function makeFallbackVocalMic(){
+ const stand=new THREE.Group();
+ const metal=new THREE.MeshStandardMaterial({color:'#222631',metalness:.64,roughness:.40});
+ const grille=new THREE.MeshStandardMaterial({color:'#b9c5cc',metalness:.42,roughness:.53});
+ const base=new THREE.Mesh(new THREE.CylinderGeometry(.30,.32,.085,16),metal);
+ base.position.y=.065;stand.add(base);
+ const pole=new THREE.Mesh(new THREE.CylinderGeometry(.028,.036,1.98,10),metal);
+ pole.position.y=1.08;stand.add(pole);
+ const boom=new THREE.Mesh(new THREE.CylinderGeometry(.030,.030,.48,10),metal);
+ boom.rotation.x=Math.PI/2;boom.position.set(0,2.10,.20);stand.add(boom);
+ const head=new THREE.Mesh(new THREE.CapsuleGeometry(.09,.14,5,12),grille);
+ head.rotation.x=Math.PI/2;head.position.set(0,2.12,.45);stand.add(head);
+ return stand;
+}
+function attachVocalMicToAvatar(avatar){
+ const P=avatar.parts;
+ if(!P.vocalMicPivot){
+  const pivot=new THREE.Group();pivot.position.set(0,0,.58);
+  avatar.root.add(pivot);P.vocalMicPivot=pivot;
+  P.vocalMicFallback=makeFallbackVocalMic();pivot.add(P.vocalMicFallback);
+  if(stageForeground)addForegroundLayer(P.vocalMicFallback);
+ }
+ if(P.vocalMicPending||P.vocalMicModel||P.vocalMicFailed)return;
+ P.vocalMicPending=true;
+ getSharedVocalMic().then(template=>{
+  if(!avatar.root.parent||!P.vocalMicPivot?.parent)return;
+  const model=template.clone(true);
+  // GLB is two metres tall, centred at its midpoint. Base on the ground,
+  // rotate the mic head toward +Z, in front of the singer's mouth.
+  model.scale.setScalar(1.13);
+  model.rotation.y=-Math.PI/2;
+  model.position.set(0,1.14,0);
+  model.traverse(obj=>{if(obj.isMesh){obj.castShadow=false;obj.receiveShadow=true;}});
+  P.vocalMicPivot.add(model);P.vocalMicModel=model;
+  P.vocalMicFallback.visible=false;
+  if(stageForeground)addForegroundLayer(model);
+ }).catch(error=>{P.vocalMicFailed=true;console.warn('Vocal mic GLB failed; preserving fallback:',error)})
+ .finally(()=>{P.vocalMicPending=false});
 }
 // Fits are measured against the visible avatar head (radius .81; top Y ~= .90).
 // top is the local height of the hair bounding box, not an extra offset.
@@ -4832,6 +4900,8 @@ function animateAvatar(a,p,t){
  if(P.drumsticks)for(const stick of P.drumsticks)stick.visible=act==='drum';
  if(act==='electricguitar'||act==='bassguitar')attachStringInstrumentToAvatar(a,act);
  if(P.stringInstrumentPivots){for(const [kind,pivot] of Object.entries(P.stringInstrumentPivots))pivot.visible=kind===act;}
+ if(act==='vocal')attachVocalMicToAvatar(a);
+ if(P.vocalMicPivot)P.vocalMicPivot.visible=act==='vocal';
  P.toastCup.visible=q.action==='toast-clink';
  // Both headspin and crowd-surf rotations temporarily transform the avatar ROOT.
  // Reset the root when those actions end, rather than inheriting a tilted,
@@ -4939,6 +5009,20 @@ function animateAvatar(a,p,t){
    guitarFit.strumHand[2]
   );
   ikMode='string-instrument';
+ }
+ if(act==='vocal'){
+  // Both hands extend forward to hold the standing microphone pole while
+  // the singer nods the head in time; the stand itself does not sway.
+  const beat=Math.sin(sec*4.8);
+  height=.010*Math.sin(sec*4.8);
+  set('upper',-.025+.012*Math.sin(sec*2.4),0,.012*Math.sin(sec*2.4));
+  set('neck',-.065+.22*beat,0,.018*Math.sin(sec*2.4));
+  set('leftHip',-.04);set('rightHip',-.04);
+  set('leftKnee',.08);set('rightKnee',.08);
+  // Arm reach stays inside the chibi two-bone IK length (0.79 each).
+  leftHandTarget=new THREE.Vector3(-.10,.45,.57);
+  rightHandTarget=new THREE.Vector3(.10,.32,.57);
+  ikMode='vocal';
  }
  if(act==='drum'){
   // Stationary half-crouch behind the kit. The arms REACH IN FRONT OF the
@@ -5388,7 +5472,7 @@ function animateAvatar(a,p,t){
  const alpha=act===a.lastAction?.25:.17;
  for(const k of keys){
   if((ikMode==='duo-both'&&['leftShoulder','leftElbow','rightShoulder','rightElbow'].includes(k))||(ikMode==='duo-right'&&['rightShoulder','rightElbow'].includes(k)))continue;
-  if((ikMode==='clap'||ikMode==='heartbow'||ikMode==='dougie'||ikMode==='drum'||ikMode==='string-instrument')&&['leftShoulder','leftElbow','rightShoulder','rightElbow'].includes(k))continue;
+  if((ikMode==='clap'||ikMode==='heartbow'||ikMode==='dougie'||ikMode==='drum'||ikMode==='string-instrument'||ikMode==='vocal')&&['leftShoulder','leftElbow','rightShoulder','rightElbow'].includes(k))continue;
   if((ikMode==='drink'||ikMode==='wave'||ikMode==='snack'||ikMode==='smoke'||ikMode==='bubblegun'||ikMode==='marshmallow')&&['rightShoulder','rightElbow'].includes(k))continue;
   const target=pose[k],o=P[k];
   o.rotation.x+=(target[0]-o.rotation.x)*alpha;
@@ -5400,6 +5484,8 @@ function animateAvatar(a,p,t){
  }else if(ikMode==='duo-right')placeHandIK(P,'right',rightHandTarget,.68);
  else if(ikMode==='drum'){
   placeHandIK(P,'left',leftHandTarget,.80);placeHandIK(P,'right',rightHandTarget,.80);
+ }else if(ikMode==='vocal'){
+  placeHandIK(P,'left',leftHandTarget,.78);placeHandIK(P,'right',rightHandTarget,.78);
  }else if(ikMode==='string-instrument'){
   // v225: left wrist actively strums, right wrist grips the neck.
   placeHandIK(P,'left',leftHandTarget,.86);placeHandIK(P,'right',rightHandTarget,.80);
@@ -6007,7 +6093,7 @@ function tick(t){
    }
   }
   state.moving=!!(dx||dy)||(rockMotion?.kind==='train'&&rockMotion.leaderId!==state.id&&state.me.action==='train-run');
-  if(state.moving && (dx||dy) && (state.action==='buriburi'||state.action==='groove'||state.action==='windmill'||state.action==='airguitar'||state.action==='headspin'||state.action==='cheer'||state.action==='smoke'||state.action==='freestyle'||state.action==='beatking'||state.action==='marshmallow'||state.action==='heartbow'||state.action==='drum'||state.action==='electricguitar'||state.action==='bassguitar') && !slamMotion && !rockMotion){
+  if(state.moving && (dx||dy) && (state.action==='buriburi'||state.action==='groove'||state.action==='windmill'||state.action==='airguitar'||state.action==='headspin'||state.action==='cheer'||state.action==='smoke'||state.action==='freestyle'||state.action==='beatking'||state.action==='marshmallow'||state.action==='heartbow'||state.action==='drum'||state.action==='electricguitar'||state.action==='bassguitar'||state.action==='vocal') && !slamMotion && !rockMotion){
    state.action='idle';state.me.action='walk';state.actionUntil=0;updateActionButtons();
   }
   if(state.moving&&(dx||dy)){
