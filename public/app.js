@@ -674,7 +674,17 @@ renderApparelPicker();
 function renderHairPicker(){
  const styles=$('hairStylePicker'),colors=$('hairColorPicker');if(!styles||!colors)return;
  styles.replaceChildren();colors.replaceChildren();
- for(const [value,label] of hairStyles){const b=document.createElement('button');b.type='button';b.className='apparel-choice'+(chosenHairStyle===value?' selected':'');b.textContent=label;b.setAttribute('aria-pressed',String(chosenHairStyle===value));b.onclick=()=>{chosenHairStyle=value;renderHairPicker()};styles.append(b)}
+ for(const [value,label] of hairStyles){const b=document.createElement('button');b.type='button';b.className='apparel-choice'+(chosenHairStyle===value?' selected':'');b.textContent=label;b.setAttribute('aria-pressed',String(chosenHairStyle===value));b.onclick=()=>{
+  chosenHairStyle=value;renderHairPicker();
+  // Avatar preview is rebuilt by the existing animation loop. Imported GLBs
+  // are fetched on first selection; show progress rather than a silent delay.
+  if(customHairAssets[value]){
+   toast('헤어스타일 적용 중…');
+   getHairAsset(value).then(()=>{
+    if(chosenHairStyle===value)toast('헤어스타일 적용됨 · 변경 사항 저장을 눌러주세요');
+   }).catch(e=>{if(chosenHairStyle===value)toast('헤어 모델을 불러오지 못했습니다. 배포 파일을 확인해 주세요');console.error('Hair GLB load:',value,e)});
+  }
+ };styles.append(b)}
  for(const [label,value] of hairColors){const b=document.createElement('button');b.type='button';b.className='hair-color-choice'+(chosenHairColor===value?' selected':'');b.style.setProperty('--hair-swatch',value);b.textContent=label;b.setAttribute('aria-label','머리색 '+label);b.setAttribute('aria-pressed',String(chosenHairColor===value));b.onclick=()=>{chosenHairColor=value;renderHairPicker()};colors.append(b)}
 }
 renderHairPicker();
@@ -3467,6 +3477,10 @@ function getHairAsset(style){
     g.scene.updateMatrixWorld(true);
     const bounds=new THREE.Box3().setFromObject(g.scene),size=bounds.getSize(new THREE.Vector3()),center=bounds.getCenter(new THREE.Vector3());
     if(bounds.isEmpty()||Math.min(size.x,size.y,size.z)<.001){reject(new Error('Empty hair geometry: '+url));return;}
+    // v215: imported meshes have POSITION without NORMAL. Generate smooth
+    // normals ONCE on the reusable template instead of redoing it for every
+    // avatar (some uploaded hair meshes have hundreds of thousands of faces).
+    if(custom)g.scene.traverse(mesh=>{if(mesh.isMesh&&mesh.geometry&&!mesh.geometry.getAttribute('normal'))mesh.geometry.computeVertexNormals();});
     resolve({scene:g.scene,size,center,custom});
    },undefined,reject);
   });
@@ -3642,7 +3656,9 @@ function attachImportedHair(neck,style,color){
 }
 // Preload the shaded custom bob/buns GLBs; the other styles reuse
 // their existing Quaternius assets. A missing GLB falls back to the old hair.
-for(const style of ['short','bob','long','buns','verylong','hippie','ponytail','longpart','longshaggy','windswept','shaggy'])getHairAsset(style).catch(()=>{});
+// v215: preload only the small legacy/default styles. The seven user-provided
+// GLBs are large, so download them on selection rather than blocking entry.
+for(const style of ['short','bob','long','buns'])getHairAsset(style).catch(()=>{});
 // Rounded chibi avatar: larger soft head, painted-on face, short unified hairstyle,
 // surface-colored clothing, and inexpensive shoulder/elbow/hip/knee rig.
 function makeAvatar(p){
