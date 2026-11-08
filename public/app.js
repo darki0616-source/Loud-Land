@@ -3494,9 +3494,20 @@ function attachDrumToAvatar(avatar){
 // stay shared, like the v219 drum kit. Loading never blocks entry to the game.
 const stringInstrumentLoader=new GLTFLoader();
 const sharedStringInstrumentPromises=new Map();
+// v222: instruments sit across the chest/upper abdomen, not down by the legs.
+// Scale the actual GLB meshes (not just the fallback) and match each hand IK
+// target to its re-positioned neck and string/bridge area.
 const stringInstrumentConfig={
- electricguitar:{url:'/assets/instruments/guitar_v221.glb?v=221',scale:.82,angle:.88,offset:[.03,-.12,.65]},
- bassguitar:{url:'/assets/instruments/bass_v221.glb?v=221',scale:.83,angle:2.72,offset:[.04,-.10,.69]}
+ electricguitar:{
+  url:'/assets/instruments/guitar_v221.glb?v=221',
+  scale:1.22,angle:1.18,offset:[-.05,.67,.78],
+  neckHand:[-.51,.80,.90],strumHand:[.48,.36,.91],strumAmplitude:.19
+ },
+ bassguitar:{
+  url:'/assets/instruments/bass_v221.glb?v=221',
+  scale:1.18,angle:2.54,offset:[-.07,.54,.79],
+  neckHand:[-.65,.61,.92],strumHand:[.51,.26,.93],strumAmplitude:.16
+ }
 };
 function getStringInstrumentTemplate(kind){
  const config=stringInstrumentConfig[kind];
@@ -3546,7 +3557,9 @@ function attachStringInstrumentToAvatar(avatar,kind){
   P.upper.add(pivot);pivot.position.set(...config.offset);
   P.stringInstrumentPivots[kind]=pivot;
   const fallback=makeFallbackStringInstrument(kind);
-  fallback.rotation.z=.86; // the fallback mesh is vertical, unlike the horizontal bass GLB
+  // The fallback geometry is vertical for both guitar and bass. Keep it at a
+  // matching up-left diagonal even when the GLB fails to download.
+  fallback.rotation.z=1.18;
   fallback.scale.setScalar(config.scale);
   if(stageForeground)addForegroundLayer(fallback);
   pivot.add(fallback);
@@ -4910,9 +4923,16 @@ function animateAvatar(a,p,t){
   set('rightHip',-.10+.07*Math.max(0,-pulse),0,.10);
   set('leftKnee',.18+.09*Math.max(0,pulse));
   set('rightKnee',.18+.09*Math.max(0,-pulse));
-  // Upper-body local positions match the angled guitar/bass at Z .65.
-  leftHandTarget=new THREE.Vector3(bass?-.66:-.42,bass?.20:.31,.80);
-  rightHandTarget=new THREE.Vector3(bass?.40:.43,-.14+strum*(bass?.16:.24),.87);
+  // Instrument locations were raised and enlarged in v222. Keep the neck
+  // hand planted on the fretboard and move the picking hand near the strings,
+  // with a visible alternating vertical stroke in front of the guitar body.
+  const guitarFit=stringInstrumentConfig[act];
+  leftHandTarget=new THREE.Vector3(...guitarFit.neckHand);
+  rightHandTarget=new THREE.Vector3(
+   guitarFit.strumHand[0],
+   guitarFit.strumHand[1]+strum*guitarFit.strumAmplitude,
+   guitarFit.strumHand[2]
+  );
   ikMode='string-instrument';
  }
  if(act==='drum'){
