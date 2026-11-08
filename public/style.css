@@ -911,12 +911,12 @@ html,body{height:100%;height:100dvh;overflow:hidden!important}
 }
 
 
-/* v231 - global announcements: short-lived top marquee and entrance/urgent dialog */
+/* v232 - scrolling notices ride above the responsive bottom dock; urgent/entry dialogs stay centered. */
 #festivalNoticeTicker[hidden],#festivalNoticePopup[hidden]{display:none!important}
-.festival-notice-ticker{
- position:fixed;z-index:120;top:calc(env(safe-area-inset-top) + 8px);
- left:50%;transform:translateX(-50%);
- width:min(800px,calc(100vw - 22px));height:42px;
+.gamepanel .controlbar .festival-notice-ticker{
+ position:absolute;z-index:3;top:auto;bottom:calc(100% + 7px);
+ left:0;right:auto;transform:none;
+ width:100%;max-width:100%;height:40px;
  display:flex;align-items:center;overflow:hidden;
  background:rgba(19,25,43,.96);border:1px solid #d5f987;
  border-radius:13px;box-shadow:0 7px 28px #0009;pointer-events:none;
@@ -939,8 +939,13 @@ html,body{height:100%;height:100dvh;overflow:hidden!important}
  font-size:15px;font-weight:600;line-height:1.75;color:#ebf2ff;}
 #festivalNoticePopupClose{width:100%;min-height:44px;border:0;border-radius:10px;
  color:#1c281a;background:#d7fa81;font-weight:900;font-size:14px;cursor:pointer;}
+/* Keep the muted-audio reminder above an active banner rather than overlapping it. */
+.gamepanel .controlbar:has(> .festival-notice-ticker:not([hidden])) .audio-muted-notice{
+ bottom:calc(100% + 54px);
+}
 @media(max-width:700px){
- .festival-notice-ticker{top:calc(env(safe-area-inset-top) + 6px);height:38px}
+ .gamepanel .controlbar .festival-notice-ticker{top:auto;bottom:calc(100% + 6px);height:36px}
+ .gamepanel .controlbar:has(> .festival-notice-ticker:not([hidden])) .audio-muted-notice{bottom:calc(100% + 48px)}
  .festival-notice-tag{font-size:10px;padding:0 9px}
  #festivalNoticeTickerText{font-size:12px}
  .festival-notice-card{padding:18px 18px 17px}

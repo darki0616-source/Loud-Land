@@ -900,7 +900,7 @@ function showFestivalPopup(){
  host.hidden=false;
  clearTimeout(festivalPopupTimer);
  // Live broadcasts close automatically so they do not block the festival.
- if(item.autoClose)festivalPopupTimer=setTimeout(closeFestivalPopup,14000);
+ if(item.autoClose)festivalPopupTimer=setTimeout(closeFestivalPopup,3*60*1000); // v232: immediate notice remains up to 3 minutes
 }
 function closeFestivalPopup(){
  clearTimeout(festivalPopupTimer);festivalPopupTimer=null;
@@ -1426,6 +1426,11 @@ dockContent.className='dock-content';
 dockContent.id='dockContent';
 for(const id of ['reactionActions','danceActions','instrumentActions','chatPanel'])dockContent.appendChild($(id));
 dockBar.appendChild(dockContent);
+// v232: Anchor the scrolling notice to the upper edge of the bottom dock.
+// This keeps the mobile top controls unobstructed and lets the banner follow
+// the dock down as its action panel auto-folds while the avatar moves.
+const bottomFestivalTicker=$('festivalNoticeTicker');
+if(bottomFestivalTicker)dockBar.appendChild(bottomFestivalTicker);
 for(const button of dockContent.querySelectorAll('#reactionActions > button, #danceActions > button, #instrumentActions > button')){
  // Original buttons use a bare emoji text node + label span. Give each emoji
  // its own cell without rewriting onclick handlers, datasets or shortcuts.
