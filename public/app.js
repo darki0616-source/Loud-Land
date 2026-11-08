@@ -1044,7 +1044,7 @@ function handleDuoEvent(d){
  if(d.type==='duo-end'){finishDuo(d.id);return}
 }
 setInterval(syncDuoStatus,250);
-const sustainedReactions=new Set(['peace','jump','run','headbang','buriburi','groove','dougie','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','marshmallow','putyourhandsup','nightfirework','heartbow','drum']);
+const sustainedReactions=new Set(['peace','jump','run','headbang','buriburi','groove','dougie','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','marshmallow','putyourhandsup','nightfirework','heartbow','drum','electricguitar','bassguitar']);
 // One shared bottom tab group: reactions / dances / chat.
 // Chat stays inside the dock instead of floating over the 3D world.
 function selectBottomMenu(menu){
@@ -1097,7 +1097,7 @@ function react(a,glowColor=null){
  if(state.action===a&&sustainedReactions.has(a)){
   state.action='idle';state.actionUntil=0;state.me.action='idle';
  }else{
-  if((a==='jump'||a==='run'||a==='buriburi'||a==='groove'||a==='windmill'||a==='skanking'||a==='airguitar'||a==='headspin'||a==='cheer'||a==='smoke'||a==='bubblegun'||a==='freestyle'||a==='beatking'||a==='marshmallow'||a==='putyourhandsup'||a==='nightfirework'||a==='heartbow'||a==='drum')&&state.pose!=='stand'){
+  if((a==='jump'||a==='run'||a==='buriburi'||a==='groove'||a==='windmill'||a==='skanking'||a==='airguitar'||a==='headspin'||a==='cheer'||a==='smoke'||a==='bubblegun'||a==='freestyle'||a==='beatking'||a==='marshmallow'||a==='putyourhandsup'||a==='nightfirework'||a==='heartbow'||a==='drum'||a==='electricguitar'||a==='bassguitar')&&state.pose!=='stand'){
    state.pose='stand';state.me.pose='stand';
   }
   state.action=a;state.me.action=a;if(a==='headbang'){applyHeadbangToSelf();if(!headbangHintShown&&headbangConfig.mode==='music'&&headbangConfig.source==='fallback'){headbangHintShown=true;openHeadbangSettings()}}if(a==='cheer')playCheer();
@@ -3489,6 +3489,86 @@ function attachDrumToAvatar(avatar){
  }).catch(err=>{P.drumFailed=true;console.warn('Drum GLB failed; showing lightweight fallback',err)})
  .finally(()=>{P.drumPending=false});
 }
+// v221: guitar + bass share a single glTF template per instrument across users.
+// Each avatar receives its own transformed scene graph, but meshes/materials
+// stay shared, like the v219 drum kit. Loading never blocks entry to the game.
+const stringInstrumentLoader=new GLTFLoader();
+const sharedStringInstrumentPromises=new Map();
+const stringInstrumentConfig={
+ electricguitar:{url:'/assets/instruments/guitar_v221.glb?v=221',scale:.82,angle:.88,offset:[.03,-.12,.65]},
+ bassguitar:{url:'/assets/instruments/bass_v221.glb?v=221',scale:.83,angle:2.72,offset:[.04,-.10,.69]}
+};
+function getStringInstrumentTemplate(kind){
+ const config=stringInstrumentConfig[kind];
+ if(!config)return Promise.reject(new Error('Unknown instrument: '+kind));
+ if(!sharedStringInstrumentPromises.has(kind)){
+  const promise=new Promise((resolve,reject)=>{
+   stringInstrumentLoader.load(config.url,g=>{
+    const template=g.scene;
+    template.traverse(obj=>{
+     if(!obj.isMesh)return;
+     if(obj.geometry)sharedWingResources.add(obj.geometry);
+     for(const m of (Array.isArray(obj.material)?obj.material:[obj.material])){
+      if(!m)continue;
+      sharedWingResources.add(m);
+      for(const k of ['map','normalMap','roughnessMap','metalnessMap','emissiveMap'])
+       if(m[k])sharedWingResources.add(m[k]);
+     }
+    });
+    resolve(template);
+   },undefined,reject);
+  }).catch(error=>{sharedStringInstrumentPromises.delete(kind);throw error});
+  sharedStringInstrumentPromises.set(kind,promise);
+ }
+ return sharedStringInstrumentPromises.get(kind);
+}
+function makeFallbackStringInstrument(kind){
+ const group=new THREE.Group();
+ const color=kind==='electricguitar'?'#cf333e':'#b26b29';
+ const bodyMat=new THREE.MeshStandardMaterial({color,roughness:.45,metalness:.15});
+ const woodMat=new THREE.MeshStandardMaterial({color:'#d1a574',roughness:.72});
+ const metalMat=new THREE.MeshStandardMaterial({color:'#c9cccd',metalness:.5,roughness:.5});
+ const body=new THREE.Mesh(new THREE.SphereGeometry(.34,12,10),bodyMat);
+ body.scale.set(1.05,1.18,.20);body.position.y=-.42;group.add(body);
+ const neck=new THREE.Mesh(new THREE.BoxGeometry(.14,1.11,.09),woodMat);
+ neck.position.y=.33;group.add(neck);
+ const strings=new THREE.Mesh(new THREE.BoxGeometry(.18,.46,.03),metalMat);
+ strings.position.set(0,-.39,.092);group.add(strings);
+ return group;
+}
+function attachStringInstrumentToAvatar(avatar,kind){
+ const P=avatar.parts,config=stringInstrumentConfig[kind];
+ if(!config)return;
+ if(!P.stringInstrumentPivots)P.stringInstrumentPivots={};
+ if(!P.stringInstrumentPivots[kind]){
+  const pivot=new THREE.Group();
+  // Torso-local: guitar moves with body sways but not with world locomotion.
+  P.upper.add(pivot);pivot.position.set(...config.offset);
+  P.stringInstrumentPivots[kind]=pivot;
+  const fallback=makeFallbackStringInstrument(kind);
+  fallback.rotation.z=.86; // the fallback mesh is vertical, unlike the horizontal bass GLB
+  fallback.scale.setScalar(config.scale);
+  if(stageForeground)addForegroundLayer(fallback);
+  pivot.add(fallback);
+  if(!P.stringInstrumentFallbacks)P.stringInstrumentFallbacks={};
+  P.stringInstrumentFallbacks[kind]=fallback;
+ }
+ if(!P.stringInstrumentLoading)P.stringInstrumentLoading={};
+ if(!P.stringInstrumentModels)P.stringInstrumentModels={};
+ if(P.stringInstrumentLoading[kind]||P.stringInstrumentModels[kind]||P.stringInstrumentFailures?.[kind])return;
+ P.stringInstrumentLoading[kind]=true;
+ getStringInstrumentTemplate(kind).then(template=>{
+  if(!avatar.root.parent)return;
+  const pivot=P.stringInstrumentPivots[kind],model=template.clone(true);
+  model.scale.setScalar(config.scale);
+  model.rotation.z=config.angle;
+  model.traverse(obj=>{if(obj.isMesh){obj.castShadow=false;obj.receiveShadow=false;}});
+  pivot.add(model);P.stringInstrumentModels[kind]=model;
+  P.stringInstrumentFallbacks[kind].visible=false;
+  if(stageForeground)addForegroundLayer(model);
+ }).catch(error=>{if(!P.stringInstrumentFailures)P.stringInstrumentFailures={};P.stringInstrumentFailures[kind]=true;console.warn('Instrument GLB failed; keeping fallback:',kind,error);})
+ .finally(()=>{P.stringInstrumentLoading[kind]=false});
+}
 // Fits are measured against the visible avatar head (radius .81; top Y ~= .90).
 // top is the local height of the hair bounding box, not an extra offset.
 // Keep X/Z fairly close to the skull, with a slight forward shift for the fringe.
@@ -4729,6 +4809,8 @@ function animateAvatar(a,p,t){
  if(act==='drum')attachDrumToAvatar(a);
  if(P.drumPivot)P.drumPivot.visible=act==='drum';
  if(P.drumsticks)for(const stick of P.drumsticks)stick.visible=act==='drum';
+ if(act==='electricguitar'||act==='bassguitar')attachStringInstrumentToAvatar(a,act);
+ if(P.stringInstrumentPivots){for(const [kind,pivot] of Object.entries(P.stringInstrumentPivots))pivot.visible=kind===act;}
  P.toastCup.visible=q.action==='toast-clink';
  // Both headspin and crowd-surf rotations temporarily transform the avatar ROOT.
  // Reset the root when those actions end, rather than inheriting a tilted,
@@ -4814,6 +4896,24 @@ function animateAvatar(a,p,t){
   set('leftKnee',.22+.055*Math.max(0,shake));
   set('rightKnee',.22+.055*Math.max(0,-shake));
   height=-.035+rebound;
+ }
+ if(act==='electricguitar'||act==='bassguitar'){
+  // Guitar/bass: hold the neck with the left hand; the right wrist strums
+  // vigorously up and down while remaining in front of the torso.
+  const bass=act==='bassguitar';
+  const strum=Math.sin(sec*(bass?15.6:21.4));
+  const pulse=Math.sin(sec*(bass?4.2:5.4));
+  height=-.035+Math.abs(pulse)*.045;
+  set('upper',-.08+.025*pulse, .035*Math.sin(sec*3), -.032*pulse);
+  set('neck',-.045+.115*Math.sin(sec*(bass?5.1:6.4)));
+  set('leftHip',-.09+.07*Math.max(0,pulse),0,-.10);
+  set('rightHip',-.10+.07*Math.max(0,-pulse),0,.10);
+  set('leftKnee',.18+.09*Math.max(0,pulse));
+  set('rightKnee',.18+.09*Math.max(0,-pulse));
+  // Upper-body local positions match the angled guitar/bass at Z .65.
+  leftHandTarget=new THREE.Vector3(bass?-.66:-.42,bass?.20:.31,.80);
+  rightHandTarget=new THREE.Vector3(bass?.40:.43,-.14+strum*(bass?.16:.24),.87);
+  ikMode='string-instrument';
  }
  if(act==='drum'){
   // Stationary half-crouch behind the kit. The arms REACH IN FRONT OF the
@@ -5263,7 +5363,7 @@ function animateAvatar(a,p,t){
  const alpha=act===a.lastAction?.25:.17;
  for(const k of keys){
   if((ikMode==='duo-both'&&['leftShoulder','leftElbow','rightShoulder','rightElbow'].includes(k))||(ikMode==='duo-right'&&['rightShoulder','rightElbow'].includes(k)))continue;
-  if((ikMode==='clap'||ikMode==='heartbow'||ikMode==='dougie'||ikMode==='drum')&&['leftShoulder','leftElbow','rightShoulder','rightElbow'].includes(k))continue;
+  if((ikMode==='clap'||ikMode==='heartbow'||ikMode==='dougie'||ikMode==='drum'||ikMode==='string-instrument')&&['leftShoulder','leftElbow','rightShoulder','rightElbow'].includes(k))continue;
   if((ikMode==='drink'||ikMode==='wave'||ikMode==='snack'||ikMode==='smoke'||ikMode==='bubblegun'||ikMode==='marshmallow')&&['rightShoulder','rightElbow'].includes(k))continue;
   const target=pose[k],o=P[k];
   o.rotation.x+=(target[0]-o.rotation.x)*alpha;
@@ -5275,6 +5375,8 @@ function animateAvatar(a,p,t){
  }else if(ikMode==='duo-right')placeHandIK(P,'right',rightHandTarget,.68);
  else if(ikMode==='drum'){
   placeHandIK(P,'left',leftHandTarget,.80);placeHandIK(P,'right',rightHandTarget,.80);
+ }else if(ikMode==='string-instrument'){
+  placeHandIK(P,'left',leftHandTarget,.80);placeHandIK(P,'right',rightHandTarget,.86);
  }else if(ikMode==='airguitar'){
   placeHandIK(P,'left',leftHandTarget,.68);
   placeHandIK(P,'right',rightHandTarget,.78);
@@ -5879,7 +5981,7 @@ function tick(t){
    }
   }
   state.moving=!!(dx||dy)||(rockMotion?.kind==='train'&&rockMotion.leaderId!==state.id&&state.me.action==='train-run');
-  if(state.moving && (dx||dy) && (state.action==='buriburi'||state.action==='groove'||state.action==='windmill'||state.action==='airguitar'||state.action==='headspin'||state.action==='cheer'||state.action==='smoke'||state.action==='freestyle'||state.action==='beatking'||state.action==='marshmallow'||state.action==='heartbow'||state.action==='drum') && !slamMotion && !rockMotion){
+  if(state.moving && (dx||dy) && (state.action==='buriburi'||state.action==='groove'||state.action==='windmill'||state.action==='airguitar'||state.action==='headspin'||state.action==='cheer'||state.action==='smoke'||state.action==='freestyle'||state.action==='beatking'||state.action==='marshmallow'||state.action==='heartbow'||state.action==='drum'||state.action==='electricguitar'||state.action==='bassguitar') && !slamMotion && !rockMotion){
    state.action='idle';state.me.action='walk';state.actionUntil=0;updateActionButtons();
   }
   if(state.moving&&(dx||dy)){
