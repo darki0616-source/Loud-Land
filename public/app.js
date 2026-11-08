@@ -1044,13 +1044,14 @@ function handleDuoEvent(d){
  if(d.type==='duo-end'){finishDuo(d.id);return}
 }
 setInterval(syncDuoStatus,250);
-const sustainedReactions=new Set(['peace','jump','run','headbang','buriburi','groove','dougie','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','marshmallow','putyourhandsup','nightfirework','heartbow']);
+const sustainedReactions=new Set(['peace','jump','run','headbang','buriburi','groove','dougie','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','marshmallow','putyourhandsup','nightfirework','heartbow','drum']);
 // One shared bottom tab group: reactions / dances / chat.
 // Chat stays inside the dock instead of floating over the 3D world.
 function selectBottomMenu(menu){
  const chat=menu==='chat';
  $('reactionActions').classList.toggle('hidden',menu!=='reaction');
  $('danceActions').classList.toggle('hidden',menu!=='dance');
+ $('instrumentActions').classList.toggle('hidden',menu!=='instrument');
  $('chatPanel').classList.toggle('hidden',!chat);
  $('chatToggle').setAttribute('aria-expanded',String(chat));
  document.querySelectorAll('[data-action-menu]').forEach(button=>{
@@ -1096,7 +1097,7 @@ function react(a,glowColor=null){
  if(state.action===a&&sustainedReactions.has(a)){
   state.action='idle';state.actionUntil=0;state.me.action='idle';
  }else{
-  if((a==='jump'||a==='run'||a==='buriburi'||a==='groove'||a==='windmill'||a==='skanking'||a==='airguitar'||a==='headspin'||a==='cheer'||a==='smoke'||a==='bubblegun'||a==='freestyle'||a==='beatking'||a==='marshmallow'||a==='putyourhandsup'||a==='nightfirework'||a==='heartbow')&&state.pose!=='stand'){
+  if((a==='jump'||a==='run'||a==='buriburi'||a==='groove'||a==='windmill'||a==='skanking'||a==='airguitar'||a==='headspin'||a==='cheer'||a==='smoke'||a==='bubblegun'||a==='freestyle'||a==='beatking'||a==='marshmallow'||a==='putyourhandsup'||a==='nightfirework'||a==='heartbow'||a==='drum')&&state.pose!=='stand'){
    state.pose='stand';state.me.pose='stand';
   }
   state.action=a;state.me.action=a;if(a==='headbang'){applyHeadbangToSelf();if(!headbangHintShown&&headbangConfig.mode==='music'&&headbangConfig.source==='fallback'){headbangHintShown=true;openHeadbangSettings()}}if(a==='cheer')playCheer();
@@ -1350,9 +1351,9 @@ const dockBar=document.querySelector('.controlbar');
 const dockContent=document.createElement('div');
 dockContent.className='dock-content';
 dockContent.id='dockContent';
-for(const id of ['reactionActions','danceActions','chatPanel'])dockContent.appendChild($(id));
+for(const id of ['reactionActions','danceActions','instrumentActions','chatPanel'])dockContent.appendChild($(id));
 dockBar.appendChild(dockContent);
-for(const button of dockContent.querySelectorAll('#reactionActions > button, #danceActions > button')){
+for(const button of dockContent.querySelectorAll('#reactionActions > button, #danceActions > button, #instrumentActions > button')){
  // Original buttons use a bare emoji text node + label span. Give each emoji
  // its own cell without rewriting onclick handlers, datasets or shortcuts.
  const label=button.querySelector('span');
@@ -3426,6 +3427,68 @@ function attachImportedWings(holder,avatarRoot,kind){
  }).catch(error=>console.warn('MD wing load failed; preserving fallback:',kind,error));
 }
 
+// v219: shared, optimized, artist-supplied drum kit. The material/geometry
+// are deliberately shared across users, but the model group is per avatar.
+const drumLoader=new GLTFLoader();
+let sharedDrumPromise=null;
+function getSharedDrumKit(){
+ if(!sharedDrumPromise){
+  sharedDrumPromise=new Promise((resolve,reject)=>{
+   drumLoader.load('/assets/instruments/drumkit_v219.glb?v=219',g=>{
+    const template=g.scene;
+    template.traverse(obj=>{
+     if(!obj.isMesh)return;
+     if(obj.geometry)sharedWingResources.add(obj.geometry);
+     for(const m of (Array.isArray(obj.material)?obj.material:[obj.material])){
+      if(!m)continue;
+      sharedWingResources.add(m);
+      for(const name of ['map','normalMap','roughnessMap','metalnessMap','emissiveMap'])
+       if(m[name])sharedWingResources.add(m[name]);
+     }
+    });
+    resolve(template);
+   },undefined,reject);
+  }).catch(err=>{sharedDrumPromise=null;throw err});
+ }
+ return sharedDrumPromise;
+}
+function makeFallbackDrum(){
+ const group=new THREE.Group();
+ const shell=new THREE.MeshStandardMaterial({color:'#dfcfb6',roughness:.62}),
+  metal=new THREE.MeshStandardMaterial({color:'#b9c0c8',metalness:.45,roughness:.5}),
+  brass=new THREE.MeshStandardMaterial({color:'#c88a42',metalness:.45,roughness:.42});
+ const add=(geom,mat,x,y,z,rotateX=0)=>{const o=new THREE.Mesh(geom,mat);o.position.set(x,y,z);o.rotation.x=rotateX;group.add(o)};
+ add(new THREE.CylinderGeometry(.53,.53,.50,16),shell,0,.57,1.55,Math.PI/2);
+ for(const x of [-.53,.53])add(new THREE.CylinderGeometry(.25,.25,.34,12),shell,x,1.17,1.35,.12);
+ for(const x of [-1.0,1.0]){add(new THREE.CylinderGeometry(.42,.42,.035,16),brass,x,1.61,1.43);add(new THREE.CylinderGeometry(.025,.025,1.18,8),metal,x,1.02,1.43)}
+ return group;
+}
+function attachDrumToAvatar(avatar){
+ const P=avatar.parts;
+ if(!P.drumPivot){
+  const pivot=new THREE.Group();avatar.root.add(pivot);P.drumPivot=pivot;
+  P.drumFallback=makeFallbackDrum();pivot.add(P.drumFallback);
+  if(stageForeground)addForegroundLayer(P.drumFallback);
+ }
+ // Missing uploads should never trigger hundreds of repeated GLB fetches.
+ if(P.drumPending||P.drumModel||P.drumFailed)return;
+ P.drumPending=true;
+ getSharedDrumKit().then(template=>{
+  if(!avatar.root.parent)return;
+  const model=template.clone(true);
+  // Original bass drum front points -Z. Rotate 180deg so its FRONT
+  // faces the same +Z direction as the character, with drummer behind.
+  // Scale to roughly 3m wide, cymbals 2.3m high on the grass.
+  model.scale.setScalar(1.52);
+  model.rotation.y=Math.PI;
+  model.position.set(0,1.14,1.52);
+  model.traverse(obj=>{if(obj.isMesh){obj.castShadow=false;obj.receiveShadow=true}});
+  P.drumPivot.add(model);P.drumModel=model;
+  P.drumFallback.visible=false;
+  if(stageForeground)addForegroundLayer(model);
+ }).catch(err=>{P.drumFailed=true;console.warn('Drum GLB failed; showing lightweight fallback',err)})
+ .finally(()=>{P.drumPending=false});
+}
 // Fits are measured against the visible avatar head (radius .81; top Y ~= .90).
 // top is the local height of the hair bounding box, not an extra offset.
 // Keep X/Z fairly close to the skull, with a slight forward shift for the fringe.
@@ -4459,6 +4522,17 @@ function makeAvatar(p){
   const puff=new THREE.Mesh(new THREE.SphereGeometry(1,8,6),new THREE.MeshBasicMaterial({color:'#dbe1e5',transparent:true,opacity:0,depthWrite:false}));
   puff.visible=false;puff.renderOrder=21;upper.add(puff);parts.smokePuffs.push(puff);
  }
+ // Short drumsticks follow each animated hand/wrist. They are visible
+ // only while the drum instrument is active.
+ const drumstickMaterial=new THREE.MeshStandardMaterial({color:'#e9c28c',roughness:.7});
+ parts.drumsticks=[];
+ for(const elbow of [parts.leftElbow,parts.rightElbow]){
+  const stickGroup=new THREE.Group();stickGroup.visible=false;
+  stickGroup.position.set(0,-.43,.07);elbow.add(stickGroup);
+  const stick=new THREE.Mesh(new THREE.CylinderGeometry(.025,.019,.46,7),drumstickMaterial);
+  stick.rotation.x=Math.PI*.43;stick.position.set(0,-.03,.18);
+  stickGroup.add(stick);parts.drumsticks.push(stickGroup);
+ }
  // One crisp sprite for [badge][nickname] above every avatar.
  const cv=document.createElement('canvas');cv.width=768;cv.height=128;const ctx=cv.getContext('2d');
  const nickname=(p.name||'ROCKER').slice(0,18);
@@ -4652,6 +4726,9 @@ function animateAvatar(a,p,t){
  if(P.sash)P.sash.rotation.y=Math.PI/2+Math.sin(t*.0028)*.055;
  if(P.mdWings)P.mdWings.rotation.y=Math.sin(t*.0022)*.045;
  if(P.mdTail)P.mdTail.rotation.y=Math.sin(t*.0034)*.24;
+ if(act==='drum')attachDrumToAvatar(a);
+ if(P.drumPivot)P.drumPivot.visible=act==='drum';
+ if(P.drumsticks)for(const stick of P.drumsticks)stick.visible=act==='drum';
  P.toastCup.visible=q.action==='toast-clink';
  // Both headspin and crowd-surf rotations temporarily transform the avatar ROOT.
  // Reset the root when those actions end, rather than inheriting a tilted,
@@ -4737,6 +4814,20 @@ function animateAvatar(a,p,t){
   set('leftKnee',.22+.055*Math.max(0,shake));
   set('rightKnee',.22+.055*Math.max(0,-shake));
   height=-.035+rebound;
+ }
+ if(act==='drum'){
+  // Stationary half-crouch behind the kit. The arms REACH IN FRONT OF the
+  // chest crossing in an X, then hit alternately: left up/right down,
+  // right up/left down. Use torso-local hand IK, not a whole-body rotation.
+  const beat=sec*8.6,alternate=Math.sin(beat);
+  height=-.16+.015*Math.sin(beat*2);
+  set('upper',.13+.023*Math.sin(beat*2),0,.024*Math.sin(beat));
+  set('neck',-.05+.07*Math.sin(beat*2));
+  set('leftHip',-.62,0,-.15);set('rightHip',-.62,0,.15);
+  set('leftKnee',1.02);set('rightKnee',1.02);
+  leftHandTarget=new THREE.Vector3(.18,.24+.20*alternate,.61);
+  rightHandTarget=new THREE.Vector3(-.18,.24-.20*alternate,.61);
+  ikMode='drum';
  }
  if(act==='row-paddle'){
   // Two seated files, paddling together on each beat.
@@ -5172,7 +5263,7 @@ function animateAvatar(a,p,t){
  const alpha=act===a.lastAction?.25:.17;
  for(const k of keys){
   if((ikMode==='duo-both'&&['leftShoulder','leftElbow','rightShoulder','rightElbow'].includes(k))||(ikMode==='duo-right'&&['rightShoulder','rightElbow'].includes(k)))continue;
-  if((ikMode==='clap'||ikMode==='heartbow'||ikMode==='dougie')&&['leftShoulder','leftElbow','rightShoulder','rightElbow'].includes(k))continue;
+  if((ikMode==='clap'||ikMode==='heartbow'||ikMode==='dougie'||ikMode==='drum')&&['leftShoulder','leftElbow','rightShoulder','rightElbow'].includes(k))continue;
   if((ikMode==='drink'||ikMode==='wave'||ikMode==='snack'||ikMode==='smoke'||ikMode==='bubblegun'||ikMode==='marshmallow')&&['rightShoulder','rightElbow'].includes(k))continue;
   const target=pose[k],o=P[k];
   o.rotation.x+=(target[0]-o.rotation.x)*alpha;
@@ -5182,6 +5273,8 @@ function animateAvatar(a,p,t){
  if(ikMode==='duo-both'){
   placeHandIK(P,'left',leftHandTarget,.58);placeHandIK(P,'right',rightHandTarget,.58);
  }else if(ikMode==='duo-right')placeHandIK(P,'right',rightHandTarget,.68);
+ }else if(ikMode==='drum'){
+  placeHandIK(P,'left',leftHandTarget,.80);placeHandIK(P,'right',rightHandTarget,.80);
  else if(ikMode==='airguitar'){
   placeHandIK(P,'left',leftHandTarget,.68);
   placeHandIK(P,'right',rightHandTarget,.78);
@@ -5786,7 +5879,7 @@ function tick(t){
    }
   }
   state.moving=!!(dx||dy)||(rockMotion?.kind==='train'&&rockMotion.leaderId!==state.id&&state.me.action==='train-run');
-  if(state.moving && (dx||dy) && (state.action==='buriburi'||state.action==='groove'||state.action==='windmill'||state.action==='airguitar'||state.action==='headspin'||state.action==='cheer'||state.action==='smoke'||state.action==='freestyle'||state.action==='beatking'||state.action==='marshmallow'||state.action==='heartbow') && !slamMotion && !rockMotion){
+  if(state.moving && (dx||dy) && (state.action==='buriburi'||state.action==='groove'||state.action==='windmill'||state.action==='airguitar'||state.action==='headspin'||state.action==='cheer'||state.action==='smoke'||state.action==='freestyle'||state.action==='beatking'||state.action==='marshmallow'||state.action==='heartbow'||state.action==='drum') && !slamMotion && !rockMotion){
    state.action='idle';state.me.action='walk';state.actionUntil=0;updateActionButtons();
   }
   if(state.moving&&(dx||dy)){
