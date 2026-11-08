@@ -3505,9 +3505,9 @@ const stringInstrumentConfig={
  },
  bassguitar:{
   url:'/assets/instruments/bass_v221.glb?v=221',
-  // v223: twist the neck/left-hand side inward so the strumming hand is no
-  // longer moving inside the instrument body on the live avatar.
-  scale:1.18,angle:2.54,rotX:0.00,rotY:-0.52,offset:[-.07,.54,.79],
+  // v224: reverse the v223 Y-axis twist so the opposite side of the bass
+  // faces inward toward the player; retain the current string-hand targets.
+  scale:1.18,angle:2.54,rotX:0.00,rotY:0.52,offset:[-.07,.54,.79],
   neckHand:[-.60,.63,.89],strumHand:[.57,.26,1.02],strumAmplitude:.16
  }
 };
