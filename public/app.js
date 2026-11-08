@@ -17,6 +17,18 @@ const picnicSlots=[
 const picnicMatColors=['#f5a5a3','#a7def4','#f5ce80','#b3d9a0','#ceb8f1','#ffd2a5','#b2d8ff'];
 const mats=picnicSlots.map((slot,i)=>({x:slot.worldX/.058+600,y:500,c:picnicMatColors[i],worldX:slot.worldX,worldZ:slot.worldZ}));
 const state={id:null,me:null,players:new Map(),keys:new Set(),action:'idle',pose:'stand',actionUntil:0,lastSent:0,es:null,music:{id:'',paused:true,position:0,startedAt:0,token:0},queue:[],history:[],serverDelta:0,yt:null,ytReady:false,lastTrack:'',audioEnabled:true,skipVote:null,skipVoteCooldownUntil:0,walkTarget:null,benchTarget:null,moving:false,rhythm:{date:'',leaderboard:[],reward:null,booth:{x:1290,y:1034,radius:135}},rhythmBest:0};
+// v196: per-visitor headbang tempo. YouTube IFrame API does NOT expose audio
+// samples or a verified BPM; titles with explicit BPM and user TAP are honest sources.
+const HEADBANG_PREF_KEY='oneseason-headbang-v1';
+const HEADBANG_SONG_KEY='oneseason-headbang-song-bpm-v1';
+function headbangStorageRead(key,fallback){try{const x=JSON.parse(localStorage.getItem(key)||'null');return x&&typeof x==='object'?x:fallback}catch{return fallback}}
+function headbangStorageWrite(key,value){try{localStorage.setItem(key,JSON.stringify(value))}catch{}}
+const initialHeadbangPrefs=headbangStorageRead(HEADBANG_PREF_KEY,{});
+const headbangConfig={mode:initialHeadbangPrefs.mode==='manual'?'manual':'music',
+ bpm:Math.max(40,Math.min(240,Number(initialHeadbangPrefs.bpm)||120)),beatAt:0,
+ source:'',trackToken:null};
+const headbangSongTempos=headbangStorageRead(HEADBANG_SONG_KEY,{});
+let headbangTapTimes=[],headbangHintShown=false,headbangMoveTimer=null;
 let slamMode=false,slam=null,slamCooldownUntil=0,slamMotion=null;
 let rockPlacementMode=null,rockPlay=null,rockCooldowns={circle:0,train:0,mosh:0,row:0,toast:0,surf:0,shoulder:0},rockRunningUntil=0,rockMotion=null,crowdSurfScene=null,toastSequence=null,freeTrainTrail=null,shoulderSequence=null;
 let chosenPattern='solid',chosenSash='none',chosenHairStyle='short',chosenHairColor='#4b3932';
@@ -695,7 +707,7 @@ setInterval(async()=>{if(!state.id||manualExit)return;try{const r=await fetch('/
 window.addEventListener('online',()=>{if(state.id&&!manualExit)restoreConnection()});
 function restoreConnection(){if(!state.id)return;listen();fetch('/api/heartbeat',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id:state.id})}).then(r=>{if(r.status===401)return restoreSession()}).catch(()=>{})}
 
-function applyMusic(m,serverNow,queue,history){state.music=m;if(Array.isArray(queue))state.queue=queue;if(Array.isArray(history))state.history=history;updateFestivalBoard();renderQueue();if(serverNow)state.serverDelta=serverNow-Date.now();$('songTitle').textContent=m.id?m.title||'유튜브 영상':'등록된 음악 없음';$('songCredit').textContent=m.id?`DJ ${m.changedBy||'알 수 없음'} · ${m.paused?'일시정지':'재생 중'}`:'첫 번째 DJ가 되어보세요';$('screenPlaceholder').style.display=m.id?'none':'flex';updateSharedMusicButtons();syncVideo(true)}
+function applyMusic(m,serverNow,queue,history){const oldMusic=state.music;state.music=m;if(Array.isArray(queue))state.queue=queue;if(Array.isArray(history))state.history=history;updateFestivalBoard();renderQueue();if(serverNow)state.serverDelta=serverNow-Date.now();$('songTitle').textContent=m.id?m.title||'유튜브 영상':'등록된 음악 없음';$('songCredit').textContent=m.id?`DJ ${m.changedBy||'알 수 없음'} · ${m.paused?'일시정지':'재생 중'}`:'첫 번째 DJ가 되어보세요';$('screenPlaceholder').style.display=m.id?'none':'flex';updateSharedMusicButtons();if(oldMusic?.id!==m.id||oldMusic?.token!==m.token||oldMusic?.startedAt!==m.startedAt||oldMusic?.paused!==m.paused)syncHeadbangSong();updateHeadbangControls();syncVideo(true)}
 function updateSharedMusicButtons(){const side=$('skipMusic');if(side)side.disabled=!state.music?.id}
 
 function updateFestivalBoard(){let m=state.music||{};const title=document.getElementById('boardCurrent');const next=document.getElementById('boardNext');const status=document.getElementById('boardStatus');if(title)title.textContent=m.title||'현재 재생 중인 곡 없음';if(next)next.textContent=state.queue?.length?state.queue[0].title:'예약된 곡 없음';if(status)status.textContent=m.id?(m.paused?'일시정지':'공연 중'):'공연 대기 중';}
@@ -1070,7 +1082,7 @@ function react(a,glowColor=null){
   if((a==='jump'||a==='run'||a==='buriburi'||a==='groove'||a==='windmill'||a==='skanking'||a==='airguitar'||a==='headspin'||a==='cheer'||a==='smoke'||a==='bubblegun'||a==='freestyle'||a==='beatking'||a==='marshmallow'||a==='putyourhandsup'||a==='nightfirework'||a==='heartbow')&&state.pose!=='stand'){
    state.pose='stand';state.me.pose='stand';
   }
-  state.action=a;state.me.action=a;if(a==='cheer')playCheer();
+  state.action=a;state.me.action=a;if(a==='headbang'){applyHeadbangToSelf();if(!headbangHintShown&&headbangConfig.mode==='music'&&headbangConfig.source==='fallback'){headbangHintShown=true;openHeadbangSettings()}}if(a==='cheer')playCheer();
   state.actionUntil=sustainedReactions.has(a)?Infinity:performance.now()+(a==='peace'?2200:a==='snack'?3300:1750);
  }
  updateActionButtons();sendMove();
@@ -1172,6 +1184,196 @@ for(const key of reactionMenuOrder){
   ?(key==='beatking'?beatKingButton:$(key))
   :reactionMenu.querySelector(`[data-action="${key}"]`);
  if(button)reactionMenu.append(button);
+}
+// Headbang options live beside the existing reaction: BPM, TAP-to-match and presets.
+// Changing tempo never changes the shared YouTube video or another player's audio.
+const headbangOptionsButton=document.createElement('button');
+headbangOptionsButton.type='button';headbangOptionsButton.id='headbangTempoButton';
+headbangOptionsButton.innerHTML='⚙️ <span>헤드뱅잉 BPM</span>';
+const headbangReactionButton=reactionMenu.querySelector('[data-action="headbang"]');
+headbangReactionButton?.insertAdjacentElement('afterend',headbangOptionsButton);
+headbangOptionsButton.onclick=()=>openHeadbangSettings();
+const headbangDialog=document.createElement('div');
+headbangDialog.id='headbangDialog';headbangDialog.className='hb-dialog hidden';
+headbangDialog.setAttribute('role','dialog');headbangDialog.setAttribute('aria-modal','true');
+headbangDialog.setAttribute('aria-label','헤드뱅잉 BPM 설정');
+headbangDialog.innerHTML=`<div class="hb-panel">
+ <div class="hb-top"><strong>🎸 헤드뱅잉 BPM</strong><button id="hbClose" type="button" aria-label="설정 닫기">✕</button></div>
+ <div class="hb-now" id="hbNow">현재 음악을 확인 중...</div>
+ <div class="hb-modes"><button type="button" id="hbMusic">🎵 음악에 맞추기</button><button type="button" id="hbManual">🎛 직접 조절</button></div>
+ <p class="hb-source" id="hbSource"></p>
+ <div class="hb-meter"><button type="button" id="hbDown">−</button><b id="hbValue">120 BPM</b><button type="button" id="hbUp">＋</button></div>
+ <input id="hbRange" type="range" min="40" max="240" step="1" value="120" aria-label="헤드뱅잉 BPM" />
+ <div class="hb-presets" id="hbPresets"></div>
+ <button type="button" id="hbTap">👆 TAP · 음악 박자에 맞춰 누르기</button>
+ <small id="hbTapInfo">TAP을 최소 4회 눌러 BPM과 박자 시작점을 맞추세요.</small>
+ <p class="hb-note">유튜브는 음원 파형·BPM을 제공하지 않아 무조건 자동 감지는 불가능합니다. 곡 제목에 BPM이 적힌 경우 자동 적용되며, 나머지 곡은 TAP으로 정확히 조정할 수 있어요. 다른 참가자에게도 설정한 속도로 보입니다.</p>
+ </div>`;
+document.body.append(headbangDialog);
+const headbangCss=document.createElement('style');
+headbangCss.textContent=`
+.hb-dialog{position:fixed;inset:0;z-index:355;display:grid;place-items:center;padding:14px;background:#070a15d9;overscroll-behavior:contain}
+.hb-dialog.hidden{display:none}
+.hb-panel{width:min(430px,100%);max-height:88dvh;overflow:auto;background:#20243a;color:#fff;border:1px solid #717990;border-radius:20px;padding:20px;box-shadow:0 22px 70px #000b;font:14px/1.5 system-ui,sans-serif}
+.hb-top{display:flex;justify-content:space-between;align-items:center}.hb-top strong{font-size:19px}.hb-panel button{font:inherit;color:#fff;cursor:pointer;border:1px solid #6b7598;border-radius:10px;background:#353c5a;padding:10px}
+#hbClose{padding:5px 12px;font-size:19px}.hb-now{padding:10px;border-radius:10px;background:#121829;margin:14px 0 9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px}
+.hb-modes{display:grid;grid-template-columns:1fr 1fr;gap:8px}.hb-modes button.is-selected{background:#d9fd80;color:#152014;border-color:#d9fd80;font-weight:800}
+.hb-source{margin:8px 0 12px;color:#c9d0e9;font-size:12px;min-height:2em}
+.hb-meter{display:flex;align-items:center;justify-content:space-between;gap:8px}.hb-meter b{font-size:28px;font-variant-numeric:tabular-nums}.hb-meter button{font-size:20px;padding:5px 14px}
+#hbRange{width:100%;accent-color:#d9fd80;margin:12px 0}
+.hb-presets{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:13px}
+.hb-presets button{padding:9px 3px;font-size:12px}
+#hbTap{display:block;width:100%;padding:16px 8px;background:#bdf478;color:#152214;font-weight:900;font-size:16px;border-color:#bdf478;touch-action:manipulation}
+#hbTapInfo{display:block;color:#bac6db;margin-top:8px;min-height:2em}
+.hb-note{font-size:11px;color:#afb7d0;margin:10px 0 0}`;
+document.head.append(headbangCss);
+function headbangBpmFromTitle(title){
+ const t=String(title||'');
+ const match=t.match(/(?:^|[^0-9])([4-9][0-9]|1[0-9]{2}|2[0-4][0-9])\s*(?:bpm|비피엠)\b/i)
+  ||t.match(/\b(?:bpm|비피엠)\s*[:= -]?\s*([4-9][0-9]|1[0-9]{2}|2[0-4][0-9])(?:\b|$)/i);
+ return match?Number(match[1]):null;
+}
+function headbangSongInfo(){
+ const song=state.music||{};
+ if(!song.id)return {bpm:120,source:'no-song',phaseMs:0};
+ const saved=headbangSongTempos[song.id];
+ if(saved&&Number.isFinite(Number(saved.bpm))&&saved.bpm>=40&&saved.bpm<=240){
+  return {bpm:Math.round(saved.bpm),source:'tap',phaseMs:Number(saved.phaseMs)||0};
+ }
+ const titleBpm=headbangBpmFromTitle(song.title);
+ if(titleBpm)return {bpm:titleBpm,source:'title',phaseMs:0};
+ return {bpm:120,source:'fallback',phaseMs:0};
+}
+function headbangServerTime(){return Date.now()+(Number(state.serverDelta)||0)}
+function saveHeadbangPrefs(){headbangStorageWrite(HEADBANG_PREF_KEY,{mode:headbangConfig.mode,bpm:headbangConfig.bpm})}
+function applyHeadbangToSelf(){
+ if(!state.me)return;
+ state.me.headbangBpm=headbangConfig.bpm;
+ state.me.headbangBeatAt=headbangConfig.beatAt||headbangServerTime();
+}
+function sendHeadbangConfig(){applyHeadbangToSelf();if(state.id&&state.action==='headbang')sendMove()}
+function sendHeadbangConfigSoon(){clearTimeout(headbangMoveTimer);headbangMoveTimer=setTimeout(sendHeadbangConfig,110)}
+function syncHeadbangSong(){
+ if(headbangConfig.mode!=='music')return;
+ const info=headbangSongInfo(),song=state.music||{};
+ const start=Number(song.startedAt);
+ headbangConfig.bpm=info.bpm;
+ headbangConfig.beatAt=Number.isFinite(start)&&start>0?start+info.phaseMs:headbangServerTime();
+ headbangConfig.source=info.source;
+ headbangConfig.trackToken=song.token;
+ applyHeadbangToSelf();
+ if(state.action==='headbang')sendHeadbangConfigSoon();
+ updateHeadbangControls();
+}
+function setHeadbangTempo(bpm){
+ headbangConfig.mode='manual';
+ headbangConfig.bpm=Math.max(40,Math.min(240,Math.round(Number(bpm)||120)));
+ headbangConfig.beatAt=headbangServerTime();
+ headbangConfig.source='manual';headbangTapTimes=[];
+ saveHeadbangPrefs();updateHeadbangControls();sendHeadbangConfigSoon();
+}
+function switchHeadbangMusic(){headbangConfig.mode='music';headbangTapTimes=[];saveHeadbangPrefs();syncHeadbangSong()}
+function openHeadbangSettings(){headbangDialog.classList.remove('hidden');updateHeadbangControls()}
+function closeHeadbangSettings(){headbangDialog.classList.add('hidden')}
+$('hbClose').onclick=closeHeadbangSettings;
+headbangDialog.addEventListener('pointerdown',e=>{if(e.target===headbangDialog)closeHeadbangSettings()});
+$('hbMusic').onclick=switchHeadbangMusic;
+$('hbManual').onclick=()=>setHeadbangTempo(headbangConfig.bpm);
+$('hbDown').onclick=()=>setHeadbangTempo(headbangConfig.bpm-1);
+$('hbUp').onclick=()=>setHeadbangTempo(headbangConfig.bpm+1);
+$('hbRange').oninput=e=>setHeadbangTempo(e.target.value);
+for(const value of [60,80,100,120,140,160,180,200]){
+ const b=document.createElement('button');b.type='button';b.textContent=value;b.onclick=()=>setHeadbangTempo(value);
+ $('hbPresets').append(b);
+}
+$('hbTap').onclick=()=>{
+ const now=performance.now();
+ if(headbangTapTimes.length&&now-headbangTapTimes.at(-1)>1800)headbangTapTimes=[];
+ if(headbangTapTimes.length&&now-headbangTapTimes.at(-1)<240)return;
+ headbangTapTimes.push(now);if(headbangTapTimes.length>9)headbangTapTimes.shift();
+ if(headbangTapTimes.length<4){$('hbTapInfo').textContent=`${headbangTapTimes.length}/4회 · 들리는 음악의 박자에 맞춰 계속 눌러주세요.`;return;}
+ const deltas=headbangTapTimes.slice(1).map((t,i)=>t-headbangTapTimes[i]).filter(x=>x>=240&&x<=1500).sort((a,b)=>a-b);
+ if(deltas.length<3){$('hbTapInfo').textContent='박자 간격이 불규칙해요. 다시 4회 눌러주세요.';headbangTapTimes=[];return;}
+ const interval=deltas[Math.floor(deltas.length/2)];
+ const bpm=Math.max(40,Math.min(240,Math.round(60000/interval)));
+ const current=headbangServerTime();
+ headbangConfig.bpm=bpm;
+ headbangConfig.beatAt=current;
+ if(state.music?.id){
+  headbangConfig.mode='music';headbangConfig.source='tap';
+  const start=Number(state.music.startedAt)||current;
+  const period=60000/bpm;
+  const phaseMs=((current-start)%period+period)%period;
+  headbangSongTempos[state.music.id]={bpm,phaseMs};
+  // Cap song cache to avoid indefinite local-storage growth.
+  const keys=Object.keys(headbangSongTempos);
+  for(const key of keys.slice(0,Math.max(0,keys.length-80)))delete headbangSongTempos[key];
+  headbangStorageWrite(HEADBANG_SONG_KEY,headbangSongTempos);
+ }else{headbangConfig.mode='manual';headbangConfig.source='manual';}
+ saveHeadbangPrefs();updateHeadbangControls();sendHeadbangConfigSoon();
+ $('hbTapInfo').textContent=`맞춤 완료: ${bpm} BPM · 현재 누른 박자를 기준으로 동기화됐어요.`;
+};
+function updateHeadbangControls(){
+ if(!headbangDialog)return;
+ const music=state.music||{},active=headbangConfig.mode==='music';
+ $('hbNow').textContent=music.id?'♫ '+(music.title||'재생 중인 곡'):'현재 재생 중인 유튜브 음악 없음';
+ $('hbMusic').classList.toggle('is-selected',active);
+ $('hbManual').classList.toggle('is-selected',!active);
+ $('hbValue').textContent=headbangConfig.bpm+' BPM';
+ $('hbRange').value=headbangConfig.bpm;
+ const source=active?({title:'곡 제목에 표기된 BPM 적용 · 곡 재생 시작점을 기준으로 동기화',tap:'TAP으로 맞춘 박자 · 이 곡에서는 저장된 BPM과 박자 위치 사용',fallback:'곡에 BPM 정보가 없어 임시 120 BPM · TAP을 4회 눌러 실제 음악과 맞춰주세요', 'no-song':'곡이 없어 임시 120 BPM · 음악이 시작되면 다시 확인'}[headbangConfig.source]||'음악 템포 확인 중'):'직접 설정 · 선택한 BPM으로 반복 동작';
+ $('hbSource').textContent=source;
+}
+// Default attempts synchronization when title includes BPM. Otherwise TAP is
+// required; no misleading claim of waveform analysis is made.
+syncHeadbangSong();
+// v197: A responsive, unified dock for reactions, dance, and chat.
+// Reparent ONLY the visual panels: keep all existing IDs and event handlers.
+const dockBar=document.querySelector('.controlbar');
+const dockContent=document.createElement('div');
+dockContent.className='dock-content';
+dockContent.id='dockContent';
+for(const id of ['reactionActions','danceActions','chatPanel'])dockContent.appendChild($(id));
+dockBar.appendChild(dockContent);
+for(const button of dockContent.querySelectorAll('#reactionActions > button, #danceActions > button')){
+ // Original buttons use a bare emoji text node + label span. Give each emoji
+ // its own cell without rewriting onclick handlers, datasets or shortcuts.
+ const label=button.querySelector('span');
+ if(!label)continue;
+ const iconText=Array.from(button.childNodes)
+  .filter(node=>node.nodeType===Node.TEXT_NODE)
+  .map(node=>node.textContent.trim()).join('').trim();
+ for(const node of Array.from(button.childNodes))if(node.nodeType===Node.TEXT_NODE)node.remove();
+ const icon=document.createElement('span');icon.className='dock-icon';
+ icon.setAttribute('aria-hidden','true');icon.textContent=iconText||'✦';
+ label.classList.add('dock-title');
+ button.insertBefore(icon,label);
+ const key=button.querySelector('em');if(key)key.classList.add('dock-key');
+ button.setAttribute('aria-label',label.textContent.trim());
+}
+let dockTraveling=false;
+let dockLastMovementAt=-1e9;
+function updateDockAutoCollapse(moving,now){
+ if(!state.me){moving=false;dockLastMovementAt=-1e9;}
+ if(moving)dockLastMovementAt=now;
+ const traveling=Boolean(state.me)&&(moving||now-dockLastMovementAt<220);
+ if(traveling===dockTraveling)return;
+ dockTraveling=traveling;
+ dockBar.classList.toggle('is-traveling',traveling);
+ if(!traveling)dockBar.classList.remove('dock-manual-open');
+ const hidden=traveling&&!dockBar.classList.contains('dock-manual-open');
+ dockContent.inert=hidden;
+ dockContent.setAttribute('aria-hidden',String(hidden));
+}
+// During motion the three tabs remain available. Touching one explicitly
+// opens that panel even while moving; it folds automatically after moving stops.
+for(const tab of dockBar.querySelectorAll('[data-action-menu]')){
+ tab.addEventListener('click',()=>{
+  if(!dockTraveling)return;
+  dockBar.classList.add('dock-manual-open');
+  dockContent.inert=false;
+  dockContent.setAttribute('aria-hidden','false');
+ });
 }
 function campfireReactionAvailable(){
  if(!state.me)return false;
@@ -1294,7 +1496,7 @@ function playCheer(){
   audio.play().catch(error=>console.warn('Cheer sound could not play',error));
  }catch(error){console.warn('Cheer sound unavailable',error)}
 }
-function sendMove(){if(!state.id||!state.me||currentDuo())return;let p=state.me;post('move',{id:state.id,x:Math.round(p.x),y:Math.round(p.y),facing:p.facing,action:p.action,pose:p.pose||'stand',glowColor:p.glowColor||'lime',glowEnabled:Boolean(p.glowEnabled)}).catch(()=>{})}
+function sendMove(){if(!state.id||!state.me||currentDuo())return;let p=state.me;post('move',{id:state.id,x:Math.round(p.x),y:Math.round(p.y),facing:p.facing,action:p.action,pose:p.pose||'stand',glowColor:p.glowColor||'lime',glowEnabled:Boolean(p.glowEnabled),headbangBpm:Math.max(40,Math.min(240,Number(p.headbangBpm)||120)),headbangBeatAt:Number(p.headbangBeatAt)||headbangServerTime()}).catch(()=>{})}
 // Shared SLAM countdown (server timestamps, 15 s global launch cooldown).
 const slamButton=$('slamButton'),slamInfo=$('slamInfo'),slamMarker=$('slamMarker'),slamCount=$('slamCount'),slamMembers=$('slamMembers'),slamJoin=$('slamJoin');
 function slamNow(){return Date.now()+state.serverDelta}
@@ -4491,7 +4693,10 @@ function animateAvatar(a,p,t){
   // Head and waist are driven by the SAME phase: bow down together,
   // rise together. Never run a separate double-tempo neck oscillation.
   // Keep the slower waist tempo introduced in v131.
-  const fold=(1-Math.cos(sec*5.2))*.5;
+  const tempo=Math.max(40,Math.min(240,Number(q.headbangBpm)||120));
+  const anchor=Number(q.headbangBeatAt)||0;
+  const beatTime=(headbangServerTime()-anchor)*.001;
+  const fold=act==='headbang'?(1-Math.cos(2*Math.PI*tempo/60*beatTime))*.5:(1-Math.cos(sec*5.2))*.5;
   if(basePose==='stand'){
    set('upper',.06+fold*1.04);
    set('neck',-.03+fold*.38);
@@ -4571,7 +4776,7 @@ function animateAvatar(a,p,t){
   height=.52;lean=-Math.PI/2;
   set('leftHip',.11);set('rightHip',.11);
   // Allow gestures with shoulder and head while resting on the back.
-  if(act==='headbang')set('neck',-.02+((1-Math.cos(sec*5.2))*.5)*.17,0,0);
+  if(act==='headbang'){const tempo=Math.max(40,Math.min(240,Number(q.headbangBpm)||120));const phase=(headbangServerTime()-(Number(q.headbangBeatAt)||0))*.001*2*Math.PI*tempo/60;set('neck',-.02+((1-Math.cos(phase))*.5)*.17,0,0)}
  }
  // Dougie's hips drift side-to-side while the feet stay spread. Move the
  // hip joints together rather than pushing the whole avatar across the map.
@@ -5043,6 +5248,9 @@ function tick(t){
  if(elapsed+1.4<perfTargetFrame)return;
  perfLastFrameTime=t;
  const frameDelta=Math.min(50,Math.max(0,t-(tick.lastFrame??t)));tick.lastFrame=t;
+ // Measure actual character displacement; captures touch-to-walk and scripted
+ // group motions even where state.moving is recalculated later in this tick.
+ const dockFromX=state.me?.x,dockFromY=state.me?.y;
  const frameStart=performance.now();
  if(state.me&&!currentDuo()){
   let dx=0,dy=0,speed=3.2,k=state.keys;
@@ -5242,6 +5450,12 @@ function tick(t){
   if(rockMotion?.kind==='train'&&rockMotion.leaderId===state.id)recordTrainLeader(state.me);
   if(t-state.lastSent>150){state.lastSent=t;sendMove()}
  }
+ // Collapse the dock only while the local character is actually travelling.
+ // Includes arrow/WASD input and scripted or click-to-move displacement.
+ const deltaX=state.me&&dockFromX!==undefined?state.me.x-dockFromX:0;
+ const deltaY=state.me&&dockFromY!==undefined?state.me.y-dockFromY:0;
+ const keyWalking=Boolean(state.me)&&['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright'].some(key=>state.keys.has(key));
+ updateDockAutoCollapse(keyWalking||Math.hypot(deltaX,deltaY)>.015,t);
 
  for(let [id,p] of state.players){
   const current=avatars.get(id);
