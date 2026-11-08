@@ -3449,24 +3449,24 @@ const hairAssetSources={bob2:'long',short2:'short'};
 const customHairAssets={
  bob:'/assets/hair/bob_shaded_v213.glb?v=213',
  buns:'/assets/hair/buns_shaded_v213.glb?v=213',
- verylong:'/assets/hair/verylong_v214.glb?v=214',
- hippie:'/assets/hair/hippie_v214.glb?v=214',
- ponytail:'/assets/hair/ponytail_v214.glb?v=214',
- longpart:'/assets/hair/longpart_v214.glb?v=214',
- longshaggy:'/assets/hair/longshaggy_v214.glb?v=214',
- windswept:'/assets/hair/windswept_v214.glb?v=214',
- shaggy:'/assets/hair/shaggy_v214.glb?v=214'
+ verylong:'/assets/hair/verylong_fitted_v216.glb?v=216',
+ hippie:'/assets/hair/hippie_fitted_v216.glb?v=216',
+ ponytail:'/assets/hair/ponytail_fitted_v216.glb?v=216',
+ longpart:'/assets/hair/longpart_fitted_v216.glb?v=216',
+ longshaggy:'/assets/hair/longshaggy_fitted_v216.glb?v=216',
+ windswept:'/assets/hair/windswept_fitted_v216.glb?v=216',
+ shaggy:'/assets/hair/shaggy_fitted_v216.glb?v=216'
 };
 const customHairFit={
  bob:{width:1.82,height:1.58,depth:1.80,top:1.06,forward:.02},
  buns:{width:2.35,height:1.65,depth:1.91,top:1.40,forward:.02},
- verylong:{width:2.04,height:2.40,depth:1.92,top:1.02,forward:.02},
- hippie:{width:2.18,height:1.76,depth:2.02,top:1.06,forward:.02},
- ponytail:{width:2.00,height:2.32,depth:1.95,top:1.06,forward:.02},
- longpart:{width:2.10,height:2.28,depth:1.92,top:1.02,forward:.02},
- longshaggy:{width:2.18,height:2.28,depth:2.06,top:1.02,forward:.02},
- windswept:{width:2.16,height:1.84,depth:2.08,top:1.00,forward:.03},
- shaggy:{width:2.16,height:1.76,depth:2.06,top:1.00,forward:.02}
+ verylong:{baked:true},
+ hippie:{baked:true},
+ ponytail:{baked:true},
+ longpart:{baked:true},
+ longshaggy:{baked:true},
+ windswept:{baked:true},
+ shaggy:{baked:true},
 };
 function getHairAsset(style){
  style=normalizeHairStyle(style);
@@ -3487,8 +3487,9 @@ function getHairAsset(style){
   const customUrl=customHairAssets[source];
   const promise=(customUrl
    ?load(customUrl,true).catch(error=>{
-     console.warn('v210 hair unavailable; falling back to previous style:',source,error);
-     return load('/assets/hair/'+source+'.gltf',false);
+     console.warn('Custom hair unavailable; using the original base cut:',source,error);
+     const fallback=['verylong','hippie','ponytail','longpart','longshaggy','windswept','shaggy'].includes(source)?'long':source;
+     return load('/assets/hair/'+fallback+'.gltf',false);
     })
    :load('/assets/hair/'+source+'.gltf',false))
   .catch(error=>{hairAssetCache.delete(source);throw error;});
@@ -3499,16 +3500,18 @@ function getHairAsset(style){
 // A fitted scalp liner closes the large open crown of the imported Quaternius hair.
 // Its front boundary follows the natural hairline and stays ABOVE the eyebrows.
 // The back wraps lower so rear hair cannot reveal a bald top at oblique camera angles.
-function makeScalpLiner(color){
+function makeScalpLiner(color,style){
  const geometry=new THREE.BufferGeometry(), vertices=[],normals=[],indices=[];
  const radial=48,vertical=18,rx=.835,ry=.792,rz=.778;
  for(let j=0;j<=vertical;j++){
   const t=j/vertical;
   for(let i=0;i<=radial;i++){
    const a=i/radial*Math.PI*2;
-   // +Z is the front; .35 PI in front, .58 PI in back, .48 PI at sides.
+   // +Z is the face. Cover the skull above the brows, ears and rear crown.
+   // Windblown/shaggy short layers leave more of the cheek naturally visible.
    const frontWeight=(Math.sin(a)+1)*.5;
-   const maxTheta=Math.PI*(.58-.23*frontWeight);
+   const shortStyle=style==='windswept'||style==='shaggy';
+   const maxTheta=Math.PI*(shortStyle ? .51-.14*frontWeight : .58-.17*frontWeight);
    const theta=t*maxTheta,st=Math.sin(theta),ct=Math.cos(theta);
    const x=rx*st*Math.cos(a),y=.12+ry*ct,z=-.012+rz*st*Math.sin(a);
    vertices.push(x,y,z);
@@ -3520,7 +3523,11 @@ function makeScalpLiner(color){
  geometry.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));
  geometry.setAttribute('normal',new THREE.Float32BufferAttribute(normals,3));
  geometry.setIndex(indices);
- const mesh=new THREE.Mesh(geometry,new THREE.MeshStandardMaterial({color,roughness:.92,side:THREE.DoubleSide}));
+ const tint=new THREE.Color(color);
+ const mesh=new THREE.Mesh(geometry,new THREE.MeshStandardMaterial({
+  color:tint,roughness:.56,metalness:.035,
+  emissive:tint.clone(),emissiveIntensity:.11,side:THREE.DoubleSide
+ }));
  mesh.castShadow=true;mesh.receiveShadow=true;
  return mesh;
 }
@@ -3597,18 +3604,23 @@ function attachImportedHair(neck,style,color){
  if(stageForeground)holder.layers.set(1);
  getHairAsset(style).then(({scene,size,center,custom})=>{
   if(!neck.parent)return;
-  const hair=scene.clone(true),fit=custom?customHairFit[style]:hairFit[style];
-  const sx=fit.width/Math.max(size.x,.001);
-  const sy=fit.height/Math.max(size.y,.001);
-  const sz=fit.depth/Math.max(size.z,.001);
-  // Alternate men's style uses a mirrored side part; this remains an actual
-  // Quaternius mesh rather than procedurally generated hair primitives.
-  const mirrored=style==='short2';
-  hair.scale.set(mirrored?-sx:sx,sy,sz);
-  hair.position.set(-center.x*(mirrored?-sx:sx),
-   fit.top-(center.y+size.y/2)*sy,
-   -center.z*sz+fit.forward);
-  if(mirrored)hair.rotation.y=-.12;
+  const hair=scene.clone(true),fit=custom?customHairFit[style]:(hairFit[style]||hairFit.long);
+  if(custom&&fit?.baked){
+   // v216: this mesh is pre-fitted against the actual procedural chibi head
+   // (neck local center y=.12, radii .81/.7776/.7533); NO rescale/recentre.
+   hair.scale.set(1,1,1);
+   hair.position.set(0,0,0);
+  }else{
+   const sx=fit.width/Math.max(size.x,.001);
+   const sy=fit.height/Math.max(size.y,.001);
+   const sz=fit.depth/Math.max(size.z,.001);
+   const mirrored=style==='short2';
+   hair.scale.set(mirrored?-sx:sx,sy,sz);
+   hair.position.set(-center.x*(mirrored?-sx:sx),
+    fit.top-(center.y+size.y/2)*sy,
+    -center.z*sz+fit.forward);
+   if(mirrored)hair.rotation.y=-.12;
+  }
   // v213: v212 removed vertex colors but its MeshBasicMaterial was unlit,
   // making the sculpted layers appear flat.  Restore physically-lit material
   // with smooth normals and subtle specular highlights, while keeping a faint
@@ -3637,6 +3649,15 @@ function attachImportedHair(neck,style,color){
    mesh.castShadow=true;mesh.receiveShadow=true;
    if(stageForeground)mesh.layers.set(1);
   });
+  // Many artist-sculpted hair downloads have open crowns or separated locks.
+  // A close-fitting scalp liner hides exposed grey scalp from *every* camera
+  // angle while the real strands remain a separate 3D shape with lit shading.
+  if(custom&&fit?.baked){
+   const liner=makeScalpLiner(selectedHairColor,style);
+   liner.name='ONEseasonFittedScalp';
+   holder.add(liner);
+   if(stageForeground)addForegroundLayer(liner);
+  }
   holder.add(hair);
   // These two imported hairstyles were measured directly against the head.
   // Keep their sculpted strands intact (no corrective vertex stretching).
