@@ -32,6 +32,7 @@
 <div class="punk-shop-grid" id="punkShopGrid"></div><small class="punk-shop-foot">같은 브라우저에서 누적한 체류 시간과 아이템을 저장해요. 로그인은 필요하지 않아요.</small></div></div>
 <div aria-labelledby="skipVoteHeading" aria-modal="false" class="skip-vote-overlay" hidden="" id="skipVoteOverlay" role="dialog"><div class="skip-vote-card"><div class="skip-vote-top"><span>🎵 다음 곡으로 넘길까요?</span><span class="skip-vote-timer" id="skipVoteTimer">20초</span></div><h3 id="skipVoteHeading">다음 곡 투표</h3><p id="skipVoteDetails">접속자 과반수가 찬성하면 다음 곡으로 이동합니다.</p><div class="skip-vote-bar"><div id="skipVoteProgress"></div></div><div class="skip-vote-tally" id="skipVoteTally">찬성 0 · 반대 0</div><div class="skip-vote-actions"><button id="skipVoteYes" type="button">👍 찬성</button><button id="skipVoteNo" type="button">👎 반대</button></div><small id="skipVoteHint">투표가 끝날 때까지 음악은 계속 재생됩니다.</small></div></div><div class="modal" id="joinModal"><div class="joinbox" role="dialog" aria-modal="true" aria-label="캐릭터 꾸미기">
  <div class="wardrobe-topbar"><strong>✳ 캐릭터 꾸미기</strong><button id="wardrobeClose" type="button" aria-label="옷 꾸미기 창 닫기" title="닫기">✕</button></div>
+ <div class="wardrobe-scrollbody" id="wardrobeScrollBody">
  <div class="joinstar">✳</div><span class="eyebrow">입장권</span><h2>락페스티벌에<br/><em>입장하기</em></h2>
  <p>서로 다른 옷을 입고, 같은 음악을 즐기는 온라인 락페스티벌.<br/>입장할 이름과 티셔츠 색을 골라주세요.</p>
  <label for="nick">닉네임</label><input id="nick" maxlength="18" placeholder="예: ROCKSTAR" value="ROCKER"/>
@@ -52,6 +53,7 @@
   <div id="mdWardrobeGrid" class="md-wardrobe-grid"></div></div>
  </section>
  <small id="joinError"></small>
+ </div>
 </div></div>
 <button id="reopenJoin" type="button" hidden>🎟 입장 화면 열기</button>
 <div aria-labelledby="audioModalTitle" aria-modal="true" class="modal hidden" id="audioModal" role="dialog"><div class="audio-box"><div class="audio-mark">♫</div><h2 id="audioModalTitle">음악을 재생할까요?</h2><p>입장과 함께 무대에서 재생 중인 음악을 들을 수 있어요.<br/>원하지 않으면 나중에 「음악 / 예약」에서 소리를 켤 수 있어요.</p><div class="audio-buttons"><button class="audio-yes" id="audioYes">🔊 허용</button><button class="audio-no" id="audioNo">아니오</button></div></div></div><div class="toast" id="toast"></div><script src="app.js" type="module"></script></body></html>

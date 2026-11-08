@@ -859,3 +859,46 @@ html,body{height:100%;height:100dvh;overflow:hidden!important}
 
 /* Editing an existing avatar uses the sticky wardrobe title rather than the full entry heading. */
 #joinModal.profile-edit .joinstar,#joinModal.profile-edit .eyebrow,#joinModal.profile-edit .joinbox>h2,#joinModal.profile-edit .joinbox>p{display:none}
+
+
+/* v209: header stays anchored to the VERY TOP of the modal, while the
+   nickname field and other content scroll BELOW it. No sticky overlay. */
+#joinModal .joinbox{
+ display:flex;
+ flex-direction:column;
+ padding:0;
+ max-height:min(calc(var(--app-height,100dvh) - 32px),800px);
+ overflow:hidden;
+ scrollbar-gutter:auto;
+}
+#joinModal .wardrobe-topbar{
+ position:relative;
+ inset:auto;
+ top:auto;
+ z-index:2;
+ flex:0 0 auto;
+ min-height:65px;
+ margin:0;
+ padding:11px 18px 11px 26px;
+ background:#1c1f34;
+ border-bottom:1px solid #46516a;
+ box-shadow:none;
+}
+#joinModal .wardrobe-scrollbody{
+ flex:1 1 auto;
+ min-height:0;
+ overflow-x:hidden;
+ overflow-y:auto;
+ overscroll-behavior:contain;
+ scrollbar-gutter:stable;
+ padding:20px 33px 30px;
+}
+#joinModal.profile-edit .wardrobe-scrollbody>.joinstar,
+#joinModal.profile-edit .wardrobe-scrollbody>.eyebrow,
+#joinModal.profile-edit .wardrobe-scrollbody>h2,
+#joinModal.profile-edit .wardrobe-scrollbody>p{display:none}
+@media(max-width:700px){
+ #joinModal .joinbox{max-height:calc(var(--app-height,100dvh) - 24px)}
+ #joinModal .wardrobe-topbar{min-height:60px;margin:0;padding:9px 13px 9px 20px}
+ #joinModal .wardrobe-scrollbody{padding:18px 24px 24px}
+}
