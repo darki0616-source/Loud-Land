@@ -5273,9 +5273,9 @@ function animateAvatar(a,p,t){
  if(ikMode==='duo-both'){
   placeHandIK(P,'left',leftHandTarget,.58);placeHandIK(P,'right',rightHandTarget,.58);
  }else if(ikMode==='duo-right')placeHandIK(P,'right',rightHandTarget,.68);
- }else if(ikMode==='drum'){
+ else if(ikMode==='drum'){
   placeHandIK(P,'left',leftHandTarget,.80);placeHandIK(P,'right',rightHandTarget,.80);
- else if(ikMode==='airguitar'){
+ }else if(ikMode==='airguitar'){
   placeHandIK(P,'left',leftHandTarget,.68);
   placeHandIK(P,'right',rightHandTarget,.78);
  }else if(ikMode==='clap'){
