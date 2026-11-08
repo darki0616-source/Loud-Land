@@ -2428,19 +2428,41 @@ nearbyCity.forEach(v=>createBackdropBuilding(...v));
 // Main stage faces the audience: far north = negative z.
 // v128: keep the original backdrop, but add a front apron and two approach
 // stairs so visitors can actually walk onto the highlighted stage zone.
-cube(45,1.7,14,dark,0,1,-25);
-cube(19.2,1.72,7.9,dark,0,.96,-14.15); // walkable front apron (red marked zone)
-cube(21.2,.28,8.3,metal,0,1.86,-14.15);
+const stageStaticGroup=new THREE.Group();scene.add(stageStaticGroup);
+const stageCube=(w,h,d,m,x,y,z)=>{const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);mesh.position.set(x,y,z);mesh.castShadow=true;mesh.receiveShadow=true;stageStaticGroup.add(mesh);return mesh;};
+stageCube(45,1.7,14,dark,0,1,-25);
+stageCube(19.2,1.72,7.9,dark,0,.96,-14.15); // walkable front apron (red marked zone)
+stageCube(21.2,.28,8.3,metal,0,1.86,-14.15);
 for(const sx of [-3.7,3.7]){
  for(let i=0;i<4;i++){
   const depth=1.02;
   const stepZ=-9.0-i*0.78;
   const stepY=.18+i*.23;
-  cube(3.1,.34,depth,metal,sx,stepY,stepZ);
+  stageCube(3.1,.34,depth,metal,sx,stepY,stepZ);
  }
 }
-cube(47,1.2,1,metal,0,2.05,-17.3);cube(46,1.5,1,dark,0,13.8,-31);cube(1,13.8,1,metal,-22,7.8,-31);cube(1,13.8,1,metal,22,7.8,-31);cube(46,11.8,.6,dark,0,7.2,-31);
-const sign=new THREE.Mesh(new THREE.PlaneGeometry(24,1.6),label('ONEseason',78,'#dcfd8b','#18172e'));sign.position.set(0,13.9,-29.85);scene.add(sign);
+stageCube(47,1.2,1,metal,0,2.05,-17.3);stageCube(46,1.5,1,dark,0,13.8,-31);stageCube(1,13.8,1,metal,-22,7.8,-31);stageCube(1,13.8,1,metal,22,7.8,-31);stageCube(46,11.8,.6,dark,0,7.2,-31);
+const sign=new THREE.Mesh(new THREE.PlaneGeometry(24,1.6),label('ONEseason',78,'#dcfd8b','#18172e'));sign.position.set(0,13.9,-29.85);stageStaticGroup.add(sign);
+// v203: swap the visible stage structure to the user's imported GLB while
+// preserving the existing walkable stage footprint and the current screen size.
+const importedStageLoader=new GLTFLoader();
+importedStageLoader.load('/assets/world/stage.glb?v=203',gltf=>{
+ const importedStage=gltf.scene;
+ const baseBounds=new THREE.Box3().setFromObject(importedStage);
+ const baseSize=baseBounds.getSize(new THREE.Vector3());
+ const baseCenter=baseBounds.getCenter(new THREE.Vector3());
+ if(baseBounds.isEmpty()||baseSize.x<.001||baseSize.y<.001||baseSize.z<.001){
+  console.warn('무대 모델에 유효한 지오메트리가 없습니다. 기본 무대를 유지합니다.');return;
+ }
+ // The imported stage already contains its own visible frame and screen opening.
+ // Keep the screen iframe itself untouched; scale and place only the 3D structure.
+ stageStaticGroup.visible=false;
+ const stageScale=18.4;
+ importedStage.scale.setScalar(stageScale);
+ importedStage.position.set(-baseCenter.x*stageScale,-baseBounds.min.y*stageScale+.02,-23.9-baseCenter.z*stageScale);
+ importedStage.traverse(node=>{if(!node.isMesh)return;node.castShadow=false;node.receiveShadow=true;});
+ scene.add(importedStage);
+},undefined,error=>console.warn('무대 모델을 불러오지 못했습니다. 기본 무대를 유지합니다.',error));
 
 // v143: 13:00, 14:00 and 15:00 KST festival firetruck water shows.
 // Entirely client-rendered and time-gated, so visitors see the same event
@@ -2703,6 +2725,56 @@ for(const side of [-1,1]){const horn=mdPart(new THREE.ConeGeometry(.29,.76,7),ma
 mdPart(new THREE.TorusGeometry(.72,.07,7,20,Math.PI),mdSilver,0,1.90,2.95);
 const mdInteractSign=new THREE.Mesh(new THREE.PlaneGeometry(5.4,.78),label('TOUCH TO SHOP',58,'#fcfae8','#e36b9b'));
 mdInteractSign.position.set(0,2.0,3.01);mdBoothGroup.add(mdInteractSign);mdBoothTargets.push(mdInteractSign);
+// v202: the user's imported market-tent GLB replaces the visible MD booth.
+// Keep the original procedural booth as a fallback until the GLB has loaded.
+// The model's counter/open shopfront faces local +X, so rotate it to world +Z.
+// All shop interactions continue using mdBoothTargets and the existing UI.
+const mdMarketTentLoader=new GLTFLoader();
+mdMarketTentLoader.load('/assets/world/market_tent_optimized.glb?v=202',gltf=>{
+ const tent=gltf.scene;
+ const bounds=new THREE.Box3().setFromObject(tent);
+ const dims=bounds.getSize(new THREE.Vector3());
+ if(bounds.isEmpty()||dims.y<.001||dims.x<.001||dims.z<.001){
+  console.warn('MD 마켓 텐트 모델에 유효한 지오메트리가 없습니다. 기본 부스를 유지합니다.');return;
+ }
+ // Uniform scale preserves the original GLB's shape. Y is grounded to the grass.
+ const scale=5.35/dims.y;
+ const sourceCenter=bounds.getCenter(new THREE.Vector3());
+ const rotatedCenter=sourceCenter.clone().applyAxisAngle(new THREE.Vector3(0,1,0),-Math.PI/2);
+ tent.rotation.y=-Math.PI/2;
+ tent.scale.setScalar(scale);
+ tent.position.set(-rotatedCenter.x*scale,-bounds.min.y*scale+.06,-rotatedCenter.z*scale);
+ tent.updateMatrixWorld(true);
+ const modelPickTargets=[];
+ tent.traverse(node=>{
+  if(!node.isMesh)return;
+  node.castShadow=false;node.receiveShadow=true;
+  modelPickTargets.push(node);
+ });
+ if(!modelPickTargets.length){console.warn('마켓 텐트 메시를 찾지 못했습니다. 기본 부스를 유지합니다.');return;}
+ // Swap only after loading succeeds, preserving the procedural booth on errors.
+ for(const child of [...mdBoothGroup.children])mdBoothGroup.remove(child);
+ mdBoothTargets.length=0;
+ mdBoothGroup.add(tent);
+ mdBoothTargets.push(...modelPickTargets);
+ // Keep the visible ONEseason MD identity and a clear, large touch target on
+ // the counter-facing side, including for a partially open tent doorway.
+ const shopFrontZ=dims.x*scale*.5+.16;
+ const shopTitle=new THREE.Mesh(new THREE.PlaneGeometry(4.58,.72),
+  label('ONEseason MD',60,'#ffffff','#193645'));
+ shopTitle.position.set(0,3.64,shopFrontZ);
+ mdBoothGroup.add(shopTitle);mdBoothTargets.push(shopTitle);
+ const shopTouch=new THREE.Mesh(new THREE.PlaneGeometry(3.85,.56),
+  label('TOUCH TO SHOP',52,'#fff7e6','#346a6d'));
+ shopTouch.position.set(0,2.80,shopFrontZ+.015);
+ mdBoothGroup.add(shopTouch);mdBoothTargets.push(shopTouch);
+ const pickPanel=new THREE.Mesh(new THREE.PlaneGeometry(Math.max(4.2,dims.z*scale*.91),4.15),
+  new THREE.MeshBasicMaterial({color:'#ffffff',transparent:true,opacity:0,depthWrite:false,side:THREE.DoubleSide}));
+ pickPanel.position.set(0,2.25,shopFrontZ+.04);
+ mdBoothGroup.add(pickPanel);mdBoothTargets.push(pickPanel);
+},undefined,error=>{
+ console.warn('MD 마켓 텐트를 불러오지 못해 기본 부스를 사용합니다.',error);
+});
 // Crowd barrier
 // Keep the front fence, but open the centre so the new stage stairs are usable.
 for(let x=-34;x<=34;x+=3){
@@ -2793,8 +2865,25 @@ for(const x of [-33,-11,11,33]){
   benchSeats.push({x:wx/.058+600,y:(wz-8)/.058+500,wx,wz,center:x});
  }
 }
-function palmTree(x,z,h=6.3){cylinder(.42,.62,h,wood,x,h*.5,z);const top=sphere(1.2,mat('#679873'),x,h+.65,z);top.scale.set(1.2,.8,1.2);for(let i=0;i<5;i++){const leaf=new THREE.Mesh(new THREE.CapsuleGeometry(.14,3.1,4,8),mat('#5a8e62'));leaf.position.set(x,h+.4,z);leaf.rotation.z=-1.1+i*.55;leaf.rotation.y=i*1.22;leaf.castShadow=true;scene.add(leaf)}}
-[[-46,52,6.4],[-34,63,6.7],[-18,58,6.0],[18,60,6.3],[34,64,6.8],[48,54,6.2]].forEach(v=>palmTree(...v));
+// v203: replace the shoreline procedural palms with the user's imported GLB.
+const importedPalmLoader=new GLTFLoader();
+const shorelinePalmPlacements=[[-46,52,7.6],[-34,63,8.1],[-18,58,7.3],[18,60,7.6],[34,64,8.2],[48,54,7.5]];
+importedPalmLoader.load('/assets/world/palm_tree.glb?v=203',gltf=>{
+ const source=gltf.scene;
+ const baseBounds=new THREE.Box3().setFromObject(source);
+ const baseSize=baseBounds.getSize(new THREE.Vector3());
+ const baseCenter=baseBounds.getCenter(new THREE.Vector3());
+ if(baseBounds.isEmpty()||baseSize.y<.001){console.warn('야자수 모델에 유효한 지오메트리가 없습니다.');return;}
+ shorelinePalmPlacements.forEach(([x,z,targetHeight],index)=>{
+  const palm=source.clone(true);
+  const scale=targetHeight/baseSize.y;
+  palm.position.set(x-baseCenter.x*scale,-baseBounds.min.y*scale+.04,z-baseCenter.z*scale);
+  palm.scale.setScalar(scale);
+  palm.rotation.y=((index%2)*2-1)*.14+index*.24;
+  palm.traverse(node=>{if(!node.isMesh)return;node.castShadow=false;node.receiveShadow=true;});
+  scene.add(palm);
+ });
+},undefined,error=>console.warn('야자수 모델을 불러오지 못했습니다.',error));
 function umbrella(x,z,c){const pole=cylinder(.08,.08,2.2,metal,x,1.1,z);const top=new THREE.Mesh(new THREE.ConeGeometry(2.3,1.15,18,1,true),mat(c,.7));top.position.set(x,2.5,z);top.rotation.y=.4;top.castShadow=true;scene.add(top);cube(1.5,.12,1.1,mat('#c79b74'),x,.36,z+1.7,false)}
 [[-25,61,'#f4a9a9'],[-6,65,'#ffd48f'],[14,60,'#a6d8f2'],[33,66,'#c8b4ef']].forEach(v=>umbrella(...v));
 // 3D performance information board with real shared playlist rendered as HTML in the world.
@@ -2803,10 +2892,48 @@ boardElement.className='festival-board';boardElement.innerHTML='<div class="boar
 const boardObject=new CSS3DObject(boardElement);boardObject.position.set(-45.6,4.6,12);boardObject.rotation.y=.25;boardObject.scale.set(.017,.017,.017);scene.add(boardObject);
 cube(8,.5,.8,wood,-45.6,.4,11.95);for(let x of [-49,-42.2])cube(.22,6,.22,metal,x,3,12);
 // trees, lanterns, food stalls
-for(let x of [-46,48])for(let z of [-9,9,23]){cylinder(.45,.65,5,wood,x,2.5,z);sphere(2.7,mat('#477f63'),x,6,z);sphere(1.7,mat('#5a9a70'),x+1.7,5.7,z-1)}
+const importedMapleLoader=new GLTFLoader();
+const sideTreePlacements=[[-46,-9],[-46,9],[-46,23],[48,-9],[48,9],[48,23]];
+importedMapleLoader.load('/assets/world/maple_tree.glb?v=203',gltf=>{
+ const source=gltf.scene;
+ const baseBounds=new THREE.Box3().setFromObject(source);
+ const baseSize=baseBounds.getSize(new THREE.Vector3());
+ const baseCenter=baseBounds.getCenter(new THREE.Vector3());
+ if(baseBounds.isEmpty()||baseSize.y<.001){console.warn('양옆 나무 모델에 유효한 지오메트리가 없습니다.');return;}
+ sideTreePlacements.forEach(([x,z],index)=>{
+  const tree=source.clone(true);
+  const scale=(index%3===1?8.9:8.3)/baseSize.y;
+  tree.position.set(x-baseCenter.x*scale,-baseBounds.min.y*scale+.02,z-baseCenter.z*scale);
+  tree.scale.setScalar(scale);
+  tree.rotation.y=(index*1.15)%Math.PI;
+  tree.traverse(node=>{if(!node.isMesh)return;node.castShadow=false;node.receiveShadow=true;});
+  scene.add(tree);
+ });
+},undefined,error=>console.warn('양옆 나무 모델을 불러오지 못했습니다.',error));
 for(let x of [-46,47]){cube(5,2.8,3,mat('#bc7097'),x,1.6,15);cube(5.8,.35,4.1,mat('#f4c783'),x,3.2,15);let banner=new THREE.Mesh(new THREE.PlaneGeometry(4,1.1),label(x<0?'SNACKS':'MERCH',70,'#fbe9dc','#9e446f'));banner.position.set(x,2.2,16.56);scene.add(banner)}
 
-for(let x of [-46,47]){cube(5.5,2.9,3.4,mat('#6b8ac7'),x,1.65,22);cube(6.4,.35,4.5,mat('#f4c783'),x,3.28,22);let banner=new THREE.Mesh(new THREE.PlaneGeometry(4.5,1.1),label(x<0?'FOOD':'REST',68,'#fef7e6','#4c6588'));banner.position.set(x,2.2,23.86);scene.add(banner)}
+// v203: replace both side restroom buildings with the user's imported GLB.
+const importedRestroomLoader=new GLTFLoader();
+const sideRestroomGroup=new THREE.Group();scene.add(sideRestroomGroup);
+const sideRestroomPlacements=[[-46,22,'LEFT RESTROOM'],[47,22,'RIGHT RESTROOM']];
+importedRestroomLoader.load('/assets/world/rest_room.glb?v=203',gltf=>{
+ const source=gltf.scene;
+ const baseBounds=new THREE.Box3().setFromObject(source);
+ const baseSize=baseBounds.getSize(new THREE.Vector3());
+ const baseCenter=baseBounds.getCenter(new THREE.Vector3());
+ if(baseBounds.isEmpty()||baseSize.y<.001){console.warn('화장실 모델에 유효한 지오메트리가 없습니다.');return;}
+ sideRestroomPlacements.forEach(([x,z,title],index)=>{
+  const restroom=source.clone(true);
+  const scale=4.3/baseSize.y;
+  restroom.position.set(x-baseCenter.x*scale,-baseBounds.min.y*scale+.02,z-baseCenter.z*scale);
+  restroom.scale.setScalar(scale);
+  restroom.rotation.y=index===0?.10:-.10;
+  restroom.traverse(node=>{if(!node.isMesh)return;node.castShadow=false;node.receiveShadow=true;});
+  sideRestroomGroup.add(restroom);
+  const sign=new THREE.Mesh(new THREE.PlaneGeometry(4.4,.92),label(title,56,'#f7fbff','#39506b'));
+  sign.position.set(x,4.6,z+2.92);sideRestroomGroup.add(sign);
+ });
+},undefined,error=>console.warn('화장실 모델을 불러오지 못했습니다.',error));
 const rhythmBooth=new THREE.Group();rhythmBooth.position.set(40,0,39);scene.add(rhythmBooth);const rb=(w,h,d,m,x,y,z)=>{const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);mesh.position.set(x,y,z);rhythmBooth.add(mesh);return mesh};rb(6.4,3.0,4.2,mat('#7a4ed9'),0,1.65,0);rb(7.2,.34,4.8,mat('#ffd36b'),0,3.28,0);rb(2.8,.95,.12,mat('#241736'),0,2.25,2.18);const rhythmBanner=new THREE.Mesh(new THREE.PlaneGeometry(4.9,1.16),label('BEAT BOOTH',64,'#fffaf1','#ff59bc'));rhythmBanner.position.set(0,2.25,2.45);rhythmBooth.add(rhythmBanner);const rhythmSign=new THREE.Mesh(new THREE.PlaneGeometry(5.2,.96),label('RHYTHM GAME',58,'#fff5ea','#4a2575'));rhythmSign.position.set(0,3.95,.12);rhythmBooth.add(rhythmSign);const rbFloor=new THREE.Mesh(new THREE.CircleGeometry(2.5,40),new THREE.MeshBasicMaterial({color:'#ff76c8',transparent:true,opacity:.22}));rbFloor.rotation.x=-Math.PI/2;rbFloor.position.set(0,.05,2.1);rhythmBooth.add(rbFloor);
 // Subtle festival bulbs across the red line: the end of the rock-play zone.
 // Positioned at z=18, NOT along or through the picnic row at z=28.
