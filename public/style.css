@@ -644,14 +644,14 @@ html,body{height:100%;height:100dvh;overflow:hidden!important}
  background:#d7fa81!important;color:#17221a!important;border-color:#d7fa81!important;
 }
 .gamepanel .controlbar .dock-content{
- display:block;width:100%;min-width:0;max-height:min(46vh,470px);
+ display:block;width:100%;min-width:0;max-height:min(26vh,126px);
  opacity:1;transform:translateY(0);overflow:hidden;
  transition:max-height .27s ease,opacity .20s ease,transform .27s ease;
 }
 .gamepanel .controlbar .dock-content .actions{
  display:grid;grid-template-columns:repeat(4,minmax(0,1fr))!important;
  gap:7px!important;width:100%;max-width:none!important;
- max-height:min(40vh,380px)!important;
+ max-height:min(23vh,112px)!important;
  overflow-y:auto!important;overflow-x:hidden!important;
  overscroll-behavior:contain;padding:1px 3px 3px 1px;
  scrollbar-color:#687a95 transparent;scrollbar-width:thin;
@@ -700,6 +700,7 @@ html,body{height:100%;height:100dvh;overflow:hidden!important}
 .gamepanel .controlbar .dock-content .chat-compose input{min-width:0;font-size:16px}
 .gamepanel .controlbar .dock-content .chat-choices{gap:7px}
 .gamepanel .controlbar .dock-content .chat-choices button{min-height:37px;border-radius:9px}
+.gamepanel .controlbar.chat-tab-open .dock-content{max-height:min(42vh,350px)}
 /* Auto-fold: leave ONLY the 3 tabs; slide the action panels toward the bottom. */
 .gamepanel .controlbar.is-traveling:not(.dock-manual-open){
  width:min(420px,calc(100% - 20px))!important;
@@ -721,15 +722,15 @@ html,body{height:100%;height:100dvh;overflow:hidden!important}
  .gamepanel .controlbar.chat-tab-open{width:calc(100% - 12px)!important;max-width:510px!important}
  .gamepanel .controlbar .action-tabs{gap:5px!important}
  .gamepanel .controlbar .action-tabs button{
-  min-height:39px!important;font-size:12px!important;padding:8px 5px!important;
+  min-height:32px!important;font-size:12px!important;padding:6px 5px!important;
  }
- .gamepanel .controlbar .dock-content{max-height:min(46vh,365px)}
+ .gamepanel .controlbar:not(.chat-tab-open) .dock-content{max-height:min(25vh,108px)}
  .gamepanel .controlbar .dock-content .actions{
   grid-template-columns:repeat(2,minmax(0,1fr))!important;
-  gap:5px!important;max-height:min(36vh,280px)!important;
+  gap:5px!important;max-height:min(24vh,106px)!important;
  }
  .gamepanel .controlbar .dock-content .actions button{
-  min-height:43px!important;padding:8px 9px!important;gap:7px!important;
+  min-height:39px!important;padding:7px 9px!important;gap:7px!important;
  }
  .gamepanel .controlbar .dock-content .actions button .dock-icon{
   flex-basis:25px!important;width:25px!important;min-width:25px!important;font-size:18px!important;
@@ -742,7 +743,7 @@ html,body{height:100%;height:100dvh;overflow:hidden!important}
  .gamepanel .controlbar .dock-content .actions{grid-template-columns:repeat(4,minmax(0,1fr))!important}
 }
 @media(max-width:700px) and (max-height:500px){
- .gamepanel .controlbar .dock-content .actions{grid-template-columns:repeat(3,minmax(0,1fr))!important;max-height:25vh!important}
+ .gamepanel .controlbar .dock-content .actions{grid-template-columns:repeat(3,minmax(0,1fr))!important;max-height:min(25vh,95px)!important}
  .gamepanel .controlbar .dock-content .actions button{min-height:35px!important;padding:5px 8px!important}
  .gamepanel .controlbar .dock-content .actions button .dock-title{font-size:10px!important}
  .gamepanel .controlbar .action-tabs button{min-height:35px!important}
@@ -761,4 +762,17 @@ html,body{height:100%;height:100dvh;overflow:hidden!important}
 @media(max-width:700px){
  .gamepanel .hudright{gap:4px!important}
  .gamepanel .hudright button{border-radius:9px!important}
+}
+
+/* v198 — Match pre-v197 resting dock height, keeping labels and auto-collapse. */
+@media(min-width:701px){
+ .gamepanel .controlbar:not(.chat-tab-open):not(.is-traveling){
+  flex-direction:row!important;align-items:center!important;
+ }
+ .gamepanel .controlbar:not(.chat-tab-open):not(.is-traveling) .action-tabs{
+  width:225px!important;flex:0 0 225px!important;
+ }
+ .gamepanel .controlbar:not(.chat-tab-open):not(.is-traveling) .dock-content{
+  flex:1 1 auto!important;width:auto!important;min-width:0!important;
+ }
 }
