@@ -1,6 +1,7 @@
 import * as THREE from 'https://esm.sh/three@0.160.1';
 import { OrbitControls } from 'https://esm.sh/three@0.160.1/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'https://esm.sh/three@0.160.1/examples/jsm/loaders/GLTFLoader.js';
+import { clone as cloneSkinnedModel } from 'https://esm.sh/three@0.160.1/examples/jsm/utils/SkeletonUtils.js';
 import { CSS3DRenderer, CSS3DObject } from 'https://esm.sh/three@0.160.1/examples/jsm/renderers/CSS3DRenderer.js';
 const $=id=>document.getElementById(id), palette=['#ff747d','#67d8d1','#f9c463','#a8a0ff','#90dd81','#ff9ce1','#72b5ff','#eeeeee','#16171d'];
 // Picnic zone layout tuned for mobile: keep the main standing/stage area
@@ -2077,6 +2078,8 @@ function mdPreviewTarget(id,slot,emoji,name){
     mdPreviewCamera.layers.enable(1);
    }
    // Preview only the selected item, without equipping or purchasing it.
+   // Render the same imported body in shop previews instead of caching the old avatar.
+   if(enableImportedToon)await getImportedToon().catch(()=>null);
    const person={...p,id:'md-preview',name:'',gender:p.gender||chosenGender,
      color:p.color||chosenColor,hairStyle:hairStyle,hairColor:p.hairColor||chosenHairColor,
      equipped:{[slot]:id},flagText:'',flagImage:'',badgeTier:'none',sash:'none',pattern:'solid'};
@@ -3571,6 +3574,160 @@ function attachImportedHair(neck,style,color){
 // The original four external assets are preloaded; new options reuse and
 // remap two of these source files, so there are no new asset dependencies.
 for(const style of ['short','bob','long','buns'])getHairAsset(style).catch(()=>{});
+// v205 — One shared GLB resource, cloned with a separate Skeleton per visitor.
+// The original game rig remains the animation/interaction driver: it already
+// coordinates every dance, reaction, rock-play, positioning and multiplayer event.
+// Imported mesh skinning is retargeted from those motions instead of replacing
+// the stable gameplay code, so server messages and stage/camera code are untouched.
+const importedToonLoader=new GLTFLoader();
+const importedToonUrl='/assets/avatar/tiny_toon_mixamo_optimized.glb?v=205';
+// Emergency opt-out for visual testing: append ?avatar=legacy to the game URL.
+const enableImportedToon=new URLSearchParams(location.search).get('avatar')!=='legacy';
+let importedToonAsset=null,importedToonLoading=null;
+function getImportedToon(){
+ if(importedToonAsset)return Promise.resolve(importedToonAsset);
+ if(!importedToonLoading)importedToonLoading=new Promise((resolve,reject)=>{
+  importedToonLoader.load(importedToonUrl,gltf=>{
+   const mesh=[];gltf.scene.traverse(o=>{if(o.isSkinnedMesh)mesh.push(o)});
+   if(!mesh.length)return reject(new Error('GLB has no skinned mesh'));
+   importedToonAsset={scene:gltf.scene,animations:gltf.animations,mesh};resolve(importedToonAsset);
+  },undefined,reject);
+ }).catch(error=>{importedToonLoading=null;throw error});
+ return importedToonLoading;
+}
+const toonBoneMapping={
+ spine:['Spine','upper',.95],neck:['Neck','neck',1],
+ leftUpperArm:['RightArm','leftShoulder',.92],rightUpperArm:['LeftArm','rightShoulder',.92],
+ leftLowerArm:['RightForeArm','leftElbow',1],rightLowerArm:['LeftForeArm','rightElbow',1],
+ leftUpperLeg:['RightUpLeg','leftHip',1],rightUpperLeg:['LeftUpLeg','rightHip',1],
+ leftLowerLeg:['RightLeg','leftKnee',1],rightLowerLeg:['LeftLeg','rightKnee',1]
+};
+const toonQuaternionIdentity=new THREE.Quaternion();
+const toonFaceColor=new THREE.Color('#f3d6c2');
+const toonPantsColor=new THREE.Color('#6c7891');
+const toonShoeColor=new THREE.Color('#f6f3e9');
+const toonBlack=new THREE.Color('#151820');
+function buildToonBodyColors(skinned,profile){
+ // No texture / UV map exists in this user's GLB. Assign stable colors by
+ // original mesh vertex position and by the dominant skinned bone domain.
+ const geometry=skinned.geometry.clone();skinned.geometry=geometry;
+ const positions=geometry.getAttribute('position');
+ const indices=geometry.getAttribute('skinIndex');
+ const weights=geometry.getAttribute('skinWeight');
+ if(!positions||!indices||!weights)return;
+ const colors=new Float32Array(positions.count*3);
+ const chosenShirt=profile.equipped?.shirt;
+ const builtins={'tee-skull':'#17191f','tee-lightning':'#292139','tee-anarchy':'#191d25'};
+ const shirtColor=new THREE.Color(mdCatalog[chosenShirt]?.shirtColor||builtins[chosenShirt]||profile.color||'#ff747d');
+ const pants=profile.gender==='female'?new THREE.Color('#ad816c'):toonPantsColor;
+ const hairColor=new THREE.Color(profile.hairColor||'#4b3932');
+ const temp=new THREE.Color();
+ const hasStripe=profile.pattern==='stripe'||profile.pattern==='wide-stripe';
+ const width=profile.pattern==='wide-stripe'?.093:.052;
+ for(let i=0;i<positions.count;i++){
+  const y=positions.getY(i),x=positions.getX(i),z=positions.getZ(i);
+  let major=indices.getX(i),best=weights.getX(i);
+  for(let k=1;k<4;k++){const value=[weights.getY(i),weights.getZ(i),weights.getW(i)][k-1];if(value>best){best=value;major=[indices.getY(i),indices.getZ(i),indices.getW(i)][k-1]}}
+  const name=skinned.skeleton.bones[major]?.name||'';
+  const arm=name.includes('Arm')||name.includes('Shoulder');
+  const hand=name.includes('Hand');
+  const leg=name.includes('Leg')||name.includes('Toe')||name.includes('Foot');
+  const head=name.includes('Head')||name.includes('Neck');
+  if(y<.095&&leg)temp.copy(toonShoeColor);
+  else if(leg||y<.54)temp.copy(pants);
+  else if(hand||name.includes('ForeArm'))temp.copy(toonFaceColor);
+  else if((head&&y>1.36)||y>1.53)temp.copy(hairColor);
+  else if(head&&y>.90)temp.copy(toonFaceColor);
+  else if(head&&y>.76&&Math.abs(x)>.23)temp.copy(toonFaceColor);
+  else if(arm&&y<.56)temp.copy(toonFaceColor);
+  else if((arm||name.includes('Spine')||name.includes('Hips')||head) && y>=.53 && y<=.95){
+   temp.copy(shirtColor);
+   if(hasStripe&&((x+.60)%(width*3))<width)temp.lerp(new THREE.Color('#fff9ee'),.45);
+  }else temp.copy(toonFaceColor);
+  colors[i*3]=temp.r;colors[i*3+1]=temp.g;colors[i*3+2]=temp.b;
+ }
+ geometry.setAttribute('color',new THREE.BufferAttribute(colors,3));
+ const material=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.88,metalness:0,side:THREE.FrontSide});
+ // Keep MD prints painted on the skinned torso, never as a floating plane.
+ const imgTexture=profile.equipped?.shirt&&skinned.userData.shirtInk||null;
+ if(imgTexture){
+  material.onBeforeCompile=shader=>{
+   shader.uniforms.toonMdInk={value:imgTexture};
+   shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nvarying vec3 vToonRestPosition;');
+   shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\nvToonRestPosition = position;');
+   shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nvarying vec3 vToonRestPosition;\nuniform sampler2D toonMdInk;');
+   shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',`#include <color_fragment>
+    if(vToonRestPosition.y > 0.60 && vToonRestPosition.y < 0.86 && abs(vToonRestPosition.x) < 0.23 && vToonRestPosition.z > 0.02){
+      vec2 paintUv=vec2(clamp(vToonRestPosition.x/0.44 + .5,0.,1.),clamp((vToonRestPosition.y-.61)/.24,0.,1.));
+      vec4 ink=texture2D(toonMdInk,paintUv);
+      diffuseColor.rgb=mix(diffuseColor.rgb,ink.rgb,ink.a*.95);
+    }
+   `);
+  };
+  material.customProgramCacheKey=()=> 'oneseason-mixamo-md-shirt-v205';
+ }
+ skinned.material=material;
+ skinned.castShadow=false;skinned.receiveShadow=true;
+}
+function attachImportedToon(root,parts,profile){
+ const holder=new THREE.Group();holder.name='Imported Mixamo Character';
+ holder.scale.setScalar(1.78);root.add(holder);
+ getImportedToon().then(resource=>{
+  if(root.userData.disposed||!root.parent)return;
+  const model=cloneSkinnedModel(resource.scene);
+  holder.add(model);model.updateWorldMatrix(true,true);
+  const mesh=[];model.traverse(o=>{if(o.isSkinnedMesh)mesh.push(o)});
+  if(!mesh.length){holder.remove(model);return;}
+  // Existing shirt-ink canvas is generated by the base avatar machinery;
+  // reuse its exact current graphic and uploaded MD print image.
+  const ink=parts.torso?.material?.userData?.mdPrintTexture||null;
+  for(const skinned of mesh){skinned.userData.shirtInk=ink;buildToonBodyColors(skinned,profile);}
+  const allBones={};model.traverse(o=>{if(o.isBone)allBones[o.name.split(':').pop()]=o;});
+  const animated=[];
+  // Meshy exported a Running action whose arm bind posture is nearly sideways.
+  // Normalize its upper arms to a relaxed downward idle stance BEFORE applying
+  // ONEseason's existing shoulder motions; otherwise idle looks like a T-pose.
+  const modelWorldInverse=model.getWorldQuaternion(new THREE.Quaternion()).invert();
+  for(const [targetName,driverName,weight] of Object.values(toonBoneMapping)){
+   const bone=allBones[targetName];if(!bone||!parts[driverName])continue;
+   const rest=bone.quaternion.clone();
+   if(targetName==='RightArm'||targetName==='LeftArm'){
+    const child=allBones[targetName==='RightArm'?'RightForeArm':'LeftForeArm'];
+    if(child){
+     const relParentRotation=modelWorldInverse.clone().multiply(bone.parent.getWorldQuaternion(new THREE.Quaternion()));
+     const side=targetName==='RightArm'?-1:1;
+     const desired=new THREE.Vector3(side*.28,-.95,.05).normalize().applyQuaternion(relParentRotation.invert());
+     const current=child.position.clone().applyQuaternion(rest).normalize();
+     rest.premultiply(new THREE.Quaternion().setFromUnitVectors(current,desired));
+     bone.quaternion.copy(rest);
+    }
+   }
+   animated.push({bone,driver:parts[driverName],rest,weight});
+  }
+  if(animated.length<9){console.warn('Mixamo joints incomplete; old avatar stays visible');holder.remove(model);return;}
+  parts.importedToon={holder,model,mesh,animated,allBones};
+  // Once the skin is ready, hide only the underlying primitive body. Existing
+  // hairstyles, MD clothing/backs/headwear, wristbands, glowsticks and props
+  // stay in their original attachment groups and continue animating.
+  const basicMesh=[parts.torso,parts.head,...(parts.importedToonBaseLimbs||[])];
+  basicMesh.forEach(o=>{if(o)o.visible=false});
+  if(stageForeground)addForegroundLayer(model);
+ }).catch(err=>{
+  // An imported-asset error must never block entry or hide an avatar.
+  console.warn('Mixamo GLB unavailable; using the original character:',err);
+ });
+}
+function syncImportedToon(parts){
+ const rig=parts.importedToon;if(!rig)return;
+ // Absolute recalculation each frame; avoid accumulating rotations or drift.
+ for(const link of rig.animated){
+  const delta=link.driver.quaternion;
+  if(link.weight===1){link.bone.quaternion.copy(delta).multiply(link.rest)}
+  else{link.bone.quaternion.copy(toonQuaternionIdentity).slerp(delta,link.weight).multiply(link.rest)}
+ }
+ rig.holder.position.x=parts.upper.position.x*.72;
+ rig.holder.position.y=0;
+}
 // Rounded chibi avatar: larger soft head, painted-on face, short unified hairstyle,
 // surface-colored clothing, and inexpensive shoulder/elbow/hip/knee rig.
 function makeAvatar(p){
@@ -4085,6 +4242,11 @@ function makeAvatar(p){
    child(knee,new THREE.SphereGeometry(.20,13,10),shoeMat,[0,-.43,.13],[1.02,.62,1.5]);
  }
  arm('left');arm('right');leg('left');leg('right');
+ // Track only procedural body meshes: never hide MD accessories or reaction props.
+ parts.importedToonBaseLimbs=[];
+ for(const name of ['leftShoulder','rightShoulder','leftElbow','rightElbow','leftHip','rightHip','leftKnee','rightKnee']){
+  for(const obj of parts[name].children)if(obj.isMesh)parts.importedToonBaseLimbs.push(obj);
+ }
  // Neon baton follows each hand joint. Two rods + emissive edges; no lights added per player.
  const glowsticks=[];
  const glowRodGeo=new THREE.CylinderGeometry(.076,.076,.78,9);
@@ -4362,6 +4524,7 @@ function makeAvatar(p){
   const crumb=new THREE.Mesh(crumbGeo,crumbMaterials[i%crumbMaterials.length]);crumb.visible=false;
   snackCrumbs.add(crumb);parts.snackCrumbs.push(crumb);
  }
+ if(enableImportedToon)attachImportedToon(root,parts,p);
  return {root,parts,color:p.color,lastAction:'idle',beatkingYaw:0};
 }
 
@@ -5296,6 +5459,7 @@ function animateAvatar(a,p,t){
  }else if(surfView){
   a.root.rotation.x=0;a.root.rotation.z=0;
  }
+ syncImportedToon(P);
  a.lastAction=act;
 }
 // Click or tap the ground to walk; dragging continues to orbit the camera.
@@ -5485,6 +5649,7 @@ function finishSlamMotion(){
 // Disposing an array as if it were a Material used to throw during profile edits,
 // aborting requestAnimationFrame and freezing the entire festival scene.
 function disposeAvatar(root){
+ root.userData.disposed=true;
  scene.remove(root);
  const geometries=new Set(),materials=new Set(),textures=new Set();
  root.traverse(object=>{
