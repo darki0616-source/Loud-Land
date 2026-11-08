@@ -253,7 +253,6 @@ button,input{touch-action:manipulation}
 @media(max-width:700px){.slam-hint.is-active{top:calc(env(safe-area-inset-top) + 51px);font-size:10px;z-index:11}}
 
 /* Edit in place without leaving the festival */
-#profileCancel:not([hidden]){display:block;width:100%;margin-top:10px;padding:12px;border:1px solid #6d7792;border-radius:10px;background:#293248;color:#f7f8ff;font-weight:800}
 
 #profileToggle{padding:10px 12px;min-width:40px} @media(max-width:700px){#profileToggle{padding:8px 7px;min-width:31px}}
 
@@ -812,3 +811,51 @@ html,body{height:100%;height:100dvh;overflow:hidden!important}
   .gamewrap .performance-toggle{top:calc(env(safe-area-inset-top) + 118px)!important}
   .gamewrap .pov-toggle{top:calc(env(safe-area-inset-top) + 156px)!important}
 }
+
+
+/* v208 — compact wardrobe accordions and always-visible close control */
+.joinbox{scrollbar-gutter:stable;position:relative}
+.wardrobe-topbar{
+ position:sticky;top:0;z-index:8;display:flex;align-items:center;justify-content:space-between;
+ min-height:53px;margin:-33px -33px 20px;padding:8px 17px 8px 27px;
+ background:rgba(28,31,52,.98);border-bottom:1px solid #46516a;
+ box-shadow:0 6px 15px #10142166;
+}
+.wardrobe-topbar strong{font-size:13px;font-weight:900;color:#ebf4ff;letter-spacing:.2px}
+#wardrobeClose{
+ display:grid;place-items:center;flex:0 0 36px;width:36px;height:36px;
+ border:1px solid #6e7891;border-radius:10px;background:#30394e;color:#fff;
+ font-weight:900;font-size:17px;line-height:1;
+}
+#wardrobeClose:hover,#wardrobeClose:focus-visible{background:#414d66;border-color:#d8ff78}
+.wardrobe-section{border:1px solid #44516b;border-radius:12px;background:#222a3e;margin:12px 0;overflow:clip}
+.wardrobe-section summary{
+ display:flex;align-items:center;justify-content:space-between;gap:12px;
+ padding:15px 15px;cursor:pointer;list-style:none;color:#f3f6ff;font-size:13px;font-weight:900;
+ user-select:none;-webkit-user-select:none;
+}
+.wardrobe-section summary::-webkit-details-marker{display:none}
+.wardrobe-section[open] summary{color:#dcff93;border-bottom:1px solid #415068;background:#2b3650}
+.wardrobe-arrow{font-size:23px;color:#d3ddf0;line-height:13px;transition:transform .15s}
+.wardrobe-section[open] .wardrobe-arrow{transform:rotate(180deg)}
+.wardrobe-section-body{padding:14px 13px 3px}
+.wardrobe-section-body label{font-size:10px;margin-top:2px}
+.wardrobe-section-body .colors{flex-wrap:wrap;row-gap:12px;margin:10px 0 18px}
+.wardrobe-section-body .apparel-options{margin:7px 0 18px}
+.wardrobe-section-body .hair-colors{margin-bottom:15px}
+#reopenJoin{
+ position:fixed;z-index:21;left:50%;top:calc(env(safe-area-inset-top) + 15px);
+ transform:translateX(-50%);background:#d7fa81;color:#18211c;
+ border:1px solid #d7fa81;border-radius:12px;padding:13px 20px;
+ font-size:13px;font-weight:900;box-shadow:0 6px 22px #0008;
+}
+#reopenJoin[hidden]{display:none!important}
+@media(max-width:700px){
+ .wardrobe-topbar{margin:-24px -24px 17px;padding:8px 13px 8px 20px}
+ #wardrobeClose{width:39px;height:39px;flex-basis:39px}
+ .wardrobe-section summary{padding:14px 12px}
+ .wardrobe-section-body{padding:12px 10px 1px}
+}
+
+/* Editing an existing avatar uses the sticky wardrobe title rather than the full entry heading. */
+#joinModal.profile-edit .joinstar,#joinModal.profile-edit .eyebrow,#joinModal.profile-edit .joinbox>h2,#joinModal.profile-edit .joinbox>p{display:none}
