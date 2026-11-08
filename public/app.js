@@ -3581,9 +3581,20 @@ function attachImportedHair(neck,style,color){
    fit.top-(center.y+size.y/2)*sy,
    -center.z*sz+fit.forward);
   if(mirrored)hair.rotation.y=-.12;
+  // v211: GLB hair meshes must not inherit any dark source material or
+  // texture. Give every mesh a fresh user-selected tint (including the two
+  // v210 custom GLBs). A small emissive contribution preserves the chosen
+  // hue under the festival's very dark nighttime lighting.
+  const selectedHairColor=hairColors.some(([,hex])=>hex===color)?color:'#4b3932';
   hair.traverse(mesh=>{
    if(!mesh.isMesh)return;
-   mesh.material=new THREE.MeshStandardMaterial({color,roughness:.86,metalness:0,side:THREE.DoubleSide});
+   const tint=new THREE.Color(selectedHairColor);
+   mesh.material=new THREE.MeshStandardMaterial({
+    color:tint,emissive:tint.clone(),emissiveIntensity:.35,
+    roughness:.83,metalness:0,side:THREE.DoubleSide,
+    vertexColors:false
+   });
+   mesh.material.needsUpdate=true;
    mesh.castShadow=true;mesh.receiveShadow=true;
    if(stageForeground)mesh.layers.set(1);
   });
@@ -5756,7 +5767,12 @@ function tick(t){
  const keyWalking=Boolean(state.me)&&['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright'].some(key=>state.keys.has(key));
  updateDockAutoCollapse(keyWalking||Math.hypot(deltaX,deltaY)>.015,t);
 
- for(let [id,p] of state.players){
+ for(let [id,serverPlayer] of state.players){
+  // Preview hair selections on the local avatar while the wardrobe is open.
+  // The saved server profile is not changed until '변경 사항 저장' is pressed.
+  const p=editingProfile&&id===state.id
+   ?{...serverPlayer,hairStyle:chosenHairStyle,hairColor:chosenHairColor}
+   :serverPlayer;
   const current=avatars.get(id);
   if(current&&(current.color!==p.color||current.name!==p.name||current.badgeTier!==(p.badgeTier||'bronze')||current.gender!==p.gender||current.pattern!==(p.pattern||'solid')||current.sash!==(p.sash||'none')||current.hairStyle!==(p.hairStyle||'short')||current.hairColor!==(p.hairColor||'#4b3932')||current.flagText!==(p.flagText||'')||current.flagImage!==(p.flagImage||'')||Boolean(current.rhythmKing)!==Boolean(p.rhythmKing)||JSON.stringify(current.equipped||{})!==JSON.stringify(p.equipped||{}))){
    disposeAvatar(current.root);avatars.delete(id);
