@@ -1704,6 +1704,64 @@ const TENT_COLORS=['#ed9a77','#8dc3ad','#8ea8d8','#c49acb','#dfc576','#d6a3a3','
 // Match the authoritative server distance and the world-coordinate scale.
 const TENT_ENTER_DISTANCE=5.0;
 let tentStatus=null,tentList=[],tentPlaceMode=false,tentPickedColor=TENT_COLORS[0];
+let tentExteriorMode='none',tentExteriorImageData='',tentExteriorSavedImageId='',tentExteriorBusy=false;
+const TENT_EXTERIOR_IMAGE_MAX_SOURCE_BYTES=8*1024*1024;
+const TENT_EXTERIOR_COMPRESSED_MAX_LENGTH=118000;
+function updateTentExteriorForm(){
+ for(const button of $('tentExteriorModes').querySelectorAll('[data-tent-exterior]')){
+  const selected=button.dataset.tentExterior===tentExteriorMode;
+  button.classList.toggle('selected',selected);button.setAttribute('aria-pressed',String(selected));
+ }
+ $('tentExteriorTextArea').hidden=tentExteriorMode!=='text';
+ $('tentExteriorImageArea').hidden=tentExteriorMode!=='image';
+ const preview=$('tentExteriorPreview');
+ const src=tentExteriorImageData||(tentExteriorSavedImageId?'/api/tent-exterior-image/'+tentExteriorSavedImageId:'');
+ preview.hidden=tentExteriorMode!=='image'||!src;
+ if(!preview.hidden&&preview.src!==new URL(src,location.href).href)preview.src=src;
+ $('tentExteriorStatus').textContent=tentExteriorMode==='text'?'작성한 문구가 텐트 양쪽 면에 표시돼요.':tentExteriorMode==='image'?'선택한 이미지가 텐트 양쪽 면에 표시돼요.':'장식을 없애면 텐트 본래 색상이 보여요.';
+}
+for(const button of $('tentExteriorModes').querySelectorAll('[data-tent-exterior]'))button.onclick=()=>{tentExteriorMode=button.dataset.tentExterior;updateTentExteriorForm()};
+async function optimizeTentExteriorImage(file){
+ if(!['image/png','image/jpeg','image/webp'].includes(file.type))throw new Error('PNG, JPG, WebP 이미지만 선택할 수 있어요.');
+ if(file.size>TENT_EXTERIOR_IMAGE_MAX_SOURCE_BYTES)throw new Error('원본 이미지 용량은 8MB 이하로 선택해 주세요.');
+ const url=URL.createObjectURL(file);
+ try{
+  const img=new Image();
+  await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=()=>reject(Error('이미지 파일을 열 수 없어요.'));img.src=url});
+  if(!img.naturalWidth||!img.naturalHeight)throw new Error('이미지 크기를 읽을 수 없어요.');
+  if(img.naturalWidth*img.naturalHeight>25000000)throw new Error('원본 이미지 해상도가 너무 높아요. 2,500만 화소 이하로 선택해 주세요.');
+  const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d');
+  for(const maxSide of [768,640,512,448,384,320,256]){
+   const scale=Math.min(1,maxSide/Math.max(img.naturalWidth,img.naturalHeight));
+   canvas.width=Math.max(1,Math.round(img.naturalWidth*scale));canvas.height=Math.max(1,Math.round(img.naturalHeight*scale));
+   ctx.clearRect(0,0,canvas.width,canvas.height);ctx.drawImage(img,0,0,canvas.width,canvas.height);
+   for(const quality of [.85,.73,.59,.45,.33]){
+    let output=canvas.toDataURL('image/webp',quality);
+    if(!output.startsWith('data:image/webp;base64,')){
+     // Older browsers without WebP encoding: flatten transparency onto white JPEG.
+     ctx.globalCompositeOperation='destination-over';ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.globalCompositeOperation='source-over';
+     output=canvas.toDataURL('image/jpeg',quality);
+    }
+    if(output.length<=TENT_EXTERIOR_COMPRESSED_MAX_LENGTH)return output;
+   }
+  }
+  throw new Error('이미지가 너무 복잡해요. 작은 이미지를 선택해 주세요.');
+ }finally{URL.revokeObjectURL(url)}
+}
+$('tentExteriorImageInput').onchange=async event=>{
+ const file=event.target.files?.[0];if(!file)return;
+ $('tentExteriorStatus').textContent='이미지를 최적화하는 중…';
+ try{tentExteriorImageData=await optimizeTentExteriorImage(file);updateTentExteriorForm();toast('이미지를 준비했어요. 저장 버튼을 눌러 적용하세요.');}
+ catch(error){tentExteriorImageData='';updateTentExteriorForm();toast(error.message);}
+};
+$('tentExteriorSave').onclick=async()=>{
+ if(!state.id||tentExteriorBusy)return;
+ tentExteriorBusy=true;$('tentExteriorSave').disabled=true;
+ try{
+  const data=await tentRequest('exterior',{exteriorType:tentExteriorMode,exteriorText:$('tentExteriorTextInput').value.trim(),...(tentExteriorMode==='image'&&tentExteriorImageData?{exteriorImage:tentExteriorImageData}:{})});
+  showTentState(data);syncTents(data.tents);toast('텐트 옆면 장식을 저장했어요.');
+ }catch(error){toast(error.message)}finally{tentExteriorBusy=false;$('tentExteriorSave').disabled=false}
+};
 function tentRequest(command,values={}){return post('tent',{id:state.id,sessionKey,command,...values});}
 function syncTents(tents){
  if(!Array.isArray(tents))return;
@@ -1726,6 +1784,12 @@ function showTentState(data){
  $('tentNameInput').value=data.tent.name;
  tentPickedColor=data.tent.color;
  renderTentColors();
+ tentExteriorMode=data.tent.exteriorType||'none';
+ tentExteriorSavedImageId=data.tent.exteriorImageId||'';
+ tentExteriorImageData='';
+ $('tentExteriorImageInput').value='';
+ $('tentExteriorTextInput').value=data.tent.exteriorText||'';
+ updateTentExteriorForm();
  $('tentPlaceBtn').textContent=data.tent.placed?'📍 텐트 위치 변경':'⛺ 맵에 설치하기';
  $('tentPackBtn').disabled=!data.tent.placed;
  $('tentEnterOwnBtn').disabled=!data.tent.placed||Number(data.tent.occupancy)>=4;
@@ -2518,6 +2582,56 @@ function createTentNameSprite(name){
  const label=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true,depthWrite:false}));
  label.scale.set(4.4,.83,1);label.position.y=4.15;return label;
 }
+// v246: Cache small decals so SSE occupancy updates do not continually re-fetch images.
+const tentExteriorTextures=new Map();
+function tentExteriorTextureKey(tent){
+ if(tent.exteriorType==='text'&&tent.exteriorText)return 'text:'+tent.exteriorText;
+ if(tent.exteriorType==='image'&&/^[a-f0-9]{32}$/.test(tent.exteriorImageId||''))return 'image:'+tent.exteriorImageId;
+ return '';
+}
+function makeTentExteriorTexture(tent){
+ const key=tentExteriorTextureKey(tent);if(!key)return null;
+ if(tentExteriorTextures.has(key))return tentExteriorTextures.get(key);
+ let texture;
+ if(key.startsWith('image:')){
+  texture=new THREE.TextureLoader().load('/api/tent-exterior-image/'+tent.exteriorImageId,undefined,undefined,()=>console.warn('텐트 옆면 이미지를 불러오지 못했어요.'));
+ }else{
+  const canvas=document.createElement('canvas');canvas.width=512;canvas.height=768;
+  const ctx=canvas.getContext('2d');
+  // A high-contrast translucent printed panel, with automatic Korean wrapping.
+  ctx.fillStyle='rgba(21,30,37,.83)';ctx.beginPath();ctx.roundRect(12,105,488,558,33);ctx.fill();
+  ctx.strokeStyle='rgba(248,239,211,.72)';ctx.lineWidth=6;ctx.stroke();
+  const phrase=tent.exteriorText.slice(0,60);
+  let lines=[],fontSize=40;
+  ctx.textAlign='center';ctx.textBaseline='middle';
+  // Reflow at the final font size so even 60 Korean characters fit the panel.
+  for(const size of [68,60,54,48,42,36,30]){
+   ctx.font=`900 ${size}px sans-serif`;
+   const candidate=[];let current='';
+   for(const ch of phrase){
+    if(current&&ctx.measureText(current+ch).width>414){candidate.push(current);current=ch;}else current+=ch;
+   }
+   if(current)candidate.push(current);
+   lines=candidate;fontSize=size;
+   if(lines.length<=7&&(lines.length-1)*size*1.20<475)break;
+  }
+  ctx.font=`900 ${fontSize}px sans-serif`;ctx.fillStyle='#fff8e9';
+  const lineHeight=fontSize*1.2;
+  const startY=380-(lines.length-1)*lineHeight/2;
+  lines.forEach((line,index)=>ctx.fillText(line,256,startY+index*lineHeight,430));
+  texture=new THREE.CanvasTexture(canvas);
+ }
+ texture.colorSpace=THREE.SRGBColorSpace;
+ texture.userData.tentExteriorCache=true;
+ tentExteriorTextures.set(key,texture);
+ return texture;
+}
+function pruneTentExteriorTextures(){
+ const active=new Set(tentList.map(tentExteriorTextureKey).filter(Boolean));
+ for(const [key,texture] of tentExteriorTextures)if(!active.has(key)){
+  texture.dispose();tentExteriorTextures.delete(key);
+ }
+}
 function createTentGraphic(tent){
  const group=new THREE.Group();group.position.set(tent.x,.11,tent.z);group.userData.tentId=tent.id;
  const canvasMat=new THREE.MeshStandardMaterial({color:tent.color,side:THREE.DoubleSide,roughness:.95});
@@ -2526,11 +2640,17 @@ function createTentGraphic(tent){
  const shape=new THREE.Shape();shape.moveTo(-1.9,0);shape.lineTo(1.9,0);shape.lineTo(0,2.9);shape.closePath();
  const front=new THREE.Mesh(new THREE.ShapeGeometry(shape),canvasMat);front.position.z=1.8;group.add(front);
  const back=front.clone();back.position.z=-1.8;back.rotation.y=Math.PI;group.add(back);
+ const exteriorTexture=makeTentExteriorTexture(tent);
  for(const side of [-1,1]){
   const span=new THREE.Mesh(new THREE.BoxGeometry(.07,.085,3.66),trimMat);
   span.position.set(side*.94,1.45,0);span.rotation.z=side*-.98;group.add(span);
   const roof=new THREE.Mesh(new THREE.BoxGeometry(2.2,.055,3.68),canvasMat);
   roof.position.set(side*.95,1.45,0);roof.rotation.z=side*-.99;group.add(roof);
+  if(exteriorTexture){
+   const panel=new THREE.Mesh(new THREE.PlaneGeometry(1.75,2.94),new THREE.MeshBasicMaterial({map:exteriorTexture,transparent:true,side:THREE.DoubleSide,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-1}));
+   // The decal is just above the sloping roof, not an extra wall or a clickable trap.
+   panel.rotation.set(-Math.PI/2,0,Math.PI);panel.position.y=.035;roof.add(panel);
+  }
  }
  const doorShape=new THREE.Shape();doorShape.moveTo(-.8,0);doorShape.lineTo(.8,0);doorShape.lineTo(0,1.75);doorShape.closePath();
  const door=new THREE.Mesh(new THREE.ShapeGeometry(doorShape),darkMat);door.position.z=1.83;group.add(door);
@@ -2542,9 +2662,10 @@ function createTentGraphic(tent){
 }
 function updateTentModels(){
  for(const root of tentWorldMeshes.values()){
-  scene.remove(root);root.traverse(obj=>{if(obj.geometry)obj.geometry.dispose();if(obj.material){const materials=Array.isArray(obj.material)?obj.material:[obj.material];for(const m of materials){m.map?.dispose();m.dispose();}}});
+  scene.remove(root);root.traverse(obj=>{if(obj.geometry)obj.geometry.dispose();if(obj.material){const materials=Array.isArray(obj.material)?obj.material:[obj.material];for(const m of materials){if(m.map&&!m.map.userData?.tentExteriorCache)m.map.dispose();m.dispose();}}});
  }
  tentWorldMeshes.clear();tentClickMeshes.length=0;
+ pruneTentExteriorTextures();
  for(const tent of tentList)if(tent.placed&&Number.isFinite(tent.x)&&Number.isFinite(tent.z))createTentGraphic(tent);
 }
 let tentEntryPending=false;

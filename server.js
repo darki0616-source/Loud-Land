@@ -92,12 +92,40 @@ const TENT_COST=3000;
 const tentStats=new Map();
 const TENT_COLORS=['#ed9a77','#8dc3ad','#8ea8d8','#c49acb','#dfc576','#d6a3a3','#92b9ba','#d5d9e5'];
 const TENT_MAX_OCCUPANCY=4;
+// v246: Each tent has one exterior design, printed on both sloping sides.
+// No client-provided URL/HTML is ever rendered. Uploads must decode to small JPEG/WebP files.
+const TENT_EXTERIOR_MAX_TEXT=60;
+const TENT_EXTERIOR_MAX_IMAGE_BYTES=90000;
+const TENT_EXTERIOR_PREFIX=/^data:image\/(jpeg|webp);base64,([a-zA-Z0-9+/]+={0,2})$/;
+function decodeTentExteriorImage(source){
+ if(typeof source!=='string'||source.length>125000)return null;
+ const match=TENT_EXTERIOR_PREFIX.exec(source);
+ if(!match)return null;
+ const bytes=Buffer.from(match[2],'base64');
+ if(bytes.length<30||bytes.length>TENT_EXTERIOR_MAX_IMAGE_BYTES)return null;
+ // Reject base64 noncanonical encodings and misleading MIME signatures.
+ if(bytes.toString('base64')!==match[2])return null;
+ const mime=match[1];
+ const valid=mime==='jpeg'
+  ?(bytes[0]===0xff&&bytes[1]===0xd8&&bytes[bytes.length-2]===0xff&&bytes[bytes.length-1]===0xd9)
+  :(bytes.toString('ascii',0,4)==='RIFF'&&bytes.toString('ascii',8,12)==='WEBP');
+ return valid?{bytes,mime,source}:null;
+}
+function tentExteriorImageId(record){
+ const image=record?.exteriorImage;
+ if(typeof image!=='string'||!image)return '';
+ const match=TENT_EXTERIOR_PREFIX.exec(image);
+ if(!match)return '';
+ return crypto.createHash('sha256').update(Buffer.from(match[2],'base64')).digest('hex').slice(0,32);
+}
+function storedTent(record){return {...publicTent(record),exteriorImage:record.exteriorImage||''};}
+
 // v245: Entrance interaction requires walking to within five real world units.
 const TENT_ENTER_DISTANCE=5.0;
 function tentEntranceDistance(player,tent){return Math.hypot((player.x-600)*.058-tent.x,(player.y-500)*.058+8-tent.z);}
 const TENT_PAINTS={default:null,red:'#ef615a',orange:'#f59b42',yellow:'#f4dd63',green:'#78bd89',blue:'#709bda',black:'#292d38',white:'#f5f5f1'};
 function tentOccupancy(roomId){let count=0;for(const p of players.values())if(p.tentRoomId===roomId)count++;return count;}
-function publicTent(record){return {id:record.id,name:record.name,color:record.color,placed:!!record.placed,x:record.placed?record.x:null,z:record.placed?record.z:null,occupancy:tentOccupancy(record.id),capacity:TENT_MAX_OCCUPANCY,wallColor:record.wallColor||'default',floorColor:record.floorColor||'default'};}
+function publicTent(record){return {id:record.id,name:record.name,color:record.color,placed:!!record.placed,x:record.placed?record.x:null,z:record.placed?record.z:null,occupancy:tentOccupancy(record.id),capacity:TENT_MAX_OCCUPANCY,wallColor:record.wallColor||'default',floorColor:record.floorColor||'default',exteriorType:record.exteriorType||'none',exteriorText:record.exteriorType==='text'?(record.exteriorText||''):'',exteriorImageId:record.exteriorType==='image'?tentExteriorImageId(record):''};}
 function allPlacedTents(){return [...tentStats.values()].filter(t=>t.placed).map(publicTent)}
 function tentOwnedBy(identity){return identity?tentStats.get(identity)||null:null}
 function tentView(player){
@@ -220,7 +248,7 @@ const SB_KEY=process.env.SUPABASE_SECRET_KEY||'';
 const useSupabase=Boolean(SB_URL&&SB_KEY);
 let restored=false;
 let saveChain=Promise.resolve();
-function stateData(){return {version:8,tentStats:Object.fromEntries([...tentStats].map(([identity,t])=>[identity,publicTent(t)])),announcements:{entry:entranceNotices,ticker:tickerNotices,intervalMinutes:tickerIntervalMinutes,immediateHistory:immediateNoticeHistory},music,queue:[...queue],history:[...history],nextTrackToken,customMd:Object.fromEntries(customMd),shopStats:Object.fromEntries([...shopStats].map(([k,v])=>[k,{spent:0,refunded:v.refunded||0,owned:v.owned,equipped:v.equipped}])),badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),rhythm:{day:rhythmDay,reward:rhythmReward,scores:Object.fromEntries([...rhythmScores].map(([k,v])=>[k,{name:v.name,score:Math.max(0,Math.floor(Number(v.score)||0)),updatedAt:Number(v.updatedAt)||0}]))},savedAt:Date.now()}}
+function stateData(){return {version:8,tentStats:Object.fromEntries([...tentStats].map(([identity,t])=>[identity,storedTent(t)])),announcements:{entry:entranceNotices,ticker:tickerNotices,intervalMinutes:tickerIntervalMinutes,immediateHistory:immediateNoticeHistory},music,queue:[...queue],history:[...history],nextTrackToken,customMd:Object.fromEntries(customMd),shopStats:Object.fromEntries([...shopStats].map(([k,v])=>[k,{spent:0,refunded:v.refunded||0,owned:v.owned,equipped:v.equipped}])),badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),rhythm:{day:rhythmDay,reward:rhythmReward,scores:Object.fromEntries([...rhythmScores].map(([k,v])=>[k,{name:v.name,score:Math.max(0,Math.floor(Number(v.score)||0)),updatedAt:Number(v.updatedAt)||0}]))},savedAt:Date.now()}}
 function applySaved(d){
  if(!d||typeof d!=='object')return;
  if(d.announcements&&typeof d.announcements==='object'){
@@ -242,7 +270,10 @@ function applySaved(d){
   if(!/^[a-zA-Z0-9_-]{20,100}$/.test(identity)||!t||typeof t!=='object')continue;
   if(!/^[a-f0-9-]{36}$/.test(t.id||''))continue;
   const x=Number(t.x),z=Number(t.z);
-  const record={id:t.id,name:clean(t.name,22)||'나의 텐트',color:TENT_COLORS.includes(t.color)?t.color:TENT_COLORS[0],wallColor:Object.hasOwn(TENT_PAINTS,t.wallColor)?t.wallColor:'default',floorColor:Object.hasOwn(TENT_PAINTS,t.floorColor)?t.floorColor:'default',placed:false,x:null,z:null};
+  const artImage=decodeTentExteriorImage(t.exteriorImage);
+  const artType=['none','text','image'].includes(t.exteriorType)?t.exteriorType:'none';
+  const artText=clean(t.exteriorText,TENT_EXTERIOR_MAX_TEXT);
+  const record={id:t.id,name:clean(t.name,22)||'나의 텐트',color:TENT_COLORS.includes(t.color)?t.color:TENT_COLORS[0],wallColor:Object.hasOwn(TENT_PAINTS,t.wallColor)?t.wallColor:'default',floorColor:Object.hasOwn(TENT_PAINTS,t.floorColor)?t.floorColor:'default',exteriorType:artType==='image'&&!artImage?'none':artType==='text'&&!artText?'none':artType,exteriorText:artText,exteriorImage:artImage?.source||'',placed:false,x:null,z:null};
   if(t.placed===true&&tentIsValidPlace(x,z,t.id)){record.placed=true;record.x=x;record.z=z;}
   tentStats.set(identity,record);
  }
@@ -456,6 +487,15 @@ async function receive(req){let raw='';for await(const chunk of req){raw+=chunk;
 const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.ico':'image/x-icon','.gltf':'model/gltf+json','.bin':'application/octet-stream'};
 const server=http.createServer(async(req,res)=>{
   const url=new URL(req.url,'http://localhost');
+  if(url.pathname.startsWith('/api/tent-exterior-image/')&&req.method==='GET'){
+    const imageId=url.pathname.slice('/api/tent-exterior-image/'.length);
+    if(!/^[a-f0-9]{32}$/.test(imageId)){res.writeHead(404);return res.end('Not found')}
+    const matched=[...tentStats.values()].find(t=>t.exteriorType==='image'&&tentExteriorImageId(t)===imageId);
+    const image=matched?decodeTentExteriorImage(matched.exteriorImage):null;
+    if(!image){res.writeHead(404);return res.end('Not found')}
+    res.writeHead(200,{'content-type':'image/'+image.mime,'cache-control':'public,max-age=31536000,immutable','x-content-type-options':'nosniff'});
+    return res.end(image.bytes);
+  }
   if(url.pathname.startsWith('/api/flag-image/')&&req.method==='GET'){
     const imageId=url.pathname.slice('/api/flag-image/'.length);
     const bytes=/^[a-f0-9]{32}$/.test(imageId)?flagImages.get(imageId):null;
@@ -609,7 +649,7 @@ const server=http.createServer(async(req,res)=>{
           if(record)return json(res,409,{error:'이미 텐트를 보유하고 있어요.',...tentView(p)});
           const earned=Math.floor(badgeTotal(p)/60);
           if(earned<TENT_COST)return json(res,400,{error:`포인트가 부족해요. (${earned.toLocaleString()}/${TENT_COST.toLocaleString()}P)`});
-          record={id:crypto.randomUUID(),name:clean(p.name+'의 텐트',22),color:TENT_COLORS[0],wallColor:'default',floorColor:'default',placed:false,x:null,z:null};
+          record={id:crypto.randomUUID(),name:clean(p.name+'의 텐트',22),color:TENT_COLORS[0],wallColor:'default',floorColor:'default',exteriorType:'none',exteriorText:'',exteriorImage:'',placed:false,x:null,z:null};
           tentStats.set(p.badgeIdentity,record);
           await saveNow();
           return json(res,200,{ok:true,...tentView(p)});
@@ -661,6 +701,24 @@ const server=http.createServer(async(req,res)=>{
           await saveNow();sendTentUpdate();return json(res,200,{ok:true,room:publicTent(record)});
         }
         if(!record)return json(res,403,{error:'먼저 텐트를 구매해 주세요.'});
+        if(command==='exterior'){
+          const mode=String(d.exteriorType||'');
+          if(!['none','text','image'].includes(mode))return json(res,400,{error:'장식 종류를 선택해 주세요.'});
+          if(mode==='text'){
+            const exteriorText=clean(d.exteriorText,TENT_EXTERIOR_MAX_TEXT);
+            if(!exteriorText)return json(res,400,{error:'텐트에 표시할 문구를 입력해 주세요.'});
+            record.exteriorType='text';record.exteriorText=exteriorText;record.exteriorImage='';
+          }else if(mode==='image'){
+            if(d.exteriorImage){
+              const image=decodeTentExteriorImage(d.exteriorImage);
+              if(!image)return json(res,400,{error:'이미지는 90KB 이하의 JPG 또는 WebP 형식이어야 해요.'});
+              record.exteriorImage=image.source;
+            }
+            if(!decodeTentExteriorImage(record.exteriorImage))return json(res,400,{error:'이미지를 먼저 선택해 주세요.'});
+            record.exteriorType='image';record.exteriorText='';
+          }else{record.exteriorType='none';record.exteriorText='';record.exteriorImage='';}
+          await saveNow();sendTentUpdate();return json(res,200,{ok:true,...tentView(p)});
+        }
         if(command==='save'){
           const name=clean(d.name,22);
           if(name.length<1)return json(res,400,{error:'텐트 이름을 입력해 주세요.'});

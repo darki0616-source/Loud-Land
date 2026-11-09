@@ -1055,3 +1055,21 @@ body.tent-interior-open .performance-toggle,body.tent-interior-open .hud-audio-f
  .tent-room-overlay .tent-room-heading small{display:none}
  .tent-decorate-panel{top:calc(env(safe-area-inset-top) + 56px);right:5px;width:min(345px,calc(100% - 10px))}
 }
+
+
+/* v246 - personal tent exterior artwork. Accessible on mobile and desktop. */
+.tent-exterior-section{display:flex;flex-direction:column;gap:9px;padding:12px 10px;border:1px solid #557a81;border-radius:12px;background:#1b2b3a}
+.tent-exterior-heading{display:flex;flex-direction:column;gap:0}
+.tent-exterior-heading strong{font-size:13px;color:#effff4}
+.tent-exterior-heading small{margin-top:3px!important}
+.tent-exterior-modes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
+.tent-menu-panel .tent-exterior-modes button{font-size:10px;padding:6px 2px;min-height:39px}
+.tent-menu-panel .tent-exterior-modes button.selected{background:#d5ff8f!important;color:#192e2e!important;border-color:#d5ff8f!important}
+.tent-exterior-section #tentExteriorTextArea,.tent-exterior-section #tentExteriorImageArea{display:flex;flex-direction:column;gap:7px}
+.tent-exterior-section #tentExteriorTextArea[hidden],.tent-exterior-section #tentExteriorImageArea[hidden],.tent-exterior-section #tentExteriorPreview[hidden]{display:none!important}
+#tentExteriorTextInput{width:100%;max-width:100%;resize:vertical;box-sizing:border-box;color:white;background:#101b2d;border:1px solid #5f7884;border-radius:8px;font:inherit;font-size:12px;padding:9px}
+#tentExteriorImageInput{width:100%;max-width:100%;box-sizing:border-box;min-height:46px;font-size:11px;color:#eef7f7;background:#101b2d;border:1px solid #5f7884;border-radius:8px;padding:8px}
+#tentExteriorPreview{max-height:150px;width:100%;object-fit:contain;border-radius:9px;background:repeating-conic-gradient(#d7dfdf 0 25%,#8d989b 0 50%) 50% / 18px 18px}
+#tentExteriorSave{background:#d5ff8f!important;color:#192e2e!important;border:0!important}
+#tentExteriorStatus{line-height:1.4}
+@media(max-width:700px){.tent-exterior-section{padding:9px 8px}.tent-exterior-modes{gap:4px}}
