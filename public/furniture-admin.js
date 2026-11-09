@@ -3,7 +3,7 @@ import {GLTFLoader} from 'https://esm.sh/three@0.160.1/examples/jsm/loaders/GLTF
 import {OrbitControls} from 'https://esm.sh/three@0.160.1/examples/jsm/controls/OrbitControls.js';
 
 const el=id=>document.getElementById(id);
-let catalog={},selectedId='',previewUrl='',renderer,scene,camera,controls,previewModel,previewTicket=0,loading=false;
+let catalog={},selectedId='',previewUrl='',renderer,scene,camera,controls,previewModel,previewRawModel,previewTicket=0,loading=false;
 const status=(text,error=false)=>{el('furnitureStatus').textContent=text;el('furnitureStatus').classList.toggle('error',error)};
 async function request(command,data={}){
  const response=await fetch('/api/tent-item-admin',{method:'POST',headers:{'content-type':'application/json','x-md-admin-key':el('key').value},body:JSON.stringify({command,...data})});
@@ -27,16 +27,41 @@ function selectFurniture(id){const item=catalog[id];if(!item)return;
 function setupPreview(){if(renderer)return;
  const canvas=el('furniturePreview');renderer=new THREE.WebGLRenderer({canvas,alpha:true,antialias:true,powerPreference:'low-power'});renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.5));renderer.setSize(460,290,false);renderer.outputColorSpace=THREE.SRGBColorSpace;
  scene=new THREE.Scene();scene.add(new THREE.HemisphereLight(0xffffff,0x647387,2.5));const light=new THREE.DirectionalLight(0xffffff,2);light.position.set(3,5,4);scene.add(light);
+ // Unit grid allows the admin to see real size changes, even when zoom fits.
+ const grid=new THREE.GridHelper(12,12,0x596a83,0x34435e);grid.position.y=-.02;scene.add(grid);
  camera=new THREE.PerspectiveCamera(38,460/290,.01,100);camera.position.set(2.2,1.8,3.2);
  controls=new OrbitControls(camera,canvas);controls.enablePan=false;controls.enableDamping=true;controls.autoRotate=true;controls.autoRotateSpeed=1.1;
  const run=()=>{requestAnimationFrame(run);if(el('furnitureSection').hidden)return;controls.update();renderer.render(scene,camera)};run();
 }
+// v251: Administrator preview uses precisely the same X/Y/Z sizing rule
+// as the in-tent model. Dimension inputs update the preview immediately.
+function updateFurnitureAdminPreviewScale(){
+ if(!previewRawModel||!scene)return;
+ if(previewModel){scene.remove(previewModel);previewModel=null;}
+ const raw=previewRawModel.clone(true);
+ const bounds=new THREE.Box3().setFromObject(raw);
+ const size=bounds.getSize(new THREE.Vector3()),center=bounds.getCenter(new THREE.Vector3());
+ const width=Number(el('furnitureWidth').value),depth=Number(el('furnitureDepth').value),height=Number(el('furnitureHeight').value);
+ if(![width,depth,height].every(n=>Number.isFinite(n)&&n>=.1&&n<=8)||!Number.isFinite(size.y)||size.y<=.00001)return;
+ const scaleY=height/size.y,scaleX=size.x>.00001?width/size.x:scaleY,scaleZ=size.z>.00001?depth/size.z:scaleY;
+ const fitted=new THREE.Group();fitted.scale.set(scaleX,scaleY,scaleZ);fitted.add(raw);
+ fitted.position.set(-center.x*scaleX,-bounds.min.y*scaleY,-center.z*scaleZ);
+ previewModel=fitted;scene.add(previewModel);
+ const rendered=new THREE.Box3().setFromObject(previewModel);
+ const focus=rendered.getCenter(new THREE.Vector3());
+ const radius=Math.max(.15,rendered.getSize(new THREE.Vector3()).length()/2);
+ const halfV=THREE.MathUtils.degToRad(camera.fov)/2,halfH=Math.atan(Math.tan(halfV)*camera.aspect);
+ const distance=Math.max(1.5,radius/Math.sin(Math.min(halfV,halfH))*1.25);
+ controls.target.copy(focus);
+ camera.position.copy(focus).addScaledVector(new THREE.Vector3(1,.8,1.5).normalize(),distance);
+ camera.near=Math.max(.01,distance/100);camera.far=Math.max(100,distance*10);camera.updateProjectionMatrix();controls.update();
+}
+for(const name of ['furnitureWidth','furnitureDepth','furnitureHeight'])el(name).addEventListener('input',updateFurnitureAdminPreviewScale);
 async function setPreview(url){const ticket=++previewTicket;
- if(previewModel){scene?.remove(previewModel);previewModel=null}if(!url)return;
+ if(previewModel){scene?.remove(previewModel);previewModel=null;}previewRawModel=null;
+ if(!url)return;
  try{setupPreview();const gltf=await new GLTFLoader().loadAsync(url);if(ticket!==previewTicket)return;
- const object=gltf.scene;const bounds=new THREE.Box3().setFromObject(object);const size=bounds.getSize(new THREE.Vector3()),center=bounds.getCenter(new THREE.Vector3());
- const scale=1.7/Math.max(size.x,size.y,size.z,0.01);object.scale.setScalar(scale);object.position.set(-center.x*scale,-bounds.min.y*scale,-center.z*scale);
- scene.add(object);previewModel=object;controls.target.set(0,.8,0);camera.position.set(2.5,1.7,3.4);controls.update();status('3D 미리보기를 불러왔어.');
+ previewRawModel=gltf.scene;updateFurnitureAdminPreviewScale();status('3D 미리보기를 불러왔어. 크기 입력값을 바꾸면 바로 적용돼.');
  }catch(e){status('미리보기 오류: '+e.message,true)}
 }
 el('furnitureModel').addEventListener('change',()=>{const file=el('furnitureModel').files?.[0];if(previewUrl){URL.revokeObjectURL(previewUrl);previewUrl=''}

@@ -988,6 +988,7 @@ function handleLiveAnnouncement(event){
 }
 function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='snapshot'){syncTents(d.tents);state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);syncCrowdSurf(d.crowdSurf);if(Array.isArray(d.chat)){$('chatMessages').replaceChildren();d.chat.filter(entry=>(entry.roomId||null)===(tentRoomActive?.id||null)).forEach(appendChat)};for(const id of duoVfx.keys())removeDuoVfx(id);activeDuos.clear();for(const duo of d.interactions||[])activeDuos.set(duo.id,duo);syncDuoStatus()}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){if((d.entry.roomId||null)===(tentRoomActive?.id||null)){appendChat(d.entry);showBubble(d.entry)}}else if(d.type==='move'){recordTrainLeader(d.player);state.players.set(d.player.id,d.player);if(d.player.id===state.id&&currentDuo())state.me={...d.player}}else if(d.type==='flag'){const player=state.players.get(d.id);if(player){player.flagText=d.flagText;player.flagImage=d.flagImage||'';}if(d.id===state.id&&state.me){state.me.flagText=d.flagText;state.me.flagImage=d.flagImage||'';currentFlagText=d.flagText;currentFlagImageId=d.flagImage||'';refreshFlagButton();}}else if(d.type==='badge'){const person=state.players.get(d.id);if(person){person.badgeTier=d.badgeTier;person.badgeSeconds=d.badgeSeconds;if(d.id===state.id&&state.me){state.me.badgeTier=d.badgeTier;state.me.badgeSeconds=d.badgeSeconds;}renderOnlinePlayers();}}else if(d.type==='profile'){state.players.set(d.player.id,d.player);if(d.player.id===state.id){state.me=d.player;refreshProfilePreview();refreshRhythmReactionButton();if(!$('punkShop').classList.contains('hidden')||!$('mdWardrobe').hidden)refreshPunkShop()}renderOnlinePlayers()}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers()}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue,d.history);else if(d.type==='slam')applySlam(d.slam,d.cooldownUntil);else if(d.type==='slam-go')onSlamGo(d);else if(d.type==='slam-impact')spawnSlamDust(d.x,d.y);else if(d.type==='toast-spark')spawnToastSpark(d.x,d.y);else if(d.type==='cheer'&&d.playerId!==state.id&&state.audioEnabled)playCheer();else if(d.type==='rockplay')applyRockPlay(d.event,d.rockCooldowns,d.rockRunningUntil);else if(d.type==='rockplay-go')onRockPlayGo(d);else if(d.type==='rockplay-cancel'){applyRockPlay(null,d.rockCooldowns,0);toast(d.reason||'인원이 부족해 취소됐어요.')} else if(d.type==='rhythm-state')applyRhythmState(d.rhythm);else if(d.type==='md-catalog')syncMdCatalog(d.items);else if(d.type==='tent-furniture-catalog'){
    tentFurnitureModels.clear();tentFurnitureThumbs.clear();
+   if(tentFurniturePlacement){cancelTentFurniturePlacement();toast('상품 크기가 변경될 수 있어요. 배치를 다시 선택해 주세요.');}
    if(tentFurnitureData)tentFurnitureData.catalog=d.catalog||{};
    if(tentRoomActive){tentRoomActive.furnitureCatalog=d.catalog||{};clearTentFurniturePlaced();syncTentFurniturePlaced(tentRoomActive)}
    if(tentFurnitureData&&!$('tentFurniturePanel').classList.contains('hidden'))renderTentFurnitureShop()
@@ -2587,21 +2588,33 @@ const furnitureAssetLoader=new GLTFLoader();
 const TENT_FURNITURE_ENTRANCE_X=0,TENT_FURNITURE_ENTRANCE_Z=2.5;
 async function getTentFurnitureModel(itemId){
  if(tentFurnitureModels.has(itemId))return tentFurnitureModels.get(itemId);
- const item=tentFurnitureData?.catalog?.[itemId]||tentRoomActive?.furnitureCatalog?.[itemId];
+ const item=tentRoomActive?.furnitureCatalog?.[itemId]||tentFurnitureData?.catalog?.[itemId];
  if(!item||!(/^\/assets\/tent-items\/[a-z0-9_-]+\.glb$/.test(item.asset)||/^\/api\/tent-item-model\/[a-z0-9_-]+\?v=[a-f0-9]{16}$/.test(item.asset)))throw Error('알 수 없는 아이템 파일입니다.');
  const load=new Promise((resolve,reject)=>{
   furnitureAssetLoader.load(item.asset,gltf=>{
-   const original=gltf.scene,box=new THREE.Box3().setFromObject(original);
-   const size=box.getSize(new THREE.Vector3()),center=box.getCenter(new THREE.Vector3());
-   if(size.y<=0||!Number.isFinite(size.y)){reject(Error('3D 모델의 크기를 확인할 수 없어요.'));return;}
-   const scale=(item.height||1)/size.y;
-   const template=new THREE.Group();template.name='tent-furniture-'+itemId;
-   original.scale.setScalar(scale);original.position.set(-center.x*scale,-box.min.y*scale,-center.z*scale);
-   original.traverse(obj=>{if(obj.isMesh){obj.castShadow=false;obj.receiveShadow=true;}});
-   template.add(original);resolve(template);
+   try{
+    // v251: Width (X), height (Y) AND depth (Z) are real visible GLB
+    // dimensions, not just a collision footprint. Preserve glTF's own
+    // transform by scaling an outer group rather than replacing root.scale.
+    const original=gltf.scene,box=new THREE.Box3().setFromObject(original);
+    const size=box.getSize(new THREE.Vector3()),center=box.getCenter(new THREE.Vector3());
+    if(![size.x,size.y,size.z].every(Number.isFinite)||size.y<=.00001)throw Error('3D 모델의 크기를 확인할 수 없어요.');
+    const scaleY=item.height/size.y;
+    const scaleX=size.x>.00001?item.width/size.x:scaleY;
+    const scaleZ=size.z>.00001?item.depth/size.z:scaleY;
+    const fitted=new THREE.Group();fitted.scale.set(scaleX,scaleY,scaleZ);
+    fitted.add(original);
+    fitted.position.set(-center.x*scaleX,-box.min.y*scaleY,-center.z*scaleZ);
+    const template=new THREE.Group();template.name='tent-furniture-'+itemId;
+    template.add(fitted);
+    original.traverse(obj=>{if(obj.isMesh){obj.castShadow=false;obj.receiveShadow=true;}});
+    resolve(template);
+   }catch(error){reject(error)}
   },undefined,()=>reject(Error('아이템 3D 모델을 불러오지 못했어요.')));
  });
  tentFurnitureModels.set(itemId,load);
+ // A failed network fetch should not permanently poison the model cache.
+ load.catch(()=>{if(tentFurnitureModels.get(itemId)===load)tentFurnitureModels.delete(itemId)});
  return load;
 }
 function clearTentFurniturePlaced(){
@@ -2759,6 +2772,19 @@ async function showTentFurniturePreview(itemId){
   const template=await getTentFurnitureModel(itemId);
   if(requested!==tentPreviewRequest||!tentFurniturePreviewRenderer)return;
   tentPreviewModel=template.clone(true);tentFurniturePreviewScene.add(tentPreviewModel);
+  // v251: Reframe the shop/owned preview for tall or wide furniture.
+  // Without this, changing the real item size can move it off-screen.
+  const bounds=new THREE.Box3().setFromObject(tentPreviewModel);
+  const center=bounds.getCenter(new THREE.Vector3());
+  const radius=Math.max(.15,bounds.getSize(new THREE.Vector3()).length()/2);
+  const halfV=THREE.MathUtils.degToRad(tentFurniturePreviewCamera.fov)/2;
+  const halfH=Math.atan(Math.tan(halfV)*tentFurniturePreviewCamera.aspect);
+  const distance=Math.max(1.4,radius/Math.sin(Math.min(halfV,halfH))*1.2);
+  tentFurniturePreviewCamera.position.copy(center).addScaledVector(new THREE.Vector3(1,.75,1.6).normalize(),distance);
+  tentFurniturePreviewCamera.near=Math.max(.01,distance/100);
+  tentFurniturePreviewCamera.far=Math.max(100,distance*10);
+  tentFurniturePreviewCamera.updateProjectionMatrix();
+  tentFurniturePreviewCamera.lookAt(center);
   tentFurniturePreviewRenderer.render(tentFurniturePreviewScene,tentFurniturePreviewCamera);
   // Cache a thumbnail so the shop and owned-item tabs both show the actual asset.
   if(!tentFurnitureThumbs.has(itemId)){
@@ -2795,7 +2821,7 @@ function renderTentFurnitureShop(){
  renderTentFurnitureShopList();
  const item=tentFurnitureData.catalog[tentFurnitureSelected];
  $('tentFurnitureSelection').textContent=item?.name||'아이템을 선택해 주세요.';
- $('tentFurnitureDetails').textContent=item?(item.description+' · '+(isMine?'배치 가능 '+tentFurnitureAvailable(tentFurnitureSelected)+'개':item.cost.toLocaleString()+'P')):'';
+ $('tentFurnitureDetails').textContent=item?(item.description+' · 크기 '+item.width+'×'+item.depth+'×'+item.height+' (가로×깊이×높이) · '+(isMine?'배치 가능 '+tentFurnitureAvailable(tentFurnitureSelected)+'개':item.cost.toLocaleString()+'P')):'';
  $('tentFurniturePrimary').textContent=isMine?'📍 배치하기':item?`🛍 ${item.cost.toLocaleString()}P 구매하기`:'아이템을 선택해 주세요';
  $('tentFurniturePrimary').disabled=!item||tentFurnitureBusy||(isMine?tentFurnitureAvailable(tentFurnitureSelected)<=0:(item.enabled===false||Number(tentFurnitureData.points)<item.cost));
  const placed=$('tentFurniturePlaced');placed.replaceChildren();
