@@ -1161,7 +1161,7 @@ function selectBottomMenu(menu){
  });
  document.querySelector('.controlbar')?.classList.toggle('chat-tab-open',chat);
  const bpmFloat=document.getElementById('danceTempoFloat');
- if(bpmFloat)bpmFloat.classList.toggle('hidden',menu!=='reaction'&&menu!=='dance');
+ if(bpmFloat)bpmFloat.classList.toggle('hidden',menu!=='dance');
  if(!chat&&document.activeElement===$('chatInput'))$('chatInput').blur();
  if(chat)$('chatMessages').scrollTop=$('chatMessages').scrollHeight;
 }
@@ -1321,8 +1321,7 @@ danceTempoFloat.innerHTML=`<div class="dance-tempo-top">
  <button type="button" id="danceTempoPlus" aria-label="BPM 5 증가">＋</button>
  </div><input type="range" id="danceTempoRange" min="40" max="240" step="1" value="120" aria-label="모든 춤 BPM 직접 조절" />`;
 document.querySelector('.controlbar').appendChild(danceTempoFloat);
-if(!document.querySelector('[data-action-menu="reaction"]')?.classList.contains('active') &&
-   !document.querySelector('[data-action-menu="dance"]')?.classList.contains('active'))danceTempoFloat.classList.add('hidden');
+if(!document.querySelector('[data-action-menu="dance"]')?.classList.contains('active'))danceTempoFloat.classList.add('hidden');
 const headbangDialog=document.createElement('div');
 headbangDialog.id='headbangDialog';headbangDialog.className='hb-dialog hidden';
 headbangDialog.setAttribute('role','dialog');headbangDialog.setAttribute('aria-modal','true');
@@ -5206,24 +5205,26 @@ function animateAvatar(a,p,t){
   set('neck',toastDrink*.13);
  }
  if(act==='groove'){
-  // Relaxed festival groove: low-impact alternating knee dips, loose elbows,
-  // slow weight transfers and shoulder sway. Deliberately distinct from Buriburi.
+  // v236: Bigger festival groove with clear torso/hip weight transfers,
+  // stronger knee dips and wider opposing arm swings. Tempo stays linked
+  // to the shared dance BPM; the animation clock itself is unchanged.
   const beat=sec*4.0;
   const side=Math.sin(beat),counter=Math.sin(beat+Math.PI);
   const bounce=(1-Math.cos(beat*2))*.5;
-  height=-.025+bounce*.048;
-  // Keep feet relatively close to the ground while weight moves side-to-side.
-  set('leftHip',-.08+Math.max(0,side)*.11,0,-.035*side);
-  set('rightHip',-.08+Math.max(0,counter)*.11,0,-.035*side);
-  set('leftKnee',.18+.12*Math.max(0,side));
-  set('rightKnee',.18+.12*Math.max(0,counter));
-  set('upper',.03+.045*Math.sin(beat*2),.07*side,.09*side);
-  set('neck',-.025,.025*counter,-.038*side);
-  // Arms loosely bent in front of the body, swinging opposite to the torso.
-  set('leftShoulder',-.22+.18*side,0,-.32+.09*side);
-  set('rightShoulder',-.22-.18*side,0,.32+.09*side);
-  set('leftElbow',-.42-.10*side);
-  set('rightElbow',-.42+.10*side);
+  height=-.055+bounce*.105;
+  // Alternate weight transfer through hips and knees (not a full jump).
+  set('leftHip',-.11+Math.max(0,side)*.19,0,-.085*side);
+  set('rightHip',-.11+Math.max(0,counter)*.19,0,-.085*side);
+  set('leftKnee',.21+.27*Math.max(0,side));
+  set('rightKnee',.21+.27*Math.max(0,counter));
+  // Make shoulder roll and lateral body lean noticeably more expressive.
+  set('upper',.05+.105*Math.sin(beat*2),.16*side,.22*side);
+  set('neck',-.04,.055*counter,-.080*side);
+  // Wider opposing arm rhythm to match the increased torso movement.
+  set('leftShoulder',-.30+.30*side,0,-.38+.16*side);
+  set('rightShoulder',-.30-.30*side,0,.38+.16*side);
+  set('leftElbow',-.50-.18*side);
+  set('rightElbow',-.50+.18*side);
  }
  if(act==='dougie'){
   // v191: 22% faster than v190 (4.40 rad/s, ~1.43s per sway).
