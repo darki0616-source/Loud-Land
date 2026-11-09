@@ -92,6 +92,59 @@ const TENT_COST=3000;
 const tentStats=new Map();
 const TENT_COLORS=['#ed9a77','#8dc3ad','#8ea8d8','#c49acb','#dfc576','#d6a3a3','#92b9ba','#d5d9e5'];
 const TENT_MAX_OCCUPANCY=4;
+// v248: Add new furniture here and place its GLB at public/assets/tent-items/.
+// Footprint sizes are in indoor floor metres; all paid balances are server controlled.
+// Future items: upload a .glb into public/assets/tent-items and add one entry
+// to catalog.json. Asset paths and numeric specs are validated on startup.
+function loadTentFurnitureCatalog(){
+ let raw;
+ try{raw=JSON.parse(fs.readFileSync(path.join(PUBLIC,'assets/tent-items/catalog.json'),'utf8'));}
+ catch(error){console.error('Tent furniture catalog:',error);return {};}
+ const catalog={};
+ for(const [id,item] of Object.entries(raw).slice(0,60)){
+  if(!/^[a-z0-9_-]{1,32}$/.test(id)||!item||typeof item!=='object')continue;
+  const cost=Number(item.cost),width=Number(item.width),depth=Number(item.depth),height=Number(item.height);
+  const asset='/assets/tent-items/'+id+'.glb';
+  if(!Number.isInteger(cost)||cost<0||cost>50000||![width,depth,height].every(Number.isFinite)||width<.1||width>8||depth<.1||depth>8||height<.1||height>8||!fs.existsSync(path.join(PUBLIC,'assets/tent-items',id+'.glb')))continue;
+  catalog[id]={name:String(item.name||id).slice(0,40),cost,asset,width,depth,height,description:String(item.description||'').slice(0,150)};
+ }
+ return catalog;
+}
+const TENT_FURNITURE_CATALOG=loadTentFurnitureCatalog();
+const TENT_FURNITURE_MAX_PLACED=30;
+const furnitureStats=new Map();
+function furnitureRecord(identity){if(!furnitureStats.has(identity))furnitureStats.set(identity,{spent:0,owned:{}});return furnitureStats.get(identity);}
+function tentPointBalance(p){const earned=Math.floor(badgeTotal(p)/60);return Math.max(0,earned-(tentOwnedBy(p.badgeIdentity)?TENT_COST:0)-(furnitureStats.get(p.badgeIdentity)?.spent||0));}
+function safeFurniturePose(item,x,z,angle){
+ if(!item||!Number.isFinite(x)||!Number.isFinite(z)||!Number.isFinite(angle))return false;
+ if(angle<0||angle>=360||angle%45!==0)return false;
+ const c=Math.cos(angle*Math.PI/180),sn=Math.sin(angle*Math.PI/180);
+ const hw=item.width/2+.14,hd=item.depth/2+.14;
+ const corners=[[-hw,-hd],[-hw,hd],[hw,-hd],[hw,hd]].map(([px,pz])=>[x+px*c+pz*sn,z-px*sn+pz*c]);
+ return corners.every(([px,pz])=>Math.abs(px)<=5.52&&Math.abs(pz)<=4.52)&&Math.hypot(x,z-2.5)>1.28;
+}
+function furnitureCorners(item,placement){
+ const a=placement.rotation*Math.PI/180,c=Math.cos(a),sn=Math.sin(a),hw=item.width/2+.20,hd=item.depth/2+.20;
+ return [[-hw,-hd],[hw,-hd],[hw,hd],[-hw,hd]].map(([u,v])=>[placement.x+u*c+v*sn,placement.z-u*sn+v*c]);
+}
+function polygonsOverlap(a,b){
+ for(const poly of [a,b])for(let i=0;i<poly.length;i++){
+  const u=poly[i],v=poly[(i+1)%poly.length],nx=-(v[1]-u[1]),ny=v[0]-u[0];
+  const pa=a.map(p=>p[0]*nx+p[1]*ny),pb=b.map(p=>p[0]*nx+p[1]*ny);
+  if(Math.max(...pa)<=Math.min(...pb)||Math.max(...pb)<=Math.min(...pa))return false;
+ }
+ return true;
+}
+function canPlaceFurniture(record,itemId,x,z,rotation,ignoreId=''){
+ const item=TENT_FURNITURE_CATALOG[itemId];if(!safeFurniturePose(item,x,z,rotation))return false;
+ const p={x,z,rotation},box=furnitureCorners(item,p);
+ return (record.furnishings||[]).every(other=>other.instanceId===ignoreId||!polygonsOverlap(box,furnitureCorners(TENT_FURNITURE_CATALOG[other.itemId],other)));
+}
+function furnitureInventoryView(p){
+ const r=furnitureRecord(p.badgeIdentity);
+ return {points:tentPointBalance(p),catalog:TENT_FURNITURE_CATALOG,owned:{...r.owned},roomFurnishings:(tentOwnedBy(p.badgeIdentity)?.furnishings||[]).map(x=>({...x}))};
+}
+
 // v246: Each tent has one exterior design, printed on both sloping sides.
 // No client-provided URL/HTML is ever rendered. Uploads must decode to small JPEG/WebP files.
 const TENT_EXTERIOR_MAX_TEXT=60;
@@ -125,13 +178,13 @@ const TENT_ENTER_DISTANCE=5.0;
 function tentEntranceDistance(player,tent){return Math.hypot((player.x-600)*.058-tent.x,(player.y-500)*.058+8-tent.z);}
 const TENT_PAINTS={default:null,red:'#ef615a',orange:'#f59b42',yellow:'#f4dd63',green:'#78bd89',blue:'#709bda',black:'#292d38',white:'#f5f5f1'};
 function tentOccupancy(roomId){let count=0;for(const p of players.values())if(p.tentRoomId===roomId)count++;return count;}
-function publicTent(record){return {id:record.id,name:record.name,color:record.color,placed:!!record.placed,x:record.placed?record.x:null,z:record.placed?record.z:null,occupancy:tentOccupancy(record.id),capacity:TENT_MAX_OCCUPANCY,wallColor:record.wallColor||'default',floorColor:record.floorColor||'default',exteriorType:record.exteriorType||'none',exteriorText:record.exteriorType==='text'?(record.exteriorText||''):'',exteriorImageId:record.exteriorType==='image'?tentExteriorImageId(record):''};}
+function publicTent(record){return {id:record.id,name:record.name,color:record.color,placed:!!record.placed,x:record.placed?record.x:null,z:record.placed?record.z:null,occupancy:tentOccupancy(record.id),capacity:TENT_MAX_OCCUPANCY,wallColor:record.wallColor||'default',floorColor:record.floorColor||'default',exteriorType:record.exteriorType||'none',exteriorText:record.exteriorType==='text'?(record.exteriorText||''):'',exteriorImageId:record.exteriorType==='image'?tentExteriorImageId(record):'',furnishings:(record.furnishings||[]).map(x=>({...x}))};}
 function allPlacedTents(){return [...tentStats.values()].filter(t=>t.placed).map(publicTent)}
 function tentOwnedBy(identity){return identity?tentStats.get(identity)||null:null}
 function tentView(player){
  const t=tentOwnedBy(player.badgeIdentity);
  const earned=Math.floor(badgeTotal(player)/60);
- return {cost:TENT_COST,points:Math.max(0,earned-(t?TENT_COST:0)),earned,owned:!!t,tent:t?publicTent(t):null,tents:allPlacedTents()};
+ return {cost:TENT_COST,points:tentPointBalance(player),earned,owned:!!t,tent:t?publicTent(t):null,tents:allPlacedTents()};
 }
 function tentIsValidPlace(x,z,ignoreId){
  // Two open strips of the walkable picnic lawn, not the blankets, stage or beach.
@@ -217,7 +270,7 @@ function shopRecord(identity){
 function getShopView(p,now=Date.now()){
  const record=shopRecord(p.badgeIdentity);
  const earned=Math.floor(badgeTotal(p,now)/60); // 1 point per connected minute
- return {points:Math.max(0,earned-(tentOwnedBy(p.badgeIdentity)?TENT_COST:0)),earned,spent:tentOwnedBy(p.badgeIdentity)?TENT_COST:0,refunded:record.refunded||0,testing:true,owned:Object.keys(publicMdItems()),equipped:{...record.equipped},items:publicMdItems()};
+ return {points:tentPointBalance(p),earned,spent:(tentOwnedBy(p.badgeIdentity)?TENT_COST:0)+(furnitureStats.get(p.badgeIdentity)?.spent||0),refunded:record.refunded||0,testing:true,owned:Object.keys(publicMdItems()),equipped:{...record.equipped},items:publicMdItems()};
 }
 function setShopAppearance(p){
  p.equipped=p.badgeIdentity?{...shopRecord(p.badgeIdentity).equipped}:{};
@@ -248,7 +301,7 @@ const SB_KEY=process.env.SUPABASE_SECRET_KEY||'';
 const useSupabase=Boolean(SB_URL&&SB_KEY);
 let restored=false;
 let saveChain=Promise.resolve();
-function stateData(){return {version:8,tentStats:Object.fromEntries([...tentStats].map(([identity,t])=>[identity,storedTent(t)])),announcements:{entry:entranceNotices,ticker:tickerNotices,intervalMinutes:tickerIntervalMinutes,immediateHistory:immediateNoticeHistory},music,queue:[...queue],history:[...history],nextTrackToken,customMd:Object.fromEntries(customMd),shopStats:Object.fromEntries([...shopStats].map(([k,v])=>[k,{spent:0,refunded:v.refunded||0,owned:v.owned,equipped:v.equipped}])),badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),rhythm:{day:rhythmDay,reward:rhythmReward,scores:Object.fromEntries([...rhythmScores].map(([k,v])=>[k,{name:v.name,score:Math.max(0,Math.floor(Number(v.score)||0)),updatedAt:Number(v.updatedAt)||0}]))},savedAt:Date.now()}}
+function stateData(){return {version:9,furnitureStats:Object.fromEntries([...furnitureStats].map(([id,v])=>[id,{spent:v.spent,owned:v.owned}])),tentStats:Object.fromEntries([...tentStats].map(([identity,t])=>[identity,storedTent(t)])),announcements:{entry:entranceNotices,ticker:tickerNotices,intervalMinutes:tickerIntervalMinutes,immediateHistory:immediateNoticeHistory},music,queue:[...queue],history:[...history],nextTrackToken,customMd:Object.fromEntries(customMd),shopStats:Object.fromEntries([...shopStats].map(([k,v])=>[k,{spent:0,refunded:v.refunded||0,owned:v.owned,equipped:v.equipped}])),badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),rhythm:{day:rhythmDay,reward:rhythmReward,scores:Object.fromEntries([...rhythmScores].map(([k,v])=>[k,{name:v.name,score:Math.max(0,Math.floor(Number(v.score)||0)),updatedAt:Number(v.updatedAt)||0}]))},savedAt:Date.now()}}
 function applySaved(d){
  if(!d||typeof d!=='object')return;
  if(d.announcements&&typeof d.announcements==='object'){
@@ -273,9 +326,20 @@ function applySaved(d){
   const artImage=decodeTentExteriorImage(t.exteriorImage);
   const artType=['none','text','image'].includes(t.exteriorType)?t.exteriorType:'none';
   const artText=clean(t.exteriorText,TENT_EXTERIOR_MAX_TEXT);
-  const record={id:t.id,name:clean(t.name,22)||'나의 텐트',color:TENT_COLORS.includes(t.color)?t.color:TENT_COLORS[0],wallColor:Object.hasOwn(TENT_PAINTS,t.wallColor)?t.wallColor:'default',floorColor:Object.hasOwn(TENT_PAINTS,t.floorColor)?t.floorColor:'default',exteriorType:artType==='image'&&!artImage?'none':artType==='text'&&!artText?'none':artType,exteriorText:artText,exteriorImage:artImage?.source||'',placed:false,x:null,z:null};
+  const record={id:t.id,name:clean(t.name,22)||'나의 텐트',color:TENT_COLORS.includes(t.color)?t.color:TENT_COLORS[0],wallColor:Object.hasOwn(TENT_PAINTS,t.wallColor)?t.wallColor:'default',floorColor:Object.hasOwn(TENT_PAINTS,t.floorColor)?t.floorColor:'default',exteriorType:artType==='image'&&!artImage?'none':artType==='text'&&!artText?'none':artType,exteriorText:artText,exteriorImage:artImage?.source||'',furnishings:[],placed:false,x:null,z:null};
+  if(Array.isArray(t.furnishings))for(const f of t.furnishings.slice(0,TENT_FURNITURE_MAX_PLACED)){
+   const x=Number(f.x),z=Number(f.z),rotation=Number(f.rotation);
+   if(!TENT_FURNITURE_CATALOG[f.itemId]||!/^[-a-f0-9]{36}$/.test(f.instanceId||'')||record.furnishings.some(x=>x.instanceId===f.instanceId))continue;
+   if(canPlaceFurniture(record,f.itemId,x,z,rotation))record.furnishings.push({instanceId:f.instanceId,itemId:f.itemId,x,z,rotation});
+  }
   if(t.placed===true&&tentIsValidPlace(x,z,t.id)){record.placed=true;record.x=x;record.z=z;}
   tentStats.set(identity,record);
+ }
+ if(d.furnitureStats&&typeof d.furnitureStats==='object')for(const [identity,r] of Object.entries(d.furnitureStats).slice(0,30000)){
+  if(!/^[a-zA-Z0-9_-]{20,100}$/.test(identity)||!r||typeof r!=='object')continue;
+  const owned={};for(const [key,n] of Object.entries(r.owned||{}))if(TENT_FURNITURE_CATALOG[key])owned[key]=Math.min(10000,Math.max(0,Math.floor(Number(n)||0)));
+  const spent=Math.max(0,Math.min(1000000000,Math.floor(Number(r.spent)||0)));
+  furnitureStats.set(identity,{spent,owned});
  }
  if(d.customMd&&typeof d.customMd==='object')for(const [id,r] of Object.entries(d.customMd).slice(0,40)){
   if(!/^md-[a-f0-9]{16}$/.test(id)||!r||typeof r!=='object')continue;
@@ -649,7 +713,7 @@ const server=http.createServer(async(req,res)=>{
           if(record)return json(res,409,{error:'이미 텐트를 보유하고 있어요.',...tentView(p)});
           const earned=Math.floor(badgeTotal(p)/60);
           if(earned<TENT_COST)return json(res,400,{error:`포인트가 부족해요. (${earned.toLocaleString()}/${TENT_COST.toLocaleString()}P)`});
-          record={id:crypto.randomUUID(),name:clean(p.name+'의 텐트',22),color:TENT_COLORS[0],wallColor:'default',floorColor:'default',exteriorType:'none',exteriorText:'',exteriorImage:'',placed:false,x:null,z:null};
+          record={id:crypto.randomUUID(),name:clean(p.name+'의 텐트',22),color:TENT_COLORS[0],wallColor:'default',floorColor:'default',exteriorType:'none',exteriorText:'',exteriorImage:'',furnishings:[],placed:false,x:null,z:null};
           tentStats.set(p.badgeIdentity,record);
           await saveNow();
           return json(res,200,{ok:true,...tentView(p)});
@@ -666,7 +730,7 @@ const server=http.createServer(async(req,res)=>{
           p.tentRoomId=selected.id;p.tentRoomX=0;p.tentRoomZ=2;p.tentRoomFacing=0;
           p.action='idle';p.pose='stand';broadcast({type:'tent-room',playerId:p.id,roomId:p.tentRoomId,x:0,z:2,action:'idle',pose:'stand'});
           sendTentUpdate();
-          return json(res,200,{ok:true,room:publicTent(selected),canDecorate:record?.id===selected.id,tents:allPlacedTents()});
+          return json(res,200,{ok:true,room:publicTent(selected),furnitureCatalog:TENT_FURNITURE_CATALOG,canDecorate:record?.id===selected.id,tents:allPlacedTents()});
         }
         if(command==='exit'){
           const hadRoom=Boolean(p.tentRoomId);
@@ -693,6 +757,39 @@ const server=http.createServer(async(req,res)=>{
           p.glowColor=['red','pink','blue','lime','yellow','white','rainbow'].includes(d.glowColor)?d.glowColor:'lime';
           broadcast({type:'tent-room',playerId:p.id,roomId:p.tentRoomId,x:p.tentRoomX,z:p.tentRoomZ,facing:p.tentRoomFacing,action:p.action,pose:p.pose,headbangBpm:p.headbangBpm,headbangBeatAt:p.headbangBeatAt,glowEnabled:p.glowEnabled,glowColor:p.glowColor});
           return json(res,200,{ok:true});
+        }
+        if(command==='furniture-status'){
+          if(!record)return json(res,403,{error:'개인 텐트를 먼저 구매해 주세요.'});
+          return json(res,200,{ok:true,...furnitureInventoryView(p)});
+        }
+        if(command==='furniture-buy'){
+          if(!record||p.tentRoomId!==record.id)return json(res,403,{error:'자신의 텐트 안에서만 아이템을 구매할 수 있어요.'});
+          const itemId=String(d.itemId||''),item=TENT_FURNITURE_CATALOG[itemId];
+          if(!item)return json(res,400,{error:'존재하지 않는 인테리어 아이템이에요.'});
+          if(tentPointBalance(p)<item.cost)return json(res,409,{error:'구매할 포인트가 부족해요.'});
+          const inv=furnitureRecord(p.badgeIdentity);
+          if((inv.owned[itemId]||0)>=100)return json(res,409,{error:'같은 아이템은 최대 100개까지 구매할 수 있어요.'});
+          inv.spent+=item.cost;inv.owned[itemId]=(inv.owned[itemId]||0)+1;
+          await saveNow();return json(res,200,{ok:true,...furnitureInventoryView(p)});
+        }
+        if(command==='furniture-place'){
+          if(!record||p.tentRoomId!==record.id)return json(res,403,{error:'텐트 주인만 소품을 배치할 수 있어요.'});
+          const itemId=String(d.itemId||''),item=TENT_FURNITURE_CATALOG[itemId],inv=furnitureRecord(p.badgeIdentity);
+          if(!item)return json(res,400,{error:'존재하지 않는 아이템이에요.'});
+          if((record.furnishings||[]).length>=TENT_FURNITURE_MAX_PLACED)return json(res,409,{error:'한 텐트에 최대 30개까지만 배치할 수 있어요.'});
+          const placedCount=(record.furnishings||[]).filter(f=>f.itemId===itemId).length;
+          if((inv.owned[itemId]||0)<=placedCount)return json(res,409,{error:'배치 가능한 보유 아이템이 없어요.'});
+          const x=Number(d.x),z=Number(d.z),rotation=Number(d.rotation);
+          if(!canPlaceFurniture(record,itemId,x,z,rotation))return json(res,409,{error:'해당 위치는 소품을 배치할 수 없어요.'});
+          record.furnishings??=[];record.furnishings.push({instanceId:crypto.randomUUID(),itemId,x:Math.round(x*100)/100,z:Math.round(z*100)/100,rotation});
+          await saveNow();sendTentUpdate();return json(res,200,{ok:true,...furnitureInventoryView(p),room:publicTent(record)});
+        }
+        if(command==='furniture-remove'){
+          if(!record||p.tentRoomId!==record.id)return json(res,403,{error:'텐트 주인만 소품을 회수할 수 있어요.'});
+          const found=(record.furnishings||[]).findIndex(x=>x.instanceId===String(d.instanceId||''));
+          if(found<0)return json(res,404,{error:'배치된 아이템을 찾지 못했어요.'});
+          record.furnishings.splice(found,1);
+          await saveNow();sendTentUpdate();return json(res,200,{ok:true,...furnitureInventoryView(p),room:publicTent(record)});
         }
         if(command==='decorate'){
           if(!record||!p.tentRoomId||p.tentRoomId!==record.id)return json(res,403,{error:'텐트 주인만 실내를 꾸밀 수 있어요.'});

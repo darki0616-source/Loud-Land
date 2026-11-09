@@ -1073,3 +1073,31 @@ body.tent-interior-open .performance-toggle,body.tent-interior-open .hud-audio-f
 #tentExteriorSave{background:#d5ff8f!important;color:#192e2e!important;border:0!important}
 #tentExteriorStatus{line-height:1.4}
 @media(max-width:700px){.tent-exterior-section{padding:9px 8px}.tent-exterior-modes{gap:4px}}
+
+/* v248: Indoor store, owned items, live placement with clear mobile-safe controls. */
+.tent-furniture-entry{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:2px}
+.tent-furniture-entry button,.tent-furniture-tabs button{border:1px solid #94ad9d;border-radius:9px;padding:10px 6px;background:#355263;color:#fff;font-size:12px;font-weight:800}
+.tent-furniture-panel{position:absolute;z-index:82;top:calc(env(safe-area-inset-top) + 66px);right:12px;width:min(394px,calc(100% - 24px));max-height:calc(100dvh - env(safe-area-inset-top) - 150px);overflow-y:auto;overscroll-behavior:contain;border:1px solid #92a99d;background:#142535f5;border-radius:15px;padding:14px;box-shadow:0 15px 42px #000a;color:#fff;display:flex;flex-direction:column;gap:10px}
+.tent-furniture-panel.hidden,.tent-furniture-placement.hidden{display:none!important}
+.tent-furniture-panel-title,.tent-furniture-tabs{display:flex;align-items:center;justify-content:space-between;gap:7px}
+.tent-furniture-panel-title strong{font-size:16px}.tent-furniture-panel-title button{background:#3d5361;color:white;border:0;border-radius:7px;padding:7px 10px}
+.tent-furniture-tabs button{flex:1}.tent-furniture-tabs button.selected{background:#bff58b;color:#1c2f24;border-color:#bff58b}
+.tent-furniture-balance{font-size:12px;color:#dae3df;display:flex;align-items:center;justify-content:space-between}
+.tent-furniture-balance b{color:#d7ff99;font-size:15px}
+.tent-furniture-catalog{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.tent-furniture-catalog button{display:flex;flex-direction:column;gap:4px;align-items:center;background:#243f4a;border:2px solid #4c6370;border-radius:10px;color:white;padding:9px 5px;min-height:96px}
+.tent-furniture-catalog button.selected{border-color:#c8ff93;background:#355447}
+.tent-furniture-catalog img{height:68px;width:92px;object-fit:contain}
+.tent-furniture-catalog .tent-furniture-icon{font-size:34px;min-height:53px;display:grid;place-items:center}
+.tent-furniture-catalog strong{font-size:12px}.tent-furniture-catalog small{font-size:11px;color:#d8e5d9}
+.tent-furniture-preview-box{display:grid;grid-template-columns:140px 1fr;gap:12px;align-items:center;min-height:150px;background:#213541;border-radius:10px;padding:7px}
+.tent-furniture-preview-box canvas{display:block;width:140px;height:auto;aspect-ratio:240/176;max-width:100%;border-radius:9px;background:radial-gradient(ellipse at 50% 55%,#5d706f,#1a2831 77%)}
+.tent-furniture-preview-box b{display:block;font-size:13px}.tent-furniture-preview-box small{display:block;font-size:11px;color:#d1dee3;margin-top:8px;line-height:1.5}
+.tent-furniture-placed{display:grid;gap:5px;font-size:12px}.tent-furniture-placed .tent-furniture-placed-row{display:flex;justify-content:space-between;align-items:center;gap:8px;background:#293c48;border-radius:7px;padding:6px 9px}
+.tent-furniture-placed-row button{background:#53636a;border-radius:6px;padding:5px 8px;color:white;border:1px solid #81949b}
+.tent-furniture-placement{position:absolute;z-index:85;left:50%;bottom:calc(120px + env(safe-area-inset-bottom));transform:translateX(-50%);width:min(620px,calc(100% - 16px));border:1px solid #a7cb9b;background:#102d38ef;box-shadow:0 10px 36px #0008;border-radius:12px;padding:10px;color:#fff;display:grid;justify-items:center;gap:7px;text-align:center;pointer-events:auto}
+.tent-furniture-placement small{font-size:11px;color:#deebe3}.tent-furniture-placement>div{display:flex;gap:7px;flex-wrap:wrap;align-items:center;justify-content:center}
+.tent-furniture-placement button{border:1px solid #8fa6a1;background:#365368;color:#fff;border-radius:7px;padding:8px 12px;font-size:12px;font-weight:800}
+.tent-furniture-placement #tentFurniturePlaceConfirm{background:#bafa8e;color:#192d23;border-color:#bafa8e}
+.tent-furniture-placement #tentFurniturePlaceConfirm:disabled{background:#b55a61;border-color:#b55a61;color:white;opacity:.9}
+@media(max-width:700px){.tent-furniture-panel{top:calc(env(safe-area-inset-top) + 55px);right:5px;width:min(355px,calc(100% - 10px));max-height:calc(100dvh - env(safe-area-inset-top) - 122px)}.tent-furniture-placement{bottom:calc(120px + env(safe-area-inset-bottom));padding:9px 5px}.tent-furniture-placement button{padding:8px;font-size:11px}}

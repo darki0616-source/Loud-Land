@@ -1766,7 +1766,7 @@ function tentRequest(command,values={}){return post('tent',{id:state.id,sessionK
 function syncTents(tents){
  if(!Array.isArray(tents))return;
  tentList=tents;
- if(tentRoomActive){const current=tents.find(t=>t.id===tentRoomActive.id);if(!current)leaveTentInterior(false);else{tentRoomActive={...tentRoomActive,...current};syncRoomCaption();applyTentRoomColors(current)}}
+ if(tentRoomActive){const current=tents.find(t=>t.id===tentRoomActive.id);if(!current)leaveTentInterior(false);else{tentRoomActive={...tentRoomActive,...current};syncRoomCaption();applyTentRoomColors(current);syncTentFurniturePlaced(tentRoomActive)}}
  updateTentModels();
 }
 async function refreshTentStatus(){
@@ -2528,7 +2528,7 @@ function applyTentRoomColors(room){
 function syncRoomCaption(){if(!tentRoomActive)return;$('tentRoomTitle').textContent=tentRoomActive.name;$('tentRoomCount').textContent=`${tentRoomActive.occupancy||0}/${tentRoomActive.capacity||4}`}
 function closeTentDecorate(){$('tentDecoratePanel').classList.add('hidden');$('tentRoomDecorate').setAttribute('aria-expanded','false')}
 function paintChoices(kind){const grid=$(kind==='wall'?'tentWallChoices':'tentFloorChoices');grid.replaceChildren();const current=kind==='wall'?tentPaintWall:tentPaintFloor;for(const color of Object.keys(TENT_PAINTS)){const button=document.createElement('button');button.type='button';button.classList.toggle('selected',color===current);button.setAttribute('aria-pressed',String(color===current));const swatch=document.createElement('span');swatch.style.background=color==='default'?(kind==='wall'?'#f1e2d0':'#bf9c78'):TENT_PAINTS[color];const text=document.createElement('b');text.textContent=color==='default'?(kind==='wall'?'기본벽':'기본바닥'):TENT_PAINT_LABELS[color];button.append(swatch,text);button.onclick=()=>{if(kind==='wall')tentPaintWall=color;else tentPaintFloor=color;applyTentRoomColors({wallColor:tentPaintWall,floorColor:tentPaintFloor});paintChoices(kind)};grid.append(button)}}
-$('tentRoomDecorate').onclick=()=>{if(!tentCanDecorate)return toast('텐트 주인만 내부를 꾸밀 수 있어요');const opened=$('tentDecoratePanel').classList.contains('hidden');$('tentDecoratePanel').classList.toggle('hidden',!opened);$('tentRoomDecorate').setAttribute('aria-expanded',String(opened));if(opened){paintChoices('wall');paintChoices('floor')}};
+$('tentRoomDecorate').onclick=()=>{if(!tentCanDecorate)return toast('텐트 주인만 내부를 꾸밀 수 있어요');closeFurnitureShop();const opened=$('tentDecoratePanel').classList.contains('hidden');$('tentDecoratePanel').classList.toggle('hidden',!opened);$('tentRoomDecorate').setAttribute('aria-expanded',String(opened));if(opened){paintChoices('wall');paintChoices('floor')}};
 $('tentDecorateClose').onclick=closeTentDecorate;
 $('tentDecorateSave').onclick=async()=>{if(!tentRoomActive||!tentCanDecorate||tentDecorateBusy)return;tentDecorateBusy=true;$('tentDecorateSave').disabled=true;try{const data=await tentRequest('decorate',{wallColor:tentPaintWall,floorColor:tentPaintFloor});tentRoomActive={...tentRoomActive,...data.room};syncTents((tentList||[]).map(t=>t.id===data.room.id?data.room:t));closeTentDecorate();toast('실내 색상을 저장했어요')}catch(error){toast(error.message)}finally{tentDecorateBusy=false;$('tentDecorateSave').disabled=false}};
 
@@ -2571,9 +2571,262 @@ for(const x of [-5,-3,-1,1,3,5]){
  const seam=new THREE.Mesh(new THREE.BoxGeometry(.022,.01,9.6),new THREE.MeshStandardMaterial({color:'#b99066'}));
  seam.position.set(x,.015,0);tentRoomScene.add(seam);tentRoomFloorSeams.push(seam);
 }
-// v244: The green rug has been removed entirely.
-// Interior furnishing will be added to this separate scene in future releases.
+// v248: No green rug; purchased items are rendered below as tent furniture.
 const tentRoomAvatars=new Map();
+// v248: Persistent purchased indoor furniture, model preview and live placement.
+const tentFurniturePlaced=new Map(),tentFurnitureModels=new Map(),tentFurnitureThumbs=new Map();
+let tentFurnitureData=null,tentFurnitureMode='shop',tentFurnitureSelected='jack',tentFurnitureBusy=false;
+let tentFurnitureGhost=null,tentFurnitureCurrentSignature='',tentFurniturePlacement=null;
+let tentFurniturePreviewRenderer=null,tentFurniturePreviewScene=null,tentFurniturePreviewCamera=null;
+const furnitureAssetLoader=new GLTFLoader();
+const TENT_FURNITURE_ENTRANCE_X=0,TENT_FURNITURE_ENTRANCE_Z=2.5;
+async function getTentFurnitureModel(itemId){
+ if(tentFurnitureModels.has(itemId))return tentFurnitureModels.get(itemId);
+ const item=tentFurnitureData?.catalog?.[itemId]||tentRoomActive?.furnitureCatalog?.[itemId];
+ if(!item||!/^\/assets\/tent-items\/[a-z0-9_-]+\.glb$/.test(item.asset))throw Error('알 수 없는 아이템 파일입니다.');
+ const load=new Promise((resolve,reject)=>{
+  furnitureAssetLoader.load(item.asset,gltf=>{
+   const original=gltf.scene,box=new THREE.Box3().setFromObject(original);
+   const size=box.getSize(new THREE.Vector3()),center=box.getCenter(new THREE.Vector3());
+   if(size.y<=0||!Number.isFinite(size.y)){reject(Error('3D 모델의 크기를 확인할 수 없어요.'));return;}
+   const scale=(item.height||1)/size.y;
+   const template=new THREE.Group();template.name='tent-furniture-'+itemId;
+   original.scale.setScalar(scale);original.position.set(-center.x*scale,-box.min.y*scale,-center.z*scale);
+   original.traverse(obj=>{if(obj.isMesh){obj.castShadow=false;obj.receiveShadow=true;}});
+   template.add(original);resolve(template);
+  },undefined,()=>reject(Error('아이템 3D 모델을 불러오지 못했어요.')));
+ });
+ tentFurnitureModels.set(itemId,load);
+ return load;
+}
+function clearTentFurniturePlaced(){
+ for(const obj of tentFurniturePlaced.values())tentRoomScene.remove(obj);
+ tentFurniturePlaced.clear();tentFurnitureCurrentSignature='';
+}
+function syncTentFurniturePlaced(room){
+ if(!room||!tentRoomActive||room.id!==tentRoomActive.id)return;
+ const list=Array.isArray(room.furnishings)?room.furnishings:[];
+ const signature=room.id+'|'+JSON.stringify(list);
+ if(signature===tentFurnitureCurrentSignature)return;
+ tentFurnitureCurrentSignature=signature;
+ clearTentFurniturePlaced();tentFurnitureCurrentSignature=signature;
+ for(const f of list){
+  if(!f||!f.instanceId||!tentRoomActive.furnitureCatalog?.[f.itemId])continue;
+  const roomId=room.id,renderSignature=signature;
+  getTentFurnitureModel(f.itemId).then(template=>{
+   if(tentRoomActive?.id!==roomId||tentFurnitureCurrentSignature!==renderSignature)return;
+   const obj=template.clone(true);obj.name='placed-'+f.instanceId;
+   obj.position.set(f.x,0,f.z);obj.rotation.y=(f.rotation||0)*Math.PI/180;
+   tentRoomScene.add(obj);tentFurniturePlaced.set(f.instanceId,obj);
+  }).catch(err=>console.warn('Tent furniture:',err.message));
+ }
+}
+function tentFurnitureFootprint(item,x,z,rotation){
+ const a=rotation*Math.PI/180,c=Math.cos(a),si=Math.sin(a),hw=item.width/2+.20,hd=item.depth/2+.20;
+ return [[-hw,-hd],[hw,-hd],[hw,hd],[-hw,hd]].map(([u,v])=>[x+u*c+v*si,z-u*si+v*c]);
+}
+function tentFurniturePolygonsOverlap(a,b){
+ for(const poly of [a,b])for(let i=0;i<poly.length;i++){
+  const v=poly[i],n=poly[(i+1)%poly.length],ax=-(n[1]-v[1]),ay=n[0]-v[0];
+  const ap=a.map(p=>p[0]*ax+p[1]*ay),bp=b.map(p=>p[0]*ax+p[1]*ay);
+  if(Math.max(...ap)<=Math.min(...bp)||Math.max(...bp)<=Math.min(...ap))return false;
+ }
+ return true;
+}
+function tentFurnitureCanPlace(itemId,x,z,rotation){
+ const item=tentFurnitureData?.catalog?.[itemId];
+ if(!item||!Number.isFinite(x)||!Number.isFinite(z)||![0,45,90,135,180,225,270,315].includes(rotation))return false;
+ const c=Math.cos(rotation*Math.PI/180),si=Math.sin(rotation*Math.PI/180);
+ const hw=item.width/2+.14,hd=item.depth/2+.14;
+ const inside=[[-hw,-hd],[-hw,hd],[hw,-hd],[hw,hd]].every(([u,v])=>Math.abs(x+u*c+v*si)<=5.52&&Math.abs(z-u*si+v*c)<=4.52);
+ if(!inside||Math.hypot(x-TENT_FURNITURE_ENTRANCE_X,z-TENT_FURNITURE_ENTRANCE_Z)<=1.28)return false;
+ const footprint=tentFurnitureFootprint(item,x,z,rotation);
+ return (tentRoomActive?.furnishings||[]).every(f=>{
+  const other=tentFurnitureData.catalog[f.itemId];
+  return !other||!tentFurniturePolygonsOverlap(footprint,tentFurnitureFootprint(other,f.x,f.z,f.rotation));
+ });
+}
+function clearTentFurnitureGhost(){
+ if(!tentFurnitureGhost)return;
+ tentRoomScene.remove(tentFurnitureGhost.root);
+ if(tentFurnitureGhost.model)tentFurnitureGhost.model.traverse(obj=>{if(obj.isMesh){const mats=Array.isArray(obj.material)?obj.material:[obj.material];for(const m of mats)m.dispose();}});
+ tentFurnitureGhost.fill.geometry.dispose();tentFurnitureGhost.fill.material.dispose();
+ tentFurnitureGhost.outline.geometry.dispose();tentFurnitureGhost.outline.material.dispose();
+ tentFurnitureGhost=null;
+}
+function repaintTentFurnitureGhost(){
+ if(!tentFurniturePlacement||!tentFurnitureGhost)return;
+ const p=tentFurniturePlacement,g=tentFurnitureGhost,valid=tentFurnitureCanPlace(p.itemId,p.x,p.z,p.rotation);
+ g.root.position.set(p.x,0,p.z);g.root.rotation.y=p.rotation*Math.PI/180;
+ g.fill.material.color.set(valid?'#49ea83':'#ee4f59');g.fill.material.opacity=valid?.43:.56;
+ g.outline.material.color.set(valid?'#afff91':'#ff8e8e');
+ $('tentFurnitureRotation').textContent=p.rotation+'°';
+ $('tentFurniturePlaceConfirm').disabled=!valid||tentFurnitureBusy;
+ $('tentFurniturePlacementHelp').textContent=valid?'초록색: 배치할 수 있어요 · 화면을 터치해 위치 변경':'빨간색: 벽·입구·다른 소품과 겹쳐서 배치 불가';
+}
+async function startTentFurniturePlacement(itemId){
+ const available=tentFurnitureAvailable(itemId);
+ if(!tentRoomActive||!tentCanDecorate||available<=0)return toast('배치 가능한 아이템이 없어요.');
+ if(!tentFurnitureData?.catalog[itemId])return;
+ cancelTentFurniturePlacement();closeFurnitureShop();closeTentDecorate();
+ tentRoomWalkTarget=null;tentFurniturePlacement={itemId,x:1.8,z:0,rotation:0};
+ const item=tentFurnitureData.catalog[itemId],root=new THREE.Group();
+ const fill=new THREE.Mesh(new THREE.PlaneGeometry(item.width+.28,item.depth+.28),new THREE.MeshBasicMaterial({color:'#49ea83',transparent:true,opacity:.43,depthWrite:false,side:THREE.DoubleSide}));
+ fill.rotation.x=-Math.PI/2;fill.position.y=.045;root.add(fill);
+ const w=(item.width+.28)/2,d=(item.depth+.28)/2;
+ const points=[new THREE.Vector3(-w,.075,-d),new THREE.Vector3(w,.075,-d),new THREE.Vector3(w,.075,d),new THREE.Vector3(-w,.075,d)];
+ const coords=[];for(let i=0;i<4;i++)coords.push(points[i],points[(i+1)%4]);
+ const outline=new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(coords),new THREE.LineDashedMaterial({color:'#afff91',dashSize:.15,gapSize:.09,linewidth:2,depthTest:false}));
+ outline.computeLineDistances();outline.renderOrder=10;root.add(outline);
+ tentFurnitureGhost={root,fill,outline,model:null};tentRoomScene.add(root);
+ $('tentFurniturePlacementName').textContent='📍 '+item.name+' 배치';
+ $('tentFurniturePlacement').classList.remove('hidden');
+ repaintTentFurnitureGhost();
+ try{
+  const template=await getTentFurnitureModel(itemId);
+  if(tentFurniturePlacement?.itemId!==itemId||tentFurnitureGhost?.root!==root)return;
+  const model=template.clone(true);
+  model.traverse(obj=>{if(obj.isMesh){obj.material=Array.isArray(obj.material)?obj.material.map(m=>m.clone()):obj.material.clone();const mats=Array.isArray(obj.material)?obj.material:[obj.material];for(const m of mats){m.transparent=true;m.opacity=.77;m.depthWrite=false;}}});
+  root.add(model);tentFurnitureGhost.model=model;
+ }catch(err){toast(err.message);cancelTentFurniturePlacement()}
+}
+function cancelTentFurniturePlacement(){tentFurniturePlacement=null;clearTentFurnitureGhost();$('tentFurniturePlacement').classList.add('hidden');}
+function moveTentFurnitureGhost(x,z){
+ if(!tentFurniturePlacement)return;
+ // Snap to a small grid for stable positions, including touch movements.
+ tentFurniturePlacement.x=Math.round(THREE.MathUtils.clamp(x,-5.2,5.2)*10)/10;
+ tentFurniturePlacement.z=Math.round(THREE.MathUtils.clamp(z,-4.2,4.2)*10)/10;
+ repaintTentFurnitureGhost();
+}
+function tentFurnitureAvailable(itemId){
+ return Math.max(0,(tentFurnitureData?.owned?.[itemId]||0)-(tentRoomActive?.furnishings||[]).filter(f=>f.itemId===itemId).length);
+}
+function closeFurnitureShop(){$('tentFurniturePanel').classList.add('hidden')}
+async function openTentFurnitureShop(mode){
+ if(!tentCanDecorate||!tentRoomActive)return toast('텐트 주인만 인테리어 아이템을 관리할 수 있어요.');
+ if(tentFurniturePlacement)cancelTentFurniturePlacement();
+ closeTentDecorate();tentFurnitureMode=mode==='mine'?'mine':'shop';
+ $('tentFurniturePanel').classList.remove('hidden');
+ $('tentFurnitureItems').textContent='불러오는 중...';
+ try{tentFurnitureData=await tentRequest('furniture-status');
+  if(!tentFurnitureSelected||!tentFurnitureData.catalog[tentFurnitureSelected])tentFurnitureSelected=Object.keys(tentFurnitureData.catalog)[0]||'';
+  if(tentFurnitureMode==='mine'&&!(tentFurnitureData.owned[tentFurnitureSelected]>0)){
+   tentFurnitureSelected=Object.keys(tentFurnitureData.owned).find(k=>tentFurnitureData.owned[k]>0)||'';
+  }
+  renderTentFurnitureShop();
+ }catch(err){toast(err.message);$('tentFurnitureItems').textContent='아이템을 불러오지 못했어요.';}
+}
+function initTentFurniturePreview(){
+ if(tentFurniturePreviewRenderer)return;
+ const canvas=$('tentFurniturePreview');
+ try{
+  tentFurniturePreviewRenderer=new THREE.WebGLRenderer({canvas,alpha:true,antialias:true,preserveDrawingBuffer:true});
+  tentFurniturePreviewRenderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.5));
+  tentFurniturePreviewRenderer.setSize(240,176,false);
+  tentFurniturePreviewRenderer.outputColorSpace=THREE.SRGBColorSpace;
+  tentFurniturePreviewScene=new THREE.Scene();
+  tentFurniturePreviewScene.add(new THREE.HemisphereLight('#ffffff','#51677a',2.8));
+  const light=new THREE.DirectionalLight('#fff1cb',3);light.position.set(3,5,4);tentFurniturePreviewScene.add(light);
+  const ground=new THREE.Mesh(new THREE.CylinderGeometry(1.1,1.15,.1,32),new THREE.MeshStandardMaterial({color:'#61726f',roughness:.82}));ground.position.y=-.13;tentFurniturePreviewScene.add(ground);
+  tentFurniturePreviewCamera=new THREE.PerspectiveCamera(40,240/176,.01,100);
+  tentFurniturePreviewCamera.position.set(2,1.7,3.3);tentFurniturePreviewCamera.lookAt(0,.62,0);
+ }catch(err){console.warn('Furniture preview renderer unavailable',err);}
+}
+let tentPreviewModel=null,tentPreviewRequest=0;
+async function showTentFurniturePreview(itemId){
+ const requested=++tentPreviewRequest;
+ if(tentPreviewModel){tentFurniturePreviewScene?.remove(tentPreviewModel);tentPreviewModel=null;}
+ if(!itemId)return;
+ initTentFurniturePreview();
+ try{
+  const template=await getTentFurnitureModel(itemId);
+  if(requested!==tentPreviewRequest||!tentFurniturePreviewRenderer)return;
+  tentPreviewModel=template.clone(true);tentFurniturePreviewScene.add(tentPreviewModel);
+  tentFurniturePreviewRenderer.render(tentFurniturePreviewScene,tentFurniturePreviewCamera);
+  // Cache a thumbnail so the shop and owned-item tabs both show the actual asset.
+  if(!tentFurnitureThumbs.has(itemId)){
+   try{tentFurnitureThumbs.set(itemId,tentFurniturePreviewRenderer.domElement.toDataURL('image/png'));renderTentFurnitureShopList();}catch{}
+  }
+ }catch(err){console.warn('Furniture preview:',err.message);}
+}
+function renderTentFurnitureShopList(){
+ const host=$('tentFurnitureItems');host.replaceChildren();
+ if(!tentFurnitureData)return;
+ let entries=Object.entries(tentFurnitureData.catalog);
+ if(tentFurnitureMode==='mine')entries=entries.filter(([key])=>(tentFurnitureData.owned[key]||0)>0);
+ if(!entries.length){host.textContent=tentFurnitureMode==='mine'?'구매한 아이템이 없거나 모두 배치했어요.':'판매 중인 아이템이 없어요.';return;}
+ for(const [key,item] of entries){
+  const button=document.createElement('button');button.type='button';button.classList.toggle('selected',key===tentFurnitureSelected);
+  const thumb=tentFurnitureThumbs.get(key);
+  if(thumb){const img=document.createElement('img');img.src=thumb;img.alt=item.name+' 3D 미리보기';button.append(img)}
+  else{const ico=document.createElement('span');ico.className='tent-furniture-icon';ico.textContent='🥃';button.append(ico)}
+  const name=document.createElement('strong');name.textContent=item.name;button.append(name);
+  const cost=document.createElement('small');cost.textContent=tentFurnitureMode==='shop'?`${item.cost.toLocaleString()}P · 보유 ${tentFurnitureData.owned[key]||0}개`:`남은 ${tentFurnitureAvailable(key)}개`;button.append(cost);
+  button.onclick=()=>{tentFurnitureSelected=key;renderTentFurnitureShop();};
+  host.append(button);
+ }
+}
+function renderTentFurnitureShop(){
+ if(!tentFurnitureData)return;
+ const isMine=tentFurnitureMode==='mine';
+ $('tentFurniturePanelTitle').textContent=isMine?'📦 내 인테리어 아이템':'🛍 아이템 상점';
+ $('tentFurnitureTabShop').classList.toggle('selected',!isMine);$('tentFurnitureTabMine').classList.toggle('selected',isMine);
+ $('tentFurniturePoints').textContent=(tentFurnitureData.points||0).toLocaleString()+'P';
+ if(isMine&&!(tentFurnitureData.owned[tentFurnitureSelected]>0))tentFurnitureSelected=Object.keys(tentFurnitureData.owned).find(k=>tentFurnitureData.owned[k]>0)||'';
+ renderTentFurnitureShopList();
+ const item=tentFurnitureData.catalog[tentFurnitureSelected];
+ $('tentFurnitureSelection').textContent=item?.name||'아이템을 선택해 주세요.';
+ $('tentFurnitureDetails').textContent=item?(item.description+' · '+(isMine?'배치 가능 '+tentFurnitureAvailable(tentFurnitureSelected)+'개':item.cost.toLocaleString()+'P')):'';
+ $('tentFurniturePrimary').textContent=isMine?'📍 배치하기':item?`🛍 ${item.cost.toLocaleString()}P 구매하기`:'아이템을 선택해 주세요';
+ $('tentFurniturePrimary').disabled=!item||tentFurnitureBusy||(isMine?tentFurnitureAvailable(tentFurnitureSelected)<=0:Number(tentFurnitureData.points)<item.cost);
+ const placed=$('tentFurniturePlaced');placed.replaceChildren();
+ if(isMine&&tentRoomActive?.furnishings?.length){
+  const heading=document.createElement('strong');heading.textContent='현재 텐트에 배치된 소품';placed.append(heading);
+  tentRoomActive.furnishings.forEach(f=>{
+   const item=tentFurnitureData.catalog[f.itemId];if(!item)return;
+   const row=document.createElement('div');row.className='tent-furniture-placed-row';
+   const label=document.createElement('span');label.textContent=`${item.name} (${f.rotation}°)`;row.append(label);
+   const button=document.createElement('button');button.type='button';button.textContent='회수';
+   button.onclick=async()=>{
+    if(!confirm(item.name+'을(를) 회수할까요? 보유 아이템으로 돌아갑니다.'))return;
+    try{const data=await tentRequest('furniture-remove',{instanceId:f.instanceId});tentFurnitureData=data;tentRoomActive={...tentRoomActive,...data.room};syncTentFurniturePlaced(tentRoomActive);renderTentFurnitureShop();toast('아이템을 회수했어요.');}catch(err){toast(err.message)}
+   };row.append(button);placed.append(row);
+  });
+ }
+ showTentFurniturePreview(tentFurnitureSelected);
+}
+$('tentFurnitureShopButton').onclick=()=>openTentFurnitureShop('shop');
+$('tentFurnitureOwnedButton').onclick=()=>openTentFurnitureShop('mine');
+$('tentFurnitureTabShop').onclick=()=>{tentFurnitureMode='shop';renderTentFurnitureShop()};
+$('tentFurnitureTabMine').onclick=()=>{tentFurnitureMode='mine';renderTentFurnitureShop()};
+$('tentFurnitureClose').onclick=closeFurnitureShop;
+$('tentFurniturePrimary').onclick=async()=>{
+ if(tentFurnitureBusy||!tentFurnitureSelected||!tentFurnitureData)return;
+ const itemId=tentFurnitureSelected,item=tentFurnitureData.catalog[itemId];if(!item)return;
+ if(tentFurnitureMode==='mine'){startTentFurniturePlacement(itemId);return;}
+ if(!confirm(`${item.name}을(를) ${item.cost.toLocaleString()}P에 구매할까요? 구매 후 포인트는 반환되지 않습니다.`))return;
+ tentFurnitureBusy=true;$('tentFurniturePrimary').disabled=true;
+ try{tentFurnitureData=await tentRequest('furniture-buy',{itemId});renderTentFurnitureShop();toast(item.name+' 구매 완료! 내 아이템에서 배치할 수 있어요.');}
+ catch(err){toast(err.message)}finally{tentFurnitureBusy=false;renderTentFurnitureShop();}
+};
+$('tentFurnitureRotateLeft').onclick=()=>{if(tentFurniturePlacement){tentFurniturePlacement.rotation=(tentFurniturePlacement.rotation+315)%360;repaintTentFurnitureGhost();}};
+$('tentFurnitureRotateRight').onclick=()=>{if(tentFurniturePlacement){tentFurniturePlacement.rotation=(tentFurniturePlacement.rotation+45)%360;repaintTentFurnitureGhost();}};
+$('tentFurniturePlaceCancel').onclick=()=>{cancelTentFurniturePlacement();openTentFurnitureShop('mine')};
+$('tentFurniturePlaceConfirm').onclick=async()=>{
+ if(!tentFurniturePlacement||tentFurnitureBusy)return;
+ const p={...tentFurniturePlacement};
+ if(!tentFurnitureCanPlace(p.itemId,p.x,p.z,p.rotation))return toast('배치할 수 없는 위치예요.');
+ if(!confirm(`${tentFurnitureData.catalog[p.itemId].name}을(를) 이 위치에 배치하시겠습니까?`))return;
+ tentFurnitureBusy=true;repaintTentFurnitureGhost();
+ try{
+  const data=await tentRequest('furniture-place',p);
+  if(!tentRoomActive)return;
+  tentFurnitureData=data;tentRoomActive={...tentRoomActive,...data.room};
+  cancelTentFurniturePlacement();syncTentFurniturePlaced(tentRoomActive);
+  toast('아이템 배치가 완료됐어요.');
+ }catch(err){toast(err.message);}
+ finally{tentFurnitureBusy=false;repaintTentFurnitureGhost();}
+};
 function createTentNameSprite(name){
  const canvas=document.createElement('canvas');canvas.width=512;canvas.height=96;
  const ctx=canvas.getContext('2d');ctx.fillStyle='#17272ec9';ctx.beginPath();ctx.roundRect(8,8,496,80,18);ctx.fill();
@@ -2717,9 +2970,9 @@ async function enterTent(tentId){
   const data=await tentRequest('enter',{tentId});
   if(tentRoomActive)leaveTentInterior(false);
   state.action='idle';state.pose='stand';state.actionUntil=0;if(state.me){state.me.action='idle';state.me.pose='stand'}
-  tentRoomActive=data.room;tentCanDecorate=Boolean(data.canDecorate);tentPaintWall=data.room.wallColor||'default';tentPaintFloor=data.room.floorColor||'default';
+  tentRoomActive={...data.room,furnitureCatalog:data.furnitureCatalog||{}};tentCanDecorate=Boolean(data.canDecorate);tentPaintWall=data.room.wallColor||'default';tentPaintFloor=data.room.floorColor||'default';
   tentRoomWalkTarget=null;tentRoomLocal={x:0,z:2,facing:0};tentRoomLastSend=0;tentRoomWasMoving=false;tentRoomMoveQueued=null;
-  applyTentRoomColors(data.room);closeTentDecorate();syncTents(data.tents);$('chatMessages').replaceChildren();selectBottomMenu('reaction');
+  applyTentRoomColors(data.room);closeTentDecorate();closeFurnitureShop();cancelTentFurniturePlacement();syncTents(data.tents);$('chatMessages').replaceChildren();selectBottomMenu('reaction');
   tentRoomSavedCamera={position:camera.position.clone(),target:controls.target.clone(),minDistance:controls.minDistance,maxDistance:controls.maxDistance,enabled:controls.enabled};
   camera.position.set(0,8.1,13.6);controls.target.set(0,1,0);controls.minDistance=5;controls.maxDistance=19;controls.enabled=true;
   controls.update();cameraFollowInitialized=false;
@@ -2737,7 +2990,7 @@ async function enterTent(tentId){
 function leaveTentInterior(send=true){
  if(!tentRoomActive)return;
  state.action='idle';state.pose='stand';state.actionUntil=0;if(state.me){state.me.action='idle';state.me.pose='stand'}
- tentRoomActive=null;tentCanDecorate=false;tentRoomWalkTarget=null;tentRoomLocal=null;tentRoomMoveQueued=null;tentRoomWasMoving=false;closeTentDecorate();clearTentRoomBubbles();$('chatMessages').replaceChildren();selectBottomMenu('reaction');
+ cancelTentFurniturePlacement();closeFurnitureShop();clearTentFurniturePlaced();tentFurnitureData=null;tentRoomActive=null;tentCanDecorate=false;tentRoomWalkTarget=null;tentRoomLocal=null;tentRoomMoveQueued=null;tentRoomWasMoving=false;closeTentDecorate();clearTentRoomBubbles();$('chatMessages').replaceChildren();selectBottomMenu('reaction');
  for(const avatar of tentRoomAvatars.values())disposeAvatar(avatar.root);
  tentRoomAvatars.clear();
  if(tentRoomSavedCamera){camera.position.copy(tentRoomSavedCamera.position);controls.target.copy(tentRoomSavedCamera.target);controls.minDistance=tentRoomSavedCamera.minDistance;controls.maxDistance=tentRoomSavedCamera.maxDistance;controls.enabled=!povEnabled;tentRoomSavedCamera=null;}
@@ -2755,6 +3008,7 @@ function updateTentInterior(frameDelta,t){
  const k=state.keys,local=tentRoomLocal;
  let dx=Number(k.has('d')||k.has('arrowright'))-Number(k.has('a')||k.has('arrowleft'));
  let dz=Number(k.has('s')||k.has('arrowdown'))-Number(k.has('w')||k.has('arrowup'));
+ if(tentFurniturePlacement){dx=0;dz=0;tentRoomWalkTarget=null;}
  if(dx||dz)tentRoomWalkTarget=null;
  if(tentRoomWalkTarget){
   dx=tentRoomWalkTarget.x-local.x;
@@ -6593,7 +6847,8 @@ gameTouchSurface.addEventListener('pointerup',e=>{
   pointer.set(((e.clientX-bounds.left)/bounds.width)*2-1,-((e.clientY-bounds.top)/bounds.height)*2+1);
   groundRay.setFromCamera(pointer,camera);
   const target=groundRay.intersectObject(roomFloor,false)[0];
-  if(target)tentRoomWalkTarget={x:THREE.MathUtils.clamp(target.point.x,-4.6,4.6),z:THREE.MathUtils.clamp(target.point.z,-3.6,3.6)};
+  if(target){if(tentFurniturePlacement)moveTentFurnitureGhost(target.point.x,target.point.z);
+    else tentRoomWalkTarget={x:THREE.MathUtils.clamp(target.point.x,-4.6,4.6),z:THREE.MathUtils.clamp(target.point.z,-3.6,3.6)};}
   return;
  }
  // An actual tent is a world entrance: prioritize its mesh over nearby
@@ -7090,3 +7345,13 @@ if(savedProfile && typeof savedProfile.name==='string' && savedProfile.name.trim
   document.getElementById('joinModal')?.classList.add('hidden');
   join({auto:true}).then(()=>{if(!state.id)document.getElementById('joinModal')?.classList.remove('hidden')}).catch(()=>{document.getElementById('joinModal')?.classList.remove('hidden')});
 }
+
+// v248 placement hover: on PC the dashed rectangle follows the mouse cursor;
+// on mobile, tapping the floor selects a position without moving the avatar.
+gameTouchSurface.addEventListener('pointermove',e=>{
+ if(!tentFurniturePlacement||!tentRoomActive||e.pointerType!=='mouse'||e.buttons)return;
+ const bounds=renderer.domElement.getBoundingClientRect();
+ pointer.set(((e.clientX-bounds.left)/bounds.width)*2-1,-((e.clientY-bounds.top)/bounds.height)*2+1);
+ groundRay.setFromCamera(pointer,camera);
+ const hit=groundRay.intersectObject(roomFloor,false)[0];if(hit)moveTentFurnitureGhost(hit.point.x,hit.point.z);
+});
