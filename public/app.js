@@ -2990,7 +2990,9 @@ for(let x=-34;x<=34;x+=3){
 const picnicGroups=[];
 const picnicProps=[];
 const picnicSnackLoader=new GLTFLoader();
+const picnicSojuLoader=new GLTFLoader();
 let sharedPicnicSnackPromise=null;
+let sharedPicnicSojuPromise=null;
 function addPicnicCube(group,w,h,d,material,x,y,z,cast=true){
  const o=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),material);
  o.position.set(x,y,z);o.castShadow=cast;o.receiveShadow=true;group.add(o);return o;
@@ -3032,21 +3034,75 @@ function makeFallbackPicnicSnack(){
  stripe.position.y=.18;stripe.castShadow=true;stripe.receiveShadow=true;group.add(stripe);
  return group;
 }
-function addPicnicSnackModel(group,x,y,z,rotY,rotX=-Math.PI/2,rotZ=0,scale=.52){
+function addPicnicSnackModel(group,x,y,z,rotY,scale=.52){
  const pivot=new THREE.Group();
  pivot.position.set(x,y,z);
- pivot.rotation.set(rotX,rotY,rotZ);
- pivot.scale.setScalar(scale);
+ pivot.rotation.y=rotY;
  group.add(pivot);
+ const orient=new THREE.Group();
+ orient.rotation.x=-Math.PI/2;
+ pivot.add(orient);
  const fallback=makeFallbackPicnicSnack();
- pivot.add(fallback);
+ orient.add(fallback);
  getSharedPicnicSnack().then(template=>{
   if(!pivot.parent)return;
   const model=template.clone(true);
   model.traverse(obj=>{if(obj.isMesh){obj.castShadow=true;obj.receiveShadow=true;}});
-  pivot.add(model);
+  orient.add(model);
   fallback.visible=false;
  }).catch(error=>console.warn('Picnic snack GLB failed; keeping fallback',error));
+ return pivot;
+}
+function getSharedPicnicSoju(){
+ if(!sharedPicnicSojuPromise){
+  sharedPicnicSojuPromise=new Promise((resolve,reject)=>{
+   picnicSojuLoader.load('/assets/picnic/soju_v238.glb?v=238',gltf=>{
+    const template=gltf.scene;
+    template.traverse(obj=>{
+     if(!obj.isMesh)return;
+     if(obj.geometry)sharedWingResources.add(obj.geometry);
+     for(const m of (Array.isArray(obj.material)?obj.material:[obj.material])){
+      if(!m)continue;
+      sharedWingResources.add(m);
+      for(const key of ['map','normalMap','roughnessMap','metalnessMap','emissiveMap'])if(m[key])sharedWingResources.add(m[key]);
+     }
+    });
+    resolve(template);
+   },undefined,reject);
+  }).catch(error=>{sharedPicnicSojuPromise=null;throw error});
+ }
+ return sharedPicnicSojuPromise;
+}
+function makeFallbackPicnicSoju(){
+ const group=new THREE.Group();
+ const bottle=new THREE.Mesh(new THREE.CylinderGeometry(.11,.13,.76,14),new THREE.MeshStandardMaterial({color:'#2a8e58',roughness:.42,metalness:.06}));
+ bottle.castShadow=true;bottle.receiveShadow=true;group.add(bottle);
+ const neck=new THREE.Mesh(new THREE.CylinderGeometry(.042,.052,.16,12),new THREE.MeshStandardMaterial({color:'#2a8e58',roughness:.4,metalness:.06}));
+ neck.position.y=.45;neck.castShadow=true;neck.receiveShadow=true;group.add(neck);
+ const cap=new THREE.Mesh(new THREE.CylinderGeometry(.045,.045,.05,12),new THREE.MeshStandardMaterial({color:'#f3f5f2',roughness:.8,metalness:.02}));
+ cap.position.y=.56;cap.castShadow=true;cap.receiveShadow=true;group.add(cap);
+ const label=new THREE.Mesh(new THREE.BoxGeometry(.17,.22,.012),new THREE.MeshStandardMaterial({color:'#f6f8f4',roughness:.88,metalness:0}));
+ label.position.set(0,.03,.12);label.castShadow=true;label.receiveShadow=true;group.add(label);
+ return group;
+}
+function addPicnicSojuModel(group,x,y,z,{yaw=0,standing=true,scale=.6,lieRoll=0}={}){
+ const pivot=new THREE.Group();
+ pivot.position.set(x,y,z);
+ pivot.rotation.y=yaw;
+ pivot.scale.setScalar(scale);
+ group.add(pivot);
+ const orient=new THREE.Group();
+ if(!standing)orient.rotation.z=Math.PI/2+lieRoll;
+ pivot.add(orient);
+ const fallback=makeFallbackPicnicSoju();
+ orient.add(fallback);
+ getSharedPicnicSoju().then(template=>{
+  if(!pivot.parent)return;
+  const model=template.clone(true);
+  model.traverse(obj=>{if(obj.isMesh){obj.castShadow=true;obj.receiveShadow=true;}});
+  orient.add(model);
+  fallback.visible=false;
+ }).catch(error=>console.warn('Picnic soju GLB failed; keeping fallback',error));
  return pivot;
 }
 mats.forEach((matData,i)=>{
@@ -3085,17 +3141,28 @@ mats.forEach((matData,i)=>{
   const a=k*2.4+i*.27;
   const topping=pcylinder(.105,.105,.017,mat('#b44d3d'),pizzaX+Math.cos(a)*.32,.475,pizzaZ+Math.sin(a)*.32);topping.castShadow=false;
  }
- // Two user-supplied 뻥이요 snacks per picnic mat. They lie flat with the
- // package FRONT facing upward, but each one has its own random-looking
- // position and angle so the blankets do not feel repeated.
+ // Two user-supplied 뻥이요 snacks per picnic mat. Keep them flat and make
+ // the printed front face point upward consistently, while still scattering
+ // their positions and spin angles in a random-looking way.
  for(let snackIndex=0;snackIndex<2;snackIndex++){
   const seed=i*19+snackIndex*7+1;
-  const snackX=m.x+(picnicSeed(seed)-.5)*4.8;
-  const snackZ=m.z+.20+picnicSeed(seed+1)*2.15;
+  const snackX=m.x+(picnicSeed(seed)-.5)*4.6;
+  const snackZ=m.z+.24+picnicSeed(seed+1)*2.05;
   const rotY=picnicSeed(seed+2)*Math.PI*2;
-  const rotX=-Math.PI/2+(picnicSeed(seed+3)-.5)*.16;
-  const rotZ=(picnicSeed(seed+4)-.5)*.22;
-  addPicnicSnackModel(picnicGroup,snackX,.31,snackZ,rotY,rotX,rotZ,.52+picnicSeed(seed+5)*.06);
+  addPicnicSnackModel(picnicGroup,snackX,.31,snackZ,rotY,.54+picnicSeed(seed+5)*.05);
+ }
+ // Add 2~3 soju bottles directly on each mat. Some stand upright and some
+ // lie on their side for a casual picnic look.
+ const sojuCount=2+(picnicSeed(i*29+91)>.46?1:0);
+ for(let bottleIndex=0;bottleIndex<sojuCount;bottleIndex++){
+  const seed=i*37+bottleIndex*11+101;
+  const standing=bottleIndex===0 ? true : (bottleIndex===1 ? false : picnicSeed(seed+4)>.5);
+  const bottleX=m.x-1.7+picnicSeed(seed)*3.6;
+  const bottleZ=m.z-1.55+picnicSeed(seed+1)*3.05;
+  const yaw=picnicSeed(seed+2)*Math.PI*2;
+  const scale=.62+picnicSeed(seed+3)*.07;
+  const lieRoll=(picnicSeed(seed+5)-.5)*.24;
+  addPicnicSojuModel(picnicGroup,bottleX,standing?.55:.28,bottleZ,{yaw,standing,scale,lieRoll});
  }
 
 });
