@@ -2594,7 +2594,12 @@ function makeTentExteriorTexture(tent){
  if(tentExteriorTextures.has(key))return tentExteriorTextures.get(key);
  let texture;
  if(key.startsWith('image:')){
-  texture=new THREE.TextureLoader().load('/api/tent-exterior-image/'+tent.exteriorImageId,undefined,undefined,()=>console.warn('텐트 옆면 이미지를 불러오지 못했어요.'));
+  texture=new THREE.TextureLoader().load(
+   '/api/tent-exterior-image/'+tent.exteriorImageId,
+   loaded=>refreshTentExteriorPanelDimensions(loaded),
+   undefined,
+   ()=>console.warn('텐트 옆면 이미지를 불러오지 못했어요.')
+  );
  }else{
   const canvas=document.createElement('canvas');canvas.width=512;canvas.height=768;
   const ctx=canvas.getContext('2d');
@@ -2626,6 +2631,24 @@ function makeTentExteriorTexture(tent){
  tentExteriorTextures.set(key,texture);
  return texture;
 }
+// v247: Image UV 'up' must follow the roof slope toward the ridge,
+// not the tent's front-to-back axis. Keep uploaded images at their own aspect ratio.
+function fitTentExteriorPanel(panel,texture){
+ const image=texture?.image;
+ const iw=image?.naturalWidth||image?.width||0;
+ const ih=image?.naturalHeight||image?.height||0;
+ const ratio=iw>0&&ih>0?iw/ih:1;
+ const width=Math.min(2.94,1.78*ratio);
+ const height=width/ratio;
+ panel.scale.set(width,height,1);
+}
+function refreshTentExteriorPanelDimensions(texture){
+ for(const group of tentWorldMeshes.values()){
+  group.traverse(obj=>{
+   if(obj.userData.tentExteriorPanel&&obj.material?.map===texture)fitTentExteriorPanel(obj,texture);
+  });
+ }
+}
 function pruneTentExteriorTextures(){
  const active=new Set(tentList.map(tentExteriorTextureKey).filter(Boolean));
  for(const [key,texture] of tentExteriorTextures)if(!active.has(key)){
@@ -2647,9 +2670,18 @@ function createTentGraphic(tent){
   const roof=new THREE.Mesh(new THREE.BoxGeometry(2.2,.055,3.68),canvasMat);
   roof.position.set(side*.95,1.45,0);roof.rotation.z=side*-.99;group.add(roof);
   if(exteriorTexture){
-   const panel=new THREE.Mesh(new THREE.PlaneGeometry(1.75,2.94),new THREE.MeshBasicMaterial({map:exteriorTexture,transparent:true,side:THREE.DoubleSide,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-1}));
-   // The decal is just above the sloping roof, not an extra wall or a clickable trap.
-   panel.rotation.set(-Math.PI/2,0,Math.PI);panel.position.y=.035;roof.add(panel);
+   const panel=new THREE.Mesh(new THREE.PlaneGeometry(1,1),new THREE.MeshBasicMaterial({map:exteriorTexture,transparent:true,side:THREE.DoubleSide,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-1}));
+   // The sticker is slightly above the roof. Local image UP points toward the
+   // tent ridge on BOTH slopes; image RIGHT runs horizontally along tent length.
+   // Plane normal = roof local +Y, so the visible front isn't mirrored.
+   const decalRight=new THREE.Vector3(0,0,-side);
+   const decalUp=new THREE.Vector3(-side,0,0);
+   const decalNormal=new THREE.Vector3(0,1,0);
+   panel.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(decalRight,decalUp,decalNormal));
+   panel.position.y=.035;
+   panel.userData.tentExteriorPanel=true;
+   fitTentExteriorPanel(panel,exteriorTexture);
+   roof.add(panel);
   }
  }
  const doorShape=new THREE.Shape();doorShape.moveTo(-.8,0);doorShape.lineTo(.8,0);doorShape.lineTo(0,1.75);doorShape.closePath();
