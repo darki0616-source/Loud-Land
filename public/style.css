@@ -1007,7 +1007,7 @@ html,body{height:100%;height:100dvh;overflow:hidden!important}
 .tent-manage-actions{display:grid;grid-template-columns:1fr 1fr;gap:7px}.tent-manage-actions button:last-child{grid-column:span 2}
 .tent-place-hint{position:absolute;z-index:44;top:calc(env(safe-area-inset-top) + 80px);left:50%;transform:translateX(-50%);background:#142436ea;color:#eaffd4;border:1px solid #b8dd8f;border-radius:12px;padding:10px 13px;text-align:center;font-size:12px;font-weight:800;max-width:90%;min-width:250px}.tent-place-hint button{background:#344257;color:#fff;border:1px solid #8c9bad;border-radius:8px;padding:4px 10px;margin-left:9px}
 .tent-room-overlay{position:absolute;z-index:47;top:calc(env(safe-area-inset-top) + 15px);left:50%;transform:translateX(-50%);width:min(610px,calc(100% - 20px));display:flex;align-items:center;justify-content:space-between;gap:10px;border-radius:13px;border:1px solid #7d8e85;background:#172a32f0;color:#f2fff8;padding:11px 13px;box-shadow:0 10px 25px #0007}.tent-room-overlay b{font-size:13px}.tent-room-overlay small{display:block;font-size:10px;color:#b6c8bf;margin-top:3px}.tent-room-overlay button{flex:0 0 auto;color:#1c2c20;background:#d2ff91;border:0;border-radius:8px;padding:9px 12px;font-weight:900}
-body.tent-interior-open .hudbar,body.tent-interior-open .controlbar,body.tent-interior-open .pov-toggle,body.tent-interior-open .maplabel,body.tent-interior-open .viewinfo,body.tent-interior-open .movement-guide,body.tent-interior-open .players-panel,body.tent-interior-open .slam-overlay,body.tent-interior-open .slam-hint,body.tent-interior-open .tap-hint{display:none!important}
+body.tent-interior-open .hudbar,body.tent-interior-open .pov-toggle,body.tent-interior-open .maplabel,body.tent-interior-open .viewinfo,body.tent-interior-open .movement-guide,body.tent-interior-open .players-panel,body.tent-interior-open .slam-overlay,body.tent-interior-open .slam-hint,body.tent-interior-open .tap-hint{display:none!important}
 @media(max-width:700px){.tent-menu-panel{top:calc(env(safe-area-inset-top) + 56px);right:5px;width:min(285px,calc(100% - 10px));max-height:calc(100dvh - 130px)}.tent-room-overlay{top:calc(env(safe-area-inset-top) + 64px);padding:8px}.tent-room-overlay b{font-size:12px}.tent-room-overlay small{font-size:9px}}
 
 .tent-purchase[hidden]{display:none!important}
@@ -1025,3 +1025,33 @@ body.tent-interior-open .hudbar,body.tent-interior-open .controlbar,body.tent-in
    an indoor Three.js scene is active, so outdoor players cannot bleed through. */
 body.tent-interior-open #world>.stage-avatar-foreground,
 body.tent-interior-open #world>.css-world{display:none!important;visibility:hidden!important;}
+
+
+/* v244: real indoor HUD, safe-area positioning, shared reaction/chat dock. */
+.tent-room-overlay{top:calc(env(safe-area-inset-top) + 8px)!important;left:50%;z-index:70;width:min(780px,calc(100% - 16px));gap:8px;padding:8px 10px;min-height:52px;}
+.tent-room-overlay .tent-room-heading{flex:1;min-width:0;text-align:center}
+.tent-room-overlay .tent-room-heading b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tent-room-overlay #tentRoomCount{font-weight:800;color:#daffa7;white-space:nowrap}
+.tent-room-overlay #tentRoomExit{background:#253e49;color:#fff;border:1px solid #829a9b}
+.tent-room-overlay #tentRoomDecorate{background:#d2ff91;color:#1c2c20}
+.tent-room-overlay button{min-height:37px;white-space:nowrap;font-size:12px}
+.tent-decorate-panel{position:absolute;top:calc(env(safe-area-inset-top) + 68px);right:12px;z-index:71;width:min(350px,calc(100% - 24px));max-height:calc(100dvh - env(safe-area-inset-top) - 100px);overflow:auto;border-radius:14px;border:1px solid #71887d;padding:14px;background:#1a2736f5;color:#f6fcff;box-shadow:0 15px 35px #0008;display:flex;flex-direction:column;gap:12px}
+.tent-decorate-panel.hidden{display:none!important}
+.tent-decorate-panel p{margin:0;font-size:12px;color:#d7e4e6}
+.tent-decorate-heading{font-size:13px}
+.tent-paint-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}
+.tent-paint-grid button{display:flex;flex-direction:column;align-items:center;gap:4px;padding:7px 2px;border:1px solid #516b76;border-radius:10px;color:#f4f9ff;background:#293b4a;font-size:11px;min-height:65px}
+.tent-paint-grid button span{width:27px;height:27px;border-radius:50%;border:1px solid #ffffff80;display:block}
+.tent-paint-grid button.selected{border:2px solid #dcff97;background:#365348}
+.tent-decorate-save{border:0;border-radius:9px;padding:12px;background:#d2ff91;color:#13252a;font-weight:900}
+.tent-decorate-panel small{font-size:11px;color:#bdccd3}
+body.tent-interior-open .gamepanel .controlbar{display:flex!important;z-index:65!important}
+body.tent-interior-open .gamepanel .controlbar .action-tabs button[data-action-menu="instrument"]{display:none!important}
+body.tent-interior-open .performance-toggle,body.tent-interior-open .hud-audio-floating{display:none!important}
+@media(max-width:700px){
+ .tent-room-overlay{top:calc(env(safe-area-inset-top) + 5px)!important;width:calc(100% - 10px);padding:6px;gap:5px}
+ .tent-room-overlay button{font-size:10px;padding:8px 7px;min-height:36px}
+ .tent-room-overlay .tent-room-heading b{font-size:11px}
+ .tent-room-overlay .tent-room-heading small{display:none}
+ .tent-decorate-panel{top:calc(env(safe-area-inset-top) + 56px);right:5px;width:min(345px,calc(100% - 10px))}
+}

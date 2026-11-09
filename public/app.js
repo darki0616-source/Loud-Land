@@ -984,7 +984,7 @@ function handleLiveAnnouncement(event){
  if(event.kind==='immediate')queueFestivalPopup('📣 ONEseason 전체 공지',text,true);
  else if(event.kind==='ticker')queueFestivalTicker(text);
 }
-function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='snapshot'){syncTents(d.tents);state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);syncCrowdSurf(d.crowdSurf);if(Array.isArray(d.chat)){$('chatMessages').replaceChildren();d.chat.forEach(appendChat)};for(const id of duoVfx.keys())removeDuoVfx(id);activeDuos.clear();for(const duo of d.interactions||[])activeDuos.set(duo.id,duo);syncDuoStatus()}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){appendChat(d.entry);showBubble(d.entry)}else if(d.type==='move'){recordTrainLeader(d.player);state.players.set(d.player.id,d.player);if(d.player.id===state.id&&currentDuo())state.me={...d.player}}else if(d.type==='flag'){const player=state.players.get(d.id);if(player){player.flagText=d.flagText;player.flagImage=d.flagImage||'';}if(d.id===state.id&&state.me){state.me.flagText=d.flagText;state.me.flagImage=d.flagImage||'';currentFlagText=d.flagText;currentFlagImageId=d.flagImage||'';refreshFlagButton();}}else if(d.type==='badge'){const person=state.players.get(d.id);if(person){person.badgeTier=d.badgeTier;person.badgeSeconds=d.badgeSeconds;if(d.id===state.id&&state.me){state.me.badgeTier=d.badgeTier;state.me.badgeSeconds=d.badgeSeconds;}renderOnlinePlayers();}}else if(d.type==='profile'){state.players.set(d.player.id,d.player);if(d.player.id===state.id){state.me=d.player;refreshProfilePreview();refreshRhythmReactionButton();if(!$('punkShop').classList.contains('hidden')||!$('mdWardrobe').hidden)refreshPunkShop()}renderOnlinePlayers()}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers()}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue,d.history);else if(d.type==='slam')applySlam(d.slam,d.cooldownUntil);else if(d.type==='slam-go')onSlamGo(d);else if(d.type==='slam-impact')spawnSlamDust(d.x,d.y);else if(d.type==='toast-spark')spawnToastSpark(d.x,d.y);else if(d.type==='cheer'&&d.playerId!==state.id&&state.audioEnabled)playCheer();else if(d.type==='rockplay')applyRockPlay(d.event,d.rockCooldowns,d.rockRunningUntil);else if(d.type==='rockplay-go')onRockPlayGo(d);else if(d.type==='rockplay-cancel'){applyRockPlay(null,d.rockCooldowns,0);toast(d.reason||'인원이 부족해 취소됐어요.')} else if(d.type==='rhythm-state')applyRhythmState(d.rhythm);else if(d.type==='md-catalog')syncMdCatalog(d.items);else if(d.type==='music-booked')showBookingNotice(d.name,d.title);else if(d.type==='music-control')showMusicControlNotice(d.name,d.command);else if(d.type==='skip-vote')applySkipVote(d.vote,d.cooldownUntil);else if(d.type==='skip-vote-result')showSkipVoteResult(d);else if(d.type==='tent-update')syncTents(d.tents);else if(d.type==='tent-room'){const player=state.players.get(d.playerId);if(player){player.tentRoomId=d.roomId||null;player.tentRoomX=d.x||0;player.tentRoomZ=d.z||0;player.tentRoomFacing=d.facing||0;}if(d.playerId===state.id&&!d.roomId&&tentRoomActive)leaveTentInterior(false);}else if(d.type==='festival-notice')handleLiveAnnouncement(d);else if(d.type.startsWith('duo-'))handleDuoEvent(d)};state.es.onerror=()=>{ /* EventSource retries automatically; heartbeat repairs an expired session. */ }}
+function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='snapshot'){syncTents(d.tents);state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);syncCrowdSurf(d.crowdSurf);if(Array.isArray(d.chat)){$('chatMessages').replaceChildren();d.chat.filter(entry=>(entry.roomId||null)===(tentRoomActive?.id||null)).forEach(appendChat)};for(const id of duoVfx.keys())removeDuoVfx(id);activeDuos.clear();for(const duo of d.interactions||[])activeDuos.set(duo.id,duo);syncDuoStatus()}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){if((d.entry.roomId||null)===(tentRoomActive?.id||null)){appendChat(d.entry);showBubble(d.entry)}}else if(d.type==='move'){recordTrainLeader(d.player);state.players.set(d.player.id,d.player);if(d.player.id===state.id&&currentDuo())state.me={...d.player}}else if(d.type==='flag'){const player=state.players.get(d.id);if(player){player.flagText=d.flagText;player.flagImage=d.flagImage||'';}if(d.id===state.id&&state.me){state.me.flagText=d.flagText;state.me.flagImage=d.flagImage||'';currentFlagText=d.flagText;currentFlagImageId=d.flagImage||'';refreshFlagButton();}}else if(d.type==='badge'){const person=state.players.get(d.id);if(person){person.badgeTier=d.badgeTier;person.badgeSeconds=d.badgeSeconds;if(d.id===state.id&&state.me){state.me.badgeTier=d.badgeTier;state.me.badgeSeconds=d.badgeSeconds;}renderOnlinePlayers();}}else if(d.type==='profile'){state.players.set(d.player.id,d.player);if(d.player.id===state.id){state.me=d.player;refreshProfilePreview();refreshRhythmReactionButton();if(!$('punkShop').classList.contains('hidden')||!$('mdWardrobe').hidden)refreshPunkShop()}renderOnlinePlayers()}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers()}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue,d.history);else if(d.type==='slam')applySlam(d.slam,d.cooldownUntil);else if(d.type==='slam-go')onSlamGo(d);else if(d.type==='slam-impact')spawnSlamDust(d.x,d.y);else if(d.type==='toast-spark')spawnToastSpark(d.x,d.y);else if(d.type==='cheer'&&d.playerId!==state.id&&state.audioEnabled)playCheer();else if(d.type==='rockplay')applyRockPlay(d.event,d.rockCooldowns,d.rockRunningUntil);else if(d.type==='rockplay-go')onRockPlayGo(d);else if(d.type==='rockplay-cancel'){applyRockPlay(null,d.rockCooldowns,0);toast(d.reason||'인원이 부족해 취소됐어요.')} else if(d.type==='rhythm-state')applyRhythmState(d.rhythm);else if(d.type==='md-catalog')syncMdCatalog(d.items);else if(d.type==='music-booked')showBookingNotice(d.name,d.title);else if(d.type==='music-control')showMusicControlNotice(d.name,d.command);else if(d.type==='skip-vote')applySkipVote(d.vote,d.cooldownUntil);else if(d.type==='skip-vote-result')showSkipVoteResult(d);else if(d.type==='tent-update')syncTents(d.tents);else if(d.type==='tent-room'){const player=state.players.get(d.playerId);if(player){player.tentRoomId=d.roomId||null;player.tentRoomX=d.x||0;player.tentRoomZ=d.z||0;player.tentRoomFacing=d.facing||0;if(d.action!==undefined)player.action=d.action;if(d.pose!==undefined)player.pose=d.pose;if(d.headbangBpm!==undefined)player.headbangBpm=d.headbangBpm;if(d.headbangBeatAt!==undefined)player.headbangBeatAt=d.headbangBeatAt;if(d.glowEnabled!==undefined)player.glowEnabled=d.glowEnabled;if(d.glowColor!==undefined)player.glowColor=d.glowColor;}if(d.playerId===state.id&&!d.roomId&&tentRoomActive)leaveTentInterior(false);}else if(d.type==='festival-notice')handleLiveAnnouncement(d);else if(d.type.startsWith('duo-'))handleDuoEvent(d)};state.es.onerror=()=>{ /* EventSource retries automatically; heartbeat repairs an expired session. */ }}
 function applySkipVote(vote,cooldownUntil){
  state.skipVote=vote||null;if(Number.isFinite(Number(cooldownUntil)))state.skipVoteCooldownUntil=Number(cooldownUntil);
  const overlay=$('skipVoteOverlay');overlay.hidden=!vote;updateSkipVoteUI();updateSharedMusicButtons();
@@ -1186,7 +1186,7 @@ function react(a,glowColor=null){
  if(slamMotion){slamMotion=null;state.walkTarget=null}if(rockMotion){rockMotion=null;state.walkTarget=null}state.benchTarget=null;
  if(a==='sit'||a==='lie'){
   const near=mats.some(m=>Math.hypot(state.me.x-m.x,state.me.y-m.y)<105)||benchSeats.some(b=>Math.hypot(state.me.x-b.x,state.me.y-b.y)<75)||Math.hypot(toWorld(state.me).x-CAMPFIRE_X,toWorld(state.me).z-CAMPFIRE_Z)<CAMPFIRE_REST_RADIUS;
-  if(!near&&state.pose==='stand')return toast('돗자리·벤치·모닥불 근처에서 앉거나 누울 수 있어요');
+  if(!tentRoomActive&&!near&&state.pose==='stand')return toast('돗자리·벤치·모닥불 근처에서 앉거나 누울 수 있어요');
   state.pose=state.pose===a?'stand':a;
   state.me.pose=state.pose;
   state.walkTarget=null;state.benchTarget=null;
@@ -1648,7 +1648,7 @@ function playCheer(){
   audio.play().catch(error=>console.warn('Cheer sound could not play',error));
  }catch(error){console.warn('Cheer sound unavailable',error)}
 }
-function sendMove(){if(!state.id||!state.me||currentDuo())return;let p=state.me;post('move',{id:state.id,x:Math.round(p.x),y:Math.round(p.y),facing:p.facing,action:p.action,pose:p.pose||'stand',glowColor:p.glowColor||'lime',glowEnabled:Boolean(p.glowEnabled),headbangBpm:Math.max(40,Math.min(240,Number(p.headbangBpm)||120)),headbangBeatAt:Number(p.headbangBeatAt)||headbangServerTime()}).catch(()=>{})}
+function sendMove(){if(!state.id||!state.me||currentDuo())return;let p=state.me;if(tentRoomActive){tentRequest('room-action',{action:p.action,pose:p.pose,glowColor:p.glowColor,glowEnabled:p.glowEnabled,headbangBpm:p.headbangBpm,headbangBeatAt:p.headbangBeatAt}).catch(()=>{});return;}post('move',{id:state.id,x:Math.round(p.x),y:Math.round(p.y),facing:p.facing,action:p.action,pose:p.pose||'stand',glowColor:p.glowColor||'lime',glowEnabled:Boolean(p.glowEnabled),headbangBpm:Math.max(40,Math.min(240,Number(p.headbangBpm)||120)),headbangBeatAt:Number(p.headbangBeatAt)||headbangServerTime()}).catch(()=>{})}
 // Shared SLAM countdown (server timestamps, 15 s global launch cooldown).
 const slamButton=$('slamButton'),slamInfo=$('slamInfo'),slamMarker=$('slamMarker'),slamCount=$('slamCount'),slamMembers=$('slamMembers'),slamJoin=$('slamJoin');
 function slamNow(){return Date.now()+state.serverDelta}
@@ -1701,7 +1701,7 @@ function tentRequest(command,values={}){return post('tent',{id:state.id,sessionK
 function syncTents(tents){
  if(!Array.isArray(tents))return;
  tentList=tents;
- if(tentRoomActive&&!tents.some(t=>t.id===tentRoomActive.id))leaveTentInterior(false);
+ if(tentRoomActive){const current=tents.find(t=>t.id===tentRoomActive.id);if(!current)leaveTentInterior(false);else{tentRoomActive={...tentRoomActive,...current};syncRoomCaption();applyTentRoomColors(current)}}
  updateTentModels();
 }
 async function refreshTentStatus(){
@@ -1721,7 +1721,7 @@ function showTentState(data){
  renderTentColors();
  $('tentPlaceBtn').textContent=data.tent.placed?'📍 텐트 위치 변경':'⛺ 맵에 설치하기';
  $('tentPackBtn').disabled=!data.tent.placed;
- $('tentEnterOwnBtn').disabled=!data.tent.placed;
+ $('tentEnterOwnBtn').disabled=!data.tent.placed||Number(data.tent.occupancy)>=4;
  $('tentManageHint').textContent=data.tent.placed?'설치 완료 · 텐트를 클릭하면 실내에 입장할 수 있어요.':'설치 버튼을 누른 후 돗자리 앞뒤의 빈 잔디를 클릭해 주세요.';
 }
 function renderTentColors(){
@@ -2442,6 +2442,25 @@ let tentRoomActive=null,tentRoomSavedCamera=null,tentRoomWalkTarget=null,tentRoo
 // Echoed HTTP/SSE updates can be 100-300ms older than the rendered player,
 // so treating those echoes as the movement source caused visible snap-backs.
 let tentRoomLocal=null,tentRoomWasMoving=false,tentRoomMoveQueued=null,tentRoomMoveSending=false;
+const TENT_PAINTS={default:null,red:'#ef615a',orange:'#f59b42',yellow:'#f4dd63',green:'#78bd89',blue:'#709bda',black:'#292d38',white:'#f5f5f1'};
+const TENT_PAINT_LABELS={default:'기본',red:'빨강',orange:'주황',yellow:'노랑',green:'초록',blue:'파랑',black:'검정',white:'흰색'};
+let tentPaintWall='default',tentPaintFloor='default',tentCanDecorate=false,tentDecorateBusy=false;
+const tentRoomBubbles=new Map();
+function clearTentRoomBubbles(){for(const bubble of tentRoomBubbles.values()){tentRoomScene.remove(bubble.sprite);bubble.sprite.material.map?.dispose();bubble.sprite.material.dispose()}tentRoomBubbles.clear()}
+function updateTentRoomBubbles(now){for(const [id,bubble] of tentRoomBubbles){const avatar=tentRoomAvatars.get(id);if(!avatar||now>=bubble.expires){tentRoomScene.remove(bubble.sprite);bubble.sprite.material.map?.dispose();bubble.sprite.material.dispose();tentRoomBubbles.delete(id);continue}bubble.sprite.position.set(avatar.root.position.x,avatar.root.position.y+5.74,avatar.root.position.z);bubble.sprite.material.opacity=Math.min(1,(bubble.expires-now)/350)}}
+function applyTentRoomColors(room){
+ if(!room)return;
+ roomFloor.material.color.set(TENT_PAINTS[room.floorColor]||'#bf9c78');
+ for(const wall of tentRoomWalls)wall.material.color.set(TENT_PAINTS[room.wallColor]||'#f1e2d0');
+ for(const seam of tentRoomFloorSeams)seam.visible=!room.floorColor||room.floorColor==='default';
+}
+function syncRoomCaption(){if(!tentRoomActive)return;$('tentRoomTitle').textContent=tentRoomActive.name;$('tentRoomCount').textContent=`${tentRoomActive.occupancy||0}/${tentRoomActive.capacity||4}`}
+function closeTentDecorate(){$('tentDecoratePanel').classList.add('hidden');$('tentRoomDecorate').setAttribute('aria-expanded','false')}
+function paintChoices(kind){const grid=$(kind==='wall'?'tentWallChoices':'tentFloorChoices');grid.replaceChildren();const current=kind==='wall'?tentPaintWall:tentPaintFloor;for(const color of Object.keys(TENT_PAINTS)){const button=document.createElement('button');button.type='button';button.classList.toggle('selected',color===current);button.setAttribute('aria-pressed',String(color===current));const swatch=document.createElement('span');swatch.style.background=color==='default'?(kind==='wall'?'#f1e2d0':'#bf9c78'):TENT_PAINTS[color];const text=document.createElement('b');text.textContent=color==='default'?(kind==='wall'?'기본벽':'기본바닥'):TENT_PAINT_LABELS[color];button.append(swatch,text);button.onclick=()=>{if(kind==='wall')tentPaintWall=color;else tentPaintFloor=color;applyTentRoomColors({wallColor:tentPaintWall,floorColor:tentPaintFloor});paintChoices(kind)};grid.append(button)}}
+$('tentRoomDecorate').onclick=()=>{if(!tentCanDecorate)return toast('텐트 주인만 내부를 꾸밀 수 있어요');const opened=$('tentDecoratePanel').classList.contains('hidden');$('tentDecoratePanel').classList.toggle('hidden',!opened);$('tentRoomDecorate').setAttribute('aria-expanded',String(opened));if(opened){paintChoices('wall');paintChoices('floor')}};
+$('tentDecorateClose').onclick=closeTentDecorate;
+$('tentDecorateSave').onclick=async()=>{if(!tentRoomActive||!tentCanDecorate||tentDecorateBusy)return;tentDecorateBusy=true;$('tentDecorateSave').disabled=true;try{const data=await tentRequest('decorate',{wallColor:tentPaintWall,floorColor:tentPaintFloor});tentRoomActive={...tentRoomActive,...data.room};syncTents((tentList||[]).map(t=>t.id===data.room.id?data.room:t));closeTentDecorate();toast('실내 색상을 저장했어요')}catch(error){toast(error.message)}finally{tentDecorateBusy=false;$('tentDecorateSave').disabled=false}};
+
 async function flushTentRoomMoveQueue(){
  if(tentRoomMoveSending)return;
  tentRoomMoveSending=true;
@@ -2476,12 +2495,12 @@ for(const [w,h,d,x,y,z] of [[12,4,.22,0,2,-5],[.22,4,10,-6,2,0],[.22,4,10,6,2,0]
  const wall=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),new THREE.MeshStandardMaterial({color:'#f1e2d0',roughness:1,side:THREE.DoubleSide}));
  wall.position.set(x,y,z);tentRoomScene.add(wall);tentRoomWalls.push(wall);
 }
+const tentRoomFloorSeams=[];
 for(const x of [-5,-3,-1,1,3,5]){
  const seam=new THREE.Mesh(new THREE.BoxGeometry(.022,.01,9.6),new THREE.MeshStandardMaterial({color:'#b99066'}));
- seam.position.set(x,.015,0);tentRoomScene.add(seam);
+ seam.position.set(x,.015,0);tentRoomScene.add(seam);tentRoomFloorSeams.push(seam);
 }
-const roomRug=new THREE.Mesh(new THREE.PlaneGeometry(4.2,3.2),new THREE.MeshStandardMaterial({color:'#8d9b89',roughness:1,side:THREE.DoubleSide}));
-roomRug.rotation.x=-Math.PI/2;roomRug.position.set(0,.032,-.6);tentRoomScene.add(roomRug);
+// v244: The green rug has been removed entirely.
 // Interior furnishing will be added to this separate scene in future releases.
 const tentRoomAvatars=new Map();
 function createTentNameSprite(name){
@@ -2510,7 +2529,7 @@ function createTentGraphic(tent){
  const door=new THREE.Mesh(new THREE.ShapeGeometry(doorShape),darkMat);door.position.z=1.83;group.add(door);
  const footprint=new THREE.Mesh(new THREE.BoxGeometry(4,.10,3.9),new THREE.MeshStandardMaterial({color:'#4b4635',roughness:1}));
  footprint.position.y=-.03;group.add(footprint);
- const label=createTentNameSprite(tent.name);group.add(label);
+ const label=createTentNameSprite(`${tent.name}  ${Number(tent.occupancy)||0}/${tent.capacity||4}`);group.add(label);
  group.traverse(mesh=>{if(mesh.isMesh){mesh.castShadow=false;mesh.receiveShadow=true;mesh.userData.tentId=tent.id;tentClickMeshes.push(mesh)}});
  scene.add(group);tentWorldMeshes.set(tent.id,group);
 }
@@ -2526,16 +2545,19 @@ async function enterTent(tentId){
  try{
   const data=await tentRequest('enter',{tentId});
   if(tentRoomActive)leaveTentInterior(false);
-  tentRoomActive=data.room;tentRoomWalkTarget=null;tentRoomLocal={x:0,z:2,facing:0};tentRoomLastSend=0;tentRoomWasMoving=false;tentRoomMoveQueued=null;
+  state.action='idle';state.pose='stand';state.actionUntil=0;if(state.me){state.me.action='idle';state.me.pose='stand'}
+  tentRoomActive=data.room;tentCanDecorate=Boolean(data.canDecorate);tentPaintWall=data.room.wallColor||'default';tentPaintFloor=data.room.floorColor||'default';
+  tentRoomWalkTarget=null;tentRoomLocal={x:0,z:2,facing:0};tentRoomLastSend=0;tentRoomWasMoving=false;tentRoomMoveQueued=null;
+  applyTentRoomColors(data.room);closeTentDecorate();syncTents(data.tents);$('chatMessages').replaceChildren();selectBottomMenu('reaction');
   tentRoomSavedCamera={position:camera.position.clone(),target:controls.target.clone(),minDistance:controls.minDistance,maxDistance:controls.maxDistance,enabled:controls.enabled};
   camera.position.set(0,8.1,13.6);controls.target.set(0,1,0);controls.minDistance=5;controls.maxDistance=19;controls.enabled=true;
   controls.update();cameraFollowInitialized=false;
-  $('tentRoomTitle').textContent=data.room.name;
+  syncRoomCaption();
   $('tentRoomOverlay').classList.remove('hidden');document.body.classList.add('tent-interior-open');
   cssRenderer.domElement.style.visibility='hidden';
   if(stageForeground)stageForeground.domElement.style.display='none';
   const player=state.players.get(state.id);if(player){player.tentRoomId=data.room.id;player.tentRoomX=0;player.tentRoomZ=2;}
-  closeRockMenu();toggleTentMenu(false);cancelTentPlacement();
+  closeRockMenu();toggleTentMenu(false);cancelTentPlacement();dockTraveling=false;dockBar.classList.remove('is-traveling','dock-manual-open');dockContent.inert=false;dockContent.setAttribute('aria-hidden','false');updateActionButtons();
   state.walkTarget=null;state.benchTarget=null;state.moving=false;
   for(const avatar of tentRoomAvatars.values())disposeAvatar(avatar.root);
   tentRoomAvatars.clear();
@@ -2543,7 +2565,8 @@ async function enterTent(tentId){
 }
 function leaveTentInterior(send=true){
  if(!tentRoomActive)return;
- tentRoomActive=null;tentRoomWalkTarget=null;tentRoomLocal=null;tentRoomMoveQueued=null;tentRoomWasMoving=false;
+ state.action='idle';state.pose='stand';state.actionUntil=0;if(state.me){state.me.action='idle';state.me.pose='stand'}
+ tentRoomActive=null;tentCanDecorate=false;tentRoomWalkTarget=null;tentRoomLocal=null;tentRoomMoveQueued=null;tentRoomWasMoving=false;closeTentDecorate();clearTentRoomBubbles();$('chatMessages').replaceChildren();selectBottomMenu('reaction');
  for(const avatar of tentRoomAvatars.values())disposeAvatar(avatar.root);
  tentRoomAvatars.clear();
  if(tentRoomSavedCamera){camera.position.copy(tentRoomSavedCamera.position);controls.target.copy(tentRoomSavedCamera.target);controls.minDistance=tentRoomSavedCamera.minDistance;controls.maxDistance=tentRoomSavedCamera.maxDistance;controls.enabled=!povEnabled;tentRoomSavedCamera=null;}
@@ -2557,6 +2580,7 @@ function leaveTentInterior(send=true){
 $('tentRoomExit').onclick=()=>leaveTentInterior(true);
 function updateTentInterior(frameDelta,t){
  if(!tentRoomActive||!tentRoomLocal)return;
+ if(state.action!=='idle'&&t>state.actionUntil&&state.actionUntil!==Infinity){state.action='idle';if(state.me)state.me.action='idle';state.actionUntil=0;updateActionButtons();sendMove();}
  const k=state.keys,local=tentRoomLocal;
  let dx=Number(k.has('d')||k.has('arrowright'))-Number(k.has('a')||k.has('arrowleft'));
  let dz=Number(k.has('s')||k.has('arrowdown'))-Number(k.has('w')||k.has('arrowup'));
@@ -2597,8 +2621,9 @@ function updateTentInterior(frameDelta,t){
    tentRoomAvatars.set(p.id,a);
   }
   const walking=p.id===state.id?moving:Math.hypot(a.root.position.x-rx,a.root.position.z-rz)>.10;
+  const localAction=p.id===state.id?(state.me?.action||'idle'):(p.action||'idle');
   const fake={...p,id:'room-'+p.id,x:600+rx/.058,y:500+(rz-8)/.058,
-   action:walking?'walk':'idle',pose:'stand',facing:p.id===state.id?local.facing:(p.tentRoomFacing||0)};
+   action:localAction==='idle'&&walking?'walk':localAction,pose:p.id===state.id?state.pose:(p.pose||'stand'),facing:p.id===state.id?local.facing:(p.tentRoomFacing||0)};
   animateAvatar(a,fake,t);
   // Indoor avatars are part of this scene only, regardless of outdoor layers.
   a.root.traverse(obj=>obj.layers.enable(0));
@@ -2606,6 +2631,7 @@ function updateTentInterior(frameDelta,t){
  for(const [id,a] of [...tentRoomAvatars])if(!activeIds.has(id)){
   disposeAvatar(a.root);tentRoomAvatars.delete(id);
  }
+ updateTentRoomBubbles(t);
  controls.update();
 }
 // Full 360° orbit on mouse and touch. Collide the camera with the actual stage
@@ -5274,6 +5300,8 @@ function bubbleTexture(message){
 }
 function showBubble(entry){
  if(!entry||!entry.playerId||!state.players.has(entry.playerId))return;
+ if(tentRoomActive){if(entry.roomId!==tentRoomActive.id)return;const old=tentRoomBubbles.get(entry.playerId);if(old){tentRoomScene.remove(old.sprite);old.sprite.material.map?.dispose();old.sprite.material.dispose()}const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:bubbleTexture(entry.message),transparent:true,depthTest:false,depthWrite:false}));sprite.scale.set(6.8,3.05,1);sprite.renderOrder=150;tentRoomScene.add(sprite);tentRoomBubbles.set(entry.playerId,{sprite,expires:performance.now()+3800});return;}
+ if(entry.roomId)return;
  const old=activeBubbles.get(entry.playerId);
  if(old){scene.remove(old.sprite);old.sprite.material.map.dispose();old.sprite.material.dispose()}
  const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:bubbleTexture(entry.message),transparent:true,depthTest:false,depthWrite:false}));

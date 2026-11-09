@@ -91,7 +91,10 @@ const shopStats=new Map();
 const TENT_COST=3000;
 const tentStats=new Map();
 const TENT_COLORS=['#ed9a77','#8dc3ad','#8ea8d8','#c49acb','#dfc576','#d6a3a3','#92b9ba','#d5d9e5'];
-function publicTent(record){return {id:record.id,name:record.name,color:record.color,placed:!!record.placed,x:record.placed?record.x:null,z:record.placed?record.z:null};}
+const TENT_MAX_OCCUPANCY=4;
+const TENT_PAINTS={default:null,red:'#ef615a',orange:'#f59b42',yellow:'#f4dd63',green:'#78bd89',blue:'#709bda',black:'#292d38',white:'#f5f5f1'};
+function tentOccupancy(roomId){let count=0;for(const p of players.values())if(p.tentRoomId===roomId)count++;return count;}
+function publicTent(record){return {id:record.id,name:record.name,color:record.color,placed:!!record.placed,x:record.placed?record.x:null,z:record.placed?record.z:null,occupancy:tentOccupancy(record.id),capacity:TENT_MAX_OCCUPANCY,wallColor:record.wallColor||'default',floorColor:record.floorColor||'default'};}
 function allPlacedTents(){return [...tentStats.values()].filter(t=>t.placed).map(publicTent)}
 function tentOwnedBy(identity){return identity?tentStats.get(identity)||null:null}
 function tentView(player){
@@ -236,7 +239,7 @@ function applySaved(d){
   if(!/^[a-zA-Z0-9_-]{20,100}$/.test(identity)||!t||typeof t!=='object')continue;
   if(!/^[a-f0-9-]{36}$/.test(t.id||''))continue;
   const x=Number(t.x),z=Number(t.z);
-  const record={id:t.id,name:clean(t.name,22)||'나의 텐트',color:TENT_COLORS.includes(t.color)?t.color:TENT_COLORS[0],placed:false,x:null,z:null};
+  const record={id:t.id,name:clean(t.name,22)||'나의 텐트',color:TENT_COLORS.includes(t.color)?t.color:TENT_COLORS[0],wallColor:Object.hasOwn(TENT_PAINTS,t.wallColor)?t.wallColor:'default',floorColor:Object.hasOwn(TENT_PAINTS,t.floorColor)?t.floorColor:'default',placed:false,x:null,z:null};
   if(t.placed===true&&tentIsValidPlace(x,z,t.id)){record.placed=true;record.x=x;record.z=z;}
   tentStats.set(identity,record);
  }
@@ -358,10 +361,10 @@ function endDuo(duo){if(!duo||!activeDuos.has(duo.id))return;activeDuos.delete(d
 function clearDuosFor(id){for(const duo of [...activeDuos.values()])if(duo.a===id||duo.b===id)endDuo(duo);for(const [inviteId,invite] of duoInvites)if(invite.from===id||invite.to===id){duoInvites.delete(inviteId);broadcast({type:'duo-invite-ended',id:inviteId,to:invite.to})}}
 function duoDistance(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
 setInterval(()=>{const now=Date.now();for(const duo of [...activeDuos.values()])if(duo.endAt<=now)endDuo(duo);for(const [key,invite] of duoInvites)if(invite.expiresAt<=now){duoInvites.delete(key);broadcast({type:'duo-invite-ended',id:key,to:invite.to})}},700).unref();
-const snapshot=()=>({type:'snapshot',tents:allPlacedTents(),announcements:publicNoticeState(),interactions:[...activeDuos.values()].filter(x=>x.endAt>Date.now()),players:[...players.values()],chat:chatHistory,...musicState(),skipVote:publicSkipVote(),skipVoteCooldownUntil,slam:publicSlam(),slamCooldownUntil,rockPlay:publicRock(),crowdSurf:activeSurfRide&&activeSurfRide.startAt+activeSurfRide.duration>Date.now()?activeSurfRide:null,rockCooldowns:{...rockCooldowns},rockRunningUntil,rhythm:publicRhythmState(),count:players.size});
+const snapshot=(viewerId=null)=>({type:'snapshot',tents:allPlacedTents(),announcements:publicNoticeState(),interactions:[...activeDuos.values()].filter(x=>x.endAt>Date.now()),players:[...players.values()],chat:chatHistory.filter(entry=>entry.roomId===(players.get(viewerId)?.tentRoomId||null)),...musicState(),skipVote:publicSkipVote(),skipVoteCooldownUntil,slam:publicSlam(),slamCooldownUntil,rockPlay:publicRock(),crowdSurf:activeSurfRide&&activeSurfRide.startAt+activeSurfRide.duration>Date.now()?activeSurfRide:null,rockCooldowns:{...rockCooldowns},rockRunningUntil,rhythm:publicRhythmState(),count:players.size});
 const clamp=(n,min,max)=>Math.min(max,Math.max(min,Number(n)||0));
 const SERVER_X_MIN=20,SERVER_X_MAX=1380,SERVER_Y_MIN=60,SERVER_Y_MAX=1100;
-function cleanup(){const now=Date.now();for(const [id,p] of players)if(now-p.seen>180000){settleBadge(p,Math.min(now,p.seen+45000));settleBadge(p);clearDuosFor(id);players.delete(id);forgetSession(id);voterLeaves(id);if(activeSlam?.participants.delete(id))slamUpdate();rockMemberLeaves(id);pauseForEmpty();const r=clients.get(id);if(r){r.end();clients.delete(id)}broadcast({type:'leave',id,count:players.size})}}
+function cleanup(){const now=Date.now();for(const [id,p] of players)if(now-p.seen>180000){settleBadge(p,Math.min(now,p.seen+45000));settleBadge(p);clearDuosFor(id);players.delete(id);forgetSession(id);voterLeaves(id);if(activeSlam?.participants.delete(id))slamUpdate();rockMemberLeaves(id);pauseForEmpty();const r=clients.get(id);if(r){r.end();clients.delete(id)}broadcast({type:'leave',id,count:players.size});sendTentUpdate()}}
 setInterval(cleanup,7000).unref();
 setInterval(()=>{
  const now=Date.now();let changed=false;
@@ -483,7 +486,7 @@ const server=http.createServer(async(req,res)=>{
     const id=clean(url.searchParams.get('id'),80);
     if(!players.has(id))return json(res,404,{error:'Join first'});
     res.writeHead(200,{'content-type':'text/event-stream; charset=utf-8','cache-control':'no-cache, no-transform','connection':'keep-alive','x-accel-buffering':'no'});
-    clients.get(id)?.end();clients.set(id,res);send(res,snapshot());
+    clients.get(id)?.end();clients.set(id,res);send(res,snapshot(id));
     const heartbeat=setInterval(()=>{try{res.write(': ping\n\n')}catch{}},15000);
     req.on('close',()=>{clearInterval(heartbeat);if(clients.get(id)===res)clients.delete(id)});return;
   }
@@ -577,7 +580,7 @@ const server=http.createServer(async(req,res)=>{
             existing.seen=Date.now();
             syncPlayerRhythmKing(existing);
             if(pageId)pageOwners.set(existingId,pageId);
-            return json(res,200,{id:existingId,reused:true,...snapshot()});
+            return json(res,200,{id:existingId,reused:true,...snapshot(existingId)});
           }
           if(existingId)sessionPlayers.delete(sessionKey);
         }
@@ -586,7 +589,7 @@ const server=http.createServer(async(req,res)=>{
         Object.defineProperty(p,'badgeIdentity',{value:badgeIdentity,writable:true,enumerable:false});updateBadge(p);syncPlayerRhythmKing(p);setShopAppearance(p);players.set(id,p);
         if(sessionKey){sessionPlayers.set(sessionKey,id);playerSessions.set(id,sessionKey)}
         if(pageId)pageOwners.set(id,pageId);
-        resumeForFirst();broadcast({type:'join',player:p,count:players.size});return json(res,200,{id,reused:false,...snapshot()});
+        resumeForFirst();broadcast({type:'join',player:p,count:players.size});return json(res,200,{id,reused:false,...snapshot(id)});
       }
       const id=clean(d.id,80),p=players.get(id);if(!p)return json(res,401,{error:'Session expired. Please rejoin.'});p.seen=Date.now();
       if(url.pathname==='/api/heartbeat'){return json(res,200,{ok:true})}
@@ -603,7 +606,7 @@ const server=http.createServer(async(req,res)=>{
           if(record)return json(res,409,{error:'이미 텐트를 보유하고 있어요.',...tentView(p)});
           const earned=Math.floor(badgeTotal(p)/60);
           if(earned<TENT_COST)return json(res,400,{error:`포인트가 부족해요. (${earned.toLocaleString()}/${TENT_COST.toLocaleString()}P)`});
-          record={id:crypto.randomUUID(),name:clean(p.name+'의 텐트',22),color:TENT_COLORS[0],placed:false,x:null,z:null};
+          record={id:crypto.randomUUID(),name:clean(p.name+'의 텐트',22),color:TENT_COLORS[0],wallColor:'default',floorColor:'default',placed:false,x:null,z:null};
           tentStats.set(p.badgeIdentity,record);
           await saveNow();
           return json(res,200,{ok:true,...tentView(p)});
@@ -611,13 +614,17 @@ const server=http.createServer(async(req,res)=>{
         if(command==='enter'){
           const selected=[...tentStats.values()].find(t=>t.id===String(d.tentId||'')&&t.placed);
           if(!selected)return json(res,404,{error:'설치된 텐트를 찾을 수 없어요.'});
+          if(p.tentRoomId!==selected.id&&tentOccupancy(selected.id)>=TENT_MAX_OCCUPANCY)return json(res,409,{error:'이 텐트는 정원 4명이 모두 입장 중이에요.'});
           p.tentRoomId=selected.id;p.tentRoomX=0;p.tentRoomZ=2;p.tentRoomFacing=0;
-          p.action='idle';p.pose='stand';broadcast({type:'tent-room',playerId:p.id,roomId:p.tentRoomId,x:0,z:2});
-          return json(res,200,{ok:true,room:publicTent(selected),tents:allPlacedTents()});
+          p.action='idle';p.pose='stand';broadcast({type:'tent-room',playerId:p.id,roomId:p.tentRoomId,x:0,z:2,action:'idle',pose:'stand'});
+          sendTentUpdate();
+          return json(res,200,{ok:true,room:publicTent(selected),canDecorate:record?.id===selected.id,tents:allPlacedTents()});
         }
         if(command==='exit'){
-          p.tentRoomId=null;p.tentRoomX=0;p.tentRoomZ=0;
-          broadcast({type:'tent-room',playerId:p.id,roomId:null,x:0,z:0});
+          const hadRoom=Boolean(p.tentRoomId);
+          p.tentRoomId=null;p.tentRoomX=0;p.tentRoomZ=0;p.action='idle';p.pose='stand';
+          broadcast({type:'tent-room',playerId:p.id,roomId:null,x:0,z:0,action:'idle',pose:'stand'});
+          if(hadRoom)sendTentUpdate();
           return json(res,200,{ok:true});
         }
         if(command==='room-move'){
@@ -625,6 +632,25 @@ const server=http.createServer(async(req,res)=>{
           p.tentRoomX=clamp(d.x,-4.6,4.6);p.tentRoomZ=clamp(d.z,-3.6,3.6);p.tentRoomFacing=clamp(d.facing,-Math.PI,Math.PI);
           broadcast({type:'tent-room',playerId:p.id,roomId:p.tentRoomId,x:p.tentRoomX,z:p.tentRoomZ,facing:p.tentRoomFacing});
           return json(res,200,{ok:true});
+        }
+        if(command==='room-action'){
+          if(!p.tentRoomId)return json(res,400,{error:'먼저 텐트에 입장해 주세요.'});
+          const allowed=['idle','peace','jump','run','wave','clap','sit','lie','drink','snack','headbang','buriburi','groove','dougie','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','putyourhandsup','heartbow','drum','electricguitar','bassguitar','vocal'];
+          const action=String(d.action||'idle');
+          p.action=allowed.includes(action)&&!(action==='beatking'&&!playerIsRhythmKing(p))?action:'idle';
+          p.pose=['stand','sit','lie'].includes(d.pose)?d.pose:'stand';
+          p.headbangBpm=clamp(d.headbangBpm||120,40,240);
+          const beatAt=Number(d.headbangBeatAt);p.headbangBeatAt=Number.isFinite(beatAt)&&Math.abs(beatAt-Date.now())<86400000?beatAt:Date.now();
+          p.glowEnabled=d.glowEnabled===true;
+          p.glowColor=['red','pink','blue','lime','yellow','white','rainbow'].includes(d.glowColor)?d.glowColor:'lime';
+          broadcast({type:'tent-room',playerId:p.id,roomId:p.tentRoomId,x:p.tentRoomX,z:p.tentRoomZ,facing:p.tentRoomFacing,action:p.action,pose:p.pose,headbangBpm:p.headbangBpm,headbangBeatAt:p.headbangBeatAt,glowEnabled:p.glowEnabled,glowColor:p.glowColor});
+          return json(res,200,{ok:true});
+        }
+        if(command==='decorate'){
+          if(!record||!p.tentRoomId||p.tentRoomId!==record.id)return json(res,403,{error:'텐트 주인만 실내를 꾸밀 수 있어요.'});
+          if(!Object.hasOwn(TENT_PAINTS,d.wallColor)||!Object.hasOwn(TENT_PAINTS,d.floorColor))return json(res,400,{error:'허용된 벽·바닥 색상을 선택해 주세요.'});
+          record.wallColor=d.wallColor;record.floorColor=d.floorColor;
+          await saveNow();sendTentUpdate();return json(res,200,{ok:true,room:publicTent(record)});
         }
         if(!record)return json(res,403,{error:'먼저 텐트를 구매해 주세요.'});
         if(command==='save'){
@@ -764,9 +790,11 @@ const server=http.createServer(async(req,res)=>{
         if(!message)return json(res,400,{error:'채팅 내용을 입력해 주세요.'});
         if(p.lastChat&&Date.now()-p.lastChat<900)return json(res,429,{error:'잠시 후 다시 보내주세요.'});
         p.lastChat=Date.now();
-        const entry={id:crypto.randomUUID(),playerId:p.id,name:p.name,message,at:Date.now()};
-        chatHistory.push(entry);if(chatHistory.length>35)chatHistory.shift();
-        broadcast({type:'chat',entry});return json(res,200,{ok:true});
+        const roomId=p.tentRoomId||null;
+        const entry={id:crypto.randomUUID(),playerId:p.id,name:p.name,message,at:Date.now(),roomId};
+        chatHistory.push(entry);if(chatHistory.length>90)chatHistory.shift();
+        for(const [viewerId,stream] of clients){if((players.get(viewerId)?.tentRoomId||null)!==roomId)continue;try{send(stream,{type:'chat',entry})}catch{}}
+        return json(res,200,{ok:true});
       }
       if(url.pathname==='/api/rockplay'){
         if(d.command==='impact'){
@@ -923,7 +951,7 @@ const server=http.createServer(async(req,res)=>{
         if(owner&&d.pageId!==owner)return json(res,200,{ok:true,ignored:'stale-page'});
         settleBadge(p);clearDuosFor(id);players.delete(id);forgetSession(id);voterLeaves(id);
         if(activeSlam?.participants.delete(id))slamUpdate();rockMemberLeaves(id);pauseForEmpty();
-        clients.get(id)?.end();clients.delete(id);broadcast({type:'leave',id,count:players.size});return json(res,200,{ok:true})
+        clients.get(id)?.end();clients.delete(id);broadcast({type:'leave',id,count:players.size});sendTentUpdate();return json(res,200,{ok:true})
       }
       return json(res,404,{error:'Not found'});
     }catch(e){return json(res,400,{error:e.message})}
