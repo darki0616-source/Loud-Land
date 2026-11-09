@@ -110,7 +110,89 @@ function loadTentFurnitureCatalog(){
  }
  return catalog;
 }
-const TENT_FURNITURE_CATALOG=loadTentFurnitureCatalog();
+// v249: Live administrator catalog. Metadata lives in the persisted game state,
+// while large GLB files live in Supabase Storage (or local data/ for development).
+const BUNDLED_TENT_FURNITURE=loadTentFurnitureCatalog();
+const furnitureCatalogEdits=new Map();
+const TENT_FURNITURE_CATALOG={...BUNDLED_TENT_FURNITURE};
+const TENT_ASSET_BUCKET=(process.env.TENT_ASSET_BUCKET||'tent-items').trim();
+const TENT_MODEL_MAX_BYTES=12*1024*1024;
+const TENT_MODEL_DIR=path.join(process.env.DATA_DIR||path.join(__dirname,'data'),'tent-item-models');
+const TENT_ITEM_ID=/^[a-z0-9_-]{1,32}$/;
+const TENT_MODEL_REV=/^[a-f0-9]{16}$/;
+function cleanFurnitureSpec(id,raw,revision){
+ if(!TENT_ITEM_ID.test(id)||!raw||typeof raw!=='object')return null;
+ const cost=Number(raw.cost),width=Number(raw.width),depth=Number(raw.depth),height=Number(raw.height);
+ const modelRevision=typeof revision==='string'&&TENT_MODEL_REV.test(revision)?revision:'';
+ if(!Number.isInteger(cost)||cost<0||cost>50000||![width,depth,height].every(Number.isFinite)||[width,depth,height].some(n=>n<.1||n>8))return null;
+ const name=String(raw.name||'').trim().slice(0,40);
+ if(!name)return null;
+ return {name,cost,width,depth,height,description:String(raw.description||'').trim().slice(0,150),enabled:raw.enabled!==false,
+    ...(modelRevision?{modelRevision}:{})};
+}
+function refreshFurnitureCatalog(){
+ for(const key of Object.keys(TENT_FURNITURE_CATALOG))delete TENT_FURNITURE_CATALOG[key];
+ Object.assign(TENT_FURNITURE_CATALOG,BUNDLED_TENT_FURNITURE);
+ for(const [id,spec] of furnitureCatalogEdits){
+  const base=TENT_FURNITURE_CATALOG[id];
+  TENT_FURNITURE_CATALOG[id]={...base,...spec,asset:spec.modelRevision
+   ?'/api/tent-item-model/'+id+'?v='+spec.modelRevision:(base?.asset||'')};
+ }
+}
+function furnitureAdminCatalog(){return Object.fromEntries(Object.entries(TENT_FURNITURE_CATALOG).map(([id,item])=>[id,{...item,bundled:!!BUNDLED_TENT_FURNITURE[id],custom:!BUNDLED_TENT_FURNITURE[id]}]));}
+function furnitureCatalogChanged(){broadcast({type:'tent-furniture-catalog',catalog:TENT_FURNITURE_CATALOG});}
+async function rawBody(req,maxBytes){
+ const chunks=[];let count=0;
+ for await(const chunk of req){count+=chunk.length;if(count>maxBytes)throw Object.assign(new Error('GLB 용량 제한을 초과했어요. (최대 12MB)'),{code:'TOO_BIG'});chunks.push(chunk)}
+ return Buffer.concat(chunks,count);
+}
+function validateGlb(bytes){
+ if(bytes.length<20||bytes.toString('ascii',0,4)!=='glTF'||bytes.readUInt32LE(4)!==2||bytes.readUInt32LE(8)!==bytes.length)throw Error('올바른 GLB 2.0 파일을 업로드해 주세요.');
+ const jsonSize=bytes.readUInt32LE(12),jsonTag=bytes.toString('ascii',16,20);
+ if(jsonTag!=='JSON'||jsonSize>2000000||jsonSize<10||20+jsonSize>bytes.length)throw Error('GLB 내부 구조가 올바르지 않아요.');
+ let gltf;try{gltf=JSON.parse(bytes.subarray(20,20+jsonSize).toString('utf8'))}catch{throw Error('GLB의 JSON 청크가 손상됐어요.')}
+ if(gltf.asset?.version!=='2.0')throw Error('GLB 2.0 파일만 지원해요.');
+ for(const entry of [...(gltf.buffers||[]),...(gltf.images||[])]){
+  if(entry.uri&&!/^data:(?:image\/(?:png|jpeg|webp)|application\/octet-stream);base64,/.test(entry.uri))throw Error('GLB 외부 파일 참조는 지원하지 않아요. 텍스처를 GLB 안에 포함해 주세요.');
+ }
+}
+function storageHeaders(){return {apikey:SB_KEY,Authorization:'Bearer '+SB_KEY};}
+function storageObjectPath(id,rev){return 'furniture/'+id+'/'+rev+'.glb';}
+async function storageUpload(id,rev,bytes){
+ if(!useSupabase){fs.mkdirSync(TENT_MODEL_DIR,{recursive:true});fs.writeFileSync(path.join(TENT_MODEL_DIR,id+'-'+rev+'.glb'),bytes);return 'local'}
+ if(!TENT_ASSET_BUCKET||!/^[a-z0-9_-]{3,40}$/.test(TENT_ASSET_BUCKET))throw Error('TENT_ASSET_BUCKET 설정이 잘못됐어요.');
+ const endpoint=SB_URL+'/storage/v1/object/'+encodeURIComponent(TENT_ASSET_BUCKET)+'/'+storageObjectPath(id,rev);
+ const send=()=>fetch(endpoint,{method:'POST',headers:{...storageHeaders(),'Content-Type':'model/gltf-binary','x-upsert':'false'},body:bytes,signal:AbortSignal.timeout(30000)});
+ let response=await send();
+ if(response.status===404){
+  // The existing Supabase service key can create the private bucket once.
+  const create=await fetch(SB_URL+'/storage/v1/bucket',{method:'POST',headers:{...storageHeaders(),'Content-Type':'application/json'},body:JSON.stringify({id:TENT_ASSET_BUCKET,name:TENT_ASSET_BUCKET,public:false}),signal:AbortSignal.timeout(10000)});
+  if(create.ok||create.status===409)response=await send();
+ }
+ if(!response.ok)throw Error('Supabase Storage 업로드 실패 ('+response.status+'). '+(await response.text()).slice(0,120)+' — Storage에서 '+TENT_ASSET_BUCKET+' 버킷과 서비스 키 권한을 확인해 주세요.');
+ return 'supabase';
+}
+async function storageExists(id,rev){
+ if(!useSupabase)return fs.existsSync(path.join(TENT_MODEL_DIR,id+'-'+rev+'.glb'));
+ const url=SB_URL+'/storage/v1/object/'+encodeURIComponent(TENT_ASSET_BUCKET)+'/'+storageObjectPath(id,rev);
+ const r=await fetch(url,{method:'HEAD',headers:storageHeaders(),signal:AbortSignal.timeout(10000)});return r.ok;
+}
+async function serveFurnitureModel(req,res,id){
+ const item=TENT_FURNITURE_CATALOG[id];if(!item||!item.modelRevision)return json(res,404,{error:'모델을 찾지 못했어요.'});
+ const rev=item.modelRevision;
+ try{
+  let bytes;
+  if(useSupabase){
+   const url=SB_URL+'/storage/v1/object/'+encodeURIComponent(TENT_ASSET_BUCKET)+'/'+storageObjectPath(id,rev);
+   const r=await fetch(url,{headers:storageHeaders(),signal:AbortSignal.timeout(20000)});
+   if(!r.ok)throw Error('스토리지 응답 '+r.status);
+   bytes=Buffer.from(await r.arrayBuffer());
+  }else bytes=fs.readFileSync(path.join(TENT_MODEL_DIR,id+'-'+rev+'.glb'));
+  res.writeHead(200,{'content-type':'model/gltf-binary','content-length':bytes.length,'cache-control':'public,max-age=3600','x-content-type-options':'nosniff'});
+  res.end(bytes);
+ }catch(e){console.warn('Furniture asset:',e.message);return json(res,404,{error:'GLB 파일을 찾지 못했어요. 관리자에게 문의해 주세요.'})}
+}
+
 const TENT_FURNITURE_MAX_PLACED=30;
 const furnitureStats=new Map();
 function furnitureRecord(identity){if(!furnitureStats.has(identity))furnitureStats.set(identity,{spent:0,owned:{}});return furnitureStats.get(identity);}
@@ -301,9 +383,18 @@ const SB_KEY=process.env.SUPABASE_SECRET_KEY||'';
 const useSupabase=Boolean(SB_URL&&SB_KEY);
 let restored=false;
 let saveChain=Promise.resolve();
-function stateData(){return {version:9,furnitureStats:Object.fromEntries([...furnitureStats].map(([id,v])=>[id,{spent:v.spent,owned:v.owned}])),tentStats:Object.fromEntries([...tentStats].map(([identity,t])=>[identity,storedTent(t)])),announcements:{entry:entranceNotices,ticker:tickerNotices,intervalMinutes:tickerIntervalMinutes,immediateHistory:immediateNoticeHistory},music,queue:[...queue],history:[...history],nextTrackToken,customMd:Object.fromEntries(customMd),shopStats:Object.fromEntries([...shopStats].map(([k,v])=>[k,{spent:0,refunded:v.refunded||0,owned:v.owned,equipped:v.equipped}])),badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),rhythm:{day:rhythmDay,reward:rhythmReward,scores:Object.fromEntries([...rhythmScores].map(([k,v])=>[k,{name:v.name,score:Math.max(0,Math.floor(Number(v.score)||0)),updatedAt:Number(v.updatedAt)||0}]))},savedAt:Date.now()}}
+function stateData(){return {version:10,furnitureCatalogEdits:Object.fromEntries(furnitureCatalogEdits),furnitureStats:Object.fromEntries([...furnitureStats].map(([id,v])=>[id,{spent:v.spent,owned:v.owned}])),tentStats:Object.fromEntries([...tentStats].map(([identity,t])=>[identity,storedTent(t)])),announcements:{entry:entranceNotices,ticker:tickerNotices,intervalMinutes:tickerIntervalMinutes,immediateHistory:immediateNoticeHistory},music,queue:[...queue],history:[...history],nextTrackToken,customMd:Object.fromEntries(customMd),shopStats:Object.fromEntries([...shopStats].map(([k,v])=>[k,{spent:0,refunded:v.refunded||0,owned:v.owned,equipped:v.equipped}])),badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),rhythm:{day:rhythmDay,reward:rhythmReward,scores:Object.fromEntries([...rhythmScores].map(([k,v])=>[k,{name:v.name,score:Math.max(0,Math.floor(Number(v.score)||0)),updatedAt:Number(v.updatedAt)||0}]))},savedAt:Date.now()}}
 function applySaved(d){
  if(!d||typeof d!=='object')return;
+ // Restore furniture metadata BEFORE tents/inventories that reference these IDs.
+ furnitureCatalogEdits.clear();
+ if(d.furnitureCatalogEdits&&typeof d.furnitureCatalogEdits==='object'){
+  for(const [id,entry] of Object.entries(d.furnitureCatalogEdits).slice(0,60)){
+   const spec=cleanFurnitureSpec(id,entry,entry?.modelRevision);
+   if(spec&&(spec.modelRevision||BUNDLED_TENT_FURNITURE[id]))furnitureCatalogEdits.set(id,spec);
+  }
+ }
+ refreshFurnitureCatalog();
  if(d.announcements&&typeof d.announcements==='object'){
   const cfg=d.announcements;
   const restoreNotices=(source,target,max)=>{
@@ -407,6 +498,12 @@ function saveNow(){
  const data=stateData();localSave(data);
  if(!useSupabase)return Promise.resolve();
  saveChain=saveChain.catch(()=>{}).then(async()=>{try{await supabaseRequest('PATCH',{state:data,updated_at:new Date().toISOString()})}catch(err){console.error('Supabase save failed:',err.message)}});
+ return saveChain;
+}
+function strictSaveAdmin(){
+ const data=stateData();localSave(data);
+ if(!useSupabase)return Promise.resolve();
+ saveChain=saveChain.catch(()=>{}).then(()=>supabaseRequest('PATCH',{state:data,updated_at:new Date().toISOString()}));
  return saveChain;
 }
 function scheduleSave(){clearTimeout(saveTimeout);saveTimeout=setTimeout(()=>{void saveNow()},120);saveTimeout.unref()}
@@ -551,6 +648,24 @@ async function receive(req){let raw='';for await(const chunk of req){raw+=chunk;
 const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.ico':'image/x-icon','.gltf':'model/gltf+json','.bin':'application/octet-stream'};
 const server=http.createServer(async(req,res)=>{
   const url=new URL(req.url,'http://localhost');
+  if(url.pathname.startsWith('/api/tent-item-model/')&&req.method==='GET'){
+   const id=url.pathname.slice('/api/tent-item-model/'.length);
+   if(!TENT_ITEM_ID.test(id))return json(res,404,{error:'모델 없음'});
+   return serveFurnitureModel(req,res,id);
+  }
+  if(url.pathname.startsWith('/api/tent-item-admin/model/')&&req.method==='PUT'){
+   if(!restored)return json(res,503,{error:'서버 복원 중이에요.'});
+   if(!MD_ADMIN_KEY||!adminAuthorized(req))return json(res,403,{error:'관리자 키가 올바르지 않아요.'});
+   const id=url.pathname.slice('/api/tent-item-admin/model/'.length);
+   if(!TENT_ITEM_ID.test(id))return json(res,400,{error:'아이템 ID는 영문 소문자·숫자·-·_만 사용할 수 있어요.'});
+   try{
+    const bytes=await rawBody(req,TENT_MODEL_MAX_BYTES);
+    validateGlb(bytes);
+    const revision=crypto.randomBytes(8).toString('hex');
+    const storage=await storageUpload(id,revision,bytes);
+    return json(res,200,{ok:true,revision,storage,size:bytes.length});
+   }catch(e){console.warn('Furniture model upload:',e.message);return json(res,e.code==='TOO_BIG'?413:400,{error:e.message})}
+  }
   if(url.pathname.startsWith('/api/tent-exterior-image/')&&req.method==='GET'){
     const imageId=url.pathname.slice('/api/tent-exterior-image/'.length);
     if(!/^[a-f0-9]{32}$/.test(imageId)){res.writeHead(404);return res.end('Not found')}
@@ -644,6 +759,35 @@ const server=http.createServer(async(req,res)=>{
         return json(res,200,{ok:true,...adminNoticeState()});
        }
        return json(res,400,{error:'알 수 없는 공지 관리자 명령입니다.'});
+      }
+      if(url.pathname==='/api/tent-item-admin'){
+       if(!MD_ADMIN_KEY)return json(res,503,{error:'Render 환경변수 MD_ADMIN_KEY를 설정해 주세요.'});
+       if(!adminAuthorized(req))return json(res,403,{error:'관리자 키가 올바르지 않아요.'});
+       const command=String(d.command||'');
+       if(command==='list')return json(res,200,{ok:true,items:furnitureAdminCatalog(),storage:useSupabase?'supabase':'local'});
+       if(command==='save'){
+        const id=String(d.id||'');
+        if(!TENT_ITEM_ID.test(id))return json(res,400,{error:'상품 ID는 영문 소문자·숫자·-·_ 32자 이내로 입력해 주세요.'});
+        const previous=TENT_FURNITURE_CATALOG[id];
+        const revision=d.modelRevision===undefined?(previous?.modelRevision||''):String(d.modelRevision||'');
+        const spec=cleanFurnitureSpec(id,d,revision);
+        if(!spec)return json(res,400,{error:'상품명·가격(0~50,000P)·가로/깊이/높이(0.1~8)를 확인해 주세요.'});
+        if(!revision&&!BUNDLED_TENT_FURNITURE[id])return json(res,400,{error:'새 상품은 GLB 파일을 먼저 업로드해야 해요.'});
+        if(!previous&&Object.keys(TENT_FURNITURE_CATALOG).length>=60)return json(res,409,{error:'등록 한도는 60개예요.'});
+        if(revision&&revision!==previous?.modelRevision&&!await storageExists(id,revision))return json(res,400,{error:'업로드한 GLB 파일을 찾지 못했어요. 다시 업로드해 주세요.'});
+        const placed=[...tentStats.values()].some(t=>(t.furnishings||[]).some(f=>f.itemId===id));
+        if(placed&&previous&&(spec.width!==previous.width||spec.depth!==previous.depth))return json(res,409,{error:'배치 중인 아이템의 가로·깊이는 변경할 수 없어요. 먼저 회수한 뒤 수정해 주세요.'});
+        furnitureCatalogEdits.set(id,spec);refreshFurnitureCatalog();await strictSaveAdmin();furnitureCatalogChanged();sendTentUpdate();
+        return json(res,200,{ok:true,items:furnitureAdminCatalog()});
+       }
+       if(command==='delete'){
+        const id=String(d.id||'');if(!TENT_ITEM_ID.test(id)||!TENT_FURNITURE_CATALOG[id])return json(res,404,{error:'상품이 없어요.'});
+        if(BUNDLED_TENT_FURNITURE[id])return json(res,409,{error:'기본 제공 상품은 삭제할 수 없어요. 판매 중지로 설정해 주세요.'});
+        if([...furnitureStats.values()].some(v=>Number(v.owned?.[id])>0)||[...tentStats.values()].some(v=>(v.furnishings||[]).some(f=>f.itemId===id)))return json(res,409,{error:'구매하거나 배치한 사람이 있어 삭제할 수 없어요. 판매 중지로 바꿔 주세요.'});
+        furnitureCatalogEdits.delete(id);refreshFurnitureCatalog();await strictSaveAdmin();furnitureCatalogChanged();sendTentUpdate();
+        return json(res,200,{ok:true,items:furnitureAdminCatalog()});
+       }
+       return json(res,400,{error:'알 수 없는 인테리어 관리자 명령이에요.'});
       }
       if(url.pathname==='/api/md-admin'){
        if(!MD_ADMIN_KEY)return json(res,503,{error:'Render 환경변수 MD_ADMIN_KEY를 설정해 주세요.'});
@@ -765,7 +909,7 @@ const server=http.createServer(async(req,res)=>{
         if(command==='furniture-buy'){
           if(!record||p.tentRoomId!==record.id)return json(res,403,{error:'자신의 텐트 안에서만 아이템을 구매할 수 있어요.'});
           const itemId=String(d.itemId||''),item=TENT_FURNITURE_CATALOG[itemId];
-          if(!item)return json(res,400,{error:'존재하지 않는 인테리어 아이템이에요.'});
+          if(!item||item.enabled===false)return json(res,400,{error:'현재 판매하지 않는 인테리어 아이템이에요.'});
           if(tentPointBalance(p)<item.cost)return json(res,409,{error:'구매할 포인트가 부족해요.'});
           const inv=furnitureRecord(p.badgeIdentity);
           if((inv.owned[itemId]||0)>=100)return json(res,409,{error:'같은 아이템은 최대 100개까지 구매할 수 있어요.'});
