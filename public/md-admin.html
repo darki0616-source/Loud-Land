@@ -24,6 +24,10 @@
   <label for="furnitureEnabled" class="checklabel"><input id="furnitureEnabled" type="checkbox" checked> 판매 중 (해제하면 구매 불가, 기존 구매자 보유·배치는 유지)</label>
   <label for="furnitureLightEnabled" class="checklabel"><input id="furnitureLightEnabled" type="checkbox"> 💡 배치 시 랜턴 조명 효과 (따뜻한 불빛 · 주변 바닥/벽 조명 · 은은한 흔들림)</label>
   <small>이미 등록한 lantern.glb도 체크 후 저장만 하면 조명이 적용돼. 모델을 다시 업로드할 필요는 없어.</small>
+  <label for="furnitureBedEnabled" class="checklabel"><input id="furnitureBedEnabled" type="checkbox"> 🛏 침대로 사용 (클릭 시 침대 높이에 맞춰 눕기)</label>
+  <label for="furnitureBedSurfaceHeight">매트리스 윗면 높이 · 바닥에서부터 (선택)</label>
+  <input id="furnitureBedSurfaceHeight" type="number" min="0.05" max="8" step="0.01" placeholder="비우면 전체 높이의 50% 자동 적용">
+  <small>침대 머리판까지 포함한 전체 높이와 실제 눕는 매트리스 높이는 달라. 캐릭터가 떠 있으면 이 값을 낮추고, 파묻히면 높여줘. 기존 GLB는 재업로드하지 않아도 돼.</small>
   <label for="furnitureModel">GLB 모델 (선택 · 최대 12MB)</label><input id="furnitureModel" type="file" accept=".glb,model/gltf-binary,application/octet-stream">
   <p id="furnitureFileHint">기본 상품을 수정할 때는 새 파일을 선택하지 않아도 돼.</p>
   <div class="furniture-preview-wrap"><canvas id="furniturePreview" width="460" height="290" aria-label="인테리어 3D 모델 미리보기"></canvas><small>모델을 드래그해 회전할 수 있어 · 아래 격자 한 칸은 게임 1단위 · 가로(X), 깊이(Z), 높이(Y) 입력 시 즉시 미리보기 반영</small></div>

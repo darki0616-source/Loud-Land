@@ -1197,6 +1197,7 @@ function react(a,glowColor=null){
  if(slamMotion){slamMotion=null;state.walkTarget=null}if(rockMotion){rockMotion=null;state.walkTarget=null}state.benchTarget=null;
  if(a==='sit'||a==='lie'){
   const near=mats.some(m=>Math.hypot(state.me.x-m.x,state.me.y-m.y)<105)||benchSeats.some(b=>Math.hypot(state.me.x-b.x,state.me.y-b.y)<75)||Math.hypot(toWorld(state.me).x-CAMPFIRE_X,toWorld(state.me).z-CAMPFIRE_Z)<CAMPFIRE_REST_RADIUS;
+  if(a==='lie'&&tentRoomActive&&state.pose!=='lie'&&lieOnNearestTentBed())return;
   if(!tentRoomActive&&!near&&state.pose==='stand')return toast('돗자리·벤치·모닥불 근처에서 앉거나 누울 수 있어요');
   state.pose=state.pose===a?'stand':a;
   state.me.pose=state.pose;
@@ -2579,6 +2580,67 @@ for(const x of [-5,-3,-1,1,3,5]){
 }
 // v248: No green rug; purchased items are rendered below as tent furniture.
 const tentRoomAvatars=new Map();
+// v253: Furniture mattress interaction. The administrator may tag any GLB as a bed
+// and set the *mattress top* independently of the headboard / entire model height.
+function isTentBed(itemId){
+ const item=tentRoomActive?.furnitureCatalog?.[itemId];
+ if(!item)return false;
+ if(typeof item.bedEnabled==='boolean')return item.bedEnabled;
+ return /(침대|매트리스|mattress|(^|[-_ ])bed($|[-_ ])|^bed|(^|[-_ ])cot($|[-_ ]))/i.test(itemId+' '+item.name);
+}
+function tentBedByInstance(instanceId){
+ const furniture=(tentRoomActive?.furnishings||[]).find(f=>f.instanceId===instanceId);
+ return furniture&&isTentBed(furniture.itemId)?furniture:null;
+}
+function nearestTentBed(x,z,maxExtra=.95){
+ let chosen=null,best=Infinity;
+ for(const f of tentRoomActive?.furnishings||[]){
+  const item=tentRoomActive?.furnitureCatalog?.[f.itemId];if(!item||!isTentBed(f.itemId))continue;
+  const d=Math.hypot(x-f.x,z-f.z);
+  if(d<Math.max(item.width,item.depth)*.5+maxExtra && d<best){chosen=f;best=d;}
+ }
+ return chosen;
+}
+function tentBedPose(f){
+ const item=tentRoomActive?.furnitureCatalog?.[f.itemId];if(!item)return null;
+ const longOnZ=item.depth>=item.width;
+ const radians=(Number(f.rotation)||0)*Math.PI/180+(longOnZ?0:Math.PI/2);
+ const facing=Math.atan2(Math.sin(radians),Math.cos(radians));
+ const bedLength=Math.max(item.width,item.depth),bedWidth=Math.min(item.width,item.depth);
+ // Keep the cute avatar inside small camping beds without changing its standing size.
+ const scale=Math.min(1,Math.max(.58,(bedLength-.12)/3.5),Math.max(.58,(bedWidth-.10)/1.75));
+ const setting=Number(item.bedSurfaceHeight);
+ const surface=Number.isFinite(setting)&&setting>=.05&&setting<=item.height?setting:item.height*.50;
+ // The original avatar root is at its feet: offset along the mattress until
+ // the midpoint of the rotated 3.3-unit body rests at the furniture centre.
+ const footOffset=1.55*scale;
+ return {x:f.x+Math.sin(facing)*footOffset,z:f.z+Math.cos(facing)*footOffset,
+  y:surface+.52*scale,facing,scale};
+}
+function lieOnTentBed(f){
+ if(!tentRoomActive||!tentRoomLocal||!state.me||!f||!isTentBed(f.itemId))return false;
+ const pose=tentBedPose(f);if(!pose)return false;
+ if(tentFurniturePlacement)return false;
+ tentRoomWalkTarget=null;state.walkTarget=null;state.benchTarget=null;
+ tentRoomLocal.x=f.x;tentRoomLocal.z=f.z;tentRoomLocal.facing=pose.facing;
+ tentRoomWasMoving=false;
+ state.pose='lie';state.me.pose='lie';state.action='idle';state.me.action='idle';state.actionUntil=0;
+ updateActionButtons();queueTentRoomMove();sendMove();
+ return true;
+}
+function lieOnNearestTentBed(){
+ const local=tentRoomLocal;
+ return local&&lieOnTentBed(nearestTentBed(local.x,local.z));
+}
+function clickedTentBed(ray){
+ if(!tentRoomActive||tentFurniturePlacement)return null;
+ const roots=[...tentFurniturePlaced.entries()].filter(([id])=>Boolean(tentBedByInstance(id)));
+ if(!roots.length)return null;
+ const meshes=roots.flatMap(([,root])=>{const out=[];root.traverse(obj=>{if(obj.isMesh)out.push(obj)});return out});
+ const hit=ray.intersectObjects(meshes,false)[0];if(!hit)return null;
+ for(const [instanceId,root] of roots){let obj=hit.object;while(obj){if(obj===root)return tentBedByInstance(instanceId);obj=obj.parent;}}
+ return null;
+}
 // v248: Persistent purchased indoor furniture, model preview and live placement.
 const tentFurniturePlaced=new Map(),tentFurnitureModels=new Map(),tentFurnitureThumbs=new Map();
 let tentFurnitureData=null,tentFurnitureMode='shop',tentFurnitureSelected='jack',tentFurnitureBusy=false;
@@ -3138,6 +3200,8 @@ function updateTentInterior(frameDelta,t){
  const distance=Math.hypot(dx,dz);
  const step=Math.min(distance,3.5*Math.min(50,frameDelta)/1000);
  const moving=distance>.00001&&step>.00001;
+ // Standing up is required before walking away from a mattress or the floor.
+ if(moving&&state.pose!=='stand'){state.pose='stand';state.me.pose='stand';state.action='idle';state.me.action='idle';state.actionUntil=0;updateActionButtons();sendMove();}
  if(moving){
   local.x=THREE.MathUtils.clamp(local.x+dx/distance*step,-4.6,4.6);
   local.z=THREE.MathUtils.clamp(local.z+dz/distance*step,-3.6,3.6);
@@ -3165,11 +3229,22 @@ function updateTentInterior(frameDelta,t){
    a.root.position.set(rx,0,rz); // Never slide across the room from (0,0).
    tentRoomAvatars.set(p.id,a);
   }
-  const walking=p.id===state.id?moving:Math.hypot(a.root.position.x-rx,a.root.position.z-rz)>.10;
+  // Room coordinates describe the mattress CENTRE for every visitor.
+  // The visual character foot-origin gets a consistent offset on all clients.
+  const targetPose=p.id===state.id?state.pose:(p.pose||'stand');
+  const onBed=targetPose==='lie'?nearestTentBed(rx,rz,1):null;
+  const bedPose=onBed&&Math.hypot(rx-onBed.x,rz-onBed.z)<.7?tentBedPose(onBed):null;
+  const walking=p.id===state.id?moving:(bedPose?false:Math.hypot(a.root.position.x-rx,a.root.position.z-rz)>.10);
   const localAction=p.id===state.id?(state.me?.action||'idle'):(p.action||'idle');
   const fake={...p,id:'room-'+p.id,x:600+rx/.058,y:500+(rz-8)/.058,
-   action:localAction==='idle'&&walking?'walk':localAction,pose:p.id===state.id?state.pose:(p.pose||'stand'),facing:p.id===state.id?local.facing:(p.tentRoomFacing||0)};
+   action:localAction==='idle'&&walking?'walk':localAction,pose:targetPose,facing:p.id===state.id?local.facing:(p.tentRoomFacing||0)};
+  a.root.userData.tentBedPose=bedPose; // Read by animateAvatar before position smoothing.
   animateAvatar(a,fake,t);
+  if(bedPose){
+   a.root.scale.setScalar(THREE.MathUtils.lerp(a.root.scale.x,bedPose.scale,.35));
+   const delta=Math.atan2(Math.sin(bedPose.facing-a.root.rotation.y),Math.cos(bedPose.facing-a.root.rotation.y));
+   a.root.rotation.y+=delta*.27;
+  }else if(Math.abs(a.root.scale.x-1)>.001){a.root.scale.setScalar(THREE.MathUtils.lerp(a.root.scale.x,1,.35));}
   // Indoor avatars are part of this scene only, regardless of outdoor layers.
   a.root.traverse(obj=>obj.layers.enable(0));
  }
@@ -5947,7 +6022,7 @@ function animateAvatar(a,p,t){
   :0;
  const toastSmooth=(a,b)=>{const u=Math.max(0,Math.min(1,(toastElapsed-a)/(b-a)));return u*u*(3-2*u)};
  const toastDrink=toastSmooth(3.25,4.0)*(1-toastSmooth(4.75,5.5));
- let targetX=wp.x,targetZ=wp.z,duoYaw=null;
+ let targetX=a.root.userData.tentBedPose?.x??wp.x,targetZ=a.root.userData.tentBedPose?.z??wp.z,duoYaw=null;
  if(surfView){const visual=toWorld(surfView);targetX=visual.x;targetZ=visual.z;}
  if(duoContext?.duo.anchor){
   const duo=duoContext.duo,first=q.id===duo.a;
@@ -6640,6 +6715,7 @@ function animateAvatar(a,p,t){
  P.flagGroup.visible=Boolean(q.flagText||q.flagImage);
  const avatarWorld=toWorld(q);
  height+=stageWalkHeightAt(avatarWorld.x,avatarWorld.z);
+ if(a.root.userData.tentBedPose)height=a.root.userData.tentBedPose.y;
  // Seat is higher than the grass; raise the seated avatar to the bench cushion.
  if(basePose==='sit'&&benchSeats.some(seat=>Math.hypot(q.x-seat.x,q.y-seat.y)<24))height+=.46;
  // Surfer height and orientation are resolved together below using a
@@ -6966,6 +7042,10 @@ gameTouchSurface.addEventListener('pointerup',e=>{
   const bounds=renderer.domElement.getBoundingClientRect();
   pointer.set(((e.clientX-bounds.left)/bounds.width)*2-1,-((e.clientY-bounds.top)/bounds.height)*2+1);
   groundRay.setFromCamera(pointer,camera);
+  // Clicking an existing bed puts the player on its mattress. In furniture
+  // placement mode the floor click keeps its old lock-position behavior.
+  const selectedBed=clickedTentBed(groundRay);
+  if(selectedBed&&lieOnTentBed(selectedBed))return;
   const target=groundRay.intersectObject(roomFloor,false)[0];
   if(target){if(tentFurniturePlacement)moveTentFurnitureGhost(target.point.x,target.point.z,true);
     else tentRoomWalkTarget={x:THREE.MathUtils.clamp(target.point.x,-4.6,4.6),z:THREE.MathUtils.clamp(target.point.z,-3.6,3.6)};}

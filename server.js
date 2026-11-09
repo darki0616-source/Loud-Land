@@ -106,7 +106,7 @@ function loadTentFurnitureCatalog(){
   const cost=Number(item.cost),width=Number(item.width),depth=Number(item.depth),height=Number(item.height);
   const asset='/assets/tent-items/'+id+'.glb';
   if(!Number.isInteger(cost)||cost<0||cost>50000||![width,depth,height].every(Number.isFinite)||width<.1||width>8||depth<.1||depth>8||height<.1||height>8||!fs.existsSync(path.join(PUBLIC,'assets/tent-items',id+'.glb')))continue;
-  catalog[id]={name:String(item.name||id).slice(0,40),cost,asset,width,depth,height,description:String(item.description||'').slice(0,150),lightEnabled:typeof item.lightEnabled==='boolean'?item.lightEnabled:/(lantern|랜턴|등불|호롱|lamp|램프)/i.test(id+' '+String(item.name||''))};
+  catalog[id]={name:String(item.name||id).slice(0,40),cost,asset,width,depth,height,description:String(item.description||'').slice(0,150),bedEnabled:typeof item.bedEnabled==='boolean'?item.bedEnabled:/(침대|매트리스|mattress|(^|[-_ ])bed($|[-_ ])|^bed|(^|[-_ ])cot($|[-_ ]))/i.test(id+' '+String(item.name||'')),bedSurfaceHeight:Number.isFinite(Number(item.bedSurfaceHeight))&&Number(item.bedSurfaceHeight)>0&&Number(item.bedSurfaceHeight)<=height?Number(item.bedSurfaceHeight):null,lightEnabled:typeof item.lightEnabled==='boolean'?item.lightEnabled:/(lantern|랜턴|등불|호롱|lamp|램프)/i.test(id+' '+String(item.name||''))};
  }
  return catalog;
 }
@@ -127,7 +127,11 @@ function cleanFurnitureSpec(id,raw,revision){
  if(!Number.isInteger(cost)||cost<0||cost>50000||![width,depth,height].every(Number.isFinite)||[width,depth,height].some(n=>n<.1||n>8))return null;
  const name=String(raw.name||'').trim().slice(0,40);
  if(!name)return null;
- return {name,cost,width,depth,height,description:String(raw.description||'').trim().slice(0,150),enabled:raw.enabled!==false,lightEnabled:typeof raw.lightEnabled==='boolean'?raw.lightEnabled:/(lantern|랜턴|등불|호롱|lamp|램프)/i.test(id+' '+name),
+ // Optional mattress top height is measured from the tent floor, not from the headboard.
+ const surfaceProvided=raw.bedSurfaceHeight!==null&&raw.bedSurfaceHeight!==undefined&&raw.bedSurfaceHeight!=='';
+ const bedSurfaceHeight=surfaceProvided?Number(raw.bedSurfaceHeight):null;
+ if(surfaceProvided&&(!Number.isFinite(bedSurfaceHeight)||bedSurfaceHeight<.05||bedSurfaceHeight>height))return null;
+ return {name,cost,width,depth,height,description:String(raw.description||'').trim().slice(0,150),enabled:raw.enabled!==false,bedEnabled:typeof raw.bedEnabled==='boolean'?raw.bedEnabled:/(침대|매트리스|mattress|(^|[-_ ])bed($|[-_ ])|^bed|(^|[-_ ])cot($|[-_ ]))/i.test(id+' '+name),bedSurfaceHeight,lightEnabled:typeof raw.lightEnabled==='boolean'?raw.lightEnabled:/(lantern|랜턴|등불|호롱|lamp|램프)/i.test(id+' '+name),
     ...(modelRevision?{modelRevision}:{})};
 }
 function refreshFurnitureCatalog(){
@@ -771,7 +775,7 @@ const server=http.createServer(async(req,res)=>{
         const previous=TENT_FURNITURE_CATALOG[id];
         const revision=d.modelRevision===undefined?(previous?.modelRevision||''):String(d.modelRevision||'');
         const spec=cleanFurnitureSpec(id,d,revision);
-        if(!spec)return json(res,400,{error:'상품명·가격(0~50,000P)·가로/깊이/높이(0.1~8)를 확인해 주세요.'});
+        if(!spec)return json(res,400,{error:'상품명·가격·가구 크기 또는 침대 매트리스 높이를 확인해 주세요. 매트리스 높이는 0.05 이상 전체 높이 이하예요.'});
         if(!revision&&!BUNDLED_TENT_FURNITURE[id])return json(res,400,{error:'새 상품은 GLB 파일을 먼저 업로드해야 해요.'});
         if(!previous&&Object.keys(TENT_FURNITURE_CATALOG).length>=60)return json(res,409,{error:'등록 한도는 60개예요.'});
         if(revision&&revision!==previous?.modelRevision&&!await storageExists(id,revision))return json(res,400,{error:'업로드한 GLB 파일을 찾지 못했어요. 다시 업로드해 주세요.'});
