@@ -2989,6 +2989,8 @@ for(let x=-34;x<=34;x+=3){
 // pulled the tray, food and pillow away from the blanket by different amounts.
 const picnicGroups=[];
 const picnicProps=[];
+const picnicSnackLoader=new GLTFLoader();
+let sharedPicnicSnackPromise=null;
 function addPicnicCube(group,w,h,d,material,x,y,z,cast=true){
  const o=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),material);
  o.position.set(x,y,z);o.castShadow=cast;o.receiveShadow=true;group.add(o);return o;
@@ -3000,6 +3002,52 @@ function addPicnicCylinder(group,rt,rb,h,material,x,y,z){
 function addPicnicSphere(group,r,material,x,y,z){
  const o=new THREE.Mesh(new THREE.SphereGeometry(r,12,10),material);
  o.position.set(x,y,z);o.castShadow=true;group.add(o);return o;
+}
+function picnicSeed(seed){const x=Math.sin(seed*127.1+311.7)*43758.5453123;return x-Math.floor(x)}
+function getSharedPicnicSnack(){
+ if(!sharedPicnicSnackPromise){
+  sharedPicnicSnackPromise=new Promise((resolve,reject)=>{
+   picnicSnackLoader.load('/assets/picnic/bbung_v237.glb?v=237',gltf=>{
+    const template=gltf.scene;
+    template.traverse(obj=>{
+     if(!obj.isMesh)return;
+     if(obj.geometry)sharedWingResources.add(obj.geometry);
+     for(const m of (Array.isArray(obj.material)?obj.material:[obj.material])){
+      if(!m)continue;
+      sharedWingResources.add(m);
+      for(const key of ['map','normalMap','roughnessMap','metalnessMap','emissiveMap'])if(m[key])sharedWingResources.add(m[key]);
+     }
+    });
+    resolve(template);
+   },undefined,reject);
+  }).catch(error=>{sharedPicnicSnackPromise=null;throw error});
+ }
+ return sharedPicnicSnackPromise;
+}
+function makeFallbackPicnicSnack(){
+ const group=new THREE.Group();
+ const bag=new THREE.Mesh(new THREE.BoxGeometry(.66,.98,.23),new THREE.MeshStandardMaterial({color:'#ffcb58',roughness:.72,metalness:.04}));
+ bag.castShadow=true;bag.receiveShadow=true;group.add(bag);
+ const stripe=new THREE.Mesh(new THREE.BoxGeometry(.72,.14,.24),new THREE.MeshStandardMaterial({color:'#fff4da',roughness:.82}));
+ stripe.position.y=.18;stripe.castShadow=true;stripe.receiveShadow=true;group.add(stripe);
+ return group;
+}
+function addPicnicSnackModel(group,x,y,z,rotY,rotX=-Math.PI/2,rotZ=0,scale=.52){
+ const pivot=new THREE.Group();
+ pivot.position.set(x,y,z);
+ pivot.rotation.set(rotX,rotY,rotZ);
+ pivot.scale.setScalar(scale);
+ group.add(pivot);
+ const fallback=makeFallbackPicnicSnack();
+ pivot.add(fallback);
+ getSharedPicnicSnack().then(template=>{
+  if(!pivot.parent)return;
+  const model=template.clone(true);
+  model.traverse(obj=>{if(obj.isMesh){obj.castShadow=true;obj.receiveShadow=true;}});
+  pivot.add(model);
+  fallback.visible=false;
+ }).catch(error=>console.warn('Picnic snack GLB failed; keeping fallback',error));
+ return pivot;
 }
 mats.forEach((matData,i)=>{
  const picnicGroup=new THREE.Group();
@@ -3037,13 +3085,17 @@ mats.forEach((matData,i)=>{
   const a=k*2.4+i*.27;
   const topping=pcylinder(.105,.105,.017,mat('#b44d3d'),pizzaX+Math.cos(a)*.32,.475,pizzaZ+Math.sin(a)*.32);topping.castShadow=false;
  }
- // Snack bag and visible puffed-corn/chips spilling onto the tray.
- const snackX=m.x+.52,snackZ=m.z+1.70;
- const bag=pcube(.62,.91,.29,mat(i%2?'#dba5ef':'#ffce7b'),snackX,.69,snackZ);bag.rotation.z=.13;bag.castShadow=false;
- const bagStripe=pcube(.65,.14,.31,mat('#fff2dd'),snackX,.83,snackZ);bagStripe.rotation.z=.13;bagStripe.castShadow=false;
- for(let k=0;k<7;k++){
-  const a=k*2.4+i*.3;
-  const crumb=psphere(.085+(k%3)*.022,mat('#f2db88'),snackX+Math.cos(a)*(.52+.10*(k%2)),.3,snackZ+Math.sin(a)*.36);crumb.castShadow=false;
+ // Two user-supplied 뻥이요 snacks per picnic mat. They lie flat with the
+ // package FRONT facing upward, but each one has its own random-looking
+ // position and angle so the blankets do not feel repeated.
+ for(let snackIndex=0;snackIndex<2;snackIndex++){
+  const seed=i*19+snackIndex*7+1;
+  const snackX=m.x+(picnicSeed(seed)-.5)*4.8;
+  const snackZ=m.z+.20+picnicSeed(seed+1)*2.15;
+  const rotY=picnicSeed(seed+2)*Math.PI*2;
+  const rotX=-Math.PI/2+(picnicSeed(seed+3)-.5)*.16;
+  const rotZ=(picnicSeed(seed+4)-.5)*.22;
+  addPicnicSnackModel(picnicGroup,snackX,.31,snackZ,rotY,rotX,rotZ,.52+picnicSeed(seed+5)*.06);
  }
 
 });
