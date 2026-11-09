@@ -954,3 +954,42 @@ html,body{height:100%;height:100dvh;overflow:hidden!important}
 
 /* v233: live-stream checkbox in shared music panel */
 .yt-live-option{display:flex;gap:9px;align-items:center;margin:10px 0 14px;font-size:12px;color:#d5dfeb;cursor:pointer;line-height:1.5}.yt-live-option input{width:16px;height:16px;accent-color:#e04a68;flex:none}.yt-live-option span{flex:1}
+
+
+/* v235 — floating shared dance BPM control above the right side of the dock. */
+.gamepanel .controlbar .dance-tempo-float{
+ position:absolute;z-index:12;right:0;left:auto;bottom:calc(100% + 9px);
+ width:min(284px,calc(100vw - 28px));display:flex;flex-direction:column;
+ gap:6px;padding:9px 11px 8px;border:1px solid #91b66c;
+ border-radius:13px;background:rgba(19,28,43,.97);color:#f5faff;
+ box-shadow:0 10px 26px #000a;pointer-events:auto;
+}
+.gamepanel .controlbar .dance-tempo-float.hidden{display:none!important}
+.gamepanel .dance-tempo-top{display:flex;align-items:center;gap:6px;width:100%}
+.gamepanel .dance-tempo-top button{
+ display:grid;place-items:center;min-width:32px;min-height:31px;
+ border:1px solid #556a7a;border-radius:8px;color:#f9fbff;
+ background:#354258;font-weight:800;font-size:17px;padding:3px 6px;
+ touch-action:manipulation;
+}
+.gamepanel .dance-tempo-top #danceTempoSettings{
+ min-width:74px;font-size:12px;letter-spacing:.1px;background:#d7fa81;
+ color:#1b2b22;border-color:#d7fa81;
+}
+.gamepanel .dance-tempo-top strong{
+ min-width:45px;flex:1;text-align:center;font-size:17px;
+ font-variant-numeric:tabular-nums;
+}
+.gamepanel .dance-tempo-float #danceTempoRange{
+ display:block;width:100%;height:18px;margin:0;accent-color:#d7fa81;
+ cursor:pointer;touch-action:pan-y;
+}
+/* Keep the ticker immediately above the dock, the BPM controls above it. */
+.gamepanel .controlbar:has(> .festival-notice-ticker:not([hidden])) > .dance-tempo-float{
+ bottom:calc(100% + 54px);
+}
+@media(max-width:700px){
+ .gamepanel .controlbar .dance-tempo-float{right:0;width:min(258px,calc(100vw - 24px));padding:7px 9px 6px;gap:4px}
+ .gamepanel .controlbar:has(> .festival-notice-ticker:not([hidden])) > .dance-tempo-float{bottom:calc(100% + 48px)}
+ .gamepanel .dance-tempo-top button{min-height:29px;min-width:30px}
+}

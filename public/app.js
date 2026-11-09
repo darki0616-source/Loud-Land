@@ -28,7 +28,11 @@ const headbangConfig={mode:initialHeadbangPrefs.mode==='manual'?'manual':'music'
  bpm:Math.max(40,Math.min(240,Number(initialHeadbangPrefs.bpm)||120)),beatAt:0,
  source:'',trackToken:null};
 const headbangSongTempos=headbangStorageRead(HEADBANG_SONG_KEY,{});
-let headbangTapTimes=[],headbangHintShown=false,headbangMoveTimer=null;
+let headbangTapTimes=[],headbangMoveTimer=null;
+// v235: one BPM setting drives every selectable dance except the B-boy freeze.
+// The player's BPM and phase are already transmitted with /api/move, so other
+// clients use the same shared time origin and see the same playback speed.
+const bpmDanceActions=new Set(['headbang','buriburi','groove','dougie','skanking','airguitar','headspin','freestyle']);
 let slamMode=false,slam=null,slamCooldownUntil=0,slamMotion=null;
 let rockPlacementMode=null,rockPlay=null,rockCooldowns={circle:0,train:0,mosh:0,row:0,toast:0,surf:0,shoulder:0},rockRunningUntil=0,rockMotion=null,crowdSurfScene=null,toastSequence=null,freeTrainTrail=null,shoulderSequence=null;
 let chosenPattern='solid',chosenSash='none',chosenHairStyle='short',chosenHairColor='#4b3932';
@@ -1001,7 +1005,7 @@ function updateSkipVoteUI(){
 async function castSkipVote(choice){const vote=state.skipVote;if(!vote||!state.id)return;try{await post('music',{id:state.id,command:'vote-cast',voteId:vote.id,choice})}catch(e){toast(e.message)}}
 function showSkipVoteResult(d){applySkipVote(null,state.skipVoteCooldownUntil);let msg=d.passed?'✅ 과반수 찬성! 요청한 곡으로 이동합니다':d.reason==='timeout'?'투표 시간이 종료되어 현재 곡을 유지합니다':'투표가 부결되어 현재 곡을 유지합니다';notice(msg)}
 setInterval(()=>{updateSkipVoteUI();updateSharedMusicButtons()},500);
-let joining=false;async function join(options={}){const auto=Boolean(options?.auto);if(editingProfile)return updateProfile();if(joining)return;joining=true;manualExit=false;try{let d=await post('join',{sessionKey,pageId,badgeIdentity,flagText:currentFlagText,flagImage:currentFlagImageData,name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender,pattern:chosenPattern,sash:chosenSash,hairStyle:chosenHairStyle,hairColor:chosenHairColor});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);currentFlagImageId=state.me?.flagImage||'';state.pose=state.me?.pose||'stand';cameraFollowInitialized=false;state.players=new Map(d.players.map(p=>[p.id,p]));renderOnlinePlayers();refreshPunkShop();$('joinModal').classList.add('hidden');$('reopenJoin').hidden=true;$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='페스티벌 참가 중';$('avatarPreview').querySelector('b').style.background=chosenColor;saveProfile(state.me);applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);if(d.crowdSurf)syncCrowdSurf(d.crowdSurf);listen();$('audioModal').classList.add('hidden');setPersonalAudio(true);showMovementGuide();showEntryAnnouncements(d.announcements?.entry);if(!auto)toast('ONEseason에 오신 것을 환영합니다!')}catch(e){if(auto)$('joinModal').classList.remove('hidden');$('joinError').textContent='입장 실패: '+(e?.message||'연결을 확인해주세요');console.error('ONEseason join error:',e)}finally{joining=false}}
+let joining=false;async function join(options={}){const auto=Boolean(options?.auto);if(editingProfile)return updateProfile();if(joining)return;joining=true;manualExit=false;try{let d=await post('join',{sessionKey,pageId,badgeIdentity,flagText:currentFlagText,flagImage:currentFlagImageData,name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender,pattern:chosenPattern,sash:chosenSash,hairStyle:chosenHairStyle,hairColor:chosenHairColor});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);applyHeadbangToSelf();currentFlagImageId=state.me?.flagImage||'';state.pose=state.me?.pose||'stand';cameraFollowInitialized=false;state.players=new Map(d.players.map(p=>[p.id,p]));renderOnlinePlayers();refreshPunkShop();$('joinModal').classList.add('hidden');$('reopenJoin').hidden=true;$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='페스티벌 참가 중';$('avatarPreview').querySelector('b').style.background=chosenColor;saveProfile(state.me);applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);if(d.crowdSurf)syncCrowdSurf(d.crowdSurf);listen();$('audioModal').classList.add('hidden');setPersonalAudio(true);showMovementGuide();showEntryAnnouncements(d.announcements?.entry);if(!auto)toast('ONEseason에 오신 것을 환영합니다!')}catch(e){if(auto)$('joinModal').classList.remove('hidden');$('joinError').textContent='입장 실패: '+(e?.message||'연결을 확인해주세요');console.error('ONEseason join error:',e)}finally{joining=false}}
 $('audioYes').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(true);toast(state.music.id?'음악 재생을 허용했어요':'음악이 등록되면 바로 재생돼요')};$('audioNo').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(false);toast('내 소리를 끈 상태로 입장했어요')};// First tap must save even if the nickname field currently has keyboard focus.
 // A pointerdown listener runs BEFORE Safari's keyboard dismissal can consume
 // the subsequent click. De-duplicate that click and block duplicate requests.
@@ -1156,6 +1160,8 @@ function selectBottomMenu(menu){
   button.setAttribute('aria-selected',String(active));
  });
  document.querySelector('.controlbar')?.classList.toggle('chat-tab-open',chat);
+ const bpmFloat=document.getElementById('danceTempoFloat');
+ if(bpmFloat)bpmFloat.classList.toggle('hidden',menu!=='reaction'&&menu!=='dance');
  if(!chat&&document.activeElement===$('chatInput'))$('chatInput').blur();
  if(chat)$('chatMessages').scrollTop=$('chatMessages').scrollHeight;
 }
@@ -1196,7 +1202,7 @@ function react(a,glowColor=null){
   if((a==='jump'||a==='run'||a==='buriburi'||a==='groove'||a==='windmill'||a==='skanking'||a==='airguitar'||a==='headspin'||a==='cheer'||a==='smoke'||a==='bubblegun'||a==='freestyle'||a==='beatking'||a==='marshmallow'||a==='putyourhandsup'||a==='nightfirework'||a==='heartbow'||a==='drum'||a==='electricguitar'||a==='bassguitar'||a==='vocal')&&state.pose!=='stand'){
    state.pose='stand';state.me.pose='stand';
   }
-  state.action=a;state.me.action=a;if(a==='headbang'){applyHeadbangToSelf();if(!headbangHintShown&&headbangConfig.mode==='music'&&headbangConfig.source==='fallback'){headbangHintShown=true;openHeadbangSettings()}}if(a==='cheer')playCheer();
+  state.action=a;state.me.action=a;if(bpmDanceActions.has(a))applyHeadbangToSelf();if(a==='cheer')playCheer();
   state.actionUntil=sustainedReactions.has(a)?Infinity:performance.now()+(a==='peace'?2200:a==='snack'?3300:1750);
  }
  updateActionButtons();sendMove();
@@ -1289,7 +1295,7 @@ syncNightFirework();
 // Keep data-action values, keyboard shortcuts and all existing onclick handlers intact.
 const reactionMenuOrder=[
  'peace','wave','clap','putyourhandsup','cheer','jump','run','sit','lie',
- 'drink','smoke','snack','toastStart','headbang','bubblegun','heartbow','glowstick',
+ 'drink','smoke','snack','toastStart','bubblegun','heartbow','glowstick',
  'flagAction','beatking','nightfirework','marshmallow'
 ];
 const reactionMenu=$('reactionActions');
@@ -1299,29 +1305,39 @@ for(const key of reactionMenuOrder){
   :reactionMenu.querySelector(`[data-action="${key}"]`);
  if(button)reactionMenu.append(button);
 }
-// Headbang options live beside the existing reaction: BPM, TAP-to-match and presets.
-// Changing tempo never changes the shared YouTube video or another player's audio.
-const headbangOptionsButton=document.createElement('button');
-headbangOptionsButton.type='button';headbangOptionsButton.id='headbangTempoButton';
-headbangOptionsButton.innerHTML='⚙️ <span>헤드뱅잉 BPM</span>';
+// v235: headbanging is a dance. Keep the existing action button/shortcut.
 const headbangReactionButton=reactionMenu.querySelector('[data-action="headbang"]');
-headbangReactionButton?.insertAdjacentElement('afterend',headbangOptionsButton);
-headbangOptionsButton.onclick=()=>openHeadbangSettings();
+if(headbangReactionButton)$('danceActions').prepend(headbangReactionButton);
+// Shared BPM controls are now outside the reaction/dance button grids.
+const danceTempoFloat=document.createElement('div');
+danceTempoFloat.id='danceTempoFloat';
+danceTempoFloat.className='dance-tempo-float';
+danceTempoFloat.setAttribute('role','group');
+danceTempoFloat.setAttribute('aria-label','춤 공통 BPM 조절');
+danceTempoFloat.innerHTML=`<div class="dance-tempo-top">
+ <button type="button" id="danceTempoSettings" title="음악 맞추기·TAP 등 상세 BPM 설정" aria-label="BPM 상세 설정">⚙️ BPM</button>
+ <button type="button" id="danceTempoMinus" aria-label="BPM 5 감소">−</button>
+ <strong id="danceTempoValue">120</strong>
+ <button type="button" id="danceTempoPlus" aria-label="BPM 5 증가">＋</button>
+ </div><input type="range" id="danceTempoRange" min="40" max="240" step="1" value="120" aria-label="모든 춤 BPM 직접 조절" />`;
+document.querySelector('.controlbar').appendChild(danceTempoFloat);
+if(!document.querySelector('[data-action-menu="reaction"]')?.classList.contains('active') &&
+   !document.querySelector('[data-action-menu="dance"]')?.classList.contains('active'))danceTempoFloat.classList.add('hidden');
 const headbangDialog=document.createElement('div');
 headbangDialog.id='headbangDialog';headbangDialog.className='hb-dialog hidden';
 headbangDialog.setAttribute('role','dialog');headbangDialog.setAttribute('aria-modal','true');
-headbangDialog.setAttribute('aria-label','헤드뱅잉 BPM 설정');
+headbangDialog.setAttribute('aria-label','모든 춤 공통 BPM 설정');
 headbangDialog.innerHTML=`<div class="hb-panel">
- <div class="hb-top"><strong>🎸 헤드뱅잉 BPM</strong><button id="hbClose" type="button" aria-label="설정 닫기">✕</button></div>
+ <div class="hb-top"><strong>🪩 춤 공통 BPM</strong><button id="hbClose" type="button" aria-label="설정 닫기">✕</button></div>
  <div class="hb-now" id="hbNow">현재 음악을 확인 중...</div>
  <div class="hb-modes"><button type="button" id="hbMusic">🎵 음악에 맞추기</button><button type="button" id="hbManual">🎛 직접 조절</button></div>
  <p class="hb-source" id="hbSource"></p>
  <div class="hb-meter"><button type="button" id="hbDown">−</button><b id="hbValue">120 BPM</b><button type="button" id="hbUp">＋</button></div>
- <input id="hbRange" type="range" min="40" max="240" step="1" value="120" aria-label="헤드뱅잉 BPM" />
+ <input id="hbRange" type="range" min="40" max="240" step="1" value="120" aria-label="춤 공통 BPM" />
  <div class="hb-presets" id="hbPresets"></div>
  <button type="button" id="hbTap">👆 TAP · 음악 박자에 맞춰 누르기</button>
  <small id="hbTapInfo">TAP을 최소 4회 눌러 BPM과 박자 시작점을 맞추세요.</small>
- <p class="hb-note">유튜브는 음원 파형·BPM을 제공하지 않아 무조건 자동 감지는 불가능합니다. 곡 제목에 BPM이 적힌 경우 자동 적용되며, 나머지 곡은 TAP으로 정확히 조정할 수 있어요. 다른 참가자에게도 설정한 속도로 보입니다.</p>
+ <p class="hb-note">유튜브는 음원 파형·BPM을 제공하지 않아 무조건 자동 감지는 불가능합니다. 곡 제목에 BPM이 적힌 경우 자동 적용되며, 나머지 곡은 TAP으로 정확히 조정할 수 있어요. 설정한 BPM이 비보잉을 제외한 모든 춤에 적용되며 다른 참가자에게도 같은 속도로 보입니다.</p>
  </div>`;
 document.body.append(headbangDialog);
 const headbangCss=document.createElement('style');
@@ -1361,11 +1377,12 @@ function headbangSongInfo(){
 function headbangServerTime(){return Date.now()+(Number(state.serverDelta)||0)}
 function saveHeadbangPrefs(){headbangStorageWrite(HEADBANG_PREF_KEY,{mode:headbangConfig.mode,bpm:headbangConfig.bpm})}
 function applyHeadbangToSelf(){
+ if(!headbangConfig.beatAt)headbangConfig.beatAt=headbangServerTime();
  if(!state.me)return;
  state.me.headbangBpm=headbangConfig.bpm;
- state.me.headbangBeatAt=headbangConfig.beatAt||headbangServerTime();
+ state.me.headbangBeatAt=headbangConfig.beatAt;
 }
-function sendHeadbangConfig(){applyHeadbangToSelf();if(state.id&&state.action==='headbang')sendMove()}
+function sendHeadbangConfig(){applyHeadbangToSelf();if(state.id&&bpmDanceActions.has(state.action))sendMove()}
 function sendHeadbangConfigSoon(){clearTimeout(headbangMoveTimer);headbangMoveTimer=setTimeout(sendHeadbangConfig,110)}
 function syncHeadbangSong(){
  if(headbangConfig.mode!=='music')return;
@@ -1376,13 +1393,21 @@ function syncHeadbangSong(){
  headbangConfig.source=info.source;
  headbangConfig.trackToken=song.token;
  applyHeadbangToSelf();
- if(state.action==='headbang')sendHeadbangConfigSoon();
+ if(bpmDanceActions.has(state.action))sendHeadbangConfigSoon();
  updateHeadbangControls();
 }
 function setHeadbangTempo(bpm){
+ const now=headbangServerTime();
+ const nextBpm=Math.max(40,Math.min(240,Math.round(Number(bpm)||120)));
+ // Preserve dance pose/beat phase while the slider moves: resetting the
+ // anchor to now would restart every dance on each BPM increment.
+ const oldBpm=Math.max(40,Math.min(240,Number(headbangConfig.bpm)||120));
+ const oldAnchor=Number(headbangConfig.beatAt)||now;
+ const oldDanceSec=Math.max(0,(now-oldAnchor)*.001)*(oldBpm/120);
+ const phaseSec=oldDanceSec%300;
  headbangConfig.mode='manual';
- headbangConfig.bpm=Math.max(40,Math.min(240,Math.round(Number(bpm)||120)));
- headbangConfig.beatAt=headbangServerTime();
+ headbangConfig.bpm=nextBpm;
+ headbangConfig.beatAt=now-phaseSec*1000*(120/nextBpm);
  headbangConfig.source='manual';headbangTapTimes=[];
  saveHeadbangPrefs();updateHeadbangControls();sendHeadbangConfigSoon();
 }
@@ -1396,6 +1421,10 @@ $('hbManual').onclick=()=>setHeadbangTempo(headbangConfig.bpm);
 $('hbDown').onclick=()=>setHeadbangTempo(headbangConfig.bpm-1);
 $('hbUp').onclick=()=>setHeadbangTempo(headbangConfig.bpm+1);
 $('hbRange').oninput=e=>setHeadbangTempo(e.target.value);
+$('danceTempoMinus').onclick=()=>setHeadbangTempo(headbangConfig.bpm-5);
+$('danceTempoPlus').onclick=()=>setHeadbangTempo(headbangConfig.bpm+5);
+$('danceTempoRange').oninput=e=>setHeadbangTempo(e.target.value);
+$('danceTempoSettings').onclick=openHeadbangSettings;
 for(const value of [60,80,100,120,140,160,180,200]){
  const b=document.createElement('button');b.type='button';b.textContent=value;b.onclick=()=>setHeadbangTempo(value);
  $('hbPresets').append(b);
@@ -1435,6 +1464,11 @@ function updateHeadbangControls(){
  $('hbManual').classList.toggle('is-selected',!active);
  $('hbValue').textContent=headbangConfig.bpm+' BPM';
  $('hbRange').value=headbangConfig.bpm;
+ if(danceTempoFloat){
+  $('danceTempoValue').textContent=String(headbangConfig.bpm);
+  $('danceTempoRange').value=String(headbangConfig.bpm);
+  $('danceTempoSettings').title=`BPM 상세 설정 · ${headbangConfig.mode==='music'?'음악에 맞추기':'수동 조절'}`;
+ }
  const source=active?({title:'곡 제목에 표기된 BPM 적용 · 곡 재생 시작점을 기준으로 동기화',tap:'TAP으로 맞춘 박자 · 이 곡에서는 저장된 BPM과 박자 위치 사용',fallback:'곡에 BPM 정보가 없어 임시 120 BPM · TAP을 4회 눌러 실제 음악과 맞춰주세요', 'no-song':'곡이 없어 임시 120 BPM · 음악이 시작되면 다시 확인'}[headbangConfig.source]||'음악 템포 확인 중'):'직접 설정 · 선택한 BPM으로 반복 동작';
  $('hbSource').textContent=source;
 }
@@ -4942,7 +4976,14 @@ function animateAvatar(a,p,t){
  const surfEvent=crowdSurfScene&&slamNow()<crowdSurfScene.startAt+crowdSurfScene.duration?crowdSurfScene:null;
  const surfView=surfPose;
  const shoulderSynced=act==='shoulder-headbang'&&shoulderSequence?.participants.includes(q.id)&&slamNow()<=shoulderSequence.until;
- const sec=shoulderSynced?(slamNow()-shoulderSequence.startAt-3000)*.001:duoContext?(Date.now()+state.serverDelta-duoContext.duo.startAt)/1000:t*.001,pose={};
+ const baseSec=shoulderSynced?(slamNow()-shoulderSequence.startAt-3000)*.001:duoContext?(Date.now()+state.serverDelta-duoContext.duo.startAt)/1000:t*.001;
+ // Only dance actions use the player's synchronized tempo clock. B-boy freeze
+ // (windmill) and timed server events keep their original animation clocks.
+ const danceBpm=Math.max(40,Math.min(240,Number(q.headbangBpm)||120));
+ const danceBeatAt=Number(q.headbangBeatAt)||0;
+ const sec=bpmDanceActions.has(act)&&danceBeatAt>0
+  ?Math.max(0,(headbangServerTime()-danceBeatAt)*.001)*(danceBpm/120)
+  :baseSec,pose={};
  // Choreography is determined by the server start time, not by the local
  // animation clock. Observers and participants see the same drinking phase.
  const toastElapsed=act==='toast-clink'&&toastSequence?.participants.includes(q.id)
