@@ -92,6 +92,9 @@ const TENT_COST=3000;
 const tentStats=new Map();
 const TENT_COLORS=['#ed9a77','#8dc3ad','#8ea8d8','#c49acb','#dfc576','#d6a3a3','#92b9ba','#d5d9e5'];
 const TENT_MAX_OCCUPANCY=4;
+// v245: Entrance interaction requires walking to within five real world units.
+const TENT_ENTER_DISTANCE=5.0;
+function tentEntranceDistance(player,tent){return Math.hypot((player.x-600)*.058-tent.x,(player.y-500)*.058+8-tent.z);}
 const TENT_PAINTS={default:null,red:'#ef615a',orange:'#f59b42',yellow:'#f4dd63',green:'#78bd89',blue:'#709bda',black:'#292d38',white:'#f5f5f1'};
 function tentOccupancy(roomId){let count=0;for(const p of players.values())if(p.tentRoomId===roomId)count++;return count;}
 function publicTent(record){return {id:record.id,name:record.name,color:record.color,placed:!!record.placed,x:record.placed?record.x:null,z:record.placed?record.z:null,occupancy:tentOccupancy(record.id),capacity:TENT_MAX_OCCUPANCY,wallColor:record.wallColor||'default',floorColor:record.floorColor||'default'};}
@@ -614,7 +617,12 @@ const server=http.createServer(async(req,res)=>{
         if(command==='enter'){
           const selected=[...tentStats.values()].find(t=>t.id===String(d.tentId||'')&&t.placed);
           if(!selected)return json(res,404,{error:'설치된 텐트를 찾을 수 없어요.'});
+          if(p.tentRoomId&&p.tentRoomId!==selected.id)return json(res,409,{error:'다른 텐트에 들어가려면 먼저 밖으로 나가주세요.'});
+          if(tentEntranceDistance(p,selected)>TENT_ENTER_DISTANCE)return json(res,403,{error:'텐트 주변(5m 이내)으로 이동해야 들어갈 수 있어요.'});
           if(p.tentRoomId!==selected.id&&tentOccupancy(selected.id)>=TENT_MAX_OCCUPANCY)return json(res,409,{error:'이 텐트는 정원 4명이 모두 입장 중이에요.'});
+          // An indoor player cannot participate in outdoor two-player interactions.
+          // Cancel old invitations and paired animations before entering.
+          clearDuosFor(p.id);
           p.tentRoomId=selected.id;p.tentRoomX=0;p.tentRoomZ=2;p.tentRoomFacing=0;
           p.action='idle';p.pose='stand';broadcast({type:'tent-room',playerId:p.id,roomId:p.tentRoomId,x:0,z:2,action:'idle',pose:'stand'});
           sendTentUpdate();
@@ -708,6 +716,7 @@ const server=http.createServer(async(req,res)=>{
           const targetId=clean(d.targetId,80),kind=clean(d.kind,20),target=players.get(targetId);
           if(!DUO_LABELS[kind])return json(res,400,{error:'지원하지 않는 상호작용입니다.'});
           if(!target||targetId===id)return json(res,400,{error:'상대를 다시 선택해 주세요.'});
+          if(p.tentRoomId||target.tentRoomId)return json(res,409,{error:'텐트 안에 있는 유저와는 바깥에서 상호작용할 수 없어요.'});
           if(duoFor(id)||duoFor(targetId))return json(res,409,{error:'이미 상호작용 중인 유저가 있어요.'});
           if(duoDistance(p,target)>DUO_DISTANCE)return json(res,400,{error:'상대에게 조금 더 가까이 이동해 주세요.'});
           if([...duoInvites.values()].some(i=>i.expiresAt>now&&(i.from===id||i.to===id||i.from===targetId||i.to===targetId)))return json(res,429,{error:'진행 중인 상호작용 요청이 있어요.'});
@@ -720,6 +729,7 @@ const server=http.createServer(async(req,res)=>{
           duoInvites.delete(inviteId);broadcast({type:'duo-invite-ended',id:inviteId,to:id});
           if(command==='decline'){broadcast({type:'duo-declined',to:invite.from,by:p.name});return json(res,200,{ok:true})}
           const source=players.get(invite.from);
+          if(source&&(p.tentRoomId||source.tentRoomId))return json(res,409,{error:'텐트 안에 들어간 유저와는 상호작용할 수 없어요.'});
           if(!source||duoFor(id)||duoFor(source.id)||duoDistance(p,source)>DUO_DISTANCE)return json(res,400,{error:'상대가 멀어졌거나 이미 다른 동작 중이에요.'});
           // Face each other at a safe 2.2 world-unit gap, within the existing playfield.
           const centerX=(source.x+p.x)*.5,centerY=(source.y+p.y)*.5;

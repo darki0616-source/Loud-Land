@@ -894,7 +894,9 @@ function renderOnlinePlayers(){
   const swatch=document.createElement('span');swatch.className='players-swatch';swatch.style.background=palette.includes(p.color)?p.color:'#d7fa81';
   const name=document.createElement('span');name.className='players-name';name.textContent=p.name||'ROCKER';
   const icon=makeBadgeImg(p.badgeTier);li.append(swatch,icon,name);
-  if(p.id!==state.id){li.classList.add('duo-select-player');li.title='상호작용 요청하기';li.style.cursor='pointer';li.onclick=()=>chooseDuoTarget(p.id)}
+  // Indoor users stay in the online list but cannot be selected from outside.
+  if(p.id!==state.id&&!p.tentRoomId&&!tentRoomActive){li.classList.add('duo-select-player');li.title='상호작용 요청하기';li.style.cursor='pointer';li.onclick=()=>chooseDuoTarget(p.id)}
+  else if(p.tentRoomId){li.title='텐트 안에 있는 유저';const inside=document.createElement('small');inside.textContent='⛺ 텐트 안';li.append(inside)}
   if(p.id===state.id){const me=document.createElement('small');me.textContent='나';li.append(me)}
   list.append(li);
  }
@@ -984,7 +986,9 @@ function handleLiveAnnouncement(event){
  if(event.kind==='immediate')queueFestivalPopup('📣 ONEseason 전체 공지',text,true);
  else if(event.kind==='ticker')queueFestivalTicker(text);
 }
-function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='snapshot'){syncTents(d.tents);state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);syncCrowdSurf(d.crowdSurf);if(Array.isArray(d.chat)){$('chatMessages').replaceChildren();d.chat.filter(entry=>(entry.roomId||null)===(tentRoomActive?.id||null)).forEach(appendChat)};for(const id of duoVfx.keys())removeDuoVfx(id);activeDuos.clear();for(const duo of d.interactions||[])activeDuos.set(duo.id,duo);syncDuoStatus()}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){if((d.entry.roomId||null)===(tentRoomActive?.id||null)){appendChat(d.entry);showBubble(d.entry)}}else if(d.type==='move'){recordTrainLeader(d.player);state.players.set(d.player.id,d.player);if(d.player.id===state.id&&currentDuo())state.me={...d.player}}else if(d.type==='flag'){const player=state.players.get(d.id);if(player){player.flagText=d.flagText;player.flagImage=d.flagImage||'';}if(d.id===state.id&&state.me){state.me.flagText=d.flagText;state.me.flagImage=d.flagImage||'';currentFlagText=d.flagText;currentFlagImageId=d.flagImage||'';refreshFlagButton();}}else if(d.type==='badge'){const person=state.players.get(d.id);if(person){person.badgeTier=d.badgeTier;person.badgeSeconds=d.badgeSeconds;if(d.id===state.id&&state.me){state.me.badgeTier=d.badgeTier;state.me.badgeSeconds=d.badgeSeconds;}renderOnlinePlayers();}}else if(d.type==='profile'){state.players.set(d.player.id,d.player);if(d.player.id===state.id){state.me=d.player;refreshProfilePreview();refreshRhythmReactionButton();if(!$('punkShop').classList.contains('hidden')||!$('mdWardrobe').hidden)refreshPunkShop()}renderOnlinePlayers()}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers()}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue,d.history);else if(d.type==='slam')applySlam(d.slam,d.cooldownUntil);else if(d.type==='slam-go')onSlamGo(d);else if(d.type==='slam-impact')spawnSlamDust(d.x,d.y);else if(d.type==='toast-spark')spawnToastSpark(d.x,d.y);else if(d.type==='cheer'&&d.playerId!==state.id&&state.audioEnabled)playCheer();else if(d.type==='rockplay')applyRockPlay(d.event,d.rockCooldowns,d.rockRunningUntil);else if(d.type==='rockplay-go')onRockPlayGo(d);else if(d.type==='rockplay-cancel'){applyRockPlay(null,d.rockCooldowns,0);toast(d.reason||'인원이 부족해 취소됐어요.')} else if(d.type==='rhythm-state')applyRhythmState(d.rhythm);else if(d.type==='md-catalog')syncMdCatalog(d.items);else if(d.type==='music-booked')showBookingNotice(d.name,d.title);else if(d.type==='music-control')showMusicControlNotice(d.name,d.command);else if(d.type==='skip-vote')applySkipVote(d.vote,d.cooldownUntil);else if(d.type==='skip-vote-result')showSkipVoteResult(d);else if(d.type==='tent-update')syncTents(d.tents);else if(d.type==='tent-room'){const player=state.players.get(d.playerId);if(player){player.tentRoomId=d.roomId||null;player.tentRoomX=d.x||0;player.tentRoomZ=d.z||0;player.tentRoomFacing=d.facing||0;if(d.action!==undefined)player.action=d.action;if(d.pose!==undefined)player.pose=d.pose;if(d.headbangBpm!==undefined)player.headbangBpm=d.headbangBpm;if(d.headbangBeatAt!==undefined)player.headbangBeatAt=d.headbangBeatAt;if(d.glowEnabled!==undefined)player.glowEnabled=d.glowEnabled;if(d.glowColor!==undefined)player.glowColor=d.glowColor;}if(d.playerId===state.id&&!d.roomId&&tentRoomActive)leaveTentInterior(false);}else if(d.type==='festival-notice')handleLiveAnnouncement(d);else if(d.type.startsWith('duo-'))handleDuoEvent(d)};state.es.onerror=()=>{ /* EventSource retries automatically; heartbeat repairs an expired session. */ }}
+function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='snapshot'){syncTents(d.tents);state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);syncCrowdSurf(d.crowdSurf);if(Array.isArray(d.chat)){$('chatMessages').replaceChildren();d.chat.filter(entry=>(entry.roomId||null)===(tentRoomActive?.id||null)).forEach(appendChat)};for(const id of duoVfx.keys())removeDuoVfx(id);activeDuos.clear();for(const duo of d.interactions||[])activeDuos.set(duo.id,duo);syncDuoStatus()}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){if((d.entry.roomId||null)===(tentRoomActive?.id||null)){appendChat(d.entry);showBubble(d.entry)}}else if(d.type==='move'){recordTrainLeader(d.player);state.players.set(d.player.id,d.player);if(d.player.id===state.id&&currentDuo())state.me={...d.player}}else if(d.type==='flag'){const player=state.players.get(d.id);if(player){player.flagText=d.flagText;player.flagImage=d.flagImage||'';}if(d.id===state.id&&state.me){state.me.flagText=d.flagText;state.me.flagImage=d.flagImage||'';currentFlagText=d.flagText;currentFlagImageId=d.flagImage||'';refreshFlagButton();}}else if(d.type==='badge'){const person=state.players.get(d.id);if(person){person.badgeTier=d.badgeTier;person.badgeSeconds=d.badgeSeconds;if(d.id===state.id&&state.me){state.me.badgeTier=d.badgeTier;state.me.badgeSeconds=d.badgeSeconds;}renderOnlinePlayers();}}else if(d.type==='profile'){state.players.set(d.player.id,d.player);if(d.player.id===state.id){state.me=d.player;refreshProfilePreview();refreshRhythmReactionButton();if(!$('punkShop').classList.contains('hidden')||!$('mdWardrobe').hidden)refreshPunkShop()}renderOnlinePlayers()}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers()}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue,d.history);else if(d.type==='slam')applySlam(d.slam,d.cooldownUntil);else if(d.type==='slam-go')onSlamGo(d);else if(d.type==='slam-impact')spawnSlamDust(d.x,d.y);else if(d.type==='toast-spark')spawnToastSpark(d.x,d.y);else if(d.type==='cheer'&&d.playerId!==state.id&&state.audioEnabled)playCheer();else if(d.type==='rockplay')applyRockPlay(d.event,d.rockCooldowns,d.rockRunningUntil);else if(d.type==='rockplay-go')onRockPlayGo(d);else if(d.type==='rockplay-cancel'){applyRockPlay(null,d.rockCooldowns,0);toast(d.reason||'인원이 부족해 취소됐어요.')} else if(d.type==='rhythm-state')applyRhythmState(d.rhythm);else if(d.type==='md-catalog')syncMdCatalog(d.items);else if(d.type==='music-booked')showBookingNotice(d.name,d.title);else if(d.type==='music-control')showMusicControlNotice(d.name,d.command);else if(d.type==='skip-vote')applySkipVote(d.vote,d.cooldownUntil);else if(d.type==='skip-vote-result')showSkipVoteResult(d);else if(d.type==='tent-update')syncTents(d.tents);else if(d.type==='tent-room'){const player=state.players.get(d.playerId);if(player){player.tentRoomId=d.roomId||null;player.tentRoomX=d.x||0;player.tentRoomZ=d.z||0;player.tentRoomFacing=d.facing||0;if(d.action!==undefined)player.action=d.action;if(d.pose!==undefined)player.pose=d.pose;if(d.headbangBpm!==undefined)player.headbangBpm=d.headbangBpm;if(d.headbangBeatAt!==undefined)player.headbangBeatAt=d.headbangBeatAt;if(d.glowEnabled!==undefined)player.glowEnabled=d.glowEnabled;if(d.glowColor!==undefined)player.glowColor=d.glowColor;}if(d.roomId&&selectedDuoTarget===d.playerId)closeDuoMenu();
+renderOnlinePlayers();
+if(d.playerId===state.id&&!d.roomId&&tentRoomActive)leaveTentInterior(false);}else if(d.type==='festival-notice')handleLiveAnnouncement(d);else if(d.type.startsWith('duo-'))handleDuoEvent(d)};state.es.onerror=()=>{ /* EventSource retries automatically; heartbeat repairs an expired session. */ }}
 function applySkipVote(vote,cooldownUntil){
  state.skipVote=vote||null;if(Number.isFinite(Number(cooldownUntil)))state.skipVoteCooldownUntil=Number(cooldownUntil);
  const overlay=$('skipVoteOverlay');overlay.hidden=!vote;updateSkipVoteUI();updateSharedMusicButtons();
@@ -1095,6 +1099,7 @@ function chooseDuoTarget(targetId){
  if(!state.id||targetId===state.id)return;
  if(currentDuo())return toast('함께 동작하는 동안에는 다른 유저를 선택할 수 없어요.');
  const target=state.players.get(targetId);if(!target)return toast('접속자가 떠났어요.');
+ if(tentRoomActive||state.players.get(state.id)?.tentRoomId||target.tentRoomId){closeDuoMenu();return toast('텐트 안의 유저와는 바깥에서 상호작용할 수 없어요.');}
  if(!state.me||Math.hypot(state.me.x-target.x,state.me.y-target.y)>88)return toast('상대 캐릭터에게 가까이 다가간 후 선택해 주세요.');
  selectedDuoTarget=targetId;$('duoTargetName').textContent='🎸 '+target.name;$('duoMenu').classList.remove('hidden');
 }
@@ -1696,6 +1701,8 @@ function closeRockMenu(){rockMenuPanel.classList.add('hidden');rockMenuButton.se
 // v242: Personal campsite purchase and management. Ownership and points
 // are always verified by the server; no client-side credits can be minted.
 const TENT_COLORS=['#ed9a77','#8dc3ad','#8ea8d8','#c49acb','#dfc576','#d6a3a3','#92b9ba','#d5d9e5'];
+// Match the authoritative server distance and the world-coordinate scale.
+const TENT_ENTER_DISTANCE=5.0;
 let tentStatus=null,tentList=[],tentPlaceMode=false,tentPickedColor=TENT_COLORS[0];
 function tentRequest(command,values={}){return post('tent',{id:state.id,sessionKey,command,...values});}
 function syncTents(tents){
@@ -2540,8 +2547,19 @@ function updateTentModels(){
  tentWorldMeshes.clear();tentClickMeshes.length=0;
  for(const tent of tentList)if(tent.placed&&Number.isFinite(tent.x)&&Number.isFinite(tent.z))createTentGraphic(tent);
 }
+let tentEntryPending=false;
 async function enterTent(tentId){
- if(!state.id)return toast('먼저 입장해 주세요');
+ if(!state.id||!state.me)return toast('먼저 입장해 주세요');
+ if(tentEntryPending)return;
+ if(tentRoomActive)return toast('다른 텐트에 들어가려면 먼저 밖으로 나가주세요.');
+ const room=tentList.find(t=>t.id===tentId&&t.placed);
+ if(!room)return toast('설치된 텐트를 찾을 수 없어요.');
+ const meWorld=toWorld(state.me);
+ if(Math.hypot(meWorld.x-room.x,meWorld.z-room.z)>TENT_ENTER_DISTANCE){
+  toast('⛺ 텐트 근처(5m 이내)로 이동한 뒤 입장해 주세요.');
+  return;
+ }
+ tentEntryPending=true;
  try{
   const data=await tentRequest('enter',{tentId});
   if(tentRoomActive)leaveTentInterior(false);
@@ -2561,7 +2579,7 @@ async function enterTent(tentId){
   state.walkTarget=null;state.benchTarget=null;state.moving=false;
   for(const avatar of tentRoomAvatars.values())disposeAvatar(avatar.root);
   tentRoomAvatars.clear();
- }catch(error){toast(error.message)}
+ }catch(error){toast(error.message)}finally{tentEntryPending=false;}
 }
 function leaveTentInterior(send=true){
  if(!tentRoomActive)return;
@@ -6439,6 +6457,10 @@ gameTouchSurface.addEventListener('pointerup',e=>{
   const bounds=renderer.domElement.getBoundingClientRect();let bestId=null,bestDistance=58;
   for(const [id,avatar] of avatars){
    if(id===state.id)continue;
+   // The exterior avatar stays cached for reuse but is not selectable while in a tent.
+   // Never use its old projected coordinates as a valid click target.
+   if(state.players.get(id)?.tentRoomId)continue;
+   if(!avatar.root.parent||!avatar.root.visible)continue;
    const characterTop=avatar.root.position.clone().add(new THREE.Vector3(0,2.0,0));
    const screen=characterTop.project(camera);if(screen.z<0||screen.z>1)continue;
    const px=bounds.left+(screen.x+1)*bounds.width*.5,py=bounds.top+(1-screen.y)*bounds.height*.5;
