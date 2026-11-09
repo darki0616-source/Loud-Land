@@ -87,6 +87,25 @@ const badgeStats=new Map();
 // All purchases and equipment are server-validated. Guests without the stable
 // badge identity cannot spend points; client-provided balances are ignored.
 const shopStats=new Map();
+// v242: Paid, persistent personal campsite (MD wardrobe remains free for testing).
+const TENT_COST=3000;
+const tentStats=new Map();
+const TENT_COLORS=['#ed9a77','#8dc3ad','#8ea8d8','#c49acb','#dfc576','#d6a3a3','#92b9ba','#d5d9e5'];
+function publicTent(record){return {id:record.id,name:record.name,color:record.color,placed:!!record.placed,x:record.placed?record.x:null,z:record.placed?record.z:null};}
+function allPlacedTents(){return [...tentStats.values()].filter(t=>t.placed).map(publicTent)}
+function tentOwnedBy(identity){return identity?tentStats.get(identity)||null:null}
+function tentView(player){
+ const t=tentOwnedBy(player.badgeIdentity);
+ const earned=Math.floor(badgeTotal(player)/60);
+ return {cost:TENT_COST,points:Math.max(0,earned-(t?TENT_COST:0)),earned,owned:!!t,tent:t?publicTent(t):null,tents:allPlacedTents()};
+}
+function tentIsValidPlace(x,z,ignoreId){
+ // Two open strips of the walkable picnic lawn, not the blankets, stage or beach.
+ if(!Number.isFinite(x)||!Number.isFinite(z)||x< -41.5||x>41.5||!((z>=19.6&&z<=22.1)||(z>=35&&z<=38.5)))return false;
+ for(const other of tentStats.values())if(other.placed&&other.id!==ignoreId&&Math.hypot(other.x-x,other.z-z)<5.5)return false;
+ return true;
+}
+function sendTentUpdate(){broadcast({type:'tent-update',tents:allPlacedTents()});}
 const PUNK_ITEMS={
  'tee-skull':{name:'스컬 프린트 티셔츠',slot:'shirt',cost:30},
  'tee-lightning':{name:'번개 펑크 티셔츠',slot:'shirt',cost:45},
@@ -164,7 +183,7 @@ function shopRecord(identity){
 function getShopView(p,now=Date.now()){
  const record=shopRecord(p.badgeIdentity);
  const earned=Math.floor(badgeTotal(p,now)/60); // 1 point per connected minute
- return {points:earned,earned,spent:0,refunded:record.refunded||0,testing:true,owned:Object.keys(publicMdItems()),equipped:{...record.equipped},items:publicMdItems()};
+ return {points:Math.max(0,earned-(tentOwnedBy(p.badgeIdentity)?TENT_COST:0)),earned,spent:tentOwnedBy(p.badgeIdentity)?TENT_COST:0,refunded:record.refunded||0,testing:true,owned:Object.keys(publicMdItems()),equipped:{...record.equipped},items:publicMdItems()};
 }
 function setShopAppearance(p){
  p.equipped=p.badgeIdentity?{...shopRecord(p.badgeIdentity).equipped}:{};
@@ -195,7 +214,7 @@ const SB_KEY=process.env.SUPABASE_SECRET_KEY||'';
 const useSupabase=Boolean(SB_URL&&SB_KEY);
 let restored=false;
 let saveChain=Promise.resolve();
-function stateData(){return {version:7,announcements:{entry:entranceNotices,ticker:tickerNotices,intervalMinutes:tickerIntervalMinutes,immediateHistory:immediateNoticeHistory},music,queue:[...queue],history:[...history],nextTrackToken,customMd:Object.fromEntries(customMd),shopStats:Object.fromEntries([...shopStats].map(([k,v])=>[k,{spent:0,refunded:v.refunded||0,owned:v.owned,equipped:v.equipped}])),badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),rhythm:{day:rhythmDay,reward:rhythmReward,scores:Object.fromEntries([...rhythmScores].map(([k,v])=>[k,{name:v.name,score:Math.max(0,Math.floor(Number(v.score)||0)),updatedAt:Number(v.updatedAt)||0}]))},savedAt:Date.now()}}
+function stateData(){return {version:8,tentStats:Object.fromEntries([...tentStats].map(([identity,t])=>[identity,publicTent(t)])),announcements:{entry:entranceNotices,ticker:tickerNotices,intervalMinutes:tickerIntervalMinutes,immediateHistory:immediateNoticeHistory},music,queue:[...queue],history:[...history],nextTrackToken,customMd:Object.fromEntries(customMd),shopStats:Object.fromEntries([...shopStats].map(([k,v])=>[k,{spent:0,refunded:v.refunded||0,owned:v.owned,equipped:v.equipped}])),badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),rhythm:{day:rhythmDay,reward:rhythmReward,scores:Object.fromEntries([...rhythmScores].map(([k,v])=>[k,{name:v.name,score:Math.max(0,Math.floor(Number(v.score)||0)),updatedAt:Number(v.updatedAt)||0}]))},savedAt:Date.now()}}
 function applySaved(d){
  if(!d||typeof d!=='object')return;
  if(d.announcements&&typeof d.announcements==='object'){
@@ -212,6 +231,14 @@ function applySaved(d){
   restoreNotices(cfg.ticker,tickerNotices,TICKER_NOTICE_MAX);
   restoreNotices(cfg.immediateHistory,immediateNoticeHistory,25);
   tickerIntervalMinutes=[1,10,30].includes(Number(cfg.intervalMinutes))?Number(cfg.intervalMinutes):10;
+ }
+ if(d.tentStats&&typeof d.tentStats==='object')for(const [identity,t] of Object.entries(d.tentStats).slice(0,30000)){
+  if(!/^[a-zA-Z0-9_-]{20,100}$/.test(identity)||!t||typeof t!=='object')continue;
+  if(!/^[a-f0-9-]{36}$/.test(t.id||''))continue;
+  const x=Number(t.x),z=Number(t.z);
+  const record={id:t.id,name:clean(t.name,22)||'나의 텐트',color:TENT_COLORS.includes(t.color)?t.color:TENT_COLORS[0],placed:false,x:null,z:null};
+  if(t.placed===true&&tentIsValidPlace(x,z,t.id)){record.placed=true;record.x=x;record.z=z;}
+  tentStats.set(identity,record);
  }
  if(d.customMd&&typeof d.customMd==='object')for(const [id,r] of Object.entries(d.customMd).slice(0,40)){
   if(!/^md-[a-f0-9]{16}$/.test(id)||!r||typeof r!=='object')continue;
@@ -331,7 +358,7 @@ function endDuo(duo){if(!duo||!activeDuos.has(duo.id))return;activeDuos.delete(d
 function clearDuosFor(id){for(const duo of [...activeDuos.values()])if(duo.a===id||duo.b===id)endDuo(duo);for(const [inviteId,invite] of duoInvites)if(invite.from===id||invite.to===id){duoInvites.delete(inviteId);broadcast({type:'duo-invite-ended',id:inviteId,to:invite.to})}}
 function duoDistance(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
 setInterval(()=>{const now=Date.now();for(const duo of [...activeDuos.values()])if(duo.endAt<=now)endDuo(duo);for(const [key,invite] of duoInvites)if(invite.expiresAt<=now){duoInvites.delete(key);broadcast({type:'duo-invite-ended',id:key,to:invite.to})}},700).unref();
-const snapshot=()=>({type:'snapshot',announcements:publicNoticeState(),interactions:[...activeDuos.values()].filter(x=>x.endAt>Date.now()),players:[...players.values()],chat:chatHistory,...musicState(),skipVote:publicSkipVote(),skipVoteCooldownUntil,slam:publicSlam(),slamCooldownUntil,rockPlay:publicRock(),crowdSurf:activeSurfRide&&activeSurfRide.startAt+activeSurfRide.duration>Date.now()?activeSurfRide:null,rockCooldowns:{...rockCooldowns},rockRunningUntil,rhythm:publicRhythmState(),count:players.size});
+const snapshot=()=>({type:'snapshot',tents:allPlacedTents(),announcements:publicNoticeState(),interactions:[...activeDuos.values()].filter(x=>x.endAt>Date.now()),players:[...players.values()],chat:chatHistory,...musicState(),skipVote:publicSkipVote(),skipVoteCooldownUntil,slam:publicSlam(),slamCooldownUntil,rockPlay:publicRock(),crowdSurf:activeSurfRide&&activeSurfRide.startAt+activeSurfRide.duration>Date.now()?activeSurfRide:null,rockCooldowns:{...rockCooldowns},rockRunningUntil,rhythm:publicRhythmState(),count:players.size});
 const clamp=(n,min,max)=>Math.min(max,Math.max(min,Number(n)||0));
 const SERVER_X_MIN=20,SERVER_X_MAX=1380,SERVER_Y_MIN=60,SERVER_Y_MAX=1100;
 function cleanup(){const now=Date.now();for(const [id,p] of players)if(now-p.seen>180000){settleBadge(p,Math.min(now,p.seen+45000));settleBadge(p);clearDuosFor(id);players.delete(id);forgetSession(id);voterLeaves(id);if(activeSlam?.participants.delete(id))slamUpdate();rockMemberLeaves(id);pauseForEmpty();const r=clients.get(id);if(r){r.end();clients.delete(id)}broadcast({type:'leave',id,count:players.size})}}
@@ -563,6 +590,64 @@ const server=http.createServer(async(req,res)=>{
       }
       const id=clean(d.id,80),p=players.get(id);if(!p)return json(res,401,{error:'Session expired. Please rejoin.'});p.seen=Date.now();
       if(url.pathname==='/api/heartbeat'){return json(res,200,{ok:true})}
+      if(url.pathname==='/api/tent'){
+        // Public player IDs are visible in snapshots. A private per-tab key is
+        // mandatory for tent purchase, ownership and room access.
+        const sessionKey=String(d.sessionKey||'');
+        if(!sessionKey||playerSessions.get(id)!==sessionKey)return json(res,403,{error:'이 브라우저의 입장 세션을 확인할 수 없어요.'});
+        if(!p.badgeIdentity)return json(res,400,{error:'포인트 적립을 위해 브라우저 저장소를 허용해 주세요.'});
+        const command=String(d.command||'status');
+        if(command==='status')return json(res,200,{ok:true,...tentView(p)});
+        let record=tentOwnedBy(p.badgeIdentity);
+        if(command==='buy'){
+          if(record)return json(res,409,{error:'이미 텐트를 보유하고 있어요.',...tentView(p)});
+          const earned=Math.floor(badgeTotal(p)/60);
+          if(earned<TENT_COST)return json(res,400,{error:`포인트가 부족해요. (${earned.toLocaleString()}/${TENT_COST.toLocaleString()}P)`});
+          record={id:crypto.randomUUID(),name:clean(p.name+'의 텐트',22),color:TENT_COLORS[0],placed:false,x:null,z:null};
+          tentStats.set(p.badgeIdentity,record);
+          await saveNow();
+          return json(res,200,{ok:true,...tentView(p)});
+        }
+        if(command==='enter'){
+          const selected=[...tentStats.values()].find(t=>t.id===String(d.tentId||'')&&t.placed);
+          if(!selected)return json(res,404,{error:'설치된 텐트를 찾을 수 없어요.'});
+          p.tentRoomId=selected.id;p.tentRoomX=0;p.tentRoomZ=2;p.tentRoomFacing=0;
+          p.action='idle';p.pose='stand';broadcast({type:'tent-room',playerId:p.id,roomId:p.tentRoomId,x:0,z:2});
+          return json(res,200,{ok:true,room:publicTent(selected),tents:allPlacedTents()});
+        }
+        if(command==='exit'){
+          p.tentRoomId=null;p.tentRoomX=0;p.tentRoomZ=0;
+          broadcast({type:'tent-room',playerId:p.id,roomId:null,x:0,z:0});
+          return json(res,200,{ok:true});
+        }
+        if(command==='room-move'){
+          if(!p.tentRoomId)return json(res,400,{error:'먼저 텐트에 입장해 주세요.'});
+          p.tentRoomX=clamp(d.x,-4.6,4.6);p.tentRoomZ=clamp(d.z,-3.6,3.6);p.tentRoomFacing=clamp(d.facing,-Math.PI,Math.PI);
+          broadcast({type:'tent-room',playerId:p.id,roomId:p.tentRoomId,x:p.tentRoomX,z:p.tentRoomZ,facing:p.tentRoomFacing});
+          return json(res,200,{ok:true});
+        }
+        if(!record)return json(res,403,{error:'먼저 텐트를 구매해 주세요.'});
+        if(command==='save'){
+          const name=clean(d.name,22);
+          if(name.length<1)return json(res,400,{error:'텐트 이름을 입력해 주세요.'});
+          if(!TENT_COLORS.includes(d.color))return json(res,400,{error:'목록에 있는 텐트 색상을 선택해 주세요.'});
+          record.name=name;record.color=d.color;
+          await saveNow();sendTentUpdate();return json(res,200,{ok:true,...tentView(p)});
+        }
+        if(command==='place'){
+          const x=Number(d.x),z=Number(d.z);
+          if(!tentIsValidPlace(x,z,record.id))return json(res,400,{error:'여기는 설치할 수 없어요. 돗자리 앞뒤의 잔디 공간에서 다른 텐트와 떨어진 곳을 선택해 주세요.'});
+          if(allPlacedTents().length>=40&&!record.placed)return json(res,409,{error:'현재 캠핑 공간이 가득 찼어요.'});
+          record.placed=true;record.x=x;record.z=z;
+          await saveNow();sendTentUpdate();return json(res,200,{ok:true,...tentView(p)});
+        }
+        if(command==='pack'){
+          record.placed=false;record.x=null;record.z=null;
+          for(const other of players.values())if(other.tentRoomId===record.id){other.tentRoomId=null;other.tentRoomX=0;other.tentRoomZ=0;broadcast({type:'tent-room',playerId:other.id,roomId:null,x:0,z:0});}
+          await saveNow();sendTentUpdate();return json(res,200,{ok:true,...tentView(p)});
+        }
+        return json(res,400,{error:'지원하지 않는 텐트 기능입니다.'});
+      }
       if(url.pathname==='/api/shop'){
         if(!p.badgeIdentity)return json(res,400,{error:'브라우저 저장소를 사용해야 포인트를 모을 수 있습니다.'});
         const command=clean(d.command,20);
@@ -637,6 +722,7 @@ const server=http.createServer(async(req,res)=>{
         }
         return json(res,400,{error:'지원하지 않는 상호작용 명령입니다.'});
       }
+      if(url.pathname==='/api/move'&&p.tentRoomId)return json(res,200,{ok:true,indoor:true});
       if(url.pathname==='/api/move'){
         // Ignore stale movement packets while server-authoritative paired poses play.
         if(duoFor(id))return json(res,200,{ok:true,paired:true});

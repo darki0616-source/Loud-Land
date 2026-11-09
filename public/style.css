@@ -993,3 +993,29 @@ html,body{height:100%;height:100dvh;overflow:hidden!important}
  .gamepanel .controlbar:has(> .festival-notice-ticker:not([hidden])) > .dance-tempo-float{bottom:calc(100% + 48px)}
  .gamepanel .dance-tempo-top button{min-height:29px;min-width:30px}
 }
+
+/* v242: persistent personal camping space */
+.tent-menu-panel{position:absolute;top:calc(env(safe-area-inset-top) + 60px);right:12px;z-index:53;width:min(310px,calc(100% - 24px));max-height:min(580px,calc(100dvh - 105px));overflow:auto;background:#172135f5;border:1px solid #65857a;border-radius:16px;padding:14px;color:#f4faff;box-shadow:0 16px 38px #050b12d9;display:flex;flex-direction:column;gap:10px}
+.tent-menu-panel.hidden,.tent-place-hint.hidden,.tent-room-overlay.hidden{display:none!important}
+.tent-panel-head{display:flex;align-items:center;justify-content:space-between;gap:8px}.tent-panel-head strong{font-size:14px}.tent-panel-head button{background:#2b394d;border:1px solid #6c7a89;border-radius:8px;color:#fff;padding:5px 9px}
+.tent-points{display:flex;justify-content:space-between;align-items:center;padding:11px 12px;border-radius:10px;background:#273647;font-size:12px}.tent-points b{font-size:17px;color:#d9ff94}
+.tent-purchase p{font-size:12px;color:#cfdfed;line-height:1.65}.tent-purchase small,.tent-menu-panel small{color:#aebdc7;font-size:10px;line-height:1.5;display:block;margin-top:7px}
+.tent-menu-panel button:not(.tent-panel-head button){border:1px solid #658078;border-radius:9px;background:#2c4251;color:#fff;font-weight:800;min-height:39px;padding:8px 10px}.tent-menu-panel button:hover{border-color:#d9ff94}.tent-menu-panel button:disabled{opacity:.45;cursor:not-allowed}
+#tentBuyBtn,#tentSaveBtn{width:100%;background:#d5ff8f!important;color:#16221a!important;border:0!important}
+#tentManageArea{display:flex;flex-direction:column;gap:9px}#tentManageArea[hidden]{display:none!important}#tentManageArea label{font-weight:800;font-size:11px;color:#cbdada}#tentNameInput{width:100%;min-width:0;padding:11px;border:1px solid #59697a;border-radius:8px;background:#0e1a2a;color:#fff}
+.tent-colors{display:flex;gap:7px;flex-wrap:wrap}.tent-colors button{min-height:0!important;width:27px;height:27px;padding:0!important;border-radius:50%!important;border:2px solid #202939!important}.tent-colors button.selected{outline:2px solid #edfff7;outline-offset:2px}
+.tent-manage-actions{display:grid;grid-template-columns:1fr 1fr;gap:7px}.tent-manage-actions button:last-child{grid-column:span 2}
+.tent-place-hint{position:absolute;z-index:44;top:calc(env(safe-area-inset-top) + 80px);left:50%;transform:translateX(-50%);background:#142436ea;color:#eaffd4;border:1px solid #b8dd8f;border-radius:12px;padding:10px 13px;text-align:center;font-size:12px;font-weight:800;max-width:90%;min-width:250px}.tent-place-hint button{background:#344257;color:#fff;border:1px solid #8c9bad;border-radius:8px;padding:4px 10px;margin-left:9px}
+.tent-room-overlay{position:absolute;z-index:47;top:calc(env(safe-area-inset-top) + 15px);left:50%;transform:translateX(-50%);width:min(610px,calc(100% - 20px));display:flex;align-items:center;justify-content:space-between;gap:10px;border-radius:13px;border:1px solid #7d8e85;background:#172a32f0;color:#f2fff8;padding:11px 13px;box-shadow:0 10px 25px #0007}.tent-room-overlay b{font-size:13px}.tent-room-overlay small{display:block;font-size:10px;color:#b6c8bf;margin-top:3px}.tent-room-overlay button{flex:0 0 auto;color:#1c2c20;background:#d2ff91;border:0;border-radius:8px;padding:9px 12px;font-weight:900}
+body.tent-interior-open .hudbar,body.tent-interior-open .controlbar,body.tent-interior-open .pov-toggle,body.tent-interior-open .maplabel,body.tent-interior-open .viewinfo,body.tent-interior-open .movement-guide,body.tent-interior-open .players-panel,body.tent-interior-open .slam-overlay,body.tent-interior-open .slam-hint,body.tent-interior-open .tap-hint{display:none!important}
+@media(max-width:700px){.tent-menu-panel{top:calc(env(safe-area-inset-top) + 56px);right:5px;width:min(285px,calc(100% - 10px));max-height:calc(100dvh - 130px)}.tent-room-overlay{top:calc(env(safe-area-inset-top) + 64px);padding:8px}.tent-room-overlay b{font-size:12px}.tent-room-overlay small{font-size:9px}}
+
+.tent-purchase[hidden]{display:none!important}
+
+@media(max-width:430px){
+ .hudbar .hudlogo{font-size:11px!important}
+ .hudbar .hudright{gap:2px!important}
+ .hudbar .hudright button{font-size:9px!important;padding:6px 3px!important}
+ #musicToggle{font-size:0!important;padding-inline:7px!important}
+ #musicToggle::after{content:'♫';font-size:14px!important}
+}
