@@ -2666,15 +2666,23 @@ function repaintTentFurnitureGhost(){
  g.fill.material.color.set(valid?'#49ea83':'#ee4f59');g.fill.material.opacity=valid?.43:.56;
  g.outline.material.color.set(valid?'#afff91':'#ff8e8e');
  $('tentFurnitureRotation').textContent=p.rotation+'°';
- $('tentFurniturePlaceConfirm').disabled=!valid||tentFurnitureBusy;
- $('tentFurniturePlacementHelp').textContent=valid?'초록색: 배치할 수 있어요 · 화면을 터치해 위치 변경':'빨간색: 벽·입구·다른 소품과 겹쳐서 배치 불가';
+ // v250: A floor click locks a position. Hover movement must never move
+ // the ghost again unless the player explicitly clicks a new floor position.
+ $('tentFurnitureRotateLeft').disabled=!p.locked||tentFurnitureBusy;
+ $('tentFurnitureRotateRight').disabled=!p.locked||tentFurnitureBusy;
+ $('tentFurniturePlaceConfirm').disabled=!p.locked||!valid||tentFurnitureBusy;
+ $('tentFurniturePlacementHelp').textContent=!p.locked
+  ?'바닥을 클릭해 위치를 고정하세요. 고정 후 회전하거나 배치할 수 있어요.'
+  :valid
+   ?'📍 위치 고정 완료 · 회전하거나 배치 버튼을 누르세요. 바닥을 다시 클릭하면 위치를 바꿀 수 있어요.'
+   :'📍 위치 고정 · 빨간색은 배치 불가! 다른 위치를 클릭하거나 회전해 주세요.';
 }
 async function startTentFurniturePlacement(itemId){
  const available=tentFurnitureAvailable(itemId);
  if(!tentRoomActive||!tentCanDecorate||available<=0)return toast('배치 가능한 아이템이 없어요.');
  if(!tentFurnitureData?.catalog[itemId])return;
  cancelTentFurniturePlacement();closeFurnitureShop();closeTentDecorate();
- tentRoomWalkTarget=null;tentFurniturePlacement={itemId,x:1.8,z:0,rotation:0};
+ tentRoomWalkTarget=null;tentFurniturePlacement={itemId,x:1.8,z:0,rotation:0,locked:false};
  const item=tentFurnitureData.catalog[itemId],root=new THREE.Group();
  const fill=new THREE.Mesh(new THREE.PlaneGeometry(item.width+.28,item.depth+.28),new THREE.MeshBasicMaterial({color:'#49ea83',transparent:true,opacity:.43,depthWrite:false,side:THREE.DoubleSide}));
  fill.rotation.x=-Math.PI/2;fill.position.y=.045;root.add(fill);
@@ -2696,11 +2704,15 @@ async function startTentFurniturePlacement(itemId){
  }catch(err){toast(err.message);cancelTentFurniturePlacement()}
 }
 function cancelTentFurniturePlacement(){tentFurniturePlacement=null;clearTentFurnitureGhost();$('tentFurniturePlacement').classList.add('hidden');}
-function moveTentFurnitureGhost(x,z){
- if(!tentFurniturePlacement)return;
- // Snap to a small grid for stable positions, including touch movements.
+function moveTentFurnitureGhost(x,z,lock=false){
+ if(!tentFurniturePlacement||tentFurnitureBusy)return;
+ // Pointer hover previews a location only UNTIL the first floor click.
+ // After that, the preview is anchored; only an intentional new floor click
+ // may move it. Rotation uses the same fixed x/z coordinates.
+ if(tentFurniturePlacement.locked&&!lock)return;
  tentFurniturePlacement.x=Math.round(THREE.MathUtils.clamp(x,-5.2,5.2)*10)/10;
  tentFurniturePlacement.z=Math.round(THREE.MathUtils.clamp(z,-4.2,4.2)*10)/10;
+ if(lock)tentFurniturePlacement.locked=true;
  repaintTentFurnitureGhost();
 }
 function tentFurnitureAvailable(itemId){
@@ -2816,12 +2828,13 @@ $('tentFurniturePrimary').onclick=async()=>{
  try{tentFurnitureData=await tentRequest('furniture-buy',{itemId});renderTentFurnitureShop();toast(item.name+' 구매 완료! 내 아이템에서 배치할 수 있어요.');}
  catch(err){toast(err.message)}finally{tentFurnitureBusy=false;renderTentFurnitureShop();}
 };
-$('tentFurnitureRotateLeft').onclick=()=>{if(tentFurniturePlacement){tentFurniturePlacement.rotation=(tentFurniturePlacement.rotation+315)%360;repaintTentFurnitureGhost();}};
-$('tentFurnitureRotateRight').onclick=()=>{if(tentFurniturePlacement){tentFurniturePlacement.rotation=(tentFurniturePlacement.rotation+45)%360;repaintTentFurnitureGhost();}};
+$('tentFurnitureRotateLeft').onclick=()=>{if(tentFurniturePlacement?.locked&&!tentFurnitureBusy){tentFurniturePlacement.rotation=(tentFurniturePlacement.rotation+315)%360;repaintTentFurnitureGhost();}};
+$('tentFurnitureRotateRight').onclick=()=>{if(tentFurniturePlacement?.locked&&!tentFurnitureBusy){tentFurniturePlacement.rotation=(tentFurniturePlacement.rotation+45)%360;repaintTentFurnitureGhost();}};
 $('tentFurniturePlaceCancel').onclick=()=>{cancelTentFurniturePlacement();openTentFurnitureShop('mine')};
 $('tentFurniturePlaceConfirm').onclick=async()=>{
- if(!tentFurniturePlacement||tentFurnitureBusy)return;
- const p={...tentFurniturePlacement};
+ if(!tentFurniturePlacement||!tentFurniturePlacement.locked||tentFurnitureBusy)return;
+ const {itemId,x,z,rotation}=tentFurniturePlacement;
+ const p={itemId,x,z,rotation}; // Do not send client-only lock status to the server.
  if(!tentFurnitureCanPlace(p.itemId,p.x,p.z,p.rotation))return toast('배치할 수 없는 위치예요.');
  if(!confirm(`${tentFurnitureData.catalog[p.itemId].name}을(를) 이 위치에 배치하시겠습니까?`))return;
  tentFurnitureBusy=true;repaintTentFurnitureGhost();
@@ -6854,7 +6867,7 @@ gameTouchSurface.addEventListener('pointerup',e=>{
   pointer.set(((e.clientX-bounds.left)/bounds.width)*2-1,-((e.clientY-bounds.top)/bounds.height)*2+1);
   groundRay.setFromCamera(pointer,camera);
   const target=groundRay.intersectObject(roomFloor,false)[0];
-  if(target){if(tentFurniturePlacement)moveTentFurnitureGhost(target.point.x,target.point.z);
+  if(target){if(tentFurniturePlacement)moveTentFurnitureGhost(target.point.x,target.point.z,true);
     else tentRoomWalkTarget={x:THREE.MathUtils.clamp(target.point.x,-4.6,4.6),z:THREE.MathUtils.clamp(target.point.z,-3.6,3.6)};}
   return;
  }
@@ -7353,10 +7366,11 @@ if(savedProfile && typeof savedProfile.name==='string' && savedProfile.name.trim
   join({auto:true}).then(()=>{if(!state.id)document.getElementById('joinModal')?.classList.remove('hidden')}).catch(()=>{document.getElementById('joinModal')?.classList.remove('hidden')});
 }
 
-// v248 placement hover: on PC the dashed rectangle follows the mouse cursor;
-// on mobile, tapping the floor selects a position without moving the avatar.
+// v250: On PC, preview the position while hovering BEFORE the floor click.
+// After a click locks the preview, it stays put during mouse movement.
+// On mobile, a single floor tap both chooses and locks the position.
 gameTouchSurface.addEventListener('pointermove',e=>{
- if(!tentFurniturePlacement||!tentRoomActive||e.pointerType!=='mouse'||e.buttons)return;
+ if(!tentFurniturePlacement||tentFurniturePlacement.locked||!tentRoomActive||e.pointerType!=='mouse'||e.buttons)return;
  const bounds=renderer.domElement.getBoundingClientRect();
  pointer.set(((e.clientX-bounds.left)/bounds.width)*2-1,-((e.clientY-bounds.top)/bounds.height)*2+1);
  groundRay.setFromCamera(pointer,camera);
