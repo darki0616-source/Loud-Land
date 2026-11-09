@@ -3085,9 +3085,13 @@ function makeFallbackPicnicSoju(){
  label.position.set(0,.03,.12);label.castShadow=true;label.receiveShadow=true;group.add(label);
  return group;
 }
-function addPicnicSojuModel(group,x,y,z,{yaw=0,standing=true,scale=.6,lieRoll=0}={}){
+function addPicnicSojuModel(group,x,z,{yaw=0,standing=true,scale=.6,lieRoll=0}={}){
  const pivot=new THREE.Group();
- pivot.position.set(x,y,z);
+ // The supplied GLB's origin is at the bottle's MIDDLE, not at the base.
+ // Exact source bounds: Y -0.952..+0.947 and radius ~0.273. Lift it by
+ // its scaled lower extent so the bottom rests ON the blanket (top Y=.18).
+ const bottomExtent=standing?.952:(.273*Math.abs(Math.cos(lieRoll))+.952*Math.abs(Math.sin(lieRoll)));
+ pivot.position.set(x,.18+bottomExtent*scale+.014,z);
  pivot.rotation.y=yaw;
  pivot.scale.setScalar(scale);
  group.add(pivot);
@@ -3095,11 +3099,13 @@ function addPicnicSojuModel(group,x,y,z,{yaw=0,standing=true,scale=.6,lieRoll=0}
  if(!standing)orient.rotation.z=Math.PI/2+lieRoll;
  pivot.add(orient);
  const fallback=makeFallbackPicnicSoju();
+ // Match the real GLB silhouette so there is no conspicuous jump while loading.
+ fallback.scale.setScalar(1.8);fallback.position.y=-.28;
  orient.add(fallback);
  getSharedPicnicSoju().then(template=>{
   if(!pivot.parent)return;
   const model=template.clone(true);
-  model.traverse(obj=>{if(obj.isMesh){obj.castShadow=true;obj.receiveShadow=true;}});
+  model.traverse(obj=>{if(obj.isMesh){obj.castShadow=false;obj.receiveShadow=true;}});
   orient.add(model);
   fallback.visible=false;
  }).catch(error=>console.warn('Picnic soju GLB failed; keeping fallback',error));
@@ -3162,7 +3168,7 @@ mats.forEach((matData,i)=>{
   const yaw=picnicSeed(seed+2)*Math.PI*2;
   const scale=.62+picnicSeed(seed+3)*.07;
   const lieRoll=(picnicSeed(seed+5)-.5)*.24;
-  addPicnicSojuModel(picnicGroup,bottleX,standing?.55:.28,bottleZ,{yaw,standing,scale,lieRoll});
+  addPicnicSojuModel(picnicGroup,bottleX,bottleZ,{yaw,standing,scale,lieRoll});
  }
 
 });
@@ -4819,13 +4825,18 @@ function makeAvatar(p){
  const emojiTexture=new THREE.CanvasTexture(emojiCanvas);emojiTexture.colorSpace=THREE.SRGBColorSpace;
  const rockBubble=new THREE.Sprite(new THREE.SpriteMaterial({map:emojiTexture,transparent:true,depthTest:false,depthWrite:false}));
  rockBubble.scale.set(2.05,1.35,1);rockBubble.position.set(0,4.30,0);rockBubble.visible=false;rockBubble.renderOrder=140;root.add(rockBubble);parts.rockBubble=rockBubble;
- // Bottle is anchored to the torso rather than the animated wrist so its tip can be
- // placed directly on the mouth even when the arm is changing pose.
- const bottle=new THREE.Group();upper.add(bottle);bottle.position.set(.46,.68,.61);bottle.visible=false;parts.bottle=bottle;
- const glass=mat('#498c75',.3);child(bottle,new THREE.CylinderGeometry(.10,.12,.39,12),glass,[0,-.16,0]);
- child(bottle,new THREE.CylinderGeometry(.045,.065,.19,10),glass,[0,.13,0]);
- child(bottle,new THREE.CylinderGeometry(.06,.06,.055,10),mat('#f3ca82'),[0,.25,0]);
- child(bottle,new THREE.CylinderGeometry(.127,.127,.12,12),mat('#f2e1bd'),[0,-.14,0]);
+ // v239: hold the SAME user-provided soju GLB used on the picnic mats.
+ // The grip follows the right hand; the bottle's neck points toward the mouth
+ // during the forward/upward sip instead of hovering beside the face.
+ const bottle=new THREE.Group();upper.add(bottle);bottle.position.set(.58,0,.3);bottle.visible=false;parts.bottle=bottle;
+ const bottleFallback=makeFallbackPicnicSoju();bottleFallback.scale.setScalar(1.8);bottleFallback.position.y=-.28;
+ bottle.add(bottleFallback);
+ getSharedPicnicSoju().then(template=>{
+  if(!bottle.parent)return;
+  const model=template.clone(true);
+  model.traverse(obj=>{if(obj.isMesh){obj.castShadow=false;obj.receiveShadow=false;}});
+  bottle.add(model);bottleFallback.visible=false;
+ }).catch(error=>console.warn('Handheld soju GLB failed; keeping fallback',error));
  // Attach to root instead of the rotating elbow: its open top must point UP.
  // The cup follows the hand's position each frame without inheriting wrist tilt.
  const toastCup=new THREE.Group();root.add(toastCup);toastCup.position.set(.7,1.15,.5);parts.toastCup=toastCup;
@@ -5572,20 +5583,19 @@ function animateAvatar(a,p,t){
   set('upper',.018);
  }
  if(act==='drink'){
-  // The wrist comes up from the front-right, UNDER the face. Only the bottle
-  // crosses toward the lips; the big chibi hand stays below chin level.
-  const sip=(1+Math.sin(sec*4.8))*.5;
-  rightHandTarget=new THREE.Vector3(.48,.67+.012*sip,.58);
+  // A full forward sipping motion: arm starts DOWN in front of the torso,
+  // reaches UP and FORWARD, holds the bottle neck against the mouth, then lowers.
+  // Both targets are reachable by the two-bone arm IK (0.79 unit total reach).
+  const cycle=(sec*.30)%1;
+  const smooth=(a,b)=>{const t=Math.max(0,Math.min(1,(cycle-a)/(b-a)));return t*t*(3-2*t)};
+  const lift=smooth(.08,.35)*(1-smooth(.66,.94));
+  const restHand=new THREE.Vector3(.62,.02,.24);
+  const sipHand=new THREE.Vector3(.28,.36,.60);
+  rightHandTarget=restHand.lerp(sipHand,lift);
   ikMode='drink';
-  set('neck',.012+.02*sip);
-  // Place the cap exactly at mouth height, independent of wrist rotation.
-  const mouth=new THREE.Vector3(0,.94,.755);
-  const approach=mouth.clone().sub(rightHandTarget).normalize();
-  const start=rightHandTarget.clone().addScaledVector(approach,.28);
-  P.bottle.position.lerp(start,.28);
-  const targetRotation=new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0),approach);
-  P.bottle.quaternion.slerp(targetRotation,.32);
-  P.bottle.scale.setScalar(1.3);
+  set('neck',.01+.07*lift);
+  set('upper',-.018*lift);
+  P.drinkLift=lift;
  }
  if(act==='putyourhandsup'){
   // Both arms remain HIGH ABOVE the head while pumping forward and backward.
@@ -5763,12 +5773,28 @@ function animateAvatar(a,p,t){
  }else if(ikMode==='dougie'){
   placeHandIK(P,'left',leftHandTarget,.83);
   placeHandIK(P,'right',rightHandTarget,.83);
- }else if(ikMode==='drink')placeHandIK(P,'right',rightHandTarget,.58);
+ }else if(ikMode==='drink')placeHandIK(P,'right',rightHandTarget,.86);
  else if(ikMode==='wave')placeHandIK(P,'right',rightHandTarget,.64);
  else if(ikMode==='snack')placeHandIK(P,'right',rightHandTarget,.56);
  else if(ikMode==='smoke')placeHandIK(P,'right',rightHandTarget,.66);
  else if(ikMode==='bubblegun')placeHandIK(P,'right',rightHandTarget,.7);
  else if(ikMode==='marshmallow')placeHandIK(P,'right',rightHandTarget,.68);
+ // The bottle must be centred on the actual right palm AFTER the IK solve,
+ // not at a static shoulder-side offset. At the top of the sip, point its cap
+ // at the chibi mouth in torso space; upright when lowered.
+ if(act==='drink'){
+  a.root.updateMatrixWorld(true);
+  const handWorld=P.rightElbow.localToWorld(new THREE.Vector3(0,-.39,.018));
+  const palm=P.upper.worldToLocal(handWorld);
+  const mouth=new THREE.Vector3(.015,.93,.755);
+  const mouthDir=mouth.sub(palm).normalize();
+  const lift=P.drinkLift||0;
+  const bottleAxis=new THREE.Vector3(0,1,0).lerp(mouthDir,lift).normalize();
+  P.bottle.position.copy(palm);
+  P.bottle.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),bottleAxis);
+  // GLB top Y=.947; 0.68 makes the neck reach about 0.64 units from the palm.
+  P.bottle.scale.setScalar(.68);
+ }
  // Keep the right hand gripping the tall flag pole during walking or idle.
  // Complex dances temporarily take precedence without deleting the flag.
  const canGripFlag=Boolean(q.flagText||q.flagImage)&&basePose==='stand'&&!duoContext&&
