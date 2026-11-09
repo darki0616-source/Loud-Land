@@ -1203,7 +1203,7 @@ function react(a,glowColor=null){
    state.pose='stand';state.me.pose='stand';
   }
   state.action=a;state.me.action=a;if(bpmDanceActions.has(a))applyHeadbangToSelf();if(a==='cheer')playCheer();
-  state.actionUntil=sustainedReactions.has(a)?Infinity:performance.now()+(a==='peace'?2200:a==='snack'?3300:1750);
+  state.actionUntil=sustainedReactions.has(a)?Infinity:performance.now()+(a==='peace'?2200:a==='snack'?3300:a==='drink'?5400:1750);
  }
  updateActionButtons();sendMove();
 }
@@ -4825,17 +4825,22 @@ function makeAvatar(p){
  const emojiTexture=new THREE.CanvasTexture(emojiCanvas);emojiTexture.colorSpace=THREE.SRGBColorSpace;
  const rockBubble=new THREE.Sprite(new THREE.SpriteMaterial({map:emojiTexture,transparent:true,depthTest:false,depthWrite:false}));
  rockBubble.scale.set(2.05,1.35,1);rockBubble.position.set(0,4.30,0);rockBubble.visible=false;rockBubble.renderOrder=140;root.add(rockBubble);parts.rockBubble=rockBubble;
- // v239: hold the SAME user-provided soju GLB used on the picnic mats.
- // The grip follows the right hand; the bottle's neck points toward the mouth
- // during the forward/upward sip instead of hovering beside the face.
- const bottle=new THREE.Group();upper.add(bottle);bottle.position.set(.58,0,.3);bottle.visible=false;parts.bottle=bottle;
- const bottleFallback=makeFallbackPicnicSoju();bottleFallback.scale.setScalar(1.8);bottleFallback.position.y=-.28;
+ // v240: the handheld soju uses the SAME shared picnic GLB, at a much
+ // smaller scale. Attach to the chibi torso so the bottle faces forward and
+ // follows the solved right hand instead of hovering at the shoulder.
+ const bottle=new THREE.Group();upper.add(bottle);bottle.position.set(.60,.04,.38);bottle.visible=false;parts.bottle=bottle;
+ const bottleFallback=makeFallbackPicnicSoju();
+ bottleFallback.scale.setScalar(1.55); // comparable to the real bottle mesh
  bottle.add(bottleFallback);
  getSharedPicnicSoju().then(template=>{
   if(!bottle.parent)return;
   const model=template.clone(true);
   model.traverse(obj=>{if(obj.isMesh){obj.castShadow=false;obj.receiveShadow=false;}});
-  bottle.add(model);bottleFallback.visible=false;
+  // The avatar is rendered on a foreground-only layer. Cloned GLBs default
+  // to layer 0 and were therefore invisible after the fallback was removed.
+  if(stageForeground)addForegroundLayer(model);
+  bottle.add(model);
+  bottleFallback.visible=false;
  }).catch(error=>console.warn('Handheld soju GLB failed; keeping fallback',error));
  // Attach to root instead of the rotating elbow: its open top must point UP.
  // The cup follows the hand's position each frame without inheriting wrist tilt.
@@ -5113,6 +5118,13 @@ function animateAvatar(a,p,t){
  const sec=bpmDanceActions.has(act)&&danceBeatAt>0
   ?Math.max(0,(headbangServerTime()-danceBeatAt)*.001)*(danceBpm/120)
   :baseSec,pose={};
+ // v240: a sip always starts at its beginning, rather than a random phase of
+ // the global animation clock. Remote players start this clock when the
+ // server's drink action first reaches their avatar.
+ if(act==='drink'){
+  if(!a.drinkAnimating){a.drinkAnimating=true;a.drinkStartedAt=t;}
+ }else{a.drinkAnimating=false;}
+ const drinkElapsed=act==='drink'?Math.min(5.4,Math.max(0,(t-a.drinkStartedAt)/1000)):0;
  // Choreography is determined by the server start time, not by the local
  // animation clock. Observers and participants see the same drinking phase.
  const toastElapsed=act==='toast-clink'&&toastSequence?.participants.includes(q.id)
@@ -5583,18 +5595,18 @@ function animateAvatar(a,p,t){
   set('upper',.018);
  }
  if(act==='drink'){
-  // A full forward sipping motion: arm starts DOWN in front of the torso,
-  // reaches UP and FORWARD, holds the bottle neck against the mouth, then lowers.
-  // Both targets are reachable by the two-bone arm IK (0.79 unit total reach).
-  const cycle=(sec*.30)%1;
-  const smooth=(a,b)=>{const t=Math.max(0,Math.min(1,(cycle-a)/(b-a)));return t*t*(3-2*t)};
-  const lift=smooth(.08,.35)*(1-smooth(.66,.94));
-  const restHand=new THREE.Vector3(.62,.02,.24);
-  const sipHand=new THREE.Vector3(.28,.36,.60);
+  // One 5.4-second drink: lift for 0.8s, HOLD at lips for 2.0s,
+  // lower for 0.85s, then finish naturally in the resting pose.
+  const phase=drinkElapsed;
+  const smooth=(a,b)=>{const t=Math.max(0,Math.min(1,(phase-a)/(b-a)));return t*t*(3-2*t)};
+  const lift=smooth(.35,1.15)*(1-smooth(3.15,4.0));
+  const restHand=new THREE.Vector3(.62,.01,.38);
+  const sipHand=new THREE.Vector3(.22,.67,.55);
   rightHandTarget=restHand.lerp(sipHand,lift);
   ikMode='drink';
-  set('neck',.01+.07*lift);
-  set('upper',-.018*lift);
+  // Keep the face steady while the hand reaches it, without cheek clipping.
+  set('neck',.012+.025*lift);
+  set('upper',-.012*lift);
   P.drinkLift=lift;
  }
  if(act==='putyourhandsup'){
@@ -5779,21 +5791,21 @@ function animateAvatar(a,p,t){
  else if(ikMode==='smoke')placeHandIK(P,'right',rightHandTarget,.66);
  else if(ikMode==='bubblegun')placeHandIK(P,'right',rightHandTarget,.7);
  else if(ikMode==='marshmallow')placeHandIK(P,'right',rightHandTarget,.68);
- // The bottle must be centred on the actual right palm AFTER the IK solve,
- // not at a static shoulder-side offset. At the top of the sip, point its cap
- // at the chibi mouth in torso space; upright when lowered.
+ // Position the small bottle AFTER two-bone IK so that the right hand
+ // actually grips it. During the 2-second hold the neck aims at the mouth.
  if(act==='drink'){
   a.root.updateMatrixWorld(true);
   const handWorld=P.rightElbow.localToWorld(new THREE.Vector3(0,-.39,.018));
   const palm=P.upper.worldToLocal(handWorld);
-  const mouth=new THREE.Vector3(.015,.93,.755);
-  const mouthDir=mouth.sub(palm).normalize();
+  const mouth=new THREE.Vector3(.015,.95,.746); // chibi's actual upper-local lip
+  const toMouth=mouth.clone().sub(palm).normalize();
   const lift=P.drinkLift||0;
-  const bottleAxis=new THREE.Vector3(0,1,0).lerp(mouthDir,lift).normalize();
-  P.bottle.position.copy(palm);
+  const bottleAxis=new THREE.Vector3(0,1,0).lerp(toMouth,lift).normalize();
+  // Hold around the lower half of the bottle; GLB origin is at its centre.
+  P.bottle.position.copy(palm).addScaledVector(bottleAxis,.065);
   P.bottle.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),bottleAxis);
-  // GLB top Y=.947; 0.68 makes the neck reach about 0.64 units from the palm.
-  P.bottle.scale.setScalar(.68);
+  // Source mesh height ~=1.90; 0.36 gives a ~0.68-unit bottle instead of 1.29.
+  P.bottle.scale.setScalar(.36);
  }
  // Keep the right hand gripping the tall flag pole during walking or idle.
  // Complex dances temporarily take precedence without deleting the flag.
