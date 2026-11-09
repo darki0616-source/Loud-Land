@@ -2586,6 +2586,78 @@ let tentFurnitureGhost=null,tentFurnitureCurrentSignature='',tentFurniturePlacem
 let tentFurniturePreviewRenderer=null,tentFurniturePreviewScene=null,tentFurniturePreviewCamera=null;
 const furnitureAssetLoader=new GLTFLoader();
 const TENT_FURNITURE_ENTRANCE_X=0,TENT_FURNITURE_ENTRANCE_Z=2.5;
+// v252: Each placed luminous item has a soft lens halo, a warm floor pool,
+// and a real point light, parented to its placed GLB so rotate/remove/reenter work.
+// No shadows, only four active point lights, to protect mobile FPS.
+const tentFurnitureLightEffects=new Map();
+let tentFurnitureGlowTexture=null;
+function getTentFurnitureGlowTexture(){
+ if(tentFurnitureGlowTexture)return tentFurnitureGlowTexture;
+ const canvas=document.createElement('canvas');canvas.width=128;canvas.height=128;
+ const ctx=canvas.getContext('2d');
+ const g=ctx.createRadialGradient(64,64,0,64,64,63);
+ g.addColorStop(0,'rgba(255,246,208,0.95)');
+ g.addColorStop(.20,'rgba(255,195,100,0.55)');
+ g.addColorStop(.58,'rgba(255,143,44,0.18)');
+ g.addColorStop(1,'rgba(255,134,28,0)');
+ ctx.fillStyle=g;ctx.fillRect(0,0,128,128);
+ tentFurnitureGlowTexture=new THREE.CanvasTexture(canvas);
+ return tentFurnitureGlowTexture;
+}
+function tentFurnitureHasLight(itemId){
+ const item=tentRoomActive?.furnitureCatalog?.[itemId]||tentFurnitureData?.catalog?.[itemId];
+ if(!item)return false;
+ // An explicit administrator setting beats name-based legacy detection.
+ if(typeof item.lightEnabled==='boolean')return item.lightEnabled;
+ return /lantern|랜턴|등불|호롱|lamp|램프/i.test(itemId+' '+item.name);
+}
+function attachTentFurnitureLight(instanceId,itemId,obj){
+ if(!tentFurnitureHasLight(itemId))return;
+ const item=tentRoomActive?.furnitureCatalog?.[itemId]||tentFurnitureData?.catalog?.[itemId];
+ const h=Math.max(.1,Number(item?.height)||1);
+ const y=THREE.MathUtils.clamp(h*.58,.16,Math.max(.16,h-.10));
+ const range=THREE.MathUtils.clamp(h*4.2,3.2,5.3);
+ const light=new THREE.PointLight(0xffc477,11.5,range,2);
+ light.position.set(0,y,0);light.castShadow=false;
+ obj.add(light);
+ const glow=new THREE.Sprite(new THREE.SpriteMaterial({
+  map:getTentFurnitureGlowTexture(),color:0xffd396,transparent:true,
+  blending:THREE.AdditiveBlending,depthWrite:false,depthTest:false,opacity:.46
+ }));
+ glow.scale.set(Math.max(.32,Math.min(.75,h*.65)),Math.max(.37,Math.min(.83,h*.73)),1);
+ glow.position.set(0,y,0);glow.renderOrder=3;obj.add(glow);
+ const pool=new THREE.Mesh(new THREE.PlaneGeometry(range*1.35,range*1.35),
+  new THREE.MeshBasicMaterial({map:getTentFurnitureGlowTexture(),color:0xffc477,
+   transparent:true,opacity:.16,depthWrite:false,depthTest:true,blending:THREE.AdditiveBlending,
+   side:THREE.DoubleSide}));
+ pool.rotation.x=-Math.PI/2;pool.position.y=.021;pool.renderOrder=1;
+ obj.add(pool);
+ tentFurnitureLightEffects.set(instanceId,{obj,light,glow,pool,phase:tentFurnitureLightEffects.size*1.87});
+}
+function clearTentFurnitureLightEffects(){
+ for(const fx of tentFurnitureLightEffects.values()){
+  fx.obj.remove(fx.light,fx.glow,fx.pool);
+  fx.glow.material.dispose();fx.pool.material.dispose();fx.pool.geometry.dispose();
+ }
+ tentFurnitureLightEffects.clear();
+}
+function animateTentFurnitureLightEffects(t){
+ if(!tentFurnitureLightEffects.size)return;
+ // Actual dynamic light is reserved for the four nearest lanterns.
+ const x=tentRoomLocal?.x||0,z=tentRoomLocal?.z||0;
+ const nearest=[...tentFurnitureLightEffects.values()].sort((a,b)=>
+  Math.hypot(a.obj.position.x-x,a.obj.position.z-z)-
+  Math.hypot(b.obj.position.x-x,b.obj.position.z-z));
+ for(let i=0;i<nearest.length;i++){
+  const fx=nearest[i],wave=Math.sin(t*.0023+fx.phase)*.035+
+   Math.sin(t*.0081+fx.phase*1.7)*.025;
+  fx.light.visible=i<4;
+  fx.light.intensity=11.5*(1+wave);
+  fx.glow.material.opacity=.46+wave*.55;
+  fx.pool.material.opacity=.16+wave*.10;
+ }
+}
+
 async function getTentFurnitureModel(itemId){
  if(tentFurnitureModels.has(itemId))return tentFurnitureModels.get(itemId);
  const item=tentRoomActive?.furnitureCatalog?.[itemId]||tentFurnitureData?.catalog?.[itemId];
@@ -2618,6 +2690,7 @@ async function getTentFurnitureModel(itemId){
  return load;
 }
 function clearTentFurniturePlaced(){
+ clearTentFurnitureLightEffects();
  for(const obj of tentFurniturePlaced.values())tentRoomScene.remove(obj);
  tentFurniturePlaced.clear();tentFurnitureCurrentSignature='';
 }
@@ -2636,6 +2709,7 @@ function syncTentFurniturePlaced(room){
    const obj=template.clone(true);obj.name='placed-'+f.instanceId;
    obj.position.set(f.x,0,f.z);obj.rotation.y=(f.rotation||0)*Math.PI/180;
    tentRoomScene.add(obj);tentFurniturePlaced.set(f.instanceId,obj);
+   attachTentFurnitureLight(f.instanceId,f.itemId,obj);
   }).catch(err=>console.warn('Tent furniture:',err.message));
  }
 }
@@ -7023,6 +7097,7 @@ function tick(t){
  const frameDelta=Math.min(50,Math.max(0,t-(tick.lastFrame??t)));tick.lastFrame=t;
  if(tentRoomActive){
   updateTentInterior(frameDelta,t);
+  animateTentFurnitureLightEffects(t);
   renderer.render(tentRoomScene,camera);
   return; // No outdoor avatars, stage, water, fireworks or second renderer.
  }

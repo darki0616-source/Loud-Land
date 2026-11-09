@@ -106,7 +106,7 @@ function loadTentFurnitureCatalog(){
   const cost=Number(item.cost),width=Number(item.width),depth=Number(item.depth),height=Number(item.height);
   const asset='/assets/tent-items/'+id+'.glb';
   if(!Number.isInteger(cost)||cost<0||cost>50000||![width,depth,height].every(Number.isFinite)||width<.1||width>8||depth<.1||depth>8||height<.1||height>8||!fs.existsSync(path.join(PUBLIC,'assets/tent-items',id+'.glb')))continue;
-  catalog[id]={name:String(item.name||id).slice(0,40),cost,asset,width,depth,height,description:String(item.description||'').slice(0,150)};
+  catalog[id]={name:String(item.name||id).slice(0,40),cost,asset,width,depth,height,description:String(item.description||'').slice(0,150),lightEnabled:typeof item.lightEnabled==='boolean'?item.lightEnabled:/(lantern|랜턴|등불|호롱|lamp|램프)/i.test(id+' '+String(item.name||''))};
  }
  return catalog;
 }
@@ -127,7 +127,7 @@ function cleanFurnitureSpec(id,raw,revision){
  if(!Number.isInteger(cost)||cost<0||cost>50000||![width,depth,height].every(Number.isFinite)||[width,depth,height].some(n=>n<.1||n>8))return null;
  const name=String(raw.name||'').trim().slice(0,40);
  if(!name)return null;
- return {name,cost,width,depth,height,description:String(raw.description||'').trim().slice(0,150),enabled:raw.enabled!==false,
+ return {name,cost,width,depth,height,description:String(raw.description||'').trim().slice(0,150),enabled:raw.enabled!==false,lightEnabled:typeof raw.lightEnabled==='boolean'?raw.lightEnabled:/(lantern|랜턴|등불|호롱|lamp|램프)/i.test(id+' '+name),
     ...(modelRevision?{modelRevision}:{})};
 }
 function refreshFurnitureCatalog(){

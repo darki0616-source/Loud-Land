@@ -20,10 +20,10 @@ function inventoryRows(){const root=el('furnitureList');root.replaceChildren();f
 }if(!Object.keys(catalog).length)root.textContent='등록된 상품이 없어요.'}
 async function loadFurniture(){try{const d=await request('list');catalog=d.items||{};el('furnitureStorageHint').textContent=d.storage==='supabase'?'업로드 저장소: Supabase Storage (영구 저장)':'업로드 저장소: 서버 로컬 파일 (Render 재배포 시 삭제될 수 있음)';inventoryRows();status('인테리어 상품 목록을 불러왔어.');}
 catch(e){status(e.message,true)}}
-function reset(){selectedId='';el('furnitureFormTitle').textContent='새 아이템 등록';el('furnitureId').readOnly=false;el('furnitureId').value='';el('furnitureName').value='';el('furnitureCost').value=500;el('furnitureWidth').value=1;el('furnitureDepth').value=1;el('furnitureHeight').value=1;el('furnitureDescription').value='';el('furnitureEnabled').checked=true;el('furnitureModel').value='';el('furnitureDelete').hidden=true;inventoryRows();setPreview('')}
+function reset(){selectedId='';el('furnitureFormTitle').textContent='새 아이템 등록';el('furnitureId').readOnly=false;el('furnitureId').value='';el('furnitureName').value='';el('furnitureCost').value=500;el('furnitureWidth').value=1;el('furnitureDepth').value=1;el('furnitureHeight').value=1;el('furnitureDescription').value='';el('furnitureEnabled').checked=true;el('furnitureLightEnabled').checked=false;el('furnitureModel').value='';el('furnitureDelete').hidden=true;inventoryRows();setPreview('')}
 el('furnitureNew').onclick=reset;el('furnitureRefresh').onclick=loadFurniture;
 function selectFurniture(id){const item=catalog[id];if(!item)return;
- selectedId=id;el('furnitureFormTitle').textContent=item.name+' 수정';el('furnitureId').readOnly=true;el('furnitureId').value=id;el('furnitureName').value=item.name;el('furnitureCost').value=item.cost;el('furnitureWidth').value=item.width;el('furnitureDepth').value=item.depth;el('furnitureHeight').value=item.height;el('furnitureDescription').value=item.description||'';el('furnitureEnabled').checked=item.enabled!==false;el('furnitureModel').value='';el('furnitureDelete').hidden=item.bundled;inventoryRows();setPreview(item.asset);}
+ selectedId=id;el('furnitureFormTitle').textContent=item.name+' 수정';el('furnitureId').readOnly=true;el('furnitureId').value=id;el('furnitureName').value=item.name;el('furnitureCost').value=item.cost;el('furnitureWidth').value=item.width;el('furnitureDepth').value=item.depth;el('furnitureHeight').value=item.height;el('furnitureDescription').value=item.description||'';el('furnitureEnabled').checked=item.enabled!==false;el('furnitureLightEnabled').checked=item.lightEnabled===true || (item.lightEnabled===undefined&&/(lantern|랜턴|등불|호롱|lamp|램프)/i.test(id+' '+item.name));el('furnitureModel').value='';el('furnitureDelete').hidden=item.bundled;inventoryRows();setPreview(item.asset);}
 function setupPreview(){if(renderer)return;
  const canvas=el('furniturePreview');renderer=new THREE.WebGLRenderer({canvas,alpha:true,antialias:true,powerPreference:'low-power'});renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.5));renderer.setSize(460,290,false);renderer.outputColorSpace=THREE.SRGBColorSpace;
  scene=new THREE.Scene();scene.add(new THREE.HemisphereLight(0xffffff,0x647387,2.5));const light=new THREE.DirectionalLight(0xffffff,2);light.position.set(3,5,4);scene.add(light);
@@ -66,6 +66,7 @@ async function setPreview(url){const ticket=++previewTicket;
 }
 el('furnitureModel').addEventListener('change',()=>{const file=el('furnitureModel').files?.[0];if(previewUrl){URL.revokeObjectURL(previewUrl);previewUrl=''}
  if(!file){if(selectedId)setPreview(catalog[selectedId].asset);return}
+ if(/lantern/i.test(file.name))el('furnitureLightEnabled').checked=true;
  if(file.size>12*1024*1024){el('furnitureModel').value='';return status('GLB 최대 크기는 12MB야. 파일을 최적화해 줘.',true)}
  if(!file.name.toLowerCase().endsWith('.glb')){el('furnitureModel').value='';return status('.glb 파일만 선택할 수 있어.',true)}
  previewUrl=URL.createObjectURL(file);setPreview(previewUrl);
@@ -74,7 +75,7 @@ el('furnitureSave').onclick=async()=>{
  if(loading)return;
  const id=el('furnitureId').value.trim(),name=el('furnitureName').value.trim();
  if(!/^[a-z0-9_-]{1,32}$/.test(id))return status('ID는 영문 소문자·숫자·-·_로 1~32자 입력해 줘.',true);
- const fields={id,name,cost:Number(el('furnitureCost').value),width:Number(el('furnitureWidth').value),depth:Number(el('furnitureDepth').value),height:Number(el('furnitureHeight').value),description:el('furnitureDescription').value.trim(),enabled:el('furnitureEnabled').checked};
+ const fields={id,name,cost:Number(el('furnitureCost').value),width:Number(el('furnitureWidth').value),depth:Number(el('furnitureDepth').value),height:Number(el('furnitureHeight').value),description:el('furnitureDescription').value.trim(),enabled:el('furnitureEnabled').checked,lightEnabled:el('furnitureLightEnabled').checked};
  if(!name||![fields.width,fields.depth,fields.height].every(x=>Number.isFinite(x)&&x>=.1&&x<=8)||!Number.isInteger(fields.cost)||fields.cost<0||fields.cost>50000)return status('이름·가격·크기를 확인해 줘.',true);
  const file=el('furnitureModel').files?.[0];if(!catalog[id]&&!file)return status('새 아이템은 GLB 파일을 선택해야 해.',true);
  loading=true;el('furnitureSave').disabled=true;
