@@ -5601,7 +5601,9 @@ function animateAvatar(a,p,t){
   const smooth=(a,b)=>{const t=Math.max(0,Math.min(1,(phase-a)/(b-a)));return t*t*(3-2*t)};
   const lift=smooth(.35,1.15)*(1-smooth(3.15,4.0));
   const restHand=new THREE.Vector3(.62,.01,.38);
-  const sipHand=new THREE.Vector3(.22,.67,.55);
+  // v241: reach FORWARD in front of the face, instead of drawing the
+  // bottle inward from the right cheek. Keep the wrist in IK reach.
+  const sipHand=new THREE.Vector3(.28,.76,.72);
   rightHandTarget=restHand.lerp(sipHand,lift);
   ikMode='drink';
   // Keep the face steady while the hand reaches it, without cheek clipping.
@@ -5791,21 +5793,29 @@ function animateAvatar(a,p,t){
  else if(ikMode==='smoke')placeHandIK(P,'right',rightHandTarget,.66);
  else if(ikMode==='bubblegun')placeHandIK(P,'right',rightHandTarget,.7);
  else if(ikMode==='marshmallow')placeHandIK(P,'right',rightHandTarget,.68);
- // Position the small bottle AFTER two-bone IK so that the right hand
- // actually grips it. During the 2-second hold the neck aims at the mouth.
+ // v241: keep the neck of the bottle PERPENDICULAR to the front of the
+ // face during the full two-second sip, not aimed diagonally from one cheek.
+ // The GLB's long axis is +Y and the avatar's face points toward +Z, so
+ // pointing the bottle neck toward -Z is a true 90-degree face-on sip.
  if(act==='drink'){
   a.root.updateMatrixWorld(true);
   const handWorld=P.rightElbow.localToWorld(new THREE.Vector3(0,-.39,.018));
   const palm=P.upper.worldToLocal(handWorld);
-  const mouth=new THREE.Vector3(.015,.95,.746); // chibi's actual upper-local lip
-  const toMouth=mouth.clone().sub(palm).normalize();
   const lift=P.drinkLift||0;
-  const bottleAxis=new THREE.Vector3(0,1,0).lerp(toMouth,lift).normalize();
-  // Hold around the lower half of the bottle; GLB origin is at its centre.
-  P.bottle.position.copy(palm).addScaledVector(bottleAxis,.065);
-  P.bottle.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),bottleAxis);
-  // Source mesh height ~=1.90; 0.36 gives a ~0.68-unit bottle instead of 1.29.
-  P.bottle.scale.setScalar(.36);
+  const bottleScale=.36;
+  const uprightAxis=new THREE.Vector3(0,1,0);
+  const forwardSipAxis=new THREE.Vector3(0,0,-1);
+  // Slowly tilt from upright to exactly horizontal in front of the face.
+  const bottleAxis=uprightAxis.clone().lerp(forwardSipAxis,lift).normalize();
+  // Anchor the mouth of the GLB (its +Y end) to the avatar's lips. This is
+  // independent of palm drift during IK easing and keeps the bottle straight.
+  const lip=new THREE.Vector3(.015,.95,.746);
+  const bottleLipTarget=lip.clone().add(new THREE.Vector3(.055,.005,.046));
+  const sipCenter=bottleLipTarget.clone().addScaledVector(forwardSipAxis,-.947452*bottleScale);
+  const restCenter=palm.clone().add(new THREE.Vector3(0,.07,.02));
+  P.bottle.position.copy(restCenter).lerp(sipCenter,lift);
+  P.bottle.quaternion.setFromUnitVectors(uprightAxis,bottleAxis);
+  P.bottle.scale.setScalar(bottleScale);
  }
  // Keep the right hand gripping the tall flag pole during walking or idle.
  // Complex dances temporarily take precedence without deleting the flag.
