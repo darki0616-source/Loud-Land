@@ -2438,6 +2438,34 @@ const controls=new OrbitControls(camera,gameTouchSurface);controls.enableDamping
 // remains running and music is unaffected. Room movement is server-synced.
 const tentWorldMeshes=new Map(),tentClickMeshes=[];
 let tentRoomActive=null,tentRoomSavedCamera=null,tentRoomWalkTarget=null,tentRoomLastSend=0;
+// v243: Keep locally predicted indoor coordinates separate from SSE snapshots.
+// Echoed HTTP/SSE updates can be 100-300ms older than the rendered player,
+// so treating those echoes as the movement source caused visible snap-backs.
+let tentRoomLocal=null,tentRoomWasMoving=false,tentRoomMoveQueued=null,tentRoomMoveSending=false;
+async function flushTentRoomMoveQueue(){
+ if(tentRoomMoveSending)return;
+ tentRoomMoveSending=true;
+ try{
+  // Serialize requests so a slow HTTP response cannot reorder older positions.
+  // Retain only the latest pending position while the previous one is in flight.
+  while(tentRoomMoveQueued&&tentRoomActive){
+   const next=tentRoomMoveQueued;
+   tentRoomMoveQueued=null;
+   try{await tentRequest('room-move',next)}catch(error){
+    console.warn('Tent movement sync:',error.message);
+    break;
+   }
+  }
+ }finally{
+  tentRoomMoveSending=false;
+  if(tentRoomMoveQueued&&tentRoomActive)flushTentRoomMoveQueue();
+ }
+}
+function queueTentRoomMove(){
+ if(!tentRoomActive||!tentRoomLocal)return;
+ tentRoomMoveQueued={x:tentRoomLocal.x,z:tentRoomLocal.z,facing:tentRoomLocal.facing};
+ flushTentRoomMoveQueue();
+}
 const tentRoomScene=new THREE.Scene();tentRoomScene.background=new THREE.Color('#303b44');
 tentRoomScene.add(new THREE.HemisphereLight('#f4e6d0','#586777',2.2));
 const roomLight=new THREE.DirectionalLight('#fff0d2',2.25);roomLight.position.set(2,9,6);tentRoomScene.add(roomLight);
@@ -2498,7 +2526,7 @@ async function enterTent(tentId){
  try{
   const data=await tentRequest('enter',{tentId});
   if(tentRoomActive)leaveTentInterior(false);
-  tentRoomActive=data.room;tentRoomWalkTarget=null;
+  tentRoomActive=data.room;tentRoomWalkTarget=null;tentRoomLocal={x:0,z:2,facing:0};tentRoomLastSend=0;tentRoomWasMoving=false;tentRoomMoveQueued=null;
   tentRoomSavedCamera={position:camera.position.clone(),target:controls.target.clone(),minDistance:controls.minDistance,maxDistance:controls.maxDistance,enabled:controls.enabled};
   camera.position.set(0,8.1,13.6);controls.target.set(0,1,0);controls.minDistance=5;controls.maxDistance=19;controls.enabled=true;
   controls.update();cameraFollowInitialized=false;
@@ -2515,7 +2543,7 @@ async function enterTent(tentId){
 }
 function leaveTentInterior(send=true){
  if(!tentRoomActive)return;
- tentRoomActive=null;tentRoomWalkTarget=null;
+ tentRoomActive=null;tentRoomWalkTarget=null;tentRoomLocal=null;tentRoomMoveQueued=null;tentRoomWasMoving=false;
  for(const avatar of tentRoomAvatars.values())disposeAvatar(avatar.root);
  tentRoomAvatars.clear();
  if(tentRoomSavedCamera){camera.position.copy(tentRoomSavedCamera.position);controls.target.copy(tentRoomSavedCamera.target);controls.minDistance=tentRoomSavedCamera.minDistance;controls.maxDistance=tentRoomSavedCamera.maxDistance;controls.enabled=!povEnabled;tentRoomSavedCamera=null;}
@@ -2528,37 +2556,56 @@ function leaveTentInterior(send=true){
 }
 $('tentRoomExit').onclick=()=>leaveTentInterior(true);
 function updateTentInterior(frameDelta,t){
- if(!tentRoomActive)return;
- const me=state.players.get(state.id);
- if(me){
-  const k=state.keys;
-  let dx=Number(k.has('d')||k.has('arrowright'))-Number(k.has('a')||k.has('arrowleft'));
-  let dz=Number(k.has('s')||k.has('arrowdown'))-Number(k.has('w')||k.has('arrowup'));
-  if(dx||dz)tentRoomWalkTarget=null;
-  const target=tentRoomWalkTarget;
-  if(target){dx=target.x-(me.tentRoomX||0);dz=target.z-(me.tentRoomZ||0);if(Math.hypot(dx,dz)<.16){tentRoomWalkTarget=null;dx=0;dz=0;}}
-  const length=Math.hypot(dx,dz),step=Math.min(length,3.5*frameDelta/1000);
-  if(length>.00001){
-   me.tentRoomX=THREE.MathUtils.clamp((me.tentRoomX||0)+dx/length*step,-4.6,4.6);
-   me.tentRoomZ=THREE.MathUtils.clamp((me.tentRoomZ||0)+dz/length*step,-3.6,3.6);
-   me.tentRoomFacing=Math.atan2(dx,dz);
-   if(t-tentRoomLastSend>170){tentRoomLastSend=t;tentRequest('room-move',{x:me.tentRoomX,z:me.tentRoomZ,facing:me.tentRoomFacing||0}).catch(()=>{});}
-  }
+ if(!tentRoomActive||!tentRoomLocal)return;
+ const k=state.keys,local=tentRoomLocal;
+ let dx=Number(k.has('d')||k.has('arrowright'))-Number(k.has('a')||k.has('arrowleft'));
+ let dz=Number(k.has('s')||k.has('arrowdown'))-Number(k.has('w')||k.has('arrowup'));
+ if(dx||dz)tentRoomWalkTarget=null;
+ if(tentRoomWalkTarget){
+  dx=tentRoomWalkTarget.x-local.x;
+  dz=tentRoomWalkTarget.z-local.z;
+  if(Math.hypot(dx,dz)<.08){tentRoomWalkTarget=null;dx=0;dz=0;}
  }
+ const distance=Math.hypot(dx,dz);
+ const step=Math.min(distance,3.5*Math.min(50,frameDelta)/1000);
+ const moving=distance>.00001&&step>.00001;
+ if(moving){
+  local.x=THREE.MathUtils.clamp(local.x+dx/distance*step,-4.6,4.6);
+  local.z=THREE.MathUtils.clamp(local.z+dz/distance*step,-3.6,3.6);
+  local.facing=Math.atan2(dx,dz);
+ }
+ // A release/touch-arrival packet ensures other guests receive the final
+ // position even if the last full-speed packet was less than 120ms ago.
+ if((moving&&t-tentRoomLastSend>=120)||(!moving&&tentRoomWasMoving)){
+  tentRoomLastSend=t;
+  queueTentRoomMove();
+ }
+ tentRoomWasMoving=moving;
  const activeIds=new Set();
  for(const p of state.players.values()){
-  if(p.tentRoomId!==tentRoomActive.id)continue;
+  // The local player is driven by tentRoomLocal, NEVER the echoed SSE position.
+  if(p.id!==state.id&&p.tentRoomId!==tentRoomActive.id)continue;
   activeIds.add(p.id);
   let a=tentRoomAvatars.get(p.id);
+  const rx=THREE.MathUtils.clamp(p.id===state.id?local.x:(Number(p.tentRoomX)||0),-4.6,4.6);
+  const rz=THREE.MathUtils.clamp(p.id===state.id?local.z:(Number(p.tentRoomZ)||0),-3.6,3.6);
   if(!a){
-   a=makeAvatar({...p,id:'room-'+p.id});scene.remove(a.root);tentRoomScene.add(a.root);tentRoomAvatars.set(p.id,a);
+   a=makeAvatar({...p,id:'room-'+p.id});
+   scene.remove(a.root);
+   tentRoomScene.add(a.root);
+   a.root.position.set(rx,0,rz); // Never slide across the room from (0,0).
+   tentRoomAvatars.set(p.id,a);
   }
-  const rx=Number(p.tentRoomX)||0,rz=Number(p.tentRoomZ)||0;
-  const fake={...p,id:'room-'+p.id,x:600+rx/.058,y:500+(rz-8)/.058,action:'idle',pose:'stand',facing:p.tentRoomFacing||0};
+  const walking=p.id===state.id?moving:Math.hypot(a.root.position.x-rx,a.root.position.z-rz)>.10;
+  const fake={...p,id:'room-'+p.id,x:600+rx/.058,y:500+(rz-8)/.058,
+   action:walking?'walk':'idle',pose:'stand',facing:p.id===state.id?local.facing:(p.tentRoomFacing||0)};
   animateAvatar(a,fake,t);
+  // Indoor avatars are part of this scene only, regardless of outdoor layers.
   a.root.traverse(obj=>obj.layers.enable(0));
  }
- for(const [id,a] of [...tentRoomAvatars])if(!activeIds.has(id)){disposeAvatar(a.root);tentRoomAvatars.delete(id)}
+ for(const [id,a] of [...tentRoomAvatars])if(!activeIds.has(id)){
+  disposeAvatar(a.root);tentRoomAvatars.delete(id);
+ }
  controls.update();
 }
 // Full 360° orbit on mouse and touch. Collide the camera with the actual stage
@@ -6464,9 +6511,17 @@ function tick(t){
  if(!perfLastFrameTime)perfLastFrameTime=t-perfTargetFrame;
  const elapsed=t-perfLastFrameTime;
  if(document.hidden){perfLastFrameTime=t;tick.lastFrame=t;return}
- if(elapsed+1.4<perfTargetFrame)return;
+ // A small indoor room needs far less work than the festival exterior.
+ // Render its movement at >=45fps when hardware permits, even in eco mode.
+ const targetFrame=tentRoomActive?Math.min(perfTargetFrame,1000/45):perfTargetFrame;
+ if(elapsed+1.4<targetFrame)return;
  perfLastFrameTime=t;
  const frameDelta=Math.min(50,Math.max(0,t-(tick.lastFrame??t)));tick.lastFrame=t;
+ if(tentRoomActive){
+  updateTentInterior(frameDelta,t);
+  renderer.render(tentRoomScene,camera);
+  return; // No outdoor avatars, stage, water, fireworks or second renderer.
+ }
  // Measure actual character displacement; captures touch-to-walk and scripted
  // group motions even where state.moving is recalculated later in this tick.
  const dockFromX=state.me?.x,dockFromY=state.me?.y;
@@ -6718,10 +6773,7 @@ function tick(t){
  if(!minimalScenery)updateHourlyFireworks(t);
  animateToastSparks(t);
  if(state.id)updateRhythmBoothButton();if(rhythmGame.open)drawRhythmGame();
- if(tentRoomActive){
-  updateTentInterior(frameDelta,t);
-  renderer.render(tentRoomScene,camera);
- }else{
+ {
   if(povEnabled){updatePovCamera();}else{followLocalAvatar();controls.update();keepCameraInFrontOfStage();}
   // Visitors who entered an indoor room are no longer standing outside.
   const invisible=[];

@@ -1019,3 +1019,9 @@ body.tent-interior-open .hudbar,body.tent-interior-open .controlbar,body.tent-in
  #musicToggle{font-size:0!important;padding-inline:7px!important}
  #musicToggle::after{content:'♫';font-size:14px!important}
 }
+
+/* v243: The normal world foreground is forced display:block!important above.
+   Inline display:none cannot override that. Hide both world overlays while
+   an indoor Three.js scene is active, so outdoor players cannot bleed through. */
+body.tent-interior-open #world>.stage-avatar-foreground,
+body.tent-interior-open #world>.css-world{display:none!important;visibility:hidden!important;}
