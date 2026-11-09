@@ -2296,26 +2296,31 @@ gameTouchSurface.addEventListener('pointermove',e=>{
  povPointer.x=e.clientX;povPointer.y=e.clientY;
 });
 for(const ev of ['pointerup','pointercancel'])gameTouchSurface.addEventListener(ev,()=>povPointer=null);
-// Exact world-space head position (after stage elevation / stairs animation).
-// Using the rendered avatar avoids a mismatch between visual stage height and
-// camera height. Fall back to the same stage-height function during join.
+// v234: Stabilize the camera during every dance, reaction and walk cycle.
+// The animated head/neck and avatar root can bob, lean and spin; tracking the
+// *head mesh* transferred those movements directly to third-person and POV.
+// Instead follow the player's horizontal location and the static walkable
+// floor (including the stage/ramp). This keeps the view steady even during
+// headbanging, Dougie, skanking, jumping and instrument performances.
+// Resting height: upper group (1.03) + neck group (1.12) + head centre (.12).
+const STABLE_CAMERA_HEAD_HEIGHT=2.27;
 const headFocusScratch=new THREE.Vector3();
 function getLocalHeadFocus(out){
+ if(!state.me)return out;
  const a=avatars.get(state.id);
- if(a?.parts?.head){
-  a.root.updateWorldMatrix(true,true);
-  a.parts.head.getWorldPosition(out);
-  return out;
- }
- const w=toWorld(state.me);
- return out.set(w.x,2.6+stageWalkHeightAt(w.x,w.z),w.z);
+ const w=a?.root?{x:a.root.position.x,z:a.root.position.z}:toWorld(state.me);
+ const floorY=stageWalkHeightAt(w.x,w.z);
+ // A small fixed adjustment for seated/lying users preserves low-angle
+ // framing without inheriting any per-frame limb or head animation.
+ const pose=state.me.pose||'stand';
+ const restingOffset=pose==='lie'?-.72:pose==='sit'?-.28:0;
+ return out.set(w.x,STABLE_CAMERA_HEAD_HEIGHT+floorY+restingOffset,w.z);
 }
 function updatePovCamera(){
  if(!povEnabled||!state.me)return;
  const head=getLocalHeadFocus(headFocusScratch);
  const yaw=(state.me.facing||0)+povYaw;
- // Eye level is relative to the animated head, not to the ground at y=0.
- // This keeps POV at eye height on the stage and while using the stairs.
+ // Stable eye level follows the ground and stage, not animation bobbing.
  const eyeY=head.y-.04;
  camera.position.set(head.x,eyeY,head.z);
  const dx=Math.sin(yaw)*Math.cos(povPitch),dy=Math.sin(povPitch),dz=Math.cos(yaw)*Math.cos(povPitch);
@@ -2369,9 +2374,8 @@ function keepCameraInFrontOfStage(){
 const cameraFocus=new THREE.Vector3();let cameraFollowInitialized=false;
 function followLocalAvatar(){
  if(!state.me)return;
- // Third-person tracking is anchored to the avatar's actual head, rather
- // than a fixed world Y. Ascending the stage raises both orbit center and
- // camera together; a damped delta prevents an abrupt jump on stair edges.
+ // Follow a stable character anchor: dance and head movements do not move
+ // the camera, while stage elevation and horizontal travel still do.
  getLocalHeadFocus(cameraFocus);
  const strength=cameraFollowInitialized?0.18:1;
  const delta=cameraFocus.clone().sub(controls.target).multiplyScalar(strength);
