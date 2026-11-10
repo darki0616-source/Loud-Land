@@ -2941,7 +2941,7 @@ function createPeperoPlacements(){
    const tiltX=lying?(rnd()<.5?-1:1)*(1.35+rnd()*.22):(rnd()-.5)*.36;
    const tiltZ=lying?(rnd()<.5?-1:1)*(1.35+rnd()*.22):(rnd()-.5)*.30;
    const scale=.42+rnd()*.28+(rnd()<.08?.18:0);
-   outdoor.push({x,z,scale,yaw,tiltX,tiltZ,ground:stageWalkHeightAt(x,z)+(z>=48?.06:.10)});
+   outdoor.push({x,z,scale,yaw,tiltX,tiltZ,ground:(z>=48?.06:.10)}); // stage height is applied after stage constants initialize
    added++;
   }
  }
@@ -2982,7 +2982,7 @@ function refreshPeperoInstances(){
    if(eco&&i%2===1)continue;
    const p=peperoOutdoorPlaces[i];
    if(tentList.some(t=>t.placed&&Number.isFinite(t.x)&&Number.isFinite(t.z)&&Math.hypot(t.x-p.x,t.z-p.z)<5.1))continue;
-   peperoOutdoorMesh.setMatrixAt(count++,peperoMatrixAt(p));
+   peperoOutdoorMesh.setMatrixAt(count++,peperoMatrixAt({...p,ground:p.ground+stageWalkHeightAt(p.x,p.z)}));
   }
   peperoOutdoorMesh.count=count;
   peperoOutdoorMesh.instanceMatrix.needsUpdate=true;
@@ -3001,7 +3001,7 @@ function refreshPeperoInstances(){
 {
  const {outdoor,indoor}=createPeperoPlacements();
  peperoOutdoorPlaces=outdoor;peperoIndoorPlaces=indoor;
- new GLTFLoader().load('/assets/world/pepero_box.glb?v=267',gltf=>{
+ new GLTFLoader().load('/assets/world/pepero_box.glb?v=268',gltf=>{
   gltf.scene.updateMatrixWorld(true);
   const source=gltf.scene.getObjectByProperty('isMesh',true);
   if(!source||!source.geometry){console.warn('빼빼로 상자 GLB에 메시가 없습니다.');return;}
