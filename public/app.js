@@ -200,35 +200,35 @@ function flashRhythmCombo(){if(!rhythmUi||rhythmGame.combo===0||rhythmGame.combo
 function nearRhythmBooth(){
  const booth=state.rhythm?.booth||RHYTHM_DEFAULT_BOOTH;
  if(!state.me)return false;
- return Math.hypot((state.me.x||0)-booth.x,(state.me.y||0)-booth.y)<=((booth.radius||175)+22);
+ return Math.hypot((state.me.x||0)-booth.x,(state.me.y||0)-booth.y)<=(booth.radius||175);
 }
 // v254: 파워왕 — mobile-first hammer strength machine. Separate daily coins from rhythm.
-const POWER_BOOTH_DEFAULT={x:1031,y:1034,radius:115};
+// Both games are accessed from the existing Beat Booth; no separate Power Booth.
 const powerGame={open:false,running:false,pending:false,playId:null,startedAt:0,clockOffset:0,activeUntil:10500,countdown:2400,coins:5,day:'',best:0,leaderboard:[],result:null};
 let powerUi=null;
-function nearPowerBooth(){const b=POWER_BOOTH_DEFAULT;return Boolean(state.me&&!tentRoomActive&&Math.hypot((state.me.x||0)-b.x,(state.me.y||0)-b.y)<=b.radius+16);}
+function nearPowerBooth(){return !tentRoomActive&&nearRhythmBooth();}
 function powerGaugeAt(elapsed){const period=1800,phase=((elapsed-2400)%period+period)%period/period;return phase<.5?phase*2:(1-phase)*2;}
 function ensurePowerUI(){
  if(powerUi)return powerUi;
  const style=document.createElement('style');style.textContent=`
- #powerBoothButton{position:fixed;left:14px;bottom:215px;z-index:47;display:none;border:0;border-radius:16px;background:linear-gradient(130deg,#ffcc36,#f27629);color:#231400;font-weight:900;padding:13px 18px;box-shadow:0 8px 25px #0007;font-size:15px}
- #powerBoothButton.show{display:block}
  #powerOverlay{display:none;position:fixed;inset:0;z-index:94;background:radial-gradient(circle at 50% 15%,#7b3549,#241626 58%,#090e17);color:#fff;overflow:auto;overscroll-behavior:contain;touch-action:pan-y}
- #powerOverlay.show{display:flex;justify-content:center;align-items:center}
+ #powerOverlay.show{display:block;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch}
  #powerOverlay *{box-sizing:border-box}
- #powerShell{width:min(100%,600px);min-height:min(92dvh,790px);padding:max(16px,env(safe-area-inset-top)) 18px max(18px,env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:14px}
+ #powerShell{width:min(100%,600px);min-height:100%;height:auto;margin:0 auto;padding:calc(env(safe-area-inset-top,0px) + 16px) 18px calc(env(safe-area-inset-bottom,0px) + 24px);display:flex;flex-direction:column;gap:12px}
  #powerHeader{display:flex;justify-content:space-between;align-items:start;gap:12px}
  #powerHeader h2{font-size:clamp(30px,8vw,50px);font-weight:1000;color:#ffe279;margin:0;text-shadow:0 4px 0 #8d392a}
  #powerClose{background:#ffffff22;border:1px solid #ffffff55;border-radius:14px;color:white;padding:10px 15px;font-weight:800}
  #powerStatus{background:#ffffff16;border-radius:16px;padding:12px;display:flex;justify-content:space-between;gap:8px;font-weight:900}
- #powerMachine{position:relative;flex:1;min-height:240px;border:2px solid #ffffff22;border-radius:22px;background:linear-gradient(180deg,#35273c,#141a27);display:flex;flex-direction:column;justify-content:center;align-items:center;gap:16px;padding:20px;overflow:hidden}
+ #powerMachine{position:relative;flex:0 0 auto;min-height:260px;border:2px solid #ffffff22;border-radius:22px;background:linear-gradient(180deg,#35273c,#141a27);display:flex;flex-direction:column;justify-content:center;align-items:center;gap:13px;padding:18px;overflow:hidden}
  #powerHammer{font-size:72px;transform-origin:75% 70%;filter:drop-shadow(0 12px 7px #0007)}
  #powerHammer.hit{animation:powerSmash .5s ease-out}
  @keyframes powerSmash{0%{transform:rotate(-40deg) translateY(-14px)}40%{transform:rotate(25deg) translateY(12px)}100%{transform:rotate(0deg)}}
  #powerGaugeTrack{position:relative;width:100%;height:52px;border:2px solid #ffffff88;border-radius:13px;background:linear-gradient(90deg,#e2555b 0%,#eebd56 20%,#75e1b3 40%,#fff4a1 48%,#fff4a1 52%,#75e1b3 60%,#eebd56 80%,#e2555b 100%)}
  #powerSweet{position:absolute;left:45%;width:10%;height:100%;border:3px dashed #fff;border-radius:4px;pointer-events:none}
  #powerNeedle{position:absolute;left:0;top:-12px;width:6px;height:72px;border-radius:8px;background:white;box-shadow:0 0 12px white;transform:translateX(-50%);pointer-events:none}
- #powerMessage{text-align:center;font-size:clamp(16px,4vw,23px);font-weight:900;min-height:54px;line-height:1.4}
+ #powerHowTo{text-align:center;width:100%;padding:12px 8px;border:2px solid #ffe66b;border-radius:14px;background:rgba(255,218,71,.15);box-shadow:0 0 18px rgba(255,212,80,.18);font-size:clamp(16px,4.5vw,23px);font-weight:1000;line-height:1.3;color:#fff5a0}
+ #powerHowTo small{display:block;margin-top:4px;color:#fff;font-size:clamp(12px,3.3vw,15px);font-weight:800}
+ #powerMessage{text-align:center;font-size:clamp(15px,4vw,21px);font-weight:900;min-height:36px;line-height:1.35}
  #powerStrike,#powerStart{width:100%;border:0;border-radius:18px;padding:18px;font-size:23px;font-weight:1000;color:#321b08;background:linear-gradient(130deg,#fff59b,#ffb13c);box-shadow:0 5px 0 #a75a1f;touch-action:manipulation}
  #powerStrike:disabled,#powerStart:disabled{opacity:.45}
  #powerStrike[hidden],#powerStart[hidden]{display:none}
@@ -237,12 +237,12 @@ function ensurePowerUI(){
  #powerRank li{font-size:13px;display:flex;justify-content:space-between;gap:10px}
  #powerYesterday{margin-top:10px;border-top:1px solid #ffffff33;padding-top:8px;color:#ff8f93;font-weight:900;font-size:13px}
  #powerRule{font-size:12px;opacity:.85;line-height:1.5;text-align:center}
+ @media(max-width:600px){#powerShell{gap:9px;padding-left:12px;padding-right:12px}#powerHeader h2{font-size:clamp(25px,8vw,38px)}#powerMachine{min-height:0;padding:12px;gap:10px}#powerHammer{font-size:54px}#powerGaugeTrack{height:42px}#powerNeedle{height:62px}#powerStrike,#powerStart{padding:13px;font-size:19px}#powerRank{padding:10px}#powerStatus{padding:9px}}
  `;document.head.append(style);
- const overlay=document.createElement('div');overlay.id='powerOverlay';overlay.innerHTML=`<div id="powerShell"><header id="powerHeader"><div><h2>🔨 파워왕</h2><small>HAMMER POWER · 최대 1,000점</small></div><button id="powerClose" type="button">닫기</button></header><div id="powerStatus"><span id="powerCoins">🎟️ 코인 5/5</span><span id="powerBest">최고 0점</span></div><section id="powerMachine"><div id="powerHammer">🔨</div><div id="powerGaugeTrack"><div id="powerSweet"></div><div id="powerNeedle"></div></div><div id="powerMessage" aria-live="polite">가운데 황금 구역을 노려 망치를 내려치세요!</div><button type="button" id="powerStrike" hidden>💥 내려치기!</button><button type="button" id="powerStart">START · 1코인</button></section><section id="powerRank"><b>🏆 오늘의 파워 TOP 5</b><ol id="powerRankList"></ol><div id="powerYesterday">👑 어제 파워왕: 기록 없음</div></section><div id="powerRule">0~499: 1P · 500~699: 10P · 700~899: 30P · 900~1000: 50P<br>하루 5판 · 한국시간 0시 초기화 · 코인과 점수는 박자왕과 별개</div></div>`;
+ const overlay=document.createElement('div');overlay.id='powerOverlay';overlay.innerHTML=`<div id="powerShell"><header id="powerHeader"><div><h2>🔨 파워왕</h2><small>HAMMER POWER · 최대 1,000점</small></div><button id="powerClose" type="button">닫기</button></header><div id="powerStatus"><span id="powerCoins">🎟️ 코인 5/5</span><span id="powerBest">최고 0점</span></div><section id="powerMachine"><div id="powerHammer">🔨</div><div id="powerHowTo">⬅️ 바가 좌우로 움직입니다 ➡️<small>가운데 노란 구역에 바가 왔을 때 내려치세요!</small></div><div id="powerGaugeTrack"><div id="powerSweet"></div><div id="powerNeedle"></div></div><div id="powerMessage" aria-live="polite">가운데 황금 구역을 노려 망치를 내려치세요!</div><button type="button" id="powerStrike" hidden>💥 내려치기!</button><button type="button" id="powerStart">START · 1코인</button></section><section id="powerRank"><b>🏆 오늘의 파워 TOP 5</b><ol id="powerRankList"></ol><div id="powerYesterday">👑 어제 파워왕: 기록 없음</div></section><div id="powerRule">0~499: 1P · 500~699: 10P · 700~899: 30P · 900~1000: 50P<br>하루 5판 · 한국시간 0시 초기화 · 코인과 점수는 박자왕과 별개</div></div>`;
  document.body.append(overlay);
- const button=document.createElement('button');button.type='button';button.id='powerBoothButton';button.textContent='🔨 파워왕';document.body.append(button);
- powerUi={overlay,button,coins:overlay.querySelector('#powerCoins'),best:overlay.querySelector('#powerBest'),start:overlay.querySelector('#powerStart'),strike:overlay.querySelector('#powerStrike'),needle:overlay.querySelector('#powerNeedle'),message:overlay.querySelector('#powerMessage'),hammer:overlay.querySelector('#powerHammer'),rank:overlay.querySelector('#powerRankList'),reward:overlay.querySelector('#powerYesterday')};
- button.onclick=openPowerGame;overlay.querySelector('#powerClose').onclick=closePowerGame;powerUi.start.onclick=startPowerGame;powerUi.strike.onclick=()=>strikePowerGame();
+ powerUi={overlay,coins:overlay.querySelector('#powerCoins'),best:overlay.querySelector('#powerBest'),start:overlay.querySelector('#powerStart'),strike:overlay.querySelector('#powerStrike'),needle:overlay.querySelector('#powerNeedle'),message:overlay.querySelector('#powerMessage'),hammer:overlay.querySelector('#powerHammer'),rank:overlay.querySelector('#powerRankList'),reward:overlay.querySelector('#powerYesterday')};
+ overlay.querySelector('#powerClose').onclick=closePowerGame;powerUi.start.onclick=startPowerGame;powerUi.strike.onclick=()=>strikePowerGame();
  overlay.addEventListener('touchstart',e=>{if(e.touches.length>1)e.preventDefault()},{passive:false});
  overlay.addEventListener('gesturestart',e=>e.preventDefault(),{passive:false});
  return powerUi;
@@ -258,13 +258,14 @@ function renderPowerUI(){
  for(let i=0;i<5;i++){const r=powerGame.leaderboard[i],li=document.createElement('li'),name=document.createElement('span'),score=document.createElement('strong');name.textContent=`${i+1}위  ${r?.name||'---'}`;score.textContent=`${r?.score??0}점`;li.append(name,score);powerUi.rank.append(li);}
 }
 function applyPowerState(power){if(!power)return;powerGame.leaderboard=Array.isArray(power.leaderboard)?power.leaderboard:[];powerGame.reward=power.reward||null;renderPowerUI();}
-function updatePowerBoothButton(){ensurePowerUI();powerUi.button.classList.toggle('show',Boolean(state.id&&!powerGame.open&&nearPowerBooth()));}
+// Legacy call retained for the render loop; only the shared Beat Booth button is visible.
+function updatePowerBoothButton(){}
 async function openPowerGame(){
- if(!nearPowerBooth())return toast('파워왕 부스 근처에서만 플레이할 수 있어요.');
- ensurePowerUI();powerGame.open=true;powerUi.overlay.classList.add('show');powerUi.start.hidden=false;powerUi.strike.hidden=true;powerUi.message.textContent='가운데 황금 구역에 맞춰 망치를 내려치세요!';
+ if(!nearPowerBooth())return toast('게임부스 근처에서만 플레이할 수 있어요.');
+ ensurePowerUI();powerGame.open=true;powerUi.overlay.classList.add('show');powerUi.start.hidden=false;powerUi.strike.hidden=true;powerUi.message.textContent='START를 누르면 바가 움직입니다.';
  try{const r=await post('power',{id:state.id,sessionKey,command:'state'});powerGame.coins=r.account.coins;powerGame.day=r.account.day;powerGame.best=r.best;applyPowerState(r.power);}catch(e){toast(e.message)}
 }
-function closePowerGame(){powerGame.open=false;powerUi?.overlay.classList.remove('show');if(powerGame.running){powerGame.running=false;powerGame.playId=null;toast('진행 중인 게임을 닫았습니다. 사용한 코인은 반환되지 않아요.');}}
+function closePowerGame(){powerGame.open=false;powerUi?.overlay.classList.remove('show');updateRhythmBoothButton();if(powerGame.running){powerGame.running=false;powerGame.playId=null;toast('진행 중인 게임을 닫았습니다. 사용한 코인은 반환되지 않아요.');}}
 async function startPowerGame(){
  if(powerGame.pending||powerGame.running||!nearPowerBooth())return;
  powerGame.pending=true;powerUi.start.disabled=true;
@@ -289,6 +290,46 @@ function updatePowerGame(){
  powerUi.message.textContent='황금 구역에서 강타!';
  if(elapsed>powerGame.activeUntil+400){powerUi.strike.disabled=true;void strikePowerGame(true);}
 }
+
+// v256: One Beat Booth opens a game picker; each game keeps its own daily coins and ranking.
+let gamePickerUi=null;
+function ensureGamePicker(){
+ if(gamePickerUi)return gamePickerUi;
+ const css=document.createElement('style');css.textContent=`
+ #gamePicker{position:fixed;inset:0;z-index:96;display:none;align-items:center;justify-content:center;padding:calc(env(safe-area-inset-top,0px) + 18px) 16px calc(env(safe-area-inset-bottom,0px) + 18px);background:rgba(4,6,18,.82);backdrop-filter:blur(12px);overflow-y:auto;overscroll-behavior:contain}
+ #gamePicker.show{display:flex}
+ #gamePicker *{box-sizing:border-box}
+ #gamePickerCard{width:min(100%,430px);max-height:100%;overflow-y:auto;padding:20px;border:1px solid #ffffff4a;border-radius:25px;background:linear-gradient(145deg,#302253,#171c32);color:white;box-shadow:0 20px 80px #0009}
+ #gamePickerHead{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px}
+ #gamePickerHead h2{font-size:clamp(23px,6vw,30px);margin:0;color:#fff1ac}
+ #gamePickerClose{background:#ffffff24;border:1px solid #ffffff44;border-radius:12px;color:white;padding:8px 12px;font-weight:900}
+ #gamePickerDesc{font-size:13px;opacity:.83;margin:0 0 18px;line-height:1.5}
+ .gamePickerChoice{width:100%;display:flex;align-items:center;gap:14px;text-align:left;padding:18px 14px;margin:10px 0;border:1px solid #ffffff55;border-radius:18px;color:white;background:#ffffff13;font-weight:900;font-size:19px;cursor:pointer;touch-action:manipulation}
+ .gamePickerChoice:active{transform:scale(.99)}.gamePickerChoice:hover{background:#ffffff24}
+ .gamePickerChoice .gamePickerIcon{font-size:33px}.gamePickerChoice small{display:block;font-size:12px;opacity:.83;font-weight:700;margin-top:5px}
+ #gamePickerPower{border-color:#ffbb70;background:linear-gradient(100deg,#7c3436aa,#51312588)}
+ #gamePickerBeat{border-color:#c2a2ff;background:linear-gradient(100deg,#503b9caa,#66366d88)}
+ `;document.head.append(css);
+ const overlay=document.createElement('div');overlay.id='gamePicker';overlay.innerHTML=`<div id="gamePickerCard" role="dialog" aria-modal="true" aria-labelledby="gamePickerTitle"><div id="gamePickerHead"><h2 id="gamePickerTitle">🎮 게임 선택</h2><button id="gamePickerClose" type="button">닫기</button></div><p id="gamePickerDesc">플레이할 게임을 선택하세요. 각 게임은 하루 5판씩 별도로 플레이할 수 있습니다.</p><button type="button" id="gamePickerBeat" class="gamePickerChoice"><span class="gamePickerIcon">🥁</span><span>박자왕<small id="gamePickerBeatCoins">리듬 게임 · 하루 5코인</small></span></button><button type="button" id="gamePickerPower" class="gamePickerChoice"><span class="gamePickerIcon">🔨</span><span>파워왕<small id="gamePickerPowerCoins">망치 타이밍 게임 · 하루 5코인</small></span></button></div>`;
+ document.body.append(overlay);
+ const close=()=>overlay.classList.remove('show');
+ overlay.querySelector('#gamePickerClose').onclick=close;
+ overlay.addEventListener('pointerdown',e=>{if(e.target===overlay)close();});
+ overlay.querySelector('#gamePickerBeat').onclick=()=>{close();openRhythmGame();};
+ overlay.querySelector('#gamePickerPower').onclick=()=>{close();void openPowerGame();};
+ gamePickerUi={overlay,beat:overlay.querySelector('#gamePickerBeatCoins'),power:overlay.querySelector('#gamePickerPowerCoins')};
+ return gamePickerUi;
+}
+function openGamePicker(){
+ if(!nearRhythmBooth())return toast('게임부스 근처에서만 열 수 있어요');
+ if(rhythmGame.open||powerGame.open)return;
+ const ui=ensureGamePicker();ui.beat.textContent=`리듬 게임 · 남은 코인 ${Number.isFinite(state.rhythmCoins)?state.rhythmCoins:5}/5`;
+ ui.power.textContent=`망치 타이밍 게임 · 남은 코인 ${powerGame.coins}/5`;
+ ui.overlay.classList.add('show');
+ void refreshRhythmAccount();
+ if(state.id)post('power',{id:state.id,sessionKey,command:'state'}).then(r=>{powerGame.coins=r.account.coins;powerGame.best=r.best;applyPowerState(r.power);if(gamePickerUi?.overlay.classList.contains('show'))gamePickerUi.power.textContent=`망치 타이밍 게임 · 남은 코인 ${powerGame.coins}/5`;}).catch(()=>{});
+}
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&gamePickerUi?.overlay.classList.contains('show')){gamePickerUi.overlay.classList.remove('show');e.preventDefault();e.stopImmediatePropagation();}},true);
 
 function ensureRhythmUI(){
  if(rhythmUi)return rhythmUi;
@@ -420,7 +461,7 @@ function ensureRhythmUI(){
   centerBtn:overlay.querySelector('#rhythmCenterButton'),rankList:overlay.querySelector('#rhythmRankList'),reward:overlay.querySelector('#rhythmRewardBox'),guide:overlay.querySelector('#rhythmGuide')
  };
  overlay.querySelector('#rhythmClose').onclick=()=>closeRhythmGame();
- boothButton.onclick=()=>{if(!nearRhythmBooth())return toast('게임부스 근처에서만 열 수 있어요');openRhythmGame()};
+ boothButton.onclick=openGamePicker;
  rhythmUi.start.onclick=()=>startRhythmGame();
  rhythmUi.centerBtn.onclick=()=>rhythmHit();
  overlay.addEventListener('pointerdown',e=>{
@@ -489,7 +530,7 @@ function applyRhythmState(rhythm){
 function updateRhythmBoothButton(){
  ensureRhythmUI();
  const near=nearRhythmBooth();
- rhythmUi.boothButton.classList.toggle('show',Boolean(state.id&&near&&!rhythmGame.open));
+ rhythmUi.boothButton.classList.toggle('show',Boolean(state.id&&near&&!rhythmGame.open&&!powerGame.open&&!gamePickerUi?.overlay.classList.contains('show')));
  rhythmUi.boothButton.disabled=!near;
  rhythmUi.boothButton.textContent='🎮 게임플레이';
  rhythmUi.hint.classList.remove('show');
@@ -553,10 +594,11 @@ function closeRhythmGame(){
  rhythmGame.open=false;
  resetRhythmReadyScreen();
  rhythmUi?.overlay.classList.remove('show');
+ updateRhythmBoothButton();
 }
 async function refreshRhythmAccount(){
  if(!state.id)return;
- try{const r=await post('rhythm',{id:state.id,sessionKey,command:'state'});state.rhythmCoins=r.account.coins;state.rhythmAccountDay=r.account.day;state.rhythmBest=Number(r.best)||0;applyRhythmState(r.rhythm)}catch(e){console.warn('Rhythm account:',e.message)}
+ try{const r=await post('rhythm',{id:state.id,sessionKey,command:'state'});state.rhythmCoins=r.account.coins;state.rhythmAccountDay=r.account.day;state.rhythmBest=Number(r.best)||0;applyRhythmState(r.rhythm);if(gamePickerUi?.overlay.classList.contains('show'))gamePickerUi.beat.textContent=`리듬 게임 · 남은 코인 ${state.rhythmCoins}/5`}catch(e){console.warn('Rhythm account:',e.message)}
 }
 async function startRhythmGame(){
  ensureRhythmUI();
@@ -4259,19 +4301,7 @@ importedRestroomLoader.load('/assets/world/rest_room.glb?v=203',gltf=>{
   sign.position.set(x,4.6,z+2.92);sideRestroomGroup.add(sign);
  });
 },undefined,error=>console.warn('화장실 모델을 불러오지 못했습니다.',error));
-// Power King hammer booth, to the left of the rhythm tent.
-const powerBoothTargets=[];
-const powerBooth=new THREE.Group();powerBooth.position.set(25,0,39);scene.add(powerBooth);
-function powerPart(geo,material,x,y,z){const mesh=new THREE.Mesh(geo,material);mesh.position.set(x,y,z);powerBooth.add(mesh);powerBoothTargets.push(mesh);return mesh;}
-const pm=(c)=>new THREE.MeshStandardMaterial({color:c,roughness:.65});
-powerPart(new THREE.BoxGeometry(6,0.5,4),pm('#6d3341'),0,.26,0);
-powerPart(new THREE.BoxGeometry(5.7,2.7,.32),pm('#b65b35'),0,1.65,-1.75);
-powerPart(new THREE.BoxGeometry(6.5,.42,4.6),pm('#e5b74d'),0,3.25,0);
-const powerTitle=new THREE.Mesh(new THREE.PlaneGeometry(4.9,.85),label('POWER KING',58,'#fff5b1','#a53439'));powerTitle.position.set(0,3.8,2.16);powerBooth.add(powerTitle);powerBoothTargets.push(powerTitle);
-powerPart(new THREE.CylinderGeometry(.46,.56,2.5,16),pm('#e7b64c'),0,1.5,1.25);
-powerPart(new THREE.BoxGeometry(1.45,.65,.7),pm('#a9b7c9'),.1,3.0,1.25);
-powerPart(new THREE.BoxGeometry(3.5,.15,1.3),pm('#ffe2a5'),0,.75,1.2);
-
+// The standalone Power King booth was removed in v256. Both games use the Beat Booth.
 const rhythmBooth=new THREE.Group();rhythmBooth.position.set(40,0,39);scene.add(rhythmBooth);const rb=(w,h,d,m,x,y,z)=>{const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);mesh.position.set(x,y,z);rhythmBooth.add(mesh);return mesh};rb(6.4,3.0,4.2,mat('#7a4ed9'),0,1.65,0);rb(7.2,.34,4.8,mat('#ffd36b'),0,3.28,0);rb(2.8,.95,.12,mat('#241736'),0,2.25,2.18);const rhythmBanner=new THREE.Mesh(new THREE.PlaneGeometry(4.9,1.16),label('BEAT BOOTH',64,'#fffaf1','#ff59bc'));rhythmBanner.position.set(0,2.25,2.45);rhythmBooth.add(rhythmBanner);const rhythmSign=new THREE.Mesh(new THREE.PlaneGeometry(5.2,.96),label('RHYTHM GAME',58,'#fff5ea','#4a2575'));rhythmSign.position.set(0,3.95,.12);rhythmBooth.add(rhythmSign);const rbFloor=new THREE.Mesh(new THREE.CircleGeometry(2.5,40),new THREE.MeshBasicMaterial({color:'#ff76c8',transparent:true,opacity:.22}));rbFloor.rotation.x=-Math.PI/2;rbFloor.position.set(0,.05,2.1);rhythmBooth.add(rbFloor);
 // v204: reuse the imported market-tent model for the rhythm booth too.
 // Its X-facing opening is rotated toward the audience (+Z) as for the MD shop.
@@ -7238,8 +7268,7 @@ gameTouchSurface.addEventListener('pointerup',e=>{
  const bounds=renderer.domElement.getBoundingClientRect();pointer.set(((e.clientX-bounds.left)/bounds.width)*2-1,-((e.clientY-bounds.top)/bounds.height)*2+1);
  groundRay.setFromCamera(pointer,camera);
  if(!rockPlacementMode&&!slamMode&&groundRay.intersectObjects(mdBoothTargets,false).length){openPunkShop();return;}
- if(!rockPlacementMode&&!slamMode&&powerBoothTargets.length&&groundRay.intersectObjects(powerBoothTargets,false).length){if(nearPowerBooth())openPowerGame();else toast('파워왕 부스 가까이 와주세요');return;}
- if(!rockPlacementMode&&!slamMode&&rhythmBoothTargets.length&&groundRay.intersectObjects(rhythmBoothTargets,false).length){if(nearRhythmBooth())openRhythmGame();else toast('박자게임 부스에 가까이 와주세요');return;}
+ if(!rockPlacementMode&&!slamMode&&rhythmBoothTargets.length&&groundRay.intersectObjects(rhythmBoothTargets,false).length){if(nearRhythmBooth())openGamePicker();else toast('게임부스에 가까이 와주세요');return;}
  if(!groundRay.ray.intersectPlane(groundPlane,hit))return;
  if(tentPlaceMode){
   const x=hit.x,z=hit.z;
