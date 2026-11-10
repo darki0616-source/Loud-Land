@@ -74,11 +74,11 @@ function kstDate(ts=Date.now()){const d=new Date(ts+9*60*60*1000);return d.toISO
 function previousKstDate(day=kstDate()){return new Date(Date.parse(day+'T00:00:00Z')-86400000).toISOString().slice(0,10)}
 let rhythmDay=kstDate();
 const rhythmScores=new Map();
-// v264: Server-owned collectible coins. Timers and balances survive restarts.
-const FIELD_COIN_INTERVAL=20*60*1000, FIELD_COIN_TTL=30*60*1000, FIELD_COIN_MAX=6;
+// v265: Server-owned collectible coins. No expiry; balances and coins survive restarts.
+const FIELD_COIN_INTERVAL=20*60*1000, FIELD_COIN_MAX=6;
 const fieldCoins=new Map(), fieldCoinBonuses=new Map();
 let fieldCoinLastSpawnAt=Date.now()-FIELD_COIN_INTERVAL;
-const fieldCoinPublic=()=>[...fieldCoins.values()].map(({id,x,y,value,createdAt,expiresAt})=>({id,x,y,value,createdAt,expiresAt}));
+const fieldCoinPublic=()=>[...fieldCoins.values()].map(({id,x,y,value,createdAt})=>({id,x,y,value,createdAt}));
 function fieldCoinPrize(){const n=crypto.randomInt(1000);return n<600?10:n<890?50:n<990?100:n<999?500:1000;}
 function fieldCoinPosition(){
  // Distributed over the accessible lawn; exclude the stage, booth, campsites and other coins.
@@ -94,11 +94,10 @@ function fieldCoinPosition(){
 }
 function maintainFieldCoins(now=Date.now()){
  let changed=false;
- for(const [id,c] of fieldCoins)if(c.expiresAt<=now){fieldCoins.delete(id);changed=true;}
  if(now-fieldCoinLastSpawnAt>=FIELD_COIN_INTERVAL){
   // One spawn per interval, no catch-up flood after server downtime.
   fieldCoinLastSpawnAt=now;
-  if(fieldCoins.size<FIELD_COIN_MAX){const point=fieldCoinPosition();if(point){const coin={id:crypto.randomUUID(),...point,value:fieldCoinPrize(),createdAt:now,expiresAt:now+FIELD_COIN_TTL};fieldCoins.set(coin.id,coin);changed=true;}}
+  if(fieldCoins.size<FIELD_COIN_MAX){const point=fieldCoinPosition();if(point){const coin={id:crypto.randomUUID(),...point,value:fieldCoinPrize(),createdAt:now};fieldCoins.set(coin.id,coin);changed=true;}}
  }
  if(changed){broadcast({type:'field-coins',coins:fieldCoinPublic()});scheduleSave();}
  return changed;
@@ -512,7 +511,7 @@ function applySaved(d){
  fieldCoins.clear();fieldCoinBonuses.clear();
  if(d.fieldCoinBonuses&&typeof d.fieldCoinBonuses==='object')for(const [key,value] of Object.entries(d.fieldCoinBonuses).slice(0,50000))if(/^[a-zA-Z0-9_-]{20,100}$/.test(key)&&Number.isSafeInteger(value)&&value>=0)fieldCoinBonuses.set(key,value);
  if(Number.isFinite(Number(d.fieldCoinLastSpawnAt)))fieldCoinLastSpawnAt=Math.min(Date.now(),Math.max(0,Number(d.fieldCoinLastSpawnAt)));
- if(Array.isArray(d.fieldCoins))for(const c of d.fieldCoins.slice(0,FIELD_COIN_MAX))if(c&&/^[a-f0-9-]{36}$/.test(c.id||'')&&[10,50,100,500,1000].includes(c.value)&&Number.isFinite(c.x)&&Number.isFinite(c.y)&&c.x>=245&&c.x<=1130&&c.y>=370&&c.y<=735&&Number.isFinite(c.expiresAt)&&c.expiresAt>Date.now()&&c.expiresAt<=Date.now()+FIELD_COIN_TTL)fieldCoins.set(c.id,{id:c.id,x:c.x,y:c.y,value:c.value,createdAt:Number(c.createdAt)||Date.now(),expiresAt:c.expiresAt});
+ if(Array.isArray(d.fieldCoins))for(const c of d.fieldCoins.slice(0,FIELD_COIN_MAX))if(c&&/^[a-f0-9-]{36}$/.test(c.id||'')&&[10,50,100,500,1000].includes(c.value)&&Number.isFinite(c.x)&&Number.isFinite(c.y)&&c.x>=245&&c.x<=1130&&c.y>=370&&c.y<=735 )fieldCoins.set(c.id,{id:c.id,x:c.x,y:c.y,value:c.value,createdAt:Number(c.createdAt)||Date.now()});
  // Restore furniture metadata BEFORE tents/inventories that reference these IDs.
  furnitureCatalogEdits.clear();
  if(d.furnitureCatalogEdits&&typeof d.furnitureCatalogEdits==='object'){
@@ -1026,8 +1025,8 @@ const server=http.createServer(async(req,res)=>{
         // Session secret prevents third-party use of the publicly visible avatar id.
         if(playerSessions.get(id)!==String(d.sessionKey||'')||!p.badgeIdentity)return json(res,403,{error:'본인 세션으로 접속해 주세요.'});
         if(p.tentRoomId)return json(res,400,{error:'텐트 밖에서만 동전을 주울 수 있어요.'});
-        const coin=fieldCoins.get(String(d.coinId||'')),now=Date.now();
-        if(!coin||coin.expiresAt<=now)return json(res,404,{error:'이미 사라졌거나 다른 유저가 주운 동전이에요.'});
+        const coin=fieldCoins.get(String(d.coinId||''));
+        if(!coin)return json(res,404,{error:'이미 다른 유저가 주운 동전이에요.'});
         if(Math.hypot((p.x-coin.x)*.058,(p.y-coin.y)*.058)>2.8)return json(res,400,{error:'동전에 더 가까이 가서 클릭해 주세요.'});
         fieldCoins.delete(coin.id); // consume atomically before asynchronous persistence
         fieldCoinBonuses.set(p.badgeIdentity,(fieldCoinBonuses.get(p.badgeIdentity)||0)+coin.value);
