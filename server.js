@@ -74,6 +74,37 @@ function kstDate(ts=Date.now()){const d=new Date(ts+9*60*60*1000);return d.toISO
 function previousKstDate(day=kstDate()){return new Date(Date.parse(day+'T00:00:00Z')-86400000).toISOString().slice(0,10)}
 let rhythmDay=kstDate();
 const rhythmScores=new Map();
+// v264: Server-owned collectible coins. Timers and balances survive restarts.
+const FIELD_COIN_INTERVAL=20*60*1000, FIELD_COIN_TTL=30*60*1000, FIELD_COIN_MAX=6;
+const fieldCoins=new Map(), fieldCoinBonuses=new Map();
+let fieldCoinLastSpawnAt=Date.now()-FIELD_COIN_INTERVAL;
+const fieldCoinPublic=()=>[...fieldCoins.values()].map(({id,x,y,value,createdAt,expiresAt})=>({id,x,y,value,createdAt,expiresAt}));
+function fieldCoinPrize(){const n=crypto.randomInt(1000);return n<600?10:n<890?50:n<990?100:n<999?500:1000;}
+function fieldCoinPosition(){
+ // Distributed over the accessible lawn; exclude the stage, booth, campsites and other coins.
+ for(let i=0;i<100;i++){
+  const x=crypto.randomInt(245,1130),y=crypto.randomInt(370,735);
+  const wx=(x-600)*.058,wz=(y-500)*.058+8;
+  if(Math.hypot(x-1290,y-1034)<195||Math.hypot(wx-34,wz-10.5)<10)continue;
+  if([...fieldCoins.values()].some(c=>Math.hypot(c.x-x,c.y-y)<95))continue;
+  if([...tentStats.values()].some(t=>t.placed&&Math.hypot(t.x-wx,t.z-wz)<5.5))continue;
+  return {x,y};
+ }
+ return null;
+}
+function maintainFieldCoins(now=Date.now()){
+ let changed=false;
+ for(const [id,c] of fieldCoins)if(c.expiresAt<=now){fieldCoins.delete(id);changed=true;}
+ if(now-fieldCoinLastSpawnAt>=FIELD_COIN_INTERVAL){
+  // One spawn per interval, no catch-up flood after server downtime.
+  fieldCoinLastSpawnAt=now;
+  if(fieldCoins.size<FIELD_COIN_MAX){const point=fieldCoinPosition();if(point){const coin={id:crypto.randomUUID(),...point,value:fieldCoinPrize(),createdAt:now,expiresAt:now+FIELD_COIN_TTL};fieldCoins.set(coin.id,coin);changed=true;}}
+ }
+ if(changed){broadcast({type:'field-coins',coins:fieldCoinPublic()});scheduleSave();}
+ return changed;
+}
+setInterval(()=>{if(restored)maintainFieldCoins()},15000).unref();
+
 // v252: 5 server-issued plays per KST day; bonuses are lifetime point credits.
 const RHYTHM_DAILY_COINS=5;
 const rhythmAccounts=new Map();
@@ -288,7 +319,7 @@ async function serveFurnitureModel(req,res,id){
 const TENT_FURNITURE_MAX_PLACED=30;
 const furnitureStats=new Map();
 function furnitureRecord(identity){if(!furnitureStats.has(identity))furnitureStats.set(identity,{spent:0,owned:{}});return furnitureStats.get(identity);}
-function tentPointBalance(p){const earned=Math.floor(badgeTotal(p)/60)+(p.badgeIdentity?rhythmAccount(p.badgeIdentity).bonus+powerAccount(p.badgeIdentity).bonus+moleAccount(p.badgeIdentity).bonus:0);return Math.max(0,earned-(tentOwnedBy(p.badgeIdentity)?TENT_COST:0)-(furnitureStats.get(p.badgeIdentity)?.spent||0));}
+function tentPointBalance(p){const earned=Math.floor(badgeTotal(p)/60)+(p.badgeIdentity?rhythmAccount(p.badgeIdentity).bonus+powerAccount(p.badgeIdentity).bonus+moleAccount(p.badgeIdentity).bonus+(fieldCoinBonuses.get(p.badgeIdentity)||0):0);return Math.max(0,earned-(tentOwnedBy(p.badgeIdentity)?TENT_COST:0)-(furnitureStats.get(p.badgeIdentity)?.spent||0));}
 function safeFurniturePose(item,x,z,angle){
  if(!item||!Number.isFinite(x)||!Number.isFinite(z)||!Number.isFinite(angle))return false;
  if(angle<0||angle>=360||angle%45!==0)return false;
@@ -443,7 +474,7 @@ function shopRecord(identity){
 }
 function getShopView(p,now=Date.now()){
  const record=shopRecord(p.badgeIdentity);
- const earned=Math.floor(badgeTotal(p,now)/60)+(p.badgeIdentity?rhythmAccount(p.badgeIdentity).bonus+powerAccount(p.badgeIdentity).bonus+moleAccount(p.badgeIdentity).bonus:0); // time points + rhythm bonuses
+ const earned=Math.floor(badgeTotal(p,now)/60)+(p.badgeIdentity?rhythmAccount(p.badgeIdentity).bonus+powerAccount(p.badgeIdentity).bonus+moleAccount(p.badgeIdentity).bonus+(fieldCoinBonuses.get(p.badgeIdentity)||0):0); // time points + game and field coin rewards
  return {points:tentPointBalance(p),earned,spent:(tentOwnedBy(p.badgeIdentity)?TENT_COST:0)+(furnitureStats.get(p.badgeIdentity)?.spent||0),refunded:record.refunded||0,testing:true,owned:Object.keys(publicMdItems()),equipped:{...record.equipped},items:publicMdItems()};
 }
 function setShopAppearance(p){
@@ -475,9 +506,13 @@ const SB_KEY=process.env.SUPABASE_SECRET_KEY||'';
 const useSupabase=Boolean(SB_URL&&SB_KEY);
 let restored=false;
 let saveChain=Promise.resolve();
-function stateData(){return {version:14,moleDay,moleHammerRevision,moleReward,moleScores:Object.fromEntries(moleScores),moleAccounts:Object.fromEntries([...moleAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session,lastResult:v.lastResult}])),powerDay,powerReward,powerScores:Object.fromEntries(powerScores),powerAccounts:Object.fromEntries([...powerAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),rhythmAccounts:Object.fromEntries([...rhythmAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),furnitureCatalogEdits:Object.fromEntries(furnitureCatalogEdits),furnitureStats:Object.fromEntries([...furnitureStats].map(([id,v])=>[id,{spent:v.spent,owned:v.owned}])),tentStats:Object.fromEntries([...tentStats].map(([identity,t])=>[identity,storedTent(t)])),announcements:{entry:entranceNotices,ticker:tickerNotices,intervalMinutes:tickerIntervalMinutes,immediateHistory:immediateNoticeHistory},music,queue:[...queue],history:[...history],nextTrackToken,customMd:Object.fromEntries(customMd),shopStats:Object.fromEntries([...shopStats].map(([k,v])=>[k,{spent:0,refunded:v.refunded||0,owned:v.owned,equipped:v.equipped}])),badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),rhythm:{day:rhythmDay,reward:rhythmReward,scores:Object.fromEntries([...rhythmScores].map(([k,v])=>[k,{name:v.name,score:Math.max(0,Math.floor(Number(v.score)||0)),updatedAt:Number(v.updatedAt)||0}]))},savedAt:Date.now()}}
+function stateData(){return {version:15,fieldCoinLastSpawnAt,fieldCoins:fieldCoinPublic(),fieldCoinBonuses:Object.fromEntries(fieldCoinBonuses),moleDay,moleHammerRevision,moleReward,moleScores:Object.fromEntries(moleScores),moleAccounts:Object.fromEntries([...moleAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session,lastResult:v.lastResult}])),powerDay,powerReward,powerScores:Object.fromEntries(powerScores),powerAccounts:Object.fromEntries([...powerAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),rhythmAccounts:Object.fromEntries([...rhythmAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),furnitureCatalogEdits:Object.fromEntries(furnitureCatalogEdits),furnitureStats:Object.fromEntries([...furnitureStats].map(([id,v])=>[id,{spent:v.spent,owned:v.owned}])),tentStats:Object.fromEntries([...tentStats].map(([identity,t])=>[identity,storedTent(t)])),announcements:{entry:entranceNotices,ticker:tickerNotices,intervalMinutes:tickerIntervalMinutes,immediateHistory:immediateNoticeHistory},music,queue:[...queue],history:[...history],nextTrackToken,customMd:Object.fromEntries(customMd),shopStats:Object.fromEntries([...shopStats].map(([k,v])=>[k,{spent:0,refunded:v.refunded||0,owned:v.owned,equipped:v.equipped}])),badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),rhythm:{day:rhythmDay,reward:rhythmReward,scores:Object.fromEntries([...rhythmScores].map(([k,v])=>[k,{name:v.name,score:Math.max(0,Math.floor(Number(v.score)||0)),updatedAt:Number(v.updatedAt)||0}]))},savedAt:Date.now()}}
 function applySaved(d){
  if(!d||typeof d!=='object')return;
+ fieldCoins.clear();fieldCoinBonuses.clear();
+ if(d.fieldCoinBonuses&&typeof d.fieldCoinBonuses==='object')for(const [key,value] of Object.entries(d.fieldCoinBonuses).slice(0,50000))if(/^[a-zA-Z0-9_-]{20,100}$/.test(key)&&Number.isSafeInteger(value)&&value>=0)fieldCoinBonuses.set(key,value);
+ if(Number.isFinite(Number(d.fieldCoinLastSpawnAt)))fieldCoinLastSpawnAt=Math.min(Date.now(),Math.max(0,Number(d.fieldCoinLastSpawnAt)));
+ if(Array.isArray(d.fieldCoins))for(const c of d.fieldCoins.slice(0,FIELD_COIN_MAX))if(c&&/^[a-f0-9-]{36}$/.test(c.id||'')&&[10,50,100,500,1000].includes(c.value)&&Number.isFinite(c.x)&&Number.isFinite(c.y)&&c.x>=245&&c.x<=1130&&c.y>=370&&c.y<=735&&Number.isFinite(c.expiresAt)&&c.expiresAt>Date.now()&&c.expiresAt<=Date.now()+FIELD_COIN_TTL)fieldCoins.set(c.id,{id:c.id,x:c.x,y:c.y,value:c.value,createdAt:Number(c.createdAt)||Date.now(),expiresAt:c.expiresAt});
  // Restore furniture metadata BEFORE tents/inventories that reference these IDs.
  furnitureCatalogEdits.clear();
  if(d.furnitureCatalogEdits&&typeof d.furnitureCatalogEdits==='object'){
@@ -616,6 +651,7 @@ async function restorePlaylist(){
  maybeRotateRhythmDay();
  rotatePowerDay();
  rotateMoleDay();
+ maintainFieldCoins();
  // One-time v114 migration: legacy spent points were converted into refunded credits.
  // Persist the zero-spend records immediately so restarts never re-deduct them.
  if([...shopStats.values()].some(r=>r.refunded>0))scheduleSave();
@@ -683,7 +719,7 @@ function endDuo(duo){if(!duo||!activeDuos.has(duo.id))return;activeDuos.delete(d
 function clearDuosFor(id){for(const duo of [...activeDuos.values()])if(duo.a===id||duo.b===id)endDuo(duo);for(const [inviteId,invite] of duoInvites)if(invite.from===id||invite.to===id){duoInvites.delete(inviteId);broadcast({type:'duo-invite-ended',id:inviteId,to:invite.to})}}
 function duoDistance(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
 setInterval(()=>{const now=Date.now();for(const duo of [...activeDuos.values()])if(duo.endAt<=now)endDuo(duo);for(const [key,invite] of duoInvites)if(invite.expiresAt<=now){duoInvites.delete(key);broadcast({type:'duo-invite-ended',id:key,to:invite.to})}},700).unref();
-const snapshot=(viewerId=null)=>({type:'snapshot',tents:allPlacedTents(),announcements:publicNoticeState(),interactions:[...activeDuos.values()].filter(x=>x.endAt>Date.now()),players:[...players.values()],chat:chatHistory.filter(entry=>entry.roomId===(players.get(viewerId)?.tentRoomId||null)),...musicState(),skipVote:publicSkipVote(),skipVoteCooldownUntil,slam:publicSlam(),slamCooldownUntil,rockPlay:publicRock(),crowdSurf:activeSurfRide&&activeSurfRide.startAt+activeSurfRide.duration>Date.now()?activeSurfRide:null,rockCooldowns:{...rockCooldowns},rockRunningUntil,rhythm:publicRhythmState(),power:publicPowerState(),mole:publicMoleState(),count:players.size});
+const snapshot=(viewerId=null)=>({type:'snapshot',tents:allPlacedTents(),announcements:publicNoticeState(),interactions:[...activeDuos.values()].filter(x=>x.endAt>Date.now()),players:[...players.values()],chat:chatHistory.filter(entry=>entry.roomId===(players.get(viewerId)?.tentRoomId||null)),...musicState(),skipVote:publicSkipVote(),skipVoteCooldownUntil,slam:publicSlam(),slamCooldownUntil,rockPlay:publicRock(),crowdSurf:activeSurfRide&&activeSurfRide.startAt+activeSurfRide.duration>Date.now()?activeSurfRide:null,rockCooldowns:{...rockCooldowns},rockRunningUntil,rhythm:publicRhythmState(),power:publicPowerState(),mole:publicMoleState(),fieldCoins:fieldCoinPublic(),count:players.size});
 const clamp=(n,min,max)=>Math.min(max,Math.max(min,Number(n)||0));
 const SERVER_X_MIN=20,SERVER_X_MAX=1380,SERVER_Y_MIN=60,SERVER_Y_MAX=1100;
 function cleanup(){const now=Date.now();for(const [id,p] of players)if(now-p.seen>180000){settleBadge(p,Math.min(now,p.seen+45000));settleBadge(p);clearDuosFor(id);players.delete(id);forgetSession(id);voterLeaves(id);if(activeSlam?.participants.delete(id))slamUpdate();rockMemberLeaves(id);pauseForEmpty();const r=clients.get(id);if(r){r.end();clients.delete(id)}broadcast({type:'leave',id,count:players.size});sendTentUpdate()}}
@@ -985,6 +1021,20 @@ const server=http.createServer(async(req,res)=>{
         resumeForFirst();broadcast({type:'join',player:p,count:players.size});return json(res,200,{id,reused:false,...snapshot(id)});
       }
       const id=clean(d.id,80),p=players.get(id);if(!p)return json(res,401,{error:'Session expired. Please rejoin.'});p.seen=Date.now();
+      if(url.pathname==='/api/field-coin'){
+        if(String(d.command||'')==='state')return json(res,200,{ok:true,coins:fieldCoinPublic()});
+        // Session secret prevents third-party use of the publicly visible avatar id.
+        if(playerSessions.get(id)!==String(d.sessionKey||'')||!p.badgeIdentity)return json(res,403,{error:'본인 세션으로 접속해 주세요.'});
+        if(p.tentRoomId)return json(res,400,{error:'텐트 밖에서만 동전을 주울 수 있어요.'});
+        const coin=fieldCoins.get(String(d.coinId||'')),now=Date.now();
+        if(!coin||coin.expiresAt<=now)return json(res,404,{error:'이미 사라졌거나 다른 유저가 주운 동전이에요.'});
+        if(Math.hypot((p.x-coin.x)*.058,(p.y-coin.y)*.058)>2.8)return json(res,400,{error:'동전에 더 가까이 가서 클릭해 주세요.'});
+        fieldCoins.delete(coin.id); // consume atomically before asynchronous persistence
+        fieldCoinBonuses.set(p.badgeIdentity,(fieldCoinBonuses.get(p.badgeIdentity)||0)+coin.value);
+        broadcast({type:'field-coins',coins:fieldCoinPublic()});
+        await saveNow();
+        return json(res,200,{ok:true,value:coin.value,points:tentPointBalance(p),coins:fieldCoinPublic()});
+      }
       if(url.pathname==='/api/heartbeat'){return json(res,200,{ok:true})}
       if(url.pathname==='/api/tent'){
         // Public player IDs are visible in snapshots. A private per-tab key is
@@ -997,7 +1047,7 @@ const server=http.createServer(async(req,res)=>{
         let record=tentOwnedBy(p.badgeIdentity);
         if(command==='buy'){
           if(record)return json(res,409,{error:'이미 텐트를 보유하고 있어요.',...tentView(p)});
-          const earned=Math.floor(badgeTotal(p)/60);
+          const earned=tentPointBalance(p);
           if(earned<TENT_COST)return json(res,400,{error:`포인트가 부족해요. (${earned.toLocaleString()}/${TENT_COST.toLocaleString()}P)`});
           record={id:crypto.randomUUID(),name:clean(p.name+'의 텐트',22),color:TENT_COLORS[0],wallColor:'default',floorColor:'default',exteriorType:'none',exteriorText:'',exteriorImage:'',furnishings:[],placed:false,x:null,z:null};
           tentStats.set(p.badgeIdentity,record);
