@@ -87,7 +87,8 @@ function rhythmAccount(identity){
 function rhythmPrize(score){return score>=120000?50:score>=80000?30:score>=50000?10:1}
 
 // v254: Separate hammer-game coins; score is computed from the server's own clock.
-const POWER_BOOTH={x:1031,y:1034,radius:115};
+// Shared Beat Booth proximity for both games.
+const POWER_BOOTH=RHYTHM_BOOTH;
 const POWER_DAILY_COINS=5,POWER_COUNTDOWN_MS=2400,POWER_PERIOD_MS=1800,POWER_ACTIVE_MS=10500;
 const powerAccounts=new Map(),powerScores=new Map();
 let powerDay=kstDate();
@@ -1320,7 +1321,7 @@ const server=http.createServer(async(req,res)=>{
         const account=powerAccount(p.badgeIdentity);
         if(command==='state')return json(res,200,{power:publicPowerState(),account:powerAccountView(p),best:powerScores.get(p.badgeIdentity)?.score||0});
         if(command==='start'){
-          if(p.tentRoomId||Math.hypot((p.x||0)-POWER_BOOTH.x,(p.y||0)-POWER_BOOTH.y)>POWER_BOOTH.radius)return json(res,403,{error:'파워왕 부스 가까이에서만 플레이할 수 있어요.'});
+          if(p.tentRoomId||Math.hypot((p.x||0)-POWER_BOOTH.x,(p.y||0)-POWER_BOOTH.y)>POWER_BOOTH.radius)return json(res,403,{error:'게임부스 가까이에서만 플레이할 수 있어요.'});
           if(account.used>=POWER_DAILY_COINS)return json(res,409,{error:'오늘 파워왕 코인을 모두 사용했어요. 한국시간 자정에 5개 충전됩니다.',account:powerAccountView(p)});
           account.used++;
           account.session={id:crypto.randomUUID(),startedAt:Date.now()};
