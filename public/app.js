@@ -2036,6 +2036,7 @@ function syncTents(tents){
  tentList=tents;
  if(tentRoomActive){const current=tents.find(t=>t.id===tentRoomActive.id);if(!current)leaveTentInterior(false);else{tentRoomActive={...tentRoomActive,...current};syncRoomCaption();applyTentRoomColors(current);syncTentFurniturePlaced(tentRoomActive)}}
  updateTentModels();
+ refreshPeperoInstances(); // v267: keep decorative boxes clear of newly placed tents
 }
 async function refreshTentStatus(){
  if(!state.id)return;
@@ -2571,6 +2572,7 @@ function applyPerformancePreset(){
  if(typeof updateEnvironment==='function')updateEnvironment(true);
  if(typeof resize==='function')resize();
  updatePerformanceButton();
+ refreshPeperoInstances(); // v267: reduce box instances in eco mode
 }
 $('performanceToggle')?.addEventListener('click',()=>{
  perfMode=perfMode==='auto'?'eco':perfMode==='eco'?'high':'auto';
@@ -2890,6 +2892,139 @@ const tentRoomFloorSeams=[];
 for(const x of [-5,-3,-1,1,3,5]){
  const seam=new THREE.Mesh(new THREE.BoxGeometry(.022,.01,9.6),new THREE.MeshStandardMaterial({color:'#b99066'}));
  seam.position.set(x,.015,0);tentRoomScene.add(seam);tentRoomFloorSeams.push(seam);
+}
+// v267 Pepero Day: decorative boxes throughout the outdoor festival AND every tent interior.
+// The supplied Meshy GLB is loaded once. Instanced meshes reuse its geometry/material,
+// so hundreds of boxes require only one draw call per scene rather than hundreds.
+// Deterministic placements are identical for every visitor and survive reloads.
+let peperoOutdoorMesh=null,peperoIndoorMesh=null;
+let peperoOutdoorPlaces=[],peperoIndoorPlaces=[];
+const peperoMatrixDummy=new THREE.Object3D();
+const peperoTempQuaternion=new THREE.Quaternion();
+const peperoTempEuler=new THREE.Euler(0,0,0,'YXZ');
+let peperoHalfExtents=new THREE.Vector3(.45,.95,.17);
+function peperoSeededRandom(seed){
+ let value=seed>>>0;
+ return ()=>{value=(Math.imul(value,1664525)+1013904223)>>>0;return value/4294967296};
+}
+function peperoClearStatic(x,z){
+ // Leave room for the main stage entrance, festival booths, campfire and picnic mats.
+ if(Math.hypot(x+38,z+7.2)<8.5)return false; // merch booth
+ if(Math.hypot(x-40,z-39)<8.0)return false; // rhythm/arcade booth
+ if(Math.hypot(x-34,z-10.5)<10.5)return false; // fire and seating
+ if(Math.abs(x)<8&&z<-7&&z>-33)return false; // stage entrance and centre
+ if(z>23&&z<33&&[-39,-26,-13,0,13,26,39].some(px=>Math.abs(x-px)<5.3))return false;
+ return true;
+}
+function createPeperoPlacements(){
+ const rnd=peperoSeededRandom(11112026);
+ const zones=[
+  [-49,-30,-18,15,36], [30,49,-18,15,36],
+  [-30,-10,-7,17,21], [10,30,-7,17,21],
+  [-49,-30,18,43,22], [30,49,18,43,22],
+  [-29,29,36,45,28], [-53,53,49,64,48],
+  [-51,-27,-33,-21,14], [27,51,-33,-21,14],
+  [-20,-9,-17,-12,10], [9,20,-17,-12,10],
+  [-54,-49,-16,42,14], [49,54,-16,42,14]
+ ];
+ const outdoor=[];
+ // Each zone has a mixture of tight piles and isolated boxes, with rotated faces.
+ for(const [xmin,xmax,zmin,zmax,count] of zones){
+  let added=0,tries=0,anchorX=0,anchorZ=0;
+  while(added<count&&tries++<count*40){
+   if(added%5===0){anchorX=xmin+rnd()*(xmax-xmin);anchorZ=zmin+rnd()*(zmax-zmin);}
+   const x=Math.max(xmin,Math.min(xmax,anchorX+(rnd()-.5)*3.5));
+   const z=Math.max(zmin,Math.min(zmax,anchorZ+(rnd()-.5)*3.0));
+   if(!peperoClearStatic(x,z))continue;
+   const lying=rnd()<.24;
+   const yaw=rnd()*Math.PI*2;
+   const tiltX=lying?(rnd()<.5?-1:1)*(1.35+rnd()*.22):(rnd()-.5)*.36;
+   const tiltZ=lying?(rnd()<.5?-1:1)*(1.35+rnd()*.22):(rnd()-.5)*.30;
+   const scale=.42+rnd()*.28+(rnd()<.08?.18:0);
+   outdoor.push({x,z,scale,yaw,tiltX,tiltZ,ground:stageWalkHeightAt(x,z)+(z>=48?.06:.10)});
+   added++;
+  }
+ }
+ // Inside each tent, keep the central walking/decoration area and entrance clear.
+ const indoor=[];
+ for(let i=0;i<48;i++){
+  let x,z;
+  if(i<18){x=-5+rnd()*10;z=-4.23+(rnd()-.5)*.75;}
+  else if(i<30){x=-4.75+(rnd()-.5)*.50;z=-3.7+rnd()*7.1;}
+  else if(i<42){x=4.75+(rnd()-.5)*.50;z=-3.7+rnd()*7.1;}
+  else{x=(i%2?-1:1)*(3.8+rnd()*1.1);z=3.65+(rnd()-.5)*.65;}
+  const lying=rnd()<.30;
+  indoor.push({x,z,scale:.36+rnd()*.22,yaw:rnd()*Math.PI*2,
+   tiltX:lying?(rnd()<.5?-1:1)*1.48:(rnd()-.5)*.25,
+   tiltZ:lying?(rnd()<.5?-1:1)*1.48:(rnd()-.5)*.25,ground:.015});
+ }
+ return {outdoor,indoor};
+}
+function peperoMatrixAt(place){
+ const d=peperoMatrixDummy;
+ peperoTempEuler.set(place.tiltX,place.yaw,place.tiltZ,'YXZ');
+ peperoTempQuaternion.setFromEuler(peperoTempEuler);
+ d.quaternion.copy(peperoTempQuaternion);
+ d.scale.setScalar(place.scale);
+ // Account for rotation so both upright and sideways boxes touch the ground.
+ const e=new THREE.Matrix4().makeRotationFromQuaternion(d.quaternion).elements;
+ const h=peperoHalfExtents;
+ const bottom=place.scale*(Math.abs(e[1])*h.x+Math.abs(e[5])*h.y+Math.abs(e[9])*h.z);
+ d.position.set(place.x,place.ground+bottom,place.z);
+ d.updateMatrix();return d.matrix;
+}
+function refreshPeperoInstances(){
+ if(peperoOutdoorMesh){
+  const eco=perfWeakDevice||perfMode==='eco';
+  let count=0;
+  for(let i=0;i<peperoOutdoorPlaces.length;i++){
+   // In low-power mode still scatter boxes across the WHOLE festival.
+   if(eco&&i%2===1)continue;
+   const p=peperoOutdoorPlaces[i];
+   if(tentList.some(t=>t.placed&&Number.isFinite(t.x)&&Number.isFinite(t.z)&&Math.hypot(t.x-p.x,t.z-p.z)<5.1))continue;
+   peperoOutdoorMesh.setMatrixAt(count++,peperoMatrixAt(p));
+  }
+  peperoOutdoorMesh.count=count;
+  peperoOutdoorMesh.instanceMatrix.needsUpdate=true;
+ }
+ if(peperoIndoorMesh){
+  const eco=perfWeakDevice||perfMode==='eco';
+  let count=0;
+  for(let i=0;i<peperoIndoorPlaces.length;i++){
+   if(eco&&i%2===1)continue;
+   peperoIndoorMesh.setMatrixAt(count++,peperoMatrixAt(peperoIndoorPlaces[i]));
+  }
+  peperoIndoorMesh.count=count;
+  peperoIndoorMesh.instanceMatrix.needsUpdate=true;
+ }
+}
+{
+ const {outdoor,indoor}=createPeperoPlacements();
+ peperoOutdoorPlaces=outdoor;peperoIndoorPlaces=indoor;
+ new GLTFLoader().load('/assets/world/pepero_box.glb?v=267',gltf=>{
+  gltf.scene.updateMatrixWorld(true);
+  const source=gltf.scene.getObjectByProperty('isMesh',true);
+  if(!source||!source.geometry){console.warn('빼빼로 상자 GLB에 메시가 없습니다.');return;}
+  // Bake the original GLB node transform into the instanced geometry.
+  const geometry=source.geometry.clone();geometry.applyMatrix4(source.matrixWorld);
+  geometry.computeBoundingBox();
+  const box=geometry.boundingBox;
+  peperoHalfExtents=box.getSize(new THREE.Vector3()).multiplyScalar(.5);
+  // Recenter geometry so any arbitrary Meshy pivot still rests on the ground.
+  geometry.translate(-box.getCenter(new THREE.Vector3()).x,-box.getCenter(new THREE.Vector3()).y,-box.getCenter(new THREE.Vector3()).z);
+  const material=source.material;
+  peperoOutdoorMesh=new THREE.InstancedMesh(geometry,material,outdoor.length);
+  peperoOutdoorMesh.name='PeperoDay_Outdoor_Boxes';
+  peperoOutdoorMesh.frustumCulled=false;peperoOutdoorMesh.castShadow=false;peperoOutdoorMesh.receiveShadow=false;
+  peperoOutdoorMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  scene.add(peperoOutdoorMesh);
+  peperoIndoorMesh=new THREE.InstancedMesh(geometry,material,indoor.length);
+  peperoIndoorMesh.name='PeperoDay_All_Tent_Interiors';
+  peperoIndoorMesh.frustumCulled=false;peperoIndoorMesh.castShadow=false;peperoIndoorMesh.receiveShadow=false;
+  peperoIndoorMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  tentRoomScene.add(peperoIndoorMesh);
+  refreshPeperoInstances();
+ },undefined,error=>console.warn('빼빼로 상자 GLB를 불러오지 못했습니다.',error));
 }
 // v248: No green rug; purchased items are rendered below as tent furniture.
 const tentRoomAvatars=new Map();
