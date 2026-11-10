@@ -202,6 +202,7 @@ function nearRhythmBooth(){
  if(!state.me)return false;
  return Math.hypot((state.me.x||0)-booth.x,(state.me.y||0)-booth.y)<=(booth.radius||175);
 }
+// v258: Power game title and action buttons display artwork only; accessible labels remain.
 // v257: Replaceable mobile artwork in public/assets/power/*.png. See POWER_MOBILE_ART_GUIDE.md.
 // All controls, gauge, score, leaderboard, and labels remain live HTML; artwork is decoration only.
 // v254: 파워왕 — mobile-first hammer strength machine. Separate daily coins from rhythm.
@@ -218,7 +219,8 @@ function ensurePowerUI(){
  #powerOverlay *{box-sizing:border-box}
  #powerShell{width:min(100%,600px);min-height:100%;height:auto;margin:0 auto;padding:calc(env(safe-area-inset-top,0px) + 16px) 18px calc(env(safe-area-inset-bottom,0px) + 24px);display:flex;flex-direction:column;gap:12px}
  #powerHeader{display:flex;justify-content:space-between;align-items:start;gap:12px}
- #powerHeader h2{font-size:clamp(30px,8vw,50px);font-weight:1000;color:#ffe279;margin:0;text-shadow:0 4px 0 #8d392a;background:url('/assets/power/title.png') center/100% 100% no-repeat;padding:10px 14px;min-height:70px;display:flex;align-items:center}
+ #powerHeader>div{flex:1;min-width:0}
+ #powerHeader h2{display:block;width:100%;min-height:70px;aspect-ratio:900/220;margin:0;background:url('/assets/power/title.png') center/contain no-repeat;font-size:0;color:transparent;overflow:hidden}
  #powerClose{background:#ffffff22;border:1px solid #ffffff55;border-radius:14px;color:white;padding:10px 15px;font-weight:800}
  #powerStatus{background:#ffffff16;border-radius:16px;padding:12px;display:flex;justify-content:space-between;gap:8px;font-weight:900}
  #powerMachine{position:relative;flex:0 0 auto;min-height:260px;border:2px solid #ffffff22;border-radius:22px;background-image:url('/assets/power/machine.png'),linear-gradient(180deg,#35273c,#141a27);background-size:100% 100%,cover;background-position:center;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:13px;padding:18px;overflow:hidden}
@@ -244,8 +246,9 @@ function ensurePowerUI(){
  #powerYesterday{margin-top:10px;border-top:1px solid #ffffff33;padding-top:8px;color:#ff8f93;font-weight:900;font-size:13px}
  #powerRule{font-size:12px;opacity:.85;line-height:1.5;text-align:center}
  @media(max-width:600px){#powerShell{gap:9px;padding-left:12px;padding-right:12px}#powerHeader h2{font-size:clamp(25px,8vw,38px)}#powerMachine{min-height:0;padding:12px;gap:10px}#powerHammer{width:78px;height:78px}#powerGaugeTrack{height:42px}#powerNeedle{height:62px}#powerStrike,#powerStart{padding:13px;font-size:19px}#powerRank{padding:10px}#powerStatus{padding:9px}}
+ #powerStart,#powerStrike{font-size:0!important;color:transparent!important;text-shadow:none!important;padding:0!important;min-height:60px;aspect-ratio:820/170;line-height:0;background-size:100% 100%,cover}
  `;document.head.append(style);
- const overlay=document.createElement('div');overlay.id='powerOverlay';overlay.innerHTML=`<div id="powerShell"><header id="powerHeader"><div><h2>🔨 파워왕</h2><small>HAMMER POWER · 최대 1,000점</small></div><button id="powerClose" type="button">닫기</button></header><div id="powerStatus"><span id="powerCoins">🎟️ 코인 5/5</span><span id="powerBest">최고 0점</span></div><section id="powerMachine"><div id="powerHammer">🔨</div><div id="powerHowTo">⬅️ 바가 좌우로 움직입니다 ➡️<small>가운데 노란 구역에 바가 왔을 때 내려치세요!</small></div><div id="powerGaugeTrack"><div id="powerSweet"></div><div id="powerNeedle"></div></div><div id="powerMessage" aria-live="polite">가운데 황금 구역을 노려 망치를 내려치세요!</div><button type="button" id="powerStrike" hidden>💥 내려치기!</button><button type="button" id="powerStart">START · 1코인</button></section><section id="powerRank"><b>🏆 오늘의 파워 TOP 5</b><ol id="powerRankList"></ol><div id="powerYesterday">👑 어제 파워왕: 기록 없음</div></section><div id="powerRule">0~499: 1P · 500~699: 10P · 700~899: 30P · 900~1000: 50P<br>하루 5판 · 한국시간 0시 초기화 · 코인과 점수는 박자왕과 별개</div></div>`;
+ const overlay=document.createElement('div');overlay.id='powerOverlay';overlay.innerHTML=`<div id="powerShell"><header id="powerHeader"><div><h2 role="img" aria-label="파워왕"></h2></div><button id="powerClose" type="button">닫기</button></header><div id="powerStatus"><span id="powerCoins">🎟️ 코인 5/5</span><span id="powerBest">최고 0점</span></div><section id="powerMachine"><div id="powerHammer">🔨</div><div id="powerHowTo">⬅️ 바가 좌우로 움직입니다 ➡️<small>가운데 노란 구역에 바가 왔을 때 내려치세요!</small></div><div id="powerGaugeTrack"><div id="powerSweet"></div><div id="powerNeedle"></div></div><div id="powerMessage" aria-live="polite">가운데 황금 구역을 노려 망치를 내려치세요!</div><button type="button" id="powerStrike" aria-label="내려치기" hidden></button><button type="button" id="powerStart" aria-label="게임 시작 · 코인 1개 사용"></button></section><section id="powerRank"><b>🏆 오늘의 파워 TOP 5</b><ol id="powerRankList"></ol><div id="powerYesterday">👑 어제 파워왕: 기록 없음</div></section><div id="powerRule">0~499: 1P · 500~699: 10P · 700~899: 30P · 900~1000: 50P<br>하루 5판 · 한국시간 0시 초기화 · 코인과 점수는 박자왕과 별개</div></div>`;
  document.body.append(overlay);
  powerUi={overlay,coins:overlay.querySelector('#powerCoins'),best:overlay.querySelector('#powerBest'),start:overlay.querySelector('#powerStart'),strike:overlay.querySelector('#powerStrike'),needle:overlay.querySelector('#powerNeedle'),message:overlay.querySelector('#powerMessage'),hammer:overlay.querySelector('#powerHammer'),rank:overlay.querySelector('#powerRankList'),reward:overlay.querySelector('#powerYesterday')};
  overlay.querySelector('#powerClose').onclick=closePowerGame;powerUi.start.onclick=startPowerGame;powerUi.strike.onclick=()=>strikePowerGame();
@@ -258,7 +261,7 @@ function renderPowerUI(){
  powerUi.coins.textContent=`🎟️ 코인 ${powerGame.coins}/5`;
  powerUi.best.textContent=`최고 ${powerGame.best.toLocaleString()}점`;
  powerUi.start.disabled=powerGame.pending||powerGame.coins<=0;
- powerUi.start.textContent=powerGame.coins<=0?'오늘 플레이 완료':'START · 1코인';
+ powerUi.start.setAttribute('aria-label',powerGame.coins<=0?'오늘 플레이 완료 · 남은 코인 없음':'게임 시작 · 코인 1개 사용');
  powerUi.reward.textContent=powerGame.reward?`👑 어제의 파워왕: ${powerGame.reward.name} (${Number(powerGame.reward.score).toLocaleString()}점) · 오늘 전용 칭호/리액션`:'👑 어제의 파워왕: 기록 없음';
  powerUi.rank.replaceChildren();
  for(let i=0;i<5;i++){const r=powerGame.leaderboard[i],li=document.createElement('li'),name=document.createElement('span'),score=document.createElement('strong');name.textContent=`${i+1}위  ${r?.name||'---'}`;score.textContent=`${r?.score??0}점`;li.append(name,score);powerUi.rank.append(li);}
@@ -268,7 +271,7 @@ function applyPowerState(power){if(!power)return;powerGame.leaderboard=Array.isA
 function updatePowerBoothButton(){}
 async function openPowerGame(){
  if(!nearPowerBooth())return toast('게임부스 근처에서만 플레이할 수 있어요.');
- ensurePowerUI();powerGame.open=true;powerUi.overlay.classList.add('show');powerUi.start.hidden=false;powerUi.strike.hidden=true;powerUi.message.textContent='START를 누르면 바가 움직입니다.';
+ ensurePowerUI();powerGame.open=true;powerUi.overlay.classList.add('show');powerUi.start.hidden=false;powerUi.strike.hidden=true;powerUi.message.textContent='아래 버튼을 누르면 바가 움직입니다.';
  try{const r=await post('power',{id:state.id,sessionKey,command:'state'});powerGame.coins=r.account.coins;powerGame.day=r.account.day;powerGame.best=r.best;applyPowerState(r.power);}catch(e){toast(e.message)}
 }
 function closePowerGame(){powerGame.open=false;powerUi?.overlay.classList.remove('show');updateRhythmBoothButton();if(powerGame.running){powerGame.running=false;powerGame.playId=null;toast('진행 중인 게임을 닫았습니다. 사용한 코인은 반환되지 않아요.');}}
