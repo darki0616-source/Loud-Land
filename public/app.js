@@ -202,6 +202,8 @@ function nearRhythmBooth(){
  if(!state.me)return false;
  return Math.hypot((state.me.x||0)-booth.x,(state.me.y||0)-booth.y)<=(booth.radius||175);
 }
+// v257: Replaceable mobile artwork in public/assets/power/*.png. See POWER_MOBILE_ART_GUIDE.md.
+// All controls, gauge, score, leaderboard, and labels remain live HTML; artwork is decoration only.
 // v254: 파워왕 — mobile-first hammer strength machine. Separate daily coins from rhythm.
 // Both games are accessed from the existing Beat Booth; no separate Power Booth.
 const powerGame={open:false,running:false,pending:false,playId:null,startedAt:0,clockOffset:0,activeUntil:10500,countdown:2400,coins:5,day:'',best:0,leaderboard:[],result:null};
@@ -211,16 +213,16 @@ function powerGaugeAt(elapsed){const period=1800,phase=((elapsed-2400)%period+pe
 function ensurePowerUI(){
  if(powerUi)return powerUi;
  const style=document.createElement('style');style.textContent=`
- #powerOverlay{display:none;position:fixed;inset:0;z-index:94;background:radial-gradient(circle at 50% 15%,#7b3549,#241626 58%,#090e17);color:#fff;overflow:auto;overscroll-behavior:contain;touch-action:pan-y}
+ #powerOverlay{display:none;position:fixed;inset:0;z-index:94;background-image:linear-gradient(180deg,rgba(12,8,23,.25),rgba(12,8,23,.44)),url('/assets/power/background.png'),radial-gradient(circle at 50% 15%,#7b3549,#241626 58%,#090e17);background-size:cover,cover,cover;background-position:center;color:#fff;overflow:auto;overscroll-behavior:contain;touch-action:pan-y}
  #powerOverlay.show{display:block;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch}
  #powerOverlay *{box-sizing:border-box}
  #powerShell{width:min(100%,600px);min-height:100%;height:auto;margin:0 auto;padding:calc(env(safe-area-inset-top,0px) + 16px) 18px calc(env(safe-area-inset-bottom,0px) + 24px);display:flex;flex-direction:column;gap:12px}
  #powerHeader{display:flex;justify-content:space-between;align-items:start;gap:12px}
- #powerHeader h2{font-size:clamp(30px,8vw,50px);font-weight:1000;color:#ffe279;margin:0;text-shadow:0 4px 0 #8d392a}
+ #powerHeader h2{font-size:clamp(30px,8vw,50px);font-weight:1000;color:#ffe279;margin:0;text-shadow:0 4px 0 #8d392a;background:url('/assets/power/title.png') center/100% 100% no-repeat;padding:10px 14px;min-height:70px;display:flex;align-items:center}
  #powerClose{background:#ffffff22;border:1px solid #ffffff55;border-radius:14px;color:white;padding:10px 15px;font-weight:800}
  #powerStatus{background:#ffffff16;border-radius:16px;padding:12px;display:flex;justify-content:space-between;gap:8px;font-weight:900}
- #powerMachine{position:relative;flex:0 0 auto;min-height:260px;border:2px solid #ffffff22;border-radius:22px;background:linear-gradient(180deg,#35273c,#141a27);display:flex;flex-direction:column;justify-content:center;align-items:center;gap:13px;padding:18px;overflow:hidden}
- #powerHammer{font-size:72px;transform-origin:75% 70%;filter:drop-shadow(0 12px 7px #0007)}
+ #powerMachine{position:relative;flex:0 0 auto;min-height:260px;border:2px solid #ffffff22;border-radius:22px;background-image:url('/assets/power/machine.png'),linear-gradient(180deg,#35273c,#141a27);background-size:100% 100%,cover;background-position:center;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:13px;padding:18px;overflow:hidden}
+ #powerHammer{font-size:0;width:108px;height:108px;background:url('/assets/power/hammer.png') center/contain no-repeat;transform-origin:75% 70%;filter:drop-shadow(0 12px 7px #0007)}
  #powerHammer.hit{animation:powerSmash .5s ease-out}
  @keyframes powerSmash{0%{transform:rotate(-40deg) translateY(-14px)}40%{transform:rotate(25deg) translateY(12px)}100%{transform:rotate(0deg)}}
  #powerGaugeTrack{position:relative;width:100%;height:52px;border:2px solid #ffffff88;border-radius:13px;background:linear-gradient(90deg,#e2555b 0%,#eebd56 20%,#75e1b3 40%,#fff4a1 48%,#fff4a1 52%,#75e1b3 60%,#eebd56 80%,#e2555b 100%)}
@@ -229,15 +231,19 @@ function ensurePowerUI(){
  #powerHowTo{text-align:center;width:100%;padding:12px 8px;border:2px solid #ffe66b;border-radius:14px;background:rgba(255,218,71,.15);box-shadow:0 0 18px rgba(255,212,80,.18);font-size:clamp(16px,4.5vw,23px);font-weight:1000;line-height:1.3;color:#fff5a0}
  #powerHowTo small{display:block;margin-top:4px;color:#fff;font-size:clamp(12px,3.3vw,15px);font-weight:800}
  #powerMessage{text-align:center;font-size:clamp(15px,4vw,21px);font-weight:900;min-height:36px;line-height:1.35}
- #powerStrike,#powerStart{width:100%;border:0;border-radius:18px;padding:18px;font-size:23px;font-weight:1000;color:#321b08;background:linear-gradient(130deg,#fff59b,#ffb13c);box-shadow:0 5px 0 #a75a1f;touch-action:manipulation}
- #powerStrike:disabled,#powerStart:disabled{opacity:.45}
+ #powerStrike,#powerStart{width:100%;border:0;border-radius:18px;padding:18px;font-size:23px;font-weight:1000;color:#321b08;background:linear-gradient(130deg,#fff59b,#ffb13c);box-shadow:0 5px 0 #a75a1f;touch-action:manipulation;background-size:100% 100%,cover;background-position:center}#powerStart{background-image:url('/assets/power/start-button.png'),linear-gradient(130deg,#fff59b,#ffb13c)}#powerStrike{background-image:url('/assets/power/strike-button.png'),linear-gradient(130deg,#fff59b,#ffb13c)}
+ #powerOverlay{min-height:100dvh}
+ #powerOverlay.show{height:100dvh}
+ #powerHeader{min-height:76px}
+ #powerHeader h2{min-width:0}
+  #powerStrike:disabled,#powerStart:disabled{opacity:.45}
  #powerStrike[hidden],#powerStart[hidden]{display:none}
- #powerRank{background:#ffffff14;padding:12px 14px;border-radius:16px}
+ #powerRank{background-image:url('/assets/power/ranking.png'),linear-gradient(#ffffff14,#ffffff14);background-size:100% 100%,cover;background-position:center;padding:12px 14px;border-radius:16px}
  #powerRank ol{margin:7px 0 0;padding-left:22px;display:grid;gap:3px}
  #powerRank li{font-size:13px;display:flex;justify-content:space-between;gap:10px}
  #powerYesterday{margin-top:10px;border-top:1px solid #ffffff33;padding-top:8px;color:#ff8f93;font-weight:900;font-size:13px}
  #powerRule{font-size:12px;opacity:.85;line-height:1.5;text-align:center}
- @media(max-width:600px){#powerShell{gap:9px;padding-left:12px;padding-right:12px}#powerHeader h2{font-size:clamp(25px,8vw,38px)}#powerMachine{min-height:0;padding:12px;gap:10px}#powerHammer{font-size:54px}#powerGaugeTrack{height:42px}#powerNeedle{height:62px}#powerStrike,#powerStart{padding:13px;font-size:19px}#powerRank{padding:10px}#powerStatus{padding:9px}}
+ @media(max-width:600px){#powerShell{gap:9px;padding-left:12px;padding-right:12px}#powerHeader h2{font-size:clamp(25px,8vw,38px)}#powerMachine{min-height:0;padding:12px;gap:10px}#powerHammer{width:78px;height:78px}#powerGaugeTrack{height:42px}#powerNeedle{height:62px}#powerStrike,#powerStart{padding:13px;font-size:19px}#powerRank{padding:10px}#powerStatus{padding:9px}}
  `;document.head.append(style);
  const overlay=document.createElement('div');overlay.id='powerOverlay';overlay.innerHTML=`<div id="powerShell"><header id="powerHeader"><div><h2>🔨 파워왕</h2><small>HAMMER POWER · 최대 1,000점</small></div><button id="powerClose" type="button">닫기</button></header><div id="powerStatus"><span id="powerCoins">🎟️ 코인 5/5</span><span id="powerBest">최고 0점</span></div><section id="powerMachine"><div id="powerHammer">🔨</div><div id="powerHowTo">⬅️ 바가 좌우로 움직입니다 ➡️<small>가운데 노란 구역에 바가 왔을 때 내려치세요!</small></div><div id="powerGaugeTrack"><div id="powerSweet"></div><div id="powerNeedle"></div></div><div id="powerMessage" aria-live="polite">가운데 황금 구역을 노려 망치를 내려치세요!</div><button type="button" id="powerStrike" hidden>💥 내려치기!</button><button type="button" id="powerStart">START · 1코인</button></section><section id="powerRank"><b>🏆 오늘의 파워 TOP 5</b><ol id="powerRankList"></ol><div id="powerYesterday">👑 어제 파워왕: 기록 없음</div></section><div id="powerRule">0~499: 1P · 500~699: 10P · 700~899: 30P · 900~1000: 50P<br>하루 5판 · 한국시간 0시 초기화 · 코인과 점수는 박자왕과 별개</div></div>`;
  document.body.append(overlay);
