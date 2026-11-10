@@ -16,7 +16,7 @@ const picnicSlots=[
 ];
 const picnicMatColors=['#f5a5a3','#a7def4','#f5ce80','#b3d9a0','#ceb8f1','#ffd2a5','#b2d8ff'];
 const mats=picnicSlots.map((slot,i)=>({x:slot.worldX/.058+600,y:500,c:picnicMatColors[i],worldX:slot.worldX,worldZ:slot.worldZ}));
-const state={id:null,me:null,players:new Map(),keys:new Set(),action:'idle',pose:'stand',actionUntil:0,lastSent:0,es:null,music:{id:'',paused:true,position:0,startedAt:0,token:0},queue:[],history:[],serverDelta:0,yt:null,ytReady:false,lastTrack:'',audioEnabled:true,skipVote:null,skipVoteCooldownUntil:0,walkTarget:null,benchTarget:null,moving:false,rhythm:{date:'',leaderboard:[],reward:null,booth:{x:1290,y:1034,radius:135}},rhythmBest:0};
+const state={id:null,me:null,players:new Map(),keys:new Set(),action:'idle',pose:'stand',actionUntil:0,lastSent:0,es:null,music:{id:'',paused:true,position:0,startedAt:0,token:0},queue:[],history:[],serverDelta:0,yt:null,ytReady:false,lastTrack:'',audioEnabled:true,skipVote:null,skipVoteCooldownUntil:0,walkTarget:null,benchTarget:null,moving:false,rhythm:{date:'',leaderboard:[],reward:null,booth:{x:1290,y:1034,radius:135}},rhythmBest:0,rhythmCoins:5,rhythmAccountDay:""};
 // v196: per-visitor headbang tempo. YouTube IFrame API does NOT expose audio
 // samples or a verified BPM; titles with explicit BPM and user TAP are honest sources.
 const HEADBANG_PREF_KEY='oneseason-headbang-v1';
@@ -94,7 +94,7 @@ function toast(msg){$('toast').textContent=msg;$('toast').classList.add('show');
 const RHYTHM_DEFAULT_BOOTH={x:1290,y:1034,radius:135};
 let rhythmUi=null;
 const RHYTHM_APPROACH_MS=2100;
-const rhythmGame={open:false,running:false,startAt:0,duration:45000,beatWindow:220,score:0,combo:0,maxCombo:0,perfect:0,great:0,good:0,miss:0,lastJudge:'READY',lastJudgeColor:'#ffffff',lastJudgeUntil:0,beats:[],beatIndex:0,endSubmitted:false};
+const rhythmGame={open:false,running:false,startAt:0,duration:45000,beatWindow:220,score:0,combo:0,maxCombo:0,perfect:0,great:0,good:0,miss:0,lastJudge:'READY',lastJudgeColor:'#ffffff',lastJudgeUntil:0,beats:[],beatIndex:0,endSubmitted:false,playId:null,startPending:false};
 // The drum track is generated from the exact note schedule used by the scoring engine.
 // Each note sounds at its hit timestamp; the five speed sections need no independent timer.
 const rhythmFx={bursts:[],lastScore:0,lastJudge:'',audio:null,clickIndex:0,musicBus:null,noise:null,scheduler:null};
@@ -202,6 +202,94 @@ function nearRhythmBooth(){
  if(!state.me)return false;
  return Math.hypot((state.me.x||0)-booth.x,(state.me.y||0)-booth.y)<=((booth.radius||175)+22);
 }
+// v254: 파워왕 — mobile-first hammer strength machine. Separate daily coins from rhythm.
+const POWER_BOOTH_DEFAULT={x:1031,y:1034,radius:115};
+const powerGame={open:false,running:false,pending:false,playId:null,startedAt:0,clockOffset:0,activeUntil:10500,countdown:2400,coins:5,day:'',best:0,leaderboard:[],result:null};
+let powerUi=null;
+function nearPowerBooth(){const b=POWER_BOOTH_DEFAULT;return Boolean(state.me&&!tentRoomActive&&Math.hypot((state.me.x||0)-b.x,(state.me.y||0)-b.y)<=b.radius+16);}
+function powerGaugeAt(elapsed){const period=1800,phase=((elapsed-2400)%period+period)%period/period;return phase<.5?phase*2:(1-phase)*2;}
+function ensurePowerUI(){
+ if(powerUi)return powerUi;
+ const style=document.createElement('style');style.textContent=`
+ #powerBoothButton{position:fixed;left:14px;bottom:215px;z-index:47;display:none;border:0;border-radius:16px;background:linear-gradient(130deg,#ffcc36,#f27629);color:#231400;font-weight:900;padding:13px 18px;box-shadow:0 8px 25px #0007;font-size:15px}
+ #powerBoothButton.show{display:block}
+ #powerOverlay{display:none;position:fixed;inset:0;z-index:94;background:radial-gradient(circle at 50% 15%,#7b3549,#241626 58%,#090e17);color:#fff;overflow:auto;overscroll-behavior:contain;touch-action:pan-y}
+ #powerOverlay.show{display:flex;justify-content:center;align-items:center}
+ #powerOverlay *{box-sizing:border-box}
+ #powerShell{width:min(100%,600px);min-height:min(92dvh,790px);padding:max(16px,env(safe-area-inset-top)) 18px max(18px,env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:14px}
+ #powerHeader{display:flex;justify-content:space-between;align-items:start;gap:12px}
+ #powerHeader h2{font-size:clamp(30px,8vw,50px);font-weight:1000;color:#ffe279;margin:0;text-shadow:0 4px 0 #8d392a}
+ #powerClose{background:#ffffff22;border:1px solid #ffffff55;border-radius:14px;color:white;padding:10px 15px;font-weight:800}
+ #powerStatus{background:#ffffff16;border-radius:16px;padding:12px;display:flex;justify-content:space-between;gap:8px;font-weight:900}
+ #powerMachine{position:relative;flex:1;min-height:240px;border:2px solid #ffffff22;border-radius:22px;background:linear-gradient(180deg,#35273c,#141a27);display:flex;flex-direction:column;justify-content:center;align-items:center;gap:16px;padding:20px;overflow:hidden}
+ #powerHammer{font-size:72px;transform-origin:75% 70%;filter:drop-shadow(0 12px 7px #0007)}
+ #powerHammer.hit{animation:powerSmash .5s ease-out}
+ @keyframes powerSmash{0%{transform:rotate(-40deg) translateY(-14px)}40%{transform:rotate(25deg) translateY(12px)}100%{transform:rotate(0deg)}}
+ #powerGaugeTrack{position:relative;width:100%;height:52px;border:2px solid #ffffff88;border-radius:13px;background:linear-gradient(90deg,#e2555b 0%,#eebd56 20%,#75e1b3 40%,#fff4a1 48%,#fff4a1 52%,#75e1b3 60%,#eebd56 80%,#e2555b 100%)}
+ #powerSweet{position:absolute;left:45%;width:10%;height:100%;border:3px dashed #fff;border-radius:4px;pointer-events:none}
+ #powerNeedle{position:absolute;left:0;top:-12px;width:6px;height:72px;border-radius:8px;background:white;box-shadow:0 0 12px white;transform:translateX(-50%);pointer-events:none}
+ #powerMessage{text-align:center;font-size:clamp(16px,4vw,23px);font-weight:900;min-height:54px;line-height:1.4}
+ #powerStrike,#powerStart{width:100%;border:0;border-radius:18px;padding:18px;font-size:23px;font-weight:1000;color:#321b08;background:linear-gradient(130deg,#fff59b,#ffb13c);box-shadow:0 5px 0 #a75a1f;touch-action:manipulation}
+ #powerStrike:disabled,#powerStart:disabled{opacity:.45}
+ #powerStrike[hidden],#powerStart[hidden]{display:none}
+ #powerRank{background:#ffffff14;padding:12px 14px;border-radius:16px}
+ #powerRank ol{margin:7px 0 0;padding-left:22px;display:grid;gap:3px}
+ #powerRank li{font-size:13px;display:flex;justify-content:space-between;gap:10px}
+ #powerYesterday{margin-top:10px;border-top:1px solid #ffffff33;padding-top:8px;color:#ff8f93;font-weight:900;font-size:13px}
+ #powerRule{font-size:12px;opacity:.85;line-height:1.5;text-align:center}
+ `;document.head.append(style);
+ const overlay=document.createElement('div');overlay.id='powerOverlay';overlay.innerHTML=`<div id="powerShell"><header id="powerHeader"><div><h2>🔨 파워왕</h2><small>HAMMER POWER · 최대 1,000점</small></div><button id="powerClose" type="button">닫기</button></header><div id="powerStatus"><span id="powerCoins">🎟️ 코인 5/5</span><span id="powerBest">최고 0점</span></div><section id="powerMachine"><div id="powerHammer">🔨</div><div id="powerGaugeTrack"><div id="powerSweet"></div><div id="powerNeedle"></div></div><div id="powerMessage" aria-live="polite">가운데 황금 구역을 노려 망치를 내려치세요!</div><button type="button" id="powerStrike" hidden>💥 내려치기!</button><button type="button" id="powerStart">START · 1코인</button></section><section id="powerRank"><b>🏆 오늘의 파워 TOP 5</b><ol id="powerRankList"></ol><div id="powerYesterday">👑 어제 파워왕: 기록 없음</div></section><div id="powerRule">0~499: 1P · 500~699: 10P · 700~899: 30P · 900~1000: 50P<br>하루 5판 · 한국시간 0시 초기화 · 코인과 점수는 박자왕과 별개</div></div>`;
+ document.body.append(overlay);
+ const button=document.createElement('button');button.type='button';button.id='powerBoothButton';button.textContent='🔨 파워왕';document.body.append(button);
+ powerUi={overlay,button,coins:overlay.querySelector('#powerCoins'),best:overlay.querySelector('#powerBest'),start:overlay.querySelector('#powerStart'),strike:overlay.querySelector('#powerStrike'),needle:overlay.querySelector('#powerNeedle'),message:overlay.querySelector('#powerMessage'),hammer:overlay.querySelector('#powerHammer'),rank:overlay.querySelector('#powerRankList'),reward:overlay.querySelector('#powerYesterday')};
+ button.onclick=openPowerGame;overlay.querySelector('#powerClose').onclick=closePowerGame;powerUi.start.onclick=startPowerGame;powerUi.strike.onclick=()=>strikePowerGame();
+ overlay.addEventListener('touchstart',e=>{if(e.touches.length>1)e.preventDefault()},{passive:false});
+ overlay.addEventListener('gesturestart',e=>e.preventDefault(),{passive:false});
+ return powerUi;
+}
+function renderPowerUI(){
+ if(!powerUi)return;
+ powerUi.coins.textContent=`🎟️ 코인 ${powerGame.coins}/5`;
+ powerUi.best.textContent=`최고 ${powerGame.best.toLocaleString()}점`;
+ powerUi.start.disabled=powerGame.pending||powerGame.coins<=0;
+ powerUi.start.textContent=powerGame.coins<=0?'오늘 플레이 완료':'START · 1코인';
+ powerUi.reward.textContent=powerGame.reward?`👑 어제의 파워왕: ${powerGame.reward.name} (${Number(powerGame.reward.score).toLocaleString()}점) · 오늘 전용 칭호/리액션`:'👑 어제의 파워왕: 기록 없음';
+ powerUi.rank.replaceChildren();
+ for(let i=0;i<5;i++){const r=powerGame.leaderboard[i],li=document.createElement('li'),name=document.createElement('span'),score=document.createElement('strong');name.textContent=`${i+1}위  ${r?.name||'---'}`;score.textContent=`${r?.score??0}점`;li.append(name,score);powerUi.rank.append(li);}
+}
+function applyPowerState(power){if(!power)return;powerGame.leaderboard=Array.isArray(power.leaderboard)?power.leaderboard:[];powerGame.reward=power.reward||null;renderPowerUI();}
+function updatePowerBoothButton(){ensurePowerUI();powerUi.button.classList.toggle('show',Boolean(state.id&&!powerGame.open&&nearPowerBooth()));}
+async function openPowerGame(){
+ if(!nearPowerBooth())return toast('파워왕 부스 근처에서만 플레이할 수 있어요.');
+ ensurePowerUI();powerGame.open=true;powerUi.overlay.classList.add('show');powerUi.start.hidden=false;powerUi.strike.hidden=true;powerUi.message.textContent='가운데 황금 구역에 맞춰 망치를 내려치세요!';
+ try{const r=await post('power',{id:state.id,sessionKey,command:'state'});powerGame.coins=r.account.coins;powerGame.day=r.account.day;powerGame.best=r.best;applyPowerState(r.power);}catch(e){toast(e.message)}
+}
+function closePowerGame(){powerGame.open=false;powerUi?.overlay.classList.remove('show');if(powerGame.running){powerGame.running=false;powerGame.playId=null;toast('진행 중인 게임을 닫았습니다. 사용한 코인은 반환되지 않아요.');}}
+async function startPowerGame(){
+ if(powerGame.pending||powerGame.running||!nearPowerBooth())return;
+ powerGame.pending=true;powerUi.start.disabled=true;
+ const sentAt=Date.now();
+ try{const r=await post('power',{id:state.id,sessionKey,command:'start'});powerGame.playId=r.playId;powerGame.coins=r.account.coins;powerGame.day=r.account.day;powerGame.startedAt=r.startedAt;powerGame.clockOffset=r.serverNow+(Date.now()-sentAt)/2-Date.now();powerGame.countdown=r.countdown;powerGame.activeUntil=r.activeUntil;powerGame.running=true;powerGame.result=null;powerUi.start.hidden=true;powerUi.strike.hidden=false;powerUi.strike.disabled=true;powerUi.message.textContent='준비...';renderPowerUI();if(!powerGame.open)closePowerGame();}
+ catch(e){toast(e.message);powerUi.start.disabled=false;}
+ finally{powerGame.pending=false;}
+}
+async function strikePowerGame(force=false){
+ if(!powerGame.running||!powerGame.playId||(!force&&powerUi.strike.disabled))return;
+ const playId=powerGame.playId;powerGame.running=false;powerUi.strike.disabled=true;powerUi.message.textContent='💥 측정 중...';powerUi.hammer.classList.remove('hit');void powerUi.hammer.offsetWidth;powerUi.hammer.classList.add('hit');
+ try{const r=await post('power',{id:state.id,sessionKey,command:'strike',playId});powerGame.playId=null;powerGame.best=r.best;powerGame.coins=r.account.coins;applyPowerState(r.power);powerUi.message.textContent=`💥 ${r.score}점! +${r.prize}P 획득!`;powerUi.start.hidden=false;powerUi.strike.hidden=true;renderPowerUI();void refreshTentStatus();}
+ catch(e){powerUi.message.textContent=e.message||'점수 저장 실패';powerGame.playId=null;powerUi.start.hidden=false;powerUi.strike.hidden=true;}
+}
+function updatePowerGame(){
+ if(!powerGame.open||!powerUi)return;
+ if(!powerGame.running)return;
+ const elapsed=Date.now()+powerGame.clockOffset-powerGame.startedAt;
+ if(elapsed<powerGame.countdown){powerUi.strike.disabled=true;powerUi.message.textContent=`${Math.ceil((powerGame.countdown-elapsed)/1000)}초 후 시작!`;powerUi.needle.style.left='0%';return;}
+ powerUi.strike.disabled=false;
+ const pos=powerGaugeAt(elapsed);powerUi.needle.style.left=(pos*100).toFixed(2)+'%';
+ powerUi.message.textContent='황금 구역에서 강타!';
+ if(elapsed>powerGame.activeUntil+400){powerUi.strike.disabled=true;void strikePowerGame(true);}
+}
+
 function ensureRhythmUI(){
  if(rhythmUi)return rhythmUi;
  const style=document.createElement('style');
@@ -319,7 +407,7 @@ function ensureRhythmUI(){
  document.head.append(style);
  const overlay=document.createElement('div');
  overlay.id='rhythmOverlay';
- overlay.innerHTML=`<div id="rhythmShell"><div id="rhythmTop"><div><div id="rhythmTitle">🥁 BEAT CIRCLE · 박자게임</div><div id="rhythmSub">모바일 세로 화면 기준 · 해변 오른쪽 벤치 옆 게임부스에서만 플레이 가능 · 스코어는 1판 기준 · 매일 초기화</div></div><button type="button" id="rhythmClose">닫기</button></div><div id="rhythmBody"><aside id="rhythmRank"><div id="rhythmRankHeader"><h3>오늘의 TOP 5</h3><div id="rhythmRankMini">오늘 최고 점수</div></div><ol id="rhythmRankList"></ol><div id="rhythmRewardBox"></div><div id="rhythmGuide"></div></aside><main id="rhythmMain"><canvas id="rhythmCanvas" width="1280" height="720"></canvas><div id="rhythmHud"><div id="rhythmStats"><div><b>SCORE</b><span id="rhythmScore">0</span></div><div><b>COMBO</b><span id="rhythmCombo">0</span></div><div><b>TIME</b><span id="rhythmTime">45.0</span></div></div><div id="rhythmJudge">READY</div><div id="rhythmComboFlash" aria-live="off"></div><div id="rhythmCenter"><button type="button" id="rhythmStart">게임 시작</button><button type="button" id="rhythmCenterButton">화면 아무 데나 터치해서 박자 맞추기</button><div id="rhythmHelp">움직이는 파란 원이 노란 판정 원에 딱 겹치는 순간 터치하세요.</div></div></div></main></div></div>`;
+ overlay.innerHTML=`<div id="rhythmShell"><div id="rhythmTop"><div><div id="rhythmTitle">🥁 BEAT CIRCLE · 박자게임</div><div id="rhythmSub">모바일 세로 화면 기준 · 해변 오른쪽 벤치 옆 게임부스에서만 플레이 가능 · 스코어는 1판 기준 · 매일 초기화 · 하루 5판</div><div id="rhythmCoins" style="font-weight:900;color:#ffe676;font-size:14px;margin-top:5px">🎟️ 오늘 남은 코인 5/5</div></div><button type="button" id="rhythmClose">닫기</button></div><div id="rhythmBody"><aside id="rhythmRank"><div id="rhythmRankHeader"><h3>오늘의 TOP 5</h3><div id="rhythmRankMini">오늘 최고 점수</div></div><ol id="rhythmRankList"></ol><div id="rhythmRewardBox"></div><div id="rhythmGuide"></div></aside><main id="rhythmMain"><canvas id="rhythmCanvas" width="1280" height="720"></canvas><div id="rhythmHud"><div id="rhythmStats"><div><b>SCORE</b><span id="rhythmScore">0</span></div><div><b>COMBO</b><span id="rhythmCombo">0</span></div><div><b>TIME</b><span id="rhythmTime">45.0</span></div></div><div id="rhythmJudge">READY</div><div id="rhythmComboFlash" aria-live="off"></div><div id="rhythmCenter"><button type="button" id="rhythmStart">게임 시작</button><button type="button" id="rhythmCenterButton">화면 아무 데나 터치해서 박자 맞추기</button><div id="rhythmHelp">움직이는 파란 원이 노란 판정 원에 딱 겹치는 순간 터치하세요.</div></div></div></main></div></div>`;
  document.body.append(overlay);
  const boothButton=document.createElement('button');
  boothButton.id='rhythmBoothButton';boothButton.type='button';boothButton.textContent='🥁 박자게임';document.body.append(boothButton);
@@ -366,11 +454,13 @@ function resizeRhythmCanvas(){
  }
 }
 function refreshRhythmReactionButton(){
- const btn=$('beatkingAction');
- if(!btn)return;
- const on=Boolean(state.me?.rhythmKing);
- btn.hidden=!on;
- if(on)btn.title='Y';
+ for(const [id,granted] of [['beatkingAction',Boolean(state.me?.rhythmKing)],['powerkingAction',Boolean(state.me?.powerKing)]]){
+  const btn=$(id);if(!btn)continue;
+  btn.hidden=!granted;btn.style.display=granted?'':'none';
+  if(granted)btn.title=id==='beatkingAction'?'전날 박자왕 1등 전용':'전날 파워왕 1등 전용';
+ }
+ // Revoke any already-running reaction immediately on a profile update.
+ if(state.me&&((state.action==='beatking'&&!state.me.rhythmKing)||(state.action==='powerking'&&!state.me.powerKing))){state.action='idle';state.me.action='idle';state.actionUntil=0;updateActionButtons();sendMove();}
 }
 function updateRhythmLeaderboard(){
  ensureRhythmUI();
@@ -384,7 +474,10 @@ function updateRhythmLeaderboard(){
  }
  const reward=state.rhythm?.reward;
  rhythmUi.reward.replaceChildren();const rewardHead=document.createElement('strong');rewardHead.textContent='오늘의 박자왕';rewardHead.style.cssText='display:block;margin-bottom:4px';const rewardBody=document.createElement('div');rewardBody.textContent=reward?`${reward.name} · 어제 최고기록 ${Number(reward.score).toLocaleString()}점`:'어제 1등 기록이 아직 없습니다.';rhythmUi.reward.append(rewardHead,rewardBody);if(reward){const extras=document.createElement('div');extras.style.cssText='margin-top:6px;font-size:12px;opacity:.8';extras.textContent='보상: 무지개 칭호 + 공주포즈 리액션';rhythmUi.reward.append(extras)}
- rhythmUi.guide.innerHTML=`<strong style="display:block;margin-bottom:4px">플레이 규칙</strong>점수는 누적이 아니라 <b>1판 최고 점수</b>만 반영됩니다.<br>매일 0시에 랭킹 초기화, <b>전날 1등 1명</b>에게만 다음날 칭호와 전용 리액션이 지급됩니다.`;
+ rhythmUi.guide.innerHTML=`<strong style="display:block;margin-bottom:4px">플레이 규칙 · 하루 5판</strong>0~49,999점: <b>1P</b> · 50,000점 이상: <b>10P</b> · 80,000점 이상: <b>30P</b> · 120,000점 이상: <b>50P</b><br>게임 시작 시 코인 1개 차감 · 매일 한국시간 0시 코인 5개 충전.<br>랭킹은 1판 최고 점수만 반영하고 전날 1등에게 다음날 박자왕 칭호와 전용 리액션을 지급합니다.`;
+ const coins=Number.isFinite(state.rhythmCoins)?state.rhythmCoins:5;
+ const coinEl=rhythmUi.overlay.querySelector('#rhythmCoins');if(coinEl)coinEl.textContent=`🎟️ 오늘 남은 코인 ${coins}/5`;
+ if(!rhythmGame.running&&!rhythmGame.startPending){rhythmUi.start.disabled=coins<=0;rhythmUi.start.textContent=coins<=0?'오늘 플레이 완료':'게임 시작';}
  refreshRhythmReactionButton();
 }
 function applyRhythmState(rhythm){
@@ -435,6 +528,7 @@ function resetRhythmReadyScreen(){
  rhythmUi.start.textContent='게임 시작';
  rhythmUi.centerBtn.hidden=false;
  rhythmUi.overlay.querySelector('#rhythmHelp').hidden=false;
+ rhythmUi.start.disabled=false;
  rhythmUi.judge.classList.remove('judge-pop');
  rhythmUi.comboFlash.classList.remove('pop');
  updateRhythmScoreUi();
@@ -448,18 +542,34 @@ function openRhythmGame(){
  rhythmUi.overlay.classList.add('show');
  selectBottomMenu('reaction');
  updateRhythmLeaderboard();
+ void refreshRhythmAccount();
  resizeRhythmCanvas();
  drawRhythmGame();
 }
 function closeRhythmGame(){
+ // Closing a started game forfeits that day's coin; the server already consumed it.
  rhythmGame.running=false;
  rhythmStopAudio();
  rhythmGame.open=false;
  resetRhythmReadyScreen();
  rhythmUi?.overlay.classList.remove('show');
 }
-function startRhythmGame(){
+async function refreshRhythmAccount(){
+ if(!state.id)return;
+ try{const r=await post('rhythm',{id:state.id,sessionKey,command:'state'});state.rhythmCoins=r.account.coins;state.rhythmAccountDay=r.account.day;state.rhythmBest=Number(r.best)||0;applyRhythmState(r.rhythm)}catch(e){console.warn('Rhythm account:',e.message)}
+}
+async function startRhythmGame(){
  ensureRhythmUI();
+ if(rhythmGame.running||rhythmGame.startPending)return;
+ if(!nearRhythmBooth())return toast('게임부스 근처에서만 플레이할 수 있어요');
+ rhythmGame.startPending=true;rhythmUi.start.disabled=true;
+ let result;
+ try{result=await post('rhythm',{id:state.id,sessionKey,command:'start'});}
+ catch(error){rhythmGame.startPending=false;rhythmUi.start.disabled=false;toast(error.message||'게임 코인을 확인할 수 없어요');void refreshRhythmAccount();return;}
+ rhythmGame.startPending=false;
+ rhythmGame.playId=result.playId;state.rhythmCoins=result.account.coins;state.rhythmAccountDay=result.account.day;
+ if(!rhythmGame.open){rhythmGame.playId=null;return;} // coin is consumed even if screen closed mid-request
+ updateRhythmLeaderboard();
  rhythmStopAudio();
  rhythmGame.running=true;
  rhythmGame.startAt=performance.now();
@@ -484,7 +594,7 @@ function judgeScore(diff){
 }
 function rhythmHit(){
  if(!rhythmGame.open||!nearRhythmBooth())return;
- if(!rhythmGame.running){startRhythmGame();return;}
+ if(!rhythmGame.running){if(!rhythmGame.startPending)void startRhythmGame();return;}
  const now=performance.now()-rhythmGame.startAt;
  let bestIndex=-1,bestDiff=Infinity;
  for(let i=Math.max(0,rhythmGame.beatIndex-2);i<rhythmGame.beats.length;i++){
@@ -539,17 +649,18 @@ async function submitRhythmScore(){
  if(rhythmGame.endSubmitted||!state.id)return;
  rhythmGame.endSubmitted=true;
  try{
-  const result=await post('rhythm',{id:state.id,command:'submit',score:Math.round(rhythmGame.score)});
+  const result=await post('rhythm',{id:state.id,sessionKey,command:'submit',playId:rhythmGame.playId,score:Math.round(rhythmGame.score)});
   state.rhythmBest=Number(result.best)||Math.round(rhythmGame.score);
+  state.rhythmCoins=result.account.coins;state.rhythmAccountDay=result.account.day;
   applyRhythmState(result.rhythm);
-  toast(`게임 종료! ${Math.round(rhythmGame.score).toLocaleString()}점 · 오늘 최고 ${state.rhythmBest.toLocaleString()}점`);
- }catch(error){toast(error.message||'랭킹 저장 실패');}
+  toast(`게임 종료! ${Math.round(rhythmGame.score).toLocaleString()}점 · +${result.prize}P 획득 · 남은 코인 ${result.account.coins}/5`);
+ }catch(error){toast(error.message||'랭킹 저장 실패');}finally{rhythmGame.playId=null;void refreshRhythmAccount();}
 }
 function finishRhythmGame(){
  if(!rhythmGame.running)return;
  rhythmGame.running=false;
  rhythmStopAudio();
- rhythmUi.start.hidden=false;rhythmUi.start.textContent='다시 도전하기';rhythmUi.centerBtn.hidden=false;rhythmUi.overlay.querySelector('#rhythmHelp').hidden=false;
+ rhythmUi.start.hidden=false;rhythmUi.start.textContent='다시 도전하기';rhythmUi.start.disabled=state.rhythmCoins<=0;rhythmUi.centerBtn.hidden=false;rhythmUi.overlay.querySelector('#rhythmHelp').hidden=false;
  rhythmGame.lastJudge=`FINAL ${Math.round(rhythmGame.score).toLocaleString()}`;
  rhythmGame.lastJudgeColor='#ffe676';
  updateRhythmScoreUi();
@@ -711,7 +822,7 @@ async function restoreSession(){
    if(old){state.me.x=old.x;state.me.y=old.y;state.me.facing=old.facing;state.me.action=old.action;state.me.pose=old.pose;}
    state.players=new Map(d.players.map(x=>[x.id,x]));refreshProfilePreview();renderOnlinePlayers();syncTents(d.tents);listen();refreshTentStatus();
    applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);
-   applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);if(d.crowdSurf)syncCrowdSurf(d.crowdSurf);
+   applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);applyPowerState(d.power);if(d.crowdSurf)syncCrowdSurf(d.crowdSurf);
    sendMove();toast('서버 연결이 자동 복구됐어요');
   }catch(err){console.warn('Automatic rejoin:',err)}
  })().finally(()=>{rejoining=null});return rejoining;
@@ -986,7 +1097,7 @@ function handleLiveAnnouncement(event){
  if(event.kind==='immediate')queueFestivalPopup('📣 ONEseason 전체 공지',text,true);
  else if(event.kind==='ticker')queueFestivalTicker(text);
 }
-function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='snapshot'){syncTents(d.tents);state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);syncCrowdSurf(d.crowdSurf);if(Array.isArray(d.chat)){$('chatMessages').replaceChildren();d.chat.filter(entry=>(entry.roomId||null)===(tentRoomActive?.id||null)).forEach(appendChat)};for(const id of duoVfx.keys())removeDuoVfx(id);activeDuos.clear();for(const duo of d.interactions||[])activeDuos.set(duo.id,duo);syncDuoStatus()}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){if((d.entry.roomId||null)===(tentRoomActive?.id||null)){appendChat(d.entry);showBubble(d.entry)}}else if(d.type==='move'){recordTrainLeader(d.player);state.players.set(d.player.id,d.player);if(d.player.id===state.id&&currentDuo())state.me={...d.player}}else if(d.type==='flag'){const player=state.players.get(d.id);if(player){player.flagText=d.flagText;player.flagImage=d.flagImage||'';}if(d.id===state.id&&state.me){state.me.flagText=d.flagText;state.me.flagImage=d.flagImage||'';currentFlagText=d.flagText;currentFlagImageId=d.flagImage||'';refreshFlagButton();}}else if(d.type==='badge'){const person=state.players.get(d.id);if(person){person.badgeTier=d.badgeTier;person.badgeSeconds=d.badgeSeconds;if(d.id===state.id&&state.me){state.me.badgeTier=d.badgeTier;state.me.badgeSeconds=d.badgeSeconds;}renderOnlinePlayers();}}else if(d.type==='profile'){state.players.set(d.player.id,d.player);if(d.player.id===state.id){state.me=d.player;refreshProfilePreview();refreshRhythmReactionButton();if(!$('punkShop').classList.contains('hidden')||!$('mdWardrobe').hidden)refreshPunkShop()}renderOnlinePlayers()}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers()}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue,d.history);else if(d.type==='slam')applySlam(d.slam,d.cooldownUntil);else if(d.type==='slam-go')onSlamGo(d);else if(d.type==='slam-impact')spawnSlamDust(d.x,d.y);else if(d.type==='toast-spark')spawnToastSpark(d.x,d.y);else if(d.type==='cheer'&&d.playerId!==state.id&&state.audioEnabled)playCheer();else if(d.type==='rockplay')applyRockPlay(d.event,d.rockCooldowns,d.rockRunningUntil);else if(d.type==='rockplay-go')onRockPlayGo(d);else if(d.type==='rockplay-cancel'){applyRockPlay(null,d.rockCooldowns,0);toast(d.reason||'인원이 부족해 취소됐어요.')} else if(d.type==='rhythm-state')applyRhythmState(d.rhythm);else if(d.type==='md-catalog')syncMdCatalog(d.items);else if(d.type==='tent-furniture-catalog'){
+function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='snapshot'){syncTents(d.tents);state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);applyPowerState(d.power);syncCrowdSurf(d.crowdSurf);if(Array.isArray(d.chat)){$('chatMessages').replaceChildren();d.chat.filter(entry=>(entry.roomId||null)===(tentRoomActive?.id||null)).forEach(appendChat)};for(const id of duoVfx.keys())removeDuoVfx(id);activeDuos.clear();for(const duo of d.interactions||[])activeDuos.set(duo.id,duo);syncDuoStatus()}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){if((d.entry.roomId||null)===(tentRoomActive?.id||null)){appendChat(d.entry);showBubble(d.entry)}}else if(d.type==='move'){recordTrainLeader(d.player);state.players.set(d.player.id,d.player);if(d.player.id===state.id&&currentDuo())state.me={...d.player}}else if(d.type==='flag'){const player=state.players.get(d.id);if(player){player.flagText=d.flagText;player.flagImage=d.flagImage||'';}if(d.id===state.id&&state.me){state.me.flagText=d.flagText;state.me.flagImage=d.flagImage||'';currentFlagText=d.flagText;currentFlagImageId=d.flagImage||'';refreshFlagButton();}}else if(d.type==='badge'){const person=state.players.get(d.id);if(person){person.badgeTier=d.badgeTier;person.badgeSeconds=d.badgeSeconds;if(d.id===state.id&&state.me){state.me.badgeTier=d.badgeTier;state.me.badgeSeconds=d.badgeSeconds;}renderOnlinePlayers();}}else if(d.type==='profile'){state.players.set(d.player.id,d.player);if(d.player.id===state.id){state.me=d.player;refreshProfilePreview();refreshRhythmReactionButton();if(!$('punkShop').classList.contains('hidden')||!$('mdWardrobe').hidden)refreshPunkShop()}renderOnlinePlayers()}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers()}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue,d.history);else if(d.type==='slam')applySlam(d.slam,d.cooldownUntil);else if(d.type==='slam-go')onSlamGo(d);else if(d.type==='slam-impact')spawnSlamDust(d.x,d.y);else if(d.type==='toast-spark')spawnToastSpark(d.x,d.y);else if(d.type==='cheer'&&d.playerId!==state.id&&state.audioEnabled)playCheer();else if(d.type==='rockplay')applyRockPlay(d.event,d.rockCooldowns,d.rockRunningUntil);else if(d.type==='rockplay-go')onRockPlayGo(d);else if(d.type==='rockplay-cancel'){applyRockPlay(null,d.rockCooldowns,0);toast(d.reason||'인원이 부족해 취소됐어요.')} else if(d.type==='rhythm-state')applyRhythmState(d.rhythm);else if(d.type==='power-state')applyPowerState(d.power);else if(d.type==='md-catalog')syncMdCatalog(d.items);else if(d.type==='tent-furniture-catalog'){
    tentFurnitureModels.clear();tentFurnitureThumbs.clear();
    if(tentFurniturePlacement){cancelTentFurniturePlacement();toast('상품 크기가 변경될 수 있어요. 배치를 다시 선택해 주세요.');}
    if(tentFurnitureData)tentFurnitureData.catalog=d.catalog||{};
@@ -1015,7 +1126,7 @@ function updateSkipVoteUI(){
 async function castSkipVote(choice){const vote=state.skipVote;if(!vote||!state.id)return;try{await post('music',{id:state.id,command:'vote-cast',voteId:vote.id,choice})}catch(e){toast(e.message)}}
 function showSkipVoteResult(d){applySkipVote(null,state.skipVoteCooldownUntil);let msg=d.passed?'✅ 과반수 찬성! 요청한 곡으로 이동합니다':d.reason==='timeout'?'투표 시간이 종료되어 현재 곡을 유지합니다':'투표가 부결되어 현재 곡을 유지합니다';notice(msg)}
 setInterval(()=>{updateSkipVoteUI();updateSharedMusicButtons()},500);
-let joining=false;async function join(options={}){const auto=Boolean(options?.auto);if(editingProfile)return updateProfile();if(joining)return;joining=true;manualExit=false;try{let d=await post('join',{sessionKey,pageId,badgeIdentity,flagText:currentFlagText,flagImage:currentFlagImageData,name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender,pattern:chosenPattern,sash:chosenSash,hairStyle:chosenHairStyle,hairColor:chosenHairColor});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);applyHeadbangToSelf();currentFlagImageId=state.me?.flagImage||'';state.pose=state.me?.pose||'stand';cameraFollowInitialized=false;state.players=new Map(d.players.map(p=>[p.id,p]));renderOnlinePlayers();refreshPunkShop();$('joinModal').classList.add('hidden');$('reopenJoin').hidden=true;$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='페스티벌 참가 중';$('avatarPreview').querySelector('b').style.background=chosenColor;saveProfile(state.me);applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);if(d.crowdSurf)syncCrowdSurf(d.crowdSurf);syncTents(d.tents);listen();refreshTentStatus();$('audioModal').classList.add('hidden');setPersonalAudio(true);showMovementGuide();showEntryAnnouncements(d.announcements?.entry);if(!auto)toast('ONEseason에 오신 것을 환영합니다!')}catch(e){if(auto)$('joinModal').classList.remove('hidden');$('joinError').textContent='입장 실패: '+(e?.message||'연결을 확인해주세요');console.error('ONEseason join error:',e)}finally{joining=false}}
+let joining=false;async function join(options={}){const auto=Boolean(options?.auto);if(editingProfile)return updateProfile();if(joining)return;joining=true;manualExit=false;try{let d=await post('join',{sessionKey,pageId,badgeIdentity,flagText:currentFlagText,flagImage:currentFlagImageData,name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender,pattern:chosenPattern,sash:chosenSash,hairStyle:chosenHairStyle,hairColor:chosenHairColor});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);applyHeadbangToSelf();currentFlagImageId=state.me?.flagImage||'';state.pose=state.me?.pose||'stand';cameraFollowInitialized=false;state.players=new Map(d.players.map(p=>[p.id,p]));renderOnlinePlayers();refreshPunkShop();$('joinModal').classList.add('hidden');$('reopenJoin').hidden=true;$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='페스티벌 참가 중';$('avatarPreview').querySelector('b').style.background=chosenColor;saveProfile(state.me);applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);applyPowerState(d.power);if(d.crowdSurf)syncCrowdSurf(d.crowdSurf);syncTents(d.tents);listen();refreshTentStatus();$('audioModal').classList.add('hidden');setPersonalAudio(true);showMovementGuide();showEntryAnnouncements(d.announcements?.entry);if(!auto)toast('ONEseason에 오신 것을 환영합니다!')}catch(e){if(auto)$('joinModal').classList.remove('hidden');$('joinError').textContent='입장 실패: '+(e?.message||'연결을 확인해주세요');console.error('ONEseason join error:',e)}finally{joining=false}}
 $('audioYes').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(true);toast(state.music.id?'음악 재생을 허용했어요':'음악이 등록되면 바로 재생돼요')};$('audioNo').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(false);toast('내 소리를 끈 상태로 입장했어요')};// First tap must save even if the nickname field currently has keyboard focus.
 // A pointerdown listener runs BEFORE Safari's keyboard dismissal can consume
 // the subsequent click. De-duplicate that click and block duplicate requests.
@@ -1155,7 +1266,7 @@ function handleDuoEvent(d){
  if(d.type==='duo-end'){finishDuo(d.id);return}
 }
 setInterval(syncDuoStatus,250);
-const sustainedReactions=new Set(['peace','jump','run','headbang','buriburi','groove','dougie','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','marshmallow','putyourhandsup','nightfirework','heartbow','drum','electricguitar','bassguitar','vocal']);
+const sustainedReactions=new Set(['peace','jump','run','headbang','buriburi','groove','dougie','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','powerking','marshmallow','putyourhandsup','nightfirework','heartbow','drum','electricguitar','bassguitar','vocal']);
 // One shared bottom tab group: reactions / dances / chat.
 // Chat stays inside the dock instead of floating over the 3D world.
 function selectBottomMenu(menu){
@@ -1190,7 +1301,8 @@ function react(a,glowColor=null){
  if(!state.me)return;
  if(a==='glowstick'&&glowColor===null){openGlowstickPicker();return;}
  if(a==='glowstick'){state.me.glowColor=glowstickColors[glowColor]?glowColor:'rainbow';state.me.glowEnabled=true;updateActionButtons();sendMove();return;}
- if(a==='beatking'&&!state.me.rhythmKing)return toast('박자왕에게만 허용된 리액션입니다.');
+ if(a==='beatking'&&!state.me.rhythmKing)return toast('전날 박자왕 1등만 사용할 수 있습니다.');
+ if(a==='powerking'&&!state.me.powerKing)return toast('전날 파워왕 1등만 사용할 수 있습니다.');
  if(a==='nightfirework'&&!nightFireworkAvailable())return toast('폭죽놀이는 새벽 1시부터 4시까지만 사용할 수 있어요.');
  if(a==='marshmallow'&&!campfireReactionAvailable())return toast('모닥불이 켜진 시간(20:00~03:00)에 화덕 가까이에서 사용할 수 있어요.');
  if(currentDuo())return toast('상호작용을 종료한 후 다른 동작을 사용해 주세요.');
@@ -1211,7 +1323,7 @@ function react(a,glowColor=null){
  if(state.action===a&&sustainedReactions.has(a)){
   state.action='idle';state.actionUntil=0;state.me.action='idle';
  }else{
-  if((a==='jump'||a==='run'||a==='buriburi'||a==='groove'||a==='windmill'||a==='skanking'||a==='airguitar'||a==='headspin'||a==='cheer'||a==='smoke'||a==='bubblegun'||a==='freestyle'||a==='beatking'||a==='marshmallow'||a==='putyourhandsup'||a==='nightfirework'||a==='heartbow'||a==='drum'||a==='electricguitar'||a==='bassguitar'||a==='vocal')&&state.pose!=='stand'){
+  if((a==='jump'||a==='run'||a==='buriburi'||a==='groove'||a==='windmill'||a==='skanking'||a==='airguitar'||a==='headspin'||a==='cheer'||a==='smoke'||a==='bubblegun'||a==='freestyle'||a==='beatking'||a==='powerking'||a==='marshmallow'||a==='putyourhandsup'||a==='nightfirework'||a==='heartbow'||a==='drum'||a==='electricguitar'||a==='bassguitar'||a==='vocal')&&state.pose!=='stand'){
    state.pose='stand';state.me.pose='stand';
   }
   state.action=a;state.me.action=a;if(bpmDanceActions.has(a))applyHeadbangToSelf();if(a==='cheer')playCheer();
@@ -1266,7 +1378,8 @@ glowstickStyle.textContent=`
 @media(max-width:420px){.glowstick-colors{grid-template-columns:repeat(3,minmax(0,1fr))}}
 `;
 document.head.append(glowstickStyle);
-const beatKingButton=document.createElement('button');beatKingButton.id='beatkingAction';beatKingButton.dataset.action='beatking';beatKingButton.hidden=true;beatKingButton.innerHTML='👑 <span>박자왕</span><em>Y</em>';beatKingButton.onclick=()=>react('beatking');$('reactionActions').append(beatKingButton);refreshRhythmReactionButton();
+const beatKingButton=document.createElement('button');beatKingButton.id='beatkingAction';beatKingButton.dataset.action='beatking';beatKingButton.hidden=true;beatKingButton.style.display='none';beatKingButton.innerHTML='👑 <span>박자왕</span><em>Y</em>';beatKingButton.onclick=()=>react('beatking');$('reactionActions').append(beatKingButton);
+const powerKingButton=document.createElement('button');powerKingButton.id='powerkingAction';powerKingButton.dataset.action='powerking';powerKingButton.hidden=true;powerKingButton.style.display='none';powerKingButton.innerHTML='💪 <span>파워왕</span>';powerKingButton.onclick=()=>react('powerking');$('reactionActions').append(powerKingButton);refreshRhythmReactionButton();
 // The marshmallow action is local to the lit campfire, and is hidden elsewhere.
 const marshmallowButton=document.createElement('button');
 marshmallowButton.id='marshmallowAction';marshmallowButton.dataset.action='marshmallow';
@@ -1308,12 +1421,12 @@ syncNightFirework();
 const reactionMenuOrder=[
  'peace','wave','clap','putyourhandsup','cheer','jump','run','sit','lie',
  'drink','smoke','snack','toastStart','bubblegun','heartbow','glowstick',
- 'flagAction','beatking','nightfirework','marshmallow'
+ 'flagAction','beatking','powerking','nightfirework','marshmallow'
 ];
 const reactionMenu=$('reactionActions');
 for(const key of reactionMenuOrder){
- const button=key==='toastStart'||key==='flagAction'||key==='beatking'
-  ?(key==='beatking'?beatKingButton:$(key))
+ const button=key==='toastStart'||key==='flagAction'||key==='beatking'||key==='powerking'
+  ?(key==='beatking'?beatKingButton:key==='powerking'?powerKingButton:$(key))
   :reactionMenu.querySelector(`[data-action="${key}"]`);
  if(button)reactionMenu.append(button);
 }
@@ -4146,6 +4259,19 @@ importedRestroomLoader.load('/assets/world/rest_room.glb?v=203',gltf=>{
   sign.position.set(x,4.6,z+2.92);sideRestroomGroup.add(sign);
  });
 },undefined,error=>console.warn('화장실 모델을 불러오지 못했습니다.',error));
+// Power King hammer booth, to the left of the rhythm tent.
+const powerBoothTargets=[];
+const powerBooth=new THREE.Group();powerBooth.position.set(25,0,39);scene.add(powerBooth);
+function powerPart(geo,material,x,y,z){const mesh=new THREE.Mesh(geo,material);mesh.position.set(x,y,z);powerBooth.add(mesh);powerBoothTargets.push(mesh);return mesh;}
+const pm=(c)=>new THREE.MeshStandardMaterial({color:c,roughness:.65});
+powerPart(new THREE.BoxGeometry(6,0.5,4),pm('#6d3341'),0,.26,0);
+powerPart(new THREE.BoxGeometry(5.7,2.7,.32),pm('#b65b35'),0,1.65,-1.75);
+powerPart(new THREE.BoxGeometry(6.5,.42,4.6),pm('#e5b74d'),0,3.25,0);
+const powerTitle=new THREE.Mesh(new THREE.PlaneGeometry(4.9,.85),label('POWER KING',58,'#fff5b1','#a53439'));powerTitle.position.set(0,3.8,2.16);powerBooth.add(powerTitle);powerBoothTargets.push(powerTitle);
+powerPart(new THREE.CylinderGeometry(.46,.56,2.5,16),pm('#e7b64c'),0,1.5,1.25);
+powerPart(new THREE.BoxGeometry(1.45,.65,.7),pm('#a9b7c9'),.1,3.0,1.25);
+powerPart(new THREE.BoxGeometry(3.5,.15,1.3),pm('#ffe2a5'),0,.75,1.2);
+
 const rhythmBooth=new THREE.Group();rhythmBooth.position.set(40,0,39);scene.add(rhythmBooth);const rb=(w,h,d,m,x,y,z)=>{const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);mesh.position.set(x,y,z);rhythmBooth.add(mesh);return mesh};rb(6.4,3.0,4.2,mat('#7a4ed9'),0,1.65,0);rb(7.2,.34,4.8,mat('#ffd36b'),0,3.28,0);rb(2.8,.95,.12,mat('#241736'),0,2.25,2.18);const rhythmBanner=new THREE.Mesh(new THREE.PlaneGeometry(4.9,1.16),label('BEAT BOOTH',64,'#fffaf1','#ff59bc'));rhythmBanner.position.set(0,2.25,2.45);rhythmBooth.add(rhythmBanner);const rhythmSign=new THREE.Mesh(new THREE.PlaneGeometry(5.2,.96),label('RHYTHM GAME',58,'#fff5ea','#4a2575'));rhythmSign.position.set(0,3.95,.12);rhythmBooth.add(rhythmSign);const rbFloor=new THREE.Mesh(new THREE.CircleGeometry(2.5,40),new THREE.MeshBasicMaterial({color:'#ff76c8',transparent:true,opacity:.22}));rbFloor.rotation.x=-Math.PI/2;rbFloor.position.set(0,.05,2.1);rhythmBooth.add(rbFloor);
 // v204: reuse the imported market-tent model for the rhythm booth too.
 // Its X-facing opening is rotated toward the audience (+Z) as for the MD shop.
@@ -5868,7 +5994,16 @@ function makeAvatar(p){
  ctx.fillStyle='#fff';ctx.fillText(nickname,beginning+84,65,560);
  const texture=new THREE.CanvasTexture(cv);
  const tag=new THREE.Sprite(new THREE.SpriteMaterial({map:texture,transparent:true,depthTest:false}));tag.scale.set(6,1.04,1);tag.position.y=3.66;root.add(tag);parts.tag=tag;
- const kingCanvas=document.createElement('canvas');kingCanvas.width=960;kingCanvas.height=160;const kctx=kingCanvas.getContext('2d');const kingGrad=kctx.createLinearGradient(80,0,880,0);kingGrad.addColorStop(0,'#ff6eb7');kingGrad.addColorStop(.25,'#ffcf6a');kingGrad.addColorStop(.5,'#7bf0ff');kingGrad.addColorStop(.75,'#9c83ff');kingGrad.addColorStop(1,'#7dff99');kctx.font='900 86px Arial, sans-serif';kctx.textAlign='center';kctx.textBaseline='middle';kctx.strokeStyle='rgba(25,13,45,.92)';kctx.lineWidth=18;kctx.strokeText('내가 박자왕',480,82);kctx.fillStyle=kingGrad;kctx.fillText('내가 박자왕',480,82);const kingTexture=new THREE.CanvasTexture(kingCanvas);kingTexture.colorSpace=THREE.SRGBColorSpace;const kingTitle=new THREE.Sprite(new THREE.SpriteMaterial({map:kingTexture,transparent:true,depthTest:false}));kingTitle.scale.set(7.4,1.24,1);kingTitle.position.y=4.96;kingTitle.visible=Boolean(p.rhythmKing);root.add(kingTitle);parts.rhythmTitle=kingTitle;parts.rhythmSparkles=[];const sparkleGeo=new THREE.OctahedronGeometry(.12,0);const sparkleColors=['#ff79c5','#ffe46f','#81d9ff','#a688ff','#89ffb0'];for(let i=0;i<16;i++){const star=new THREE.Mesh(sparkleGeo,new THREE.MeshBasicMaterial({color:sparkleColors[i%sparkleColors.length],transparent:true,opacity:.94}));star.visible=false;star.renderOrder=40;root.add(star);parts.rhythmSparkles.push(star);}
+ const kingCanvas=document.createElement('canvas');kingCanvas.width=960;kingCanvas.height=160;const kctx=kingCanvas.getContext('2d');const kingGrad=kctx.createLinearGradient(80,0,880,0);kingGrad.addColorStop(0,'#ff6eb7');kingGrad.addColorStop(.25,'#ffcf6a');kingGrad.addColorStop(.5,'#7bf0ff');kingGrad.addColorStop(.75,'#9c83ff');kingGrad.addColorStop(1,'#7dff99');kctx.font='900 86px Arial, sans-serif';kctx.textAlign='center';kctx.textBaseline='middle';kctx.strokeStyle='rgba(25,13,45,.92)';kctx.lineWidth=18;kctx.strokeText('내가 박자왕',480,82);kctx.fillStyle=kingGrad;kctx.fillText('내가 박자왕',480,82);const kingTexture=new THREE.CanvasTexture(kingCanvas);kingTexture.colorSpace=THREE.SRGBColorSpace;const kingTitle=new THREE.Sprite(new THREE.SpriteMaterial({map:kingTexture,transparent:true,depthTest:false}));kingTitle.scale.set(7.4,1.24,1);kingTitle.position.y=4.96;kingTitle.visible=Boolean(p.rhythmKing);root.add(kingTitle);parts.rhythmTitle=kingTitle;
+ // v255: red, luminous Power King crown. When both prizes belong to one player, stack titles.
+ const powerCanvas=document.createElement('canvas');powerCanvas.width=960;powerCanvas.height=160;
+ const powerCtx=powerCanvas.getContext('2d');powerCtx.font='900 86px Arial, sans-serif';powerCtx.textAlign='center';powerCtx.textBaseline='middle';
+ powerCtx.shadowColor='#ff263a';powerCtx.shadowBlur=26;powerCtx.strokeStyle='#42040e';powerCtx.lineWidth=22;powerCtx.strokeText('내가 파워왕',480,82);
+ const powerGradient=powerCtx.createLinearGradient(0,0,0,160);powerGradient.addColorStop(0,'#fff0e6');powerGradient.addColorStop(.38,'#ff5364');powerGradient.addColorStop(1,'#e50025');
+ powerCtx.fillStyle=powerGradient;powerCtx.fillText('내가 파워왕',480,82);
+ const powerTexture=new THREE.CanvasTexture(powerCanvas);powerTexture.colorSpace=THREE.SRGBColorSpace;
+ const powerTitle=new THREE.Sprite(new THREE.SpriteMaterial({map:powerTexture,transparent:true,depthTest:false}));powerTitle.scale.set(7.4,1.24,1);powerTitle.position.y=4.96;powerTitle.visible=Boolean(p.powerKing);root.add(powerTitle);parts.powerTitle=powerTitle;
+ parts.rhythmSparkles=[];const sparkleGeo=new THREE.OctahedronGeometry(.12,0);const sparkleColors=['#ff79c5','#ffe46f','#81d9ff','#a688ff','#89ffb0'];for(let i=0;i<16;i++){const star=new THREE.Mesh(sparkleGeo,new THREE.MeshBasicMaterial({color:sparkleColors[i%sparkleColors.length],transparent:true,opacity:.94}));star.visible=false;star.renderOrder=40;root.add(star);parts.rhythmSparkles.push(star);}
  const badgeImage=new Image();badgeImage.src=badgeIconUrl(p.badgeTier);
  badgeImage.onload=()=>{ctx.drawImage(badgeImage,beginning,29,66,66);texture.needsUpdate=true;};
  addForegroundLayer(root);
@@ -5881,7 +6016,7 @@ function makeAvatar(p){
   const crumb=new THREE.Mesh(crumbGeo,crumbMaterials[i%crumbMaterials.length]);crumb.visible=false;
   snackCrumbs.add(crumb);parts.snackCrumbs.push(crumb);
  }
- return {root,parts,color:p.color,lastAction:'idle',beatkingYaw:0};
+ return {root,parts,color:p.color,lastAction:'idle',beatkingYaw:0,powerkingYaw:0};
 }
 
 // Chat bubbles are true 3D sprites anchored in world coordinates, independent of avatar pose.
@@ -6347,6 +6482,21 @@ function animateAvatar(a,p,t){
   set('rightHip',-.10+.08*Math.max(0,-Math.sin(sec*4.2)),0,.10);
   set('leftKnee',.26+.08*Math.max(0,twirl));set('rightKnee',.26+.08*Math.max(0,-twirl));
  }else a.beatkingYaw=0;
+ if(act==='powerking'){
+  // Reference: front double-biceps pose; elbows wide and bent, fists beside head.
+  // Maintain the pose through three complete turns, then repeat the 4.6-second cycle.
+  if(a.lastAction!=='powerking')a.powerkingStartedAt=t;
+  const cycle=(((t-a.powerkingStartedAt)/1000)%4.6+4.6)%4.6,spinPhase=Math.min(1,cycle/2.2);
+  const ease=spinPhase*spinPhase*(3-2*spinPhase);
+  a.powerkingYaw=Math.PI*6*ease;
+  height=.045+.015*Math.sin(sec*5);
+  set('upper',-.025,0,.018*Math.sin(sec*2));set('neck',.035,0,0);
+  set('leftShoulder',-.25,0,-1.30);set('rightShoulder',-.25,0,1.30);
+  // Bend elbows in the arm plane so fists point upward, not forward.
+  set('leftElbow',-.10,0,-1.72);set('rightElbow',-.10,0,1.72);
+  set('leftHip',-.10,0,-.10);set('rightHip',-.10,0,.10);
+  set('leftKnee',.13);set('rightKnee',.13);
+ }else a.powerkingYaw=0;
  if(act==='windmill'){
   // One-handed B-boy freeze: tilted inversion, planted left arm, right arm
   // stretched out to the side, scissored legs (one straight, one bent).
@@ -6782,8 +6932,9 @@ function animateAvatar(a,p,t){
   bubble.material.opacity=.56*(1-THREE.MathUtils.smoothstep(phase,.72,1));
   bubble.visible=true;
  });
- if(P.rhythmTitle){P.rhythmTitle.visible=Boolean(q.rhythmKing);P.rhythmTitle.position.y=4.96+Math.sin(sec*3.5)*.05;}
- if(P.rhythmSparkles){P.rhythmSparkles.forEach((spark,i)=>{if(act!=='beatking'){spark.visible=false;return}const phase=(sec*1.8+i/5)%1;const angle=phase*Math.PI*2+i*.7;const band=(i%2?1:-1);spark.visible=true;spark.position.set(Math.cos(angle)*(1.1+phase*.5),1.1+Math.sin(phase*Math.PI*2+band)*1.1+phase*.9,.45+Math.sin(angle*1.4)*.7);const sc=.55+.35*Math.sin(phase*Math.PI);spark.scale.setScalar(sc);spark.rotation.x=sec*2.2+i;spark.rotation.y=sec*3.1+i;});}
+ if(P.rhythmTitle){P.rhythmTitle.visible=Boolean(q.rhythmKing);P.rhythmTitle.position.y=(q.powerKing?6.08:4.96)+Math.sin(sec*3.5)*.05;}
+ if(P.powerTitle){P.powerTitle.visible=Boolean(q.powerKing);P.powerTitle.position.y=4.96+Math.sin(sec*3.5+1.5)*.05;}
+ if(P.rhythmSparkles){P.rhythmSparkles.forEach((spark,i)=>{if(!((act==='beatking'&&q.rhythmKing)||(act==='powerking'&&q.powerKing))){spark.visible=false;return}const phase=(sec*1.8+i/5)%1;const angle=phase*Math.PI*2+i*.7;const band=(i%2?1:-1);spark.visible=true;spark.position.set(Math.cos(angle)*(1.1+phase*.5),1.1+Math.sin(phase*Math.PI*2+band)*1.1+phase*.9,.45+Math.sin(angle*1.4)*.7);const sc=.55+.35*Math.sin(phase*Math.PI);spark.scale.setScalar(sc);spark.rotation.x=sec*2.2+i;spark.rotation.y=sec*3.1+i;});}
  if(P.glowsticks){
   const enabled=Boolean(q.glowEnabled);
   const key=glowstickColors[q.glowColor]?q.glowColor:'lime';
@@ -6899,6 +7050,8 @@ function animateAvatar(a,p,t){
    a.root.rotation.y=yaw+(a.freestyleYaw||0);
   }else if(act==='beatking'){
    a.root.rotation.y=yaw+(a.beatkingYaw||0);
+  }else if(act==='powerking'){
+   a.root.rotation.y=yaw+(a.powerkingYaw||0);
   }else{
    a.root.rotation.y=((a.root.rotation.y%(Math.PI*2))+Math.PI*2)%(Math.PI*2);
    const delta=Math.atan2(Math.sin(yaw-a.root.rotation.y),Math.cos(yaw-a.root.rotation.y));
@@ -7085,6 +7238,7 @@ gameTouchSurface.addEventListener('pointerup',e=>{
  const bounds=renderer.domElement.getBoundingClientRect();pointer.set(((e.clientX-bounds.left)/bounds.width)*2-1,-((e.clientY-bounds.top)/bounds.height)*2+1);
  groundRay.setFromCamera(pointer,camera);
  if(!rockPlacementMode&&!slamMode&&groundRay.intersectObjects(mdBoothTargets,false).length){openPunkShop();return;}
+ if(!rockPlacementMode&&!slamMode&&powerBoothTargets.length&&groundRay.intersectObjects(powerBoothTargets,false).length){if(nearPowerBooth())openPowerGame();else toast('파워왕 부스 가까이 와주세요');return;}
  if(!rockPlacementMode&&!slamMode&&rhythmBoothTargets.length&&groundRay.intersectObjects(rhythmBoothTargets,false).length){if(nearRhythmBooth())openRhythmGame();else toast('박자게임 부스에 가까이 와주세요');return;}
  if(!groundRay.ray.intersectPlane(groundPlane,hit))return;
  if(tentPlaceMode){
@@ -7336,7 +7490,7 @@ function tick(t){
    }
   }
   state.moving=!!(dx||dy)||(rockMotion?.kind==='train'&&rockMotion.leaderId!==state.id&&state.me.action==='train-run');
-  if(state.moving && (dx||dy) && (state.action==='buriburi'||state.action==='groove'||state.action==='windmill'||state.action==='airguitar'||state.action==='headspin'||state.action==='cheer'||state.action==='smoke'||state.action==='freestyle'||state.action==='beatking'||state.action==='marshmallow'||state.action==='heartbow'||state.action==='drum'||state.action==='electricguitar'||state.action==='bassguitar'||state.action==='vocal') && !slamMotion && !rockMotion){
+  if(state.moving && (dx||dy) && (state.action==='buriburi'||state.action==='groove'||state.action==='windmill'||state.action==='airguitar'||state.action==='headspin'||state.action==='cheer'||state.action==='smoke'||state.action==='freestyle'||state.action==='beatking'||state.action==='powerking'||state.action==='marshmallow'||state.action==='heartbow'||state.action==='drum'||state.action==='electricguitar'||state.action==='bassguitar'||state.action==='vocal') && !slamMotion && !rockMotion){
    state.action='idle';state.me.action='walk';state.actionUntil=0;updateActionButtons();
   }
   if(state.moving&&(dx||dy)){
@@ -7397,10 +7551,10 @@ function tick(t){
    ?{...serverPlayer,hairStyle:chosenHairStyle,hairColor:chosenHairColor}
    :serverPlayer;
   const current=avatars.get(id);
-  if(current&&(current.color!==p.color||current.name!==p.name||current.badgeTier!==(p.badgeTier||'bronze')||current.gender!==p.gender||current.pattern!==(p.pattern||'solid')||current.sash!==(p.sash||'none')||current.hairStyle!==(p.hairStyle||'short')||current.hairColor!==(p.hairColor||'#4b3932')||current.flagText!==(p.flagText||'')||current.flagImage!==(p.flagImage||'')||Boolean(current.rhythmKing)!==Boolean(p.rhythmKing)||JSON.stringify(current.equipped||{})!==JSON.stringify(p.equipped||{}))){
+  if(current&&(current.color!==p.color||current.name!==p.name||current.badgeTier!==(p.badgeTier||'bronze')||current.gender!==p.gender||current.pattern!==(p.pattern||'solid')||current.sash!==(p.sash||'none')||current.hairStyle!==(p.hairStyle||'short')||current.hairColor!==(p.hairColor||'#4b3932')||current.flagText!==(p.flagText||'')||current.flagImage!==(p.flagImage||'')||Boolean(current.rhythmKing)!==Boolean(p.rhythmKing)||Boolean(current.powerKing)!==Boolean(p.powerKing)||JSON.stringify(current.equipped||{})!==JSON.stringify(p.equipped||{}))){
    disposeAvatar(current.root);avatars.delete(id);
   }
-  if(!avatars.has(id)){let a=makeAvatar(p),pos=toWorld(p);a.root.position.set(pos.x,0,pos.z);a.name=p.name;a.badgeTier=p.badgeTier||'bronze';a.gender=p.gender;a.pattern=p.pattern||'solid';a.sash=p.sash||'none';a.hairStyle=p.hairStyle||'short';a.hairColor=p.hairColor||'#4b3932';a.flagText=p.flagText||'';a.flagImage=p.flagImage||'';a.rhythmKing=Boolean(p.rhythmKing);a.equipped={...(p.equipped||{})};avatars.set(id,a)}
+  if(!avatars.has(id)){let a=makeAvatar(p),pos=toWorld(p);a.root.position.set(pos.x,0,pos.z);a.name=p.name;a.badgeTier=p.badgeTier||'bronze';a.gender=p.gender;a.pattern=p.pattern||'solid';a.sash=p.sash||'none';a.hairStyle=p.hairStyle||'short';a.hairColor=p.hairColor||'#4b3932';a.flagText=p.flagText||'';a.flagImage=p.flagImage||'';a.rhythmKing=Boolean(p.rhythmKing);a.powerKing=Boolean(p.powerKing);a.equipped={...(p.equipped||{})};avatars.set(id,a)}
   const avatar=avatars.get(id);
   animateAvatar(avatar,p,t);
   if(avatar.parts.flagPivot?.parent?.visible){
@@ -7431,7 +7585,7 @@ function tick(t){
  updateMoshTrails(t);updateSlamDust(t);updateBubbles(t);animateShow(t);animateCampfire(t);updateFiretruckShow(t);
  if(!minimalScenery)updateHourlyFireworks(t);
  animateToastSparks(t);
- if(state.id)updateRhythmBoothButton();if(rhythmGame.open)drawRhythmGame();
+ if(state.id)updateRhythmBoothButton();if(rhythmGame.open)drawRhythmGame();if(state.id)updatePowerBoothButton();updatePowerGame();
  {
   if(povEnabled){updatePovCamera();}else{followLocalAvatar();controls.update();keepCameraInFrontOfStage();}
   // Visitors who entered an indoor room are no longer standing outside.
