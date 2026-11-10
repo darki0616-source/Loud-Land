@@ -1089,7 +1089,7 @@ const server=http.createServer(async(req,res)=>{
           p.headbangBpm=clamp(d.headbangBpm||120,40,240);
           const beatAt=Number(d.headbangBeatAt);p.headbangBeatAt=Number.isFinite(beatAt)&&Math.abs(beatAt-Date.now())<86400000?beatAt:Date.now();
           p.glowEnabled=d.glowEnabled===true;
-          p.glowColor=['red','pink','blue','lime','yellow','white','rainbow'].includes(d.glowColor)?d.glowColor:'lime';
+          p.glowColor=['red','pink','blue','lime','yellow','white','rainbow','pepero'].includes(d.glowColor)?d.glowColor:'lime';
           broadcast({type:'tent-room',playerId:p.id,roomId:p.tentRoomId,x:p.tentRoomX,z:p.tentRoomZ,facing:p.tentRoomFacing,action:p.action,pose:p.pose,headbangBpm:p.headbangBpm,headbangBeatAt:p.headbangBeatAt,glowEnabled:p.glowEnabled,glowColor:p.glowColor});
           return json(res,200,{ok:true});
         }
@@ -1256,7 +1256,7 @@ const server=http.createServer(async(req,res)=>{
         p.x=clamp(d.x,SERVER_X_MIN,SERVER_X_MAX);p.y=clamp(d.y,SERVER_Y_MIN,SERVER_Y_MAX);p.facing=clamp(d.facing,-Math.PI,Math.PI);
         p.pose=['stand','sit','lie'].includes(d.pose)?d.pose:'stand';
         p.glowEnabled=d.glowEnabled===true;
-        p.glowColor=['red','pink','blue','lime','yellow','white','rainbow'].includes(d.glowColor)?d.glowColor:'lime';
+        p.glowColor=['red','pink','blue','lime','yellow','white','rainbow','pepero'].includes(d.glowColor)?d.glowColor:'lime';
         p.headbangBpm=Number.isFinite(Number(d.headbangBpm))&&Number(d.headbangBpm)>0?clamp(d.headbangBpm,40,240):120;
         const beatAt=Number(d.headbangBeatAt);
         p.headbangBeatAt=Number.isFinite(beatAt)&&Math.abs(beatAt-Date.now())<86400000?beatAt:Date.now();

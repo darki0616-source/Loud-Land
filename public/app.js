@@ -1481,8 +1481,8 @@ function react(a,glowColor=null){
 }
 document.querySelectorAll('[data-action]').forEach(b=>b.onclick=()=>react(b.dataset.action));
 // The glowsticks are independent equipped accessories; putyourhandsup is a separate looping animation.
-const glowstickColors={red:'#ff294b',pink:'#ff4bda',blue:'#36a5ff',lime:'#9dff32',yellow:'#fff94b',white:'#f4fbff',rainbow:'#ffffff'};
-const glowstickLabels={red:'빨강',pink:'핑크',blue:'파랑',lime:'연두',yellow:'노랑',white:'흰색',rainbow:'무지개'};
+const glowstickColors={red:'#ff294b',pink:'#ff4bda',blue:'#36a5ff',lime:'#9dff32',yellow:'#fff94b',white:'#f4fbff',rainbow:'#ffffff',pepero:'#70402c'};
+const glowstickLabels={red:'빨강',pink:'핑크',blue:'파랑',lime:'연두',yellow:'노랑',white:'흰색',rainbow:'무지개',pepero:'🍫 빼빼로'};
 const glowstickButton=document.createElement('button');
 glowstickButton.type='button';glowstickButton.dataset.action='glowstick';
 glowstickButton.innerHTML='🌈 <span>야광봉 들기</span>';
@@ -1494,14 +1494,14 @@ handsupButton.innerHTML='🙌 <span>풋쳐핸섭</span>';handsupButton.onclick=(
 $('reactionActions').append(handsupButton);
 const glowstickPicker=document.createElement('div');
 glowstickPicker.id='glowstickPicker';glowstickPicker.className='glowstick-picker hidden';
-glowstickPicker.setAttribute('role','dialog');glowstickPicker.setAttribute('aria-modal','true');glowstickPicker.setAttribute('aria-label','야광봉 색상 선택');
-glowstickPicker.innerHTML='<div class="glowstick-panel"><h3>🌈 야광봉 색상 선택</h3><p>양손에 장착합니다. 춤과 다른 리액션 중에도 계속 들고 있어요.</p><div id="glowstickColors" class="glowstick-colors"></div><button type="button" id="glowstickCancel">취소</button></div>';
+glowstickPicker.setAttribute('role','dialog');glowstickPicker.setAttribute('aria-modal','true');glowstickPicker.setAttribute('aria-label','야광봉 및 빼빼로 선택');
+glowstickPicker.innerHTML='<div class="glowstick-panel"><h3>🌈 야광봉 · 🍫 빼빼로</h3><p>11월 11일 빼빼로데이! 양손에 장착하고 춤과 다른 리액션 중에도 계속 들고 있어요.</p><div id="glowstickColors" class="glowstick-colors"></div><button type="button" id="glowstickCancel">취소</button></div>';
 document.body.append(glowstickPicker);
 for(const [key,hex] of Object.entries(glowstickColors)){
  const b=document.createElement('button');b.type='button';b.className='glowstick-choice';
  b.innerHTML='<i></i><span>'+glowstickLabels[key]+'</span>';
- const dot=b.querySelector('i');dot.style.background=key==='rainbow'?'conic-gradient(#fa3751,#f8e33c,#52e6a2,#46a3ff,#bf58f5,#fa3751)':hex;
- dot.style.boxShadow=key==='rainbow'?'0 0 14px #f7f8ff':'0 0 14px '+hex;
+ const dot=b.querySelector('i');dot.style.background=key==='pepero'?'linear-gradient(90deg,#e3a967 0 26%,#60301c 26% 100%)':key==='rainbow'?'conic-gradient(#fa3751,#f8e33c,#52e6a2,#46a3ff,#bf58f5,#fa3751)':hex;if(key==='pepero')dot.classList.add('pepero-preview');
+ dot.style.boxShadow=key==='pepero'?'0 1px 5px #0008':key==='rainbow'?'0 0 14px #f7f8ff':'0 0 14px '+hex;
  b.onclick=()=>{glowstickPicker.classList.add('hidden');react('glowstick',key);};
  $('glowstickColors').append(b);
 }
@@ -1521,7 +1521,7 @@ glowstickStyle.textContent=`
 .glowstick-panel h3{margin:0;font-size:22px}.glowstick-panel p{margin:9px 0 22px;font-size:13px;color:#d6d7e6}
 .glowstick-colors{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
 .glowstick-choice{border:1px solid #575a77;border-radius:14px;background:#2b2e49;color:white;padding:13px 4px;min-height:84px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px}
-.glowstick-choice i{width:29px;height:29px;border-radius:50%;display:block}.glowstick-choice span{font-size:12px;font-weight:800}
+.glowstick-choice i{width:29px;height:29px;border-radius:50%;display:block}.glowstick-choice i.pepero-preview{width:10px;height:38px;border-radius:6px;transform:rotate(-28deg);border:1px solid #c78b55}.glowstick-choice span{font-size:12px;font-weight:800}
 #glowstickCancel{margin-top:19px;background:#353a55;color:white;border:1px solid #656983;border-radius:12px;padding:12px 26px;font-weight:800}
 @media(max-width:420px){.glowstick-colors{grid-template-columns:repeat(3,minmax(0,1fr))}}
 `;
@@ -5918,7 +5918,27 @@ function makeAvatar(p){
   // Point the lighted rod toward avatar-front (+Z), with the grip/cap behind (-Z).
   // The lit section extends farther in front of the palm than the grip does behind it.
   stick.rotation.set(-Math.PI/2,0,0);stick.visible=false;
-  glowsticks.push({group:stick,rodMat,haloMat});
+  // Pepero Day: low-poly chocolate-coated biscuit, attached to the same hand joint.
+  // Uses unlit standard materials: it is a biscuit, not a glowing baton.
+  const pepero=new THREE.Group();stick.add(pepero);
+  const biscuitMat=new THREE.MeshStandardMaterial({color:'#e4aa68',roughness:.87});
+  const chocolateMat=new THREE.MeshStandardMaterial({color:'#59301e',roughness:.48});
+  const almondMat=new THREE.MeshStandardMaterial({color:'#d5a06b',roughness:.8});
+  const biscuit=new THREE.Mesh(new THREE.CylinderGeometry(.052,.052,.94,9),biscuitMat);
+  biscuit.position.y=-.19;pepero.add(biscuit);
+  const chocolate=new THREE.Mesh(new THREE.CylinderGeometry(.081,.078,.64,10),chocolateMat);
+  chocolate.position.y=-.34;pepero.add(chocolate);
+  const tip=new THREE.Mesh(new THREE.SphereGeometry(.081,9,7),chocolateMat);
+  tip.position.y=-.66;tip.scale.y=.75;pepero.add(tip);
+  // Small fixed almond flakes distinguish the Pepero from a plain brown rod.
+  for(let j=0;j<7;j++){
+   const ang=(j*2.3999632297)+(side==='left'?0:.6);
+   const crumb=new THREE.Mesh(new THREE.BoxGeometry(.048,.045,.028),almondMat);
+   crumb.position.set(Math.cos(ang)*.083,-.15-j*.073,Math.sin(ang)*.083);
+   crumb.rotation.set(j*.41,ang,j*.25);pepero.add(crumb);
+  }
+  pepero.visible=false;
+  glowsticks.push({group:stick,rodMat,haloMat,rod,halo,cap,pepero});
  }
  parts.glowsticks=glowsticks;
  // Lightweight shared night fireworks effect: a wrist-held launcher and small
@@ -7156,6 +7176,10 @@ function animateAvatar(a,p,t){
   for(let i=0;i<P.glowsticks.length;i++){
    const stick=P.glowsticks[i];stick.group.visible=enabled;
    if(!enabled)continue;
+   const isPepero=key==='pepero';
+   stick.pepero.visible=isPepero;
+   stick.rod.visible=!isPepero;stick.halo.visible=!isPepero;stick.cap.visible=!isPepero;
+   if(isPepero)continue;
    const c=key==='rainbow'?new THREE.Color().setHSL((hue+i*.20)%1,1,.62):new THREE.Color(glowstickColors[key]);
    stick.rodMat.color.copy(c);stick.haloMat.color.copy(c);
    stick.haloMat.opacity=.20+.055*Math.sin(sec*8+i);
