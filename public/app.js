@@ -300,13 +300,13 @@ function updatePowerGame(){
  if(elapsed>powerGame.activeUntil+400){powerUi.strike.disabled=true;void strikePowerGame(true);}
 }
 
-// v259: Two-dozen-second arcade reflex game, 9 holes, per-play server random schedule.
+// v261: image-aligned whack-a-mole with cache-safe deployment.
 const moleGame={open:false,running:false,pending:false,finishing:false,playId:null,startedAt:0,offset:0,delay:1500,interval:750,positions:[],coins:5,best:0,score:0,combo:0,hitIndex:-1,activeIndex:-1,leaderboard:[],reward:null};
 let moleUi=null,moleHammerRevision='';
 function ensureMoleUI(){
  if(moleUi)return moleUi;
  const css=document.createElement('style');css.textContent=`
- #moleOverlay{display:none;position:fixed;inset:0;z-index:95;background:#10251e url('/assets/mole/background.png') center/cover no-repeat;color:#fff;overflow:auto;overscroll-behavior:contain}
+ #moleOverlay{display:none;position:fixed;inset:0;z-index:95;background:#07140f url('/assets/mole/background.png') center/cover no-repeat;color:#fff;overflow:auto;overscroll-behavior:contain}
  #moleOverlay.show{display:block}#moleOverlay *{box-sizing:border-box}
  #moleShell{width:min(100%,570px);margin:auto;min-height:100dvh;padding:calc(env(safe-area-inset-top,0px) + 12px) 14px calc(env(safe-area-inset-bottom,0px) + 25px);display:flex;flex-direction:column;gap:11px}
  #moleHead{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
@@ -314,10 +314,14 @@ function ensureMoleUI(){
  #moleClose{background:#192b29e8;color:white;border:1px solid #a3ecaa66;border-radius:12px;padding:11px 13px;font-weight:800}
  #moleStats{display:flex;justify-content:space-between;gap:10px;padding:11px 14px;background:#071d19d9;border:1px solid #a6ff9a55;border-radius:14px;font-weight:900}
  #moleBoard{width:100%;aspect-ratio:1000/1030;max-height:min(60dvh,580px);position:relative;background:url('/assets/mole/board.png') center/100% 100% no-repeat;border-radius:24px;overflow:hidden;touch-action:manipulation}
- #moleGrid{position:absolute;inset:16% 8% 9%;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:repeat(3,minmax(0,1fr));gap:2%}
- .moleHole{border:0;background:transparent;position:relative;overflow:hidden;touch-action:manipulation;cursor:pointer;padding:0}
- .moleHole:before{content:'';position:absolute;left:11%;width:78%;height:24%;bottom:4%;border-radius:50%;background:#140f0ac9;box-shadow:inset 0 5px 7px #0008}
- .moleHole .moleSprite{position:absolute;inset:0 3% 11%;background:url('/assets/mole/mole.png') center bottom/contain no-repeat;opacity:0;transform:translateY(42%);transition:transform .11s,opacity .09s;pointer-events:none}
+ /* v260: The uploaded board.png ALREADY contains the nine holes.
+    Align transparent hit areas to the artwork instead of drawing another set. */
+ #moleGrid{position:absolute;inset:0;pointer-events:none}
+ /* v261: board.png owns ALL visible holes; buttons are transparent hitboxes centered on the artwork. */
+ .moleHole{position:absolute;left:var(--hole-x);top:var(--hole-y);width:25%;height:24%;transform:translate(-50%,-50%);appearance:none;-webkit-appearance:none;border:0!important;border-radius:0!important;background:transparent!important;background-image:none!important;box-shadow:none!important;outline:0;overflow:visible;touch-action:manipulation;cursor:pointer;padding:0;pointer-events:auto;-webkit-tap-highlight-color:transparent}
+ .moleHole::before,.moleHole::after{content:none!important;display:none!important;background:none!important;box-shadow:none!important}
+ /* Anchor the mole's feet to the actual hole center, not below the hole. */
+ .moleHole .moleSprite{position:absolute;left:-3%;right:-3%;top:auto;bottom:49%;height:110%;background:url('/assets/mole/mole.png') center bottom/contain no-repeat;opacity:0;transform:translateY(42%);transition:transform .11s,opacity .09s;pointer-events:none}
  .moleHole.active .moleSprite{opacity:1;transform:translateY(0)}
  .moleHole.hit .moleSprite{background-image:url('/assets/mole/hit.png');opacity:1;transform:translateY(5%)}
  #moleMessage{padding:12px;text-align:center;font-weight:1000;background:#081e1cdd;border-radius:14px;font-size:clamp(15px,4vw,21px)}
@@ -329,7 +333,7 @@ function ensureMoleUI(){
  #moleRule{text-align:center;font-size:12px;line-height:1.5;background:#071b16bb;padding:8px;border-radius:9px}
  @media(max-width:600px){#moleShell{gap:8px;padding-left:9px;padding-right:9px}#moleBoard{max-height:none}#moleStats{font-size:13px;padding:9px}}
  `;document.head.append(css);
- const el=document.createElement('div');el.id='moleOverlay';el.innerHTML=`<div id="moleShell"><div id="moleHead"><div id="moleTitle" role="img" aria-label="두더지왕"></div><button id="moleClose" type="button">닫기</button></div><div id="moleStats"><span id="moleCoins">🎟️ 5/5</span><span id="moleScore">점수 0</span><span id="moleTime">30초</span></div><div id="moleBoard"><div id="moleGrid">${Array.from({length:9},(_,i)=>`<button class="moleHole" type="button" data-hole="${i}" aria-label="${i+1}번 구멍"><span class="moleSprite"></span></button>`).join('')}</div></div><div id="moleMessage" aria-live="polite">시작하면 두더지가 무작위로 등장합니다!</div><button id="moleStart" type="button" aria-label="두더지왕 시작 · 코인 1개"></button><section id="moleRank"><b>🏆 오늘의 두더지왕 TOP 5</b><ol id="moleRankList"></ol><div id="moleReward">어제 1등 기록 없음</div></section><div id="moleRule">0~999: 1P · 1,000~1,999: 10P · 2,000~2,999: 30P · 3,000+: 50P<br>하루 5코인 · 한국시간 자정 충전 · 30초 게임</div></div>`;
+ const el=document.createElement('div');el.id='moleOverlay';el.innerHTML=`<div id="moleShell"><div id="moleHead"><div id="moleTitle" role="img" aria-label="두더지왕"></div><button id="moleClose" type="button">닫기</button></div><div id="moleStats"><span id="moleCoins">🎟️ 5/5</span><span id="moleScore">점수 0</span><span id="moleTime">30초</span></div><div id="moleBoard"><div id="moleGrid">${Array.from({length:9},(_,i)=>`<button class="moleHole" type="button" data-hole="${i}" style="--hole-x:${[22,50,78][i%3]}%;--hole-y:${[25.2,50.2,75.0][Math.floor(i/3)]}%" aria-label="${i+1}번 구멍"><span class="moleSprite"></span></button>`).join('')}</div></div><div id="moleMessage" aria-live="polite">시작하면 두더지가 무작위로 등장합니다!</div><button id="moleStart" type="button" aria-label="두더지왕 시작 · 코인 1개"></button><section id="moleRank"><b>🏆 오늘의 두더지왕 TOP 5</b><ol id="moleRankList"></ol><div id="moleReward">어제 1등 기록 없음</div></section><div id="moleRule">0~999: 1P · 1,000~1,999: 10P · 2,000~2,999: 30P · 3,000+: 50P<br>하루 5코인 · 한국시간 자정 충전 · 30초 게임 · <span style="opacity:.7;font-size:10px">v261</span></div></div>`;
  document.body.append(el);
  moleUi={el,coins:el.querySelector('#moleCoins'),score:el.querySelector('#moleScore'),time:el.querySelector('#moleTime'),msg:el.querySelector('#moleMessage'),start:el.querySelector('#moleStart'),holes:[...el.querySelectorAll('.moleHole')],rank:el.querySelector('#moleRankList'),reward:el.querySelector('#moleReward')};
  el.querySelector('#moleClose').onclick=closeMoleGame;
