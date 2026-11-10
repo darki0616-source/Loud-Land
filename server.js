@@ -130,7 +130,11 @@ function maybeRotateRhythmDay(){const today=kstDate();if(rhythmDay===today)retur
 function restoreRhythmKingState(){for(const person of players.values())if(syncPlayerRhythmKing(person))broadcast({type:'profile',player:person});}
 // Total online time per stable browser identity, persisted alongside the playlist.
 // v259: Whack-a-mole, server-generated fresh pattern every round.
+// v262: 40 randomized moles over 30 seconds, each appearance progressively faster.
 const MOLE_DAILY_COINS=5,MOLE_INTERVAL_MS=750,MOLE_SLOTS=40,MOLE_DELAY_MS=1500;
+const MOLE_INTERVALS_MS=Array.from({length:MOLE_SLOTS},(_,i)=>Math.round(1100-700*i/(MOLE_SLOTS-1)));
+const MOLE_SLOT_STARTS_MS=[0];for(const ms of MOLE_INTERVALS_MS)MOLE_SLOT_STARTS_MS.push(MOLE_SLOT_STARTS_MS[MOLE_SLOT_STARTS_MS.length-1]+ms);
+const MOLE_DURATION_MS=MOLE_SLOT_STARTS_MS[MOLE_SLOTS];
 const moleAccounts=new Map(),moleScores=new Map();
 let moleDay=kstDate(),moleReward=null,moleHammerRevision='';
 function moleAccount(identity){const today=kstDate();let a=moleAccounts.get(identity);if(!a){a={day:today,used:0,bonus:0,session:null};moleAccounts.set(identity,a)}if(a.day!==today){a.day=today;a.used=0;a.session=null;scheduleSave()}return a;}
@@ -1357,19 +1361,19 @@ const server=http.createServer(async(req,res)=>{
           if(p.tentRoomId||Math.hypot(p.x-RHYTHM_BOOTH.x,p.y-RHYTHM_BOOTH.y)>RHYTHM_BOOTH.radius)return json(res,403,{error:'게임부스 가까이에서만 플레이할 수 있어요.'});
           if(a.used>=MOLE_DAILY_COINS)return json(res,409,{error:'오늘 두더지왕 코인 5개를 모두 사용했어요.'});
           a.used++;a.session={id:crypto.randomUUID(),startedAt:Date.now(),positions:molePattern(),hits:[],score:0,lastHit:-2};await saveNow();
-          return json(res,200,{ok:true,playId:a.session.id,startedAt:a.session.startedAt,serverNow:Date.now(),delay:MOLE_DELAY_MS,interval:MOLE_INTERVAL_MS,positions:a.session.positions,account:moleAccountView(p)});
+          return json(res,200,{ok:true,playId:a.session.id,startedAt:a.session.startedAt,serverNow:Date.now(),delay:MOLE_DELAY_MS,interval:MOLE_INTERVAL_MS,intervals:MOLE_INTERVALS_MS,positions:a.session.positions,account:moleAccountView(p)});
         }
         const session=a.session;if(!session||session.id!==d.playId)return json(res,409,{error:'게임 기록이 만료됐어요.'});
         if(command==='hit'){
           const index=Number(d.index),hole=Number(d.hole),elapsed=Date.now()-session.startedAt-MOLE_DELAY_MS;
           if(!Number.isInteger(index)||index<0||index>=MOLE_SLOTS||!Number.isInteger(hole)||hole!==session.positions[index])return json(res,400,{error:'잘못된 두더지 위치입니다.'});
-          if(elapsed<index*MOLE_INTERVAL_MS-180||elapsed>(index+1)*MOLE_INTERVAL_MS+240)return json(res,409,{error:'두더지가 이미 사라졌어요.'});
+          if(elapsed<MOLE_SLOT_STARTS_MS[index]-180||elapsed>MOLE_SLOT_STARTS_MS[index+1]+240)return json(res,409,{error:'두더지가 이미 사라졌어요.'});
           if(session.hits.includes(index))return json(res,409,{error:'이미 맞힌 두더지입니다.'});
           session.hits.push(index);const combo=index===session.lastHit+1?Math.min(10,session.hits.length):1;session.score+=100+combo*10;session.lastHit=index;scheduleSave();
           return json(res,200,{ok:true,score:session.score,combo});
         }
         if(command==='finish'){
-          const elapsed=Date.now()-session.startedAt;if(elapsed<MOLE_DELAY_MS+MOLE_SLOTS*MOLE_INTERVAL_MS-200)return json(res,409,{error:'아직 게임이 진행 중이에요.'});
+          const elapsed=Date.now()-session.startedAt;if(elapsed<MOLE_DELAY_MS+MOLE_DURATION_MS-200)return json(res,409,{error:'아직 게임이 진행 중이에요.'});
           const score=session.score,prize=molePrize(score);a.session=null;a.bonus+=prize;
           const best=moleScores.get(p.badgeIdentity);if(!best||score>best.score)moleScores.set(p.badgeIdentity,{name:p.name,score,at:Date.now()});
           await saveNow();broadcast({type:'mole-state',mole:publicMoleState()});
