@@ -967,7 +967,7 @@ async function restoreSession(){
    if(!r.ok)throw Error('재접속 실패');const d=await r.json();
    const old=state.me;state.id=d.id;state.me=d.players.find(x=>x.id===d.id);currentFlagImageId=state.me?.flagImage||'';
    if(old){state.me.x=old.x;state.me.y=old.y;state.me.facing=old.facing;state.me.action=old.action;state.me.pose=old.pose;}
-   state.players=new Map(d.players.map(x=>[x.id,x]));refreshProfilePreview();renderOnlinePlayers();syncTents(d.tents);listen();refreshTentStatus();
+   state.players=new Map(d.players.map(x=>[x.id,x]));refreshProfilePreview();renderOnlinePlayers();syncTents(d.tents);setFieldCoins(d.fieldCoins);listen();refreshTentStatus();
    applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);
    applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);applyPowerState(d.power);if(d.crowdSurf)syncCrowdSurf(d.crowdSurf);
    sendMove();toast('서버 연결이 자동 복구됐어요');
@@ -1244,7 +1244,7 @@ function handleLiveAnnouncement(event){
  if(event.kind==='immediate')queueFestivalPopup('📣 ONEseason 전체 공지',text,true);
  else if(event.kind==='ticker')queueFestivalTicker(text);
 }
-function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='snapshot'){syncTents(d.tents);state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);applyPowerState(d.power);applyMoleState(d.mole);syncCrowdSurf(d.crowdSurf);if(Array.isArray(d.chat)){$('chatMessages').replaceChildren();d.chat.filter(entry=>(entry.roomId||null)===(tentRoomActive?.id||null)).forEach(appendChat)};for(const id of duoVfx.keys())removeDuoVfx(id);activeDuos.clear();for(const duo of d.interactions||[])activeDuos.set(duo.id,duo);syncDuoStatus()}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){if((d.entry.roomId||null)===(tentRoomActive?.id||null)){appendChat(d.entry);showBubble(d.entry)}}else if(d.type==='move'){recordTrainLeader(d.player);state.players.set(d.player.id,d.player);if(d.player.id===state.id&&currentDuo())state.me={...d.player}}else if(d.type==='flag'){const player=state.players.get(d.id);if(player){player.flagText=d.flagText;player.flagImage=d.flagImage||'';}if(d.id===state.id&&state.me){state.me.flagText=d.flagText;state.me.flagImage=d.flagImage||'';currentFlagText=d.flagText;currentFlagImageId=d.flagImage||'';refreshFlagButton();}}else if(d.type==='badge'){const person=state.players.get(d.id);if(person){person.badgeTier=d.badgeTier;person.badgeSeconds=d.badgeSeconds;if(d.id===state.id&&state.me){state.me.badgeTier=d.badgeTier;state.me.badgeSeconds=d.badgeSeconds;}renderOnlinePlayers();}}else if(d.type==='profile'){state.players.set(d.player.id,d.player);if(d.player.id===state.id){state.me=d.player;refreshProfilePreview();refreshRhythmReactionButton();if(!$('punkShop').classList.contains('hidden')||!$('mdWardrobe').hidden)refreshPunkShop()}renderOnlinePlayers()}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers()}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue,d.history);else if(d.type==='slam')applySlam(d.slam,d.cooldownUntil);else if(d.type==='slam-go')onSlamGo(d);else if(d.type==='slam-impact')spawnSlamDust(d.x,d.y);else if(d.type==='toast-spark')spawnToastSpark(d.x,d.y);else if(d.type==='cheer'&&d.playerId!==state.id&&state.audioEnabled)playCheer();else if(d.type==='rockplay')applyRockPlay(d.event,d.rockCooldowns,d.rockRunningUntil);else if(d.type==='rockplay-go')onRockPlayGo(d);else if(d.type==='rockplay-cancel'){applyRockPlay(null,d.rockCooldowns,0);toast(d.reason||'인원이 부족해 취소됐어요.')} else if(d.type==='rhythm-state')applyRhythmState(d.rhythm);else if(d.type==='power-state')applyPowerState(d.power);else if(d.type==='mole-state')applyMoleState(d.mole);else if(d.type==='md-catalog')syncMdCatalog(d.items);else if(d.type==='tent-furniture-catalog'){
+function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='snapshot'){setFieldCoins(d.fieldCoins);syncTents(d.tents);state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);applyPowerState(d.power);applyMoleState(d.mole);syncCrowdSurf(d.crowdSurf);if(Array.isArray(d.chat)){$('chatMessages').replaceChildren();d.chat.filter(entry=>(entry.roomId||null)===(tentRoomActive?.id||null)).forEach(appendChat)};for(const id of duoVfx.keys())removeDuoVfx(id);activeDuos.clear();for(const duo of d.interactions||[])activeDuos.set(duo.id,duo);syncDuoStatus()}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){if((d.entry.roomId||null)===(tentRoomActive?.id||null)){appendChat(d.entry);showBubble(d.entry)}}else if(d.type==='move'){recordTrainLeader(d.player);state.players.set(d.player.id,d.player);if(d.player.id===state.id&&currentDuo())state.me={...d.player}}else if(d.type==='flag'){const player=state.players.get(d.id);if(player){player.flagText=d.flagText;player.flagImage=d.flagImage||'';}if(d.id===state.id&&state.me){state.me.flagText=d.flagText;state.me.flagImage=d.flagImage||'';currentFlagText=d.flagText;currentFlagImageId=d.flagImage||'';refreshFlagButton();}}else if(d.type==='badge'){const person=state.players.get(d.id);if(person){person.badgeTier=d.badgeTier;person.badgeSeconds=d.badgeSeconds;if(d.id===state.id&&state.me){state.me.badgeTier=d.badgeTier;state.me.badgeSeconds=d.badgeSeconds;}renderOnlinePlayers();}}else if(d.type==='profile'){state.players.set(d.player.id,d.player);if(d.player.id===state.id){state.me=d.player;refreshProfilePreview();refreshRhythmReactionButton();if(!$('punkShop').classList.contains('hidden')||!$('mdWardrobe').hidden)refreshPunkShop()}renderOnlinePlayers()}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers()}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue,d.history);else if(d.type==='slam')applySlam(d.slam,d.cooldownUntil);else if(d.type==='slam-go')onSlamGo(d);else if(d.type==='slam-impact')spawnSlamDust(d.x,d.y);else if(d.type==='toast-spark')spawnToastSpark(d.x,d.y);else if(d.type==='cheer'&&d.playerId!==state.id&&state.audioEnabled)playCheer();else if(d.type==='rockplay')applyRockPlay(d.event,d.rockCooldowns,d.rockRunningUntil);else if(d.type==='rockplay-go')onRockPlayGo(d);else if(d.type==='rockplay-cancel'){applyRockPlay(null,d.rockCooldowns,0);toast(d.reason||'인원이 부족해 취소됐어요.')} else if(d.type==='rhythm-state')applyRhythmState(d.rhythm);else if(d.type==='power-state')applyPowerState(d.power);else if(d.type==='field-coins')setFieldCoins(d.coins);else if(d.type==='mole-state')applyMoleState(d.mole);else if(d.type==='md-catalog')syncMdCatalog(d.items);else if(d.type==='tent-furniture-catalog'){
    tentFurnitureModels.clear();tentFurnitureThumbs.clear();
    if(tentFurniturePlacement){cancelTentFurniturePlacement();toast('상품 크기가 변경될 수 있어요. 배치를 다시 선택해 주세요.');}
    if(tentFurnitureData)tentFurnitureData.catalog=d.catalog||{};
@@ -2462,6 +2462,58 @@ function effectivePerfPreset(){return perfMode==='eco'?perfPresets.eco:perfMode=
 function performanceRatio(){return Math.max(.32,Math.min(1.45,effectivePerfPreset().pixel*perfAutoScale))}
 const host=$('world');const scene=new THREE.Scene();scene.background=new THREE.Color('#78bfff');scene.fog=new THREE.FogExp2('#78bfff',.0068);
 const camera=new THREE.PerspectiveCamera(56,1,.1,350);camera.position.set(0,27,39);
+
+// v264: lightweight world coin visuals; server owns positions, lifetimes and rewards.
+const fieldCoinNodes=new Map();let fieldCoinState=[];let fieldCoinTemplate=null;
+const fieldCoinColors={10:0xc37a40,50:0xd7965b,100:0xbec9dc,500:0xffd05a,1000:0x7de9ff};
+function fieldCoinLabel(value){
+ const canvas=document.createElement('canvas');canvas.width=256;canvas.height=96;
+ const c=canvas.getContext('2d');c.font='bold 50px sans-serif';c.textAlign='center';c.textBaseline='middle';
+ c.shadowColor=value>=500?'#fff7a2':'#b6fbff';c.shadowBlur=16;c.fillStyle='#ffffff';c.fillText(value+'P',128,48);
+ const map=new THREE.CanvasTexture(canvas);const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map,transparent:true,depthWrite:false}));sprite.scale.set(2.1,.8,1);sprite.position.y=2.1;return sprite;
+}
+function makeFieldCoinNode(coin){
+ if(!fieldCoinTemplate)return;
+ const group=new THREE.Group(),model=fieldCoinTemplate.clone(true);model.traverse(o=>{if(o.isMesh){o.material=new THREE.MeshStandardMaterial({color:fieldCoinColors[coin.value]||0xffffff,metalness:coin.value>=100?.78:.55,roughness:coin.value>=100?.22:.33,emissive:fieldCoinColors[coin.value]||0xffffff,emissiveIntensity:coin.value>=500?.32:.2});o.castShadow=false;o.receiveShadow=false;}});
+ // GLB source is a circular disc facing +Z, 1.9 units wide. Retain upright orientation.
+ model.scale.setScalar(.59);model.position.y=1.05;group.add(model);
+ const halo=new THREE.Mesh(new THREE.RingGeometry(.74,.91,32),new THREE.MeshBasicMaterial({color:fieldCoinColors[coin.value],transparent:true,opacity:.55,depthWrite:false,side:THREE.DoubleSide}));halo.rotation.x=-Math.PI/2;halo.position.y=.16;group.add(halo);
+ group.add(fieldCoinLabel(coin.value));
+ const glow=new THREE.PointLight(fieldCoinColors[coin.value],coin.value>=500?1.0:.6,4.5,2);glow.position.y=1.25;group.add(glow);
+ const wx=toWorld({x:coin.x,y:coin.y});group.position.set(wx.x,0,wx.z);
+ group.userData.fieldCoinId=coin.id;scene.add(group);fieldCoinNodes.set(coin.id,{group,model,halo,coin});
+}
+function setFieldCoins(list){
+ fieldCoinState=Array.isArray(list)?list.filter(c=>c&&typeof c.id==='string'&&[10,50,100,500,1000].includes(c.value)):[];
+ const ids=new Set(fieldCoinState.map(c=>c.id));
+ for(const [id,node] of fieldCoinNodes){if(ids.has(id))continue;scene.remove(node.group);node.group.traverse(o=>{if(o.isMesh){if(o===node.halo)o.geometry?.dispose();o.material?.dispose()}if(o.isSprite){o.material?.map?.dispose();o.material?.dispose()}});fieldCoinNodes.delete(id);}
+ if(fieldCoinTemplate)for(const c of fieldCoinState)if(!fieldCoinNodes.has(c.id))makeFieldCoinNode(c);
+}
+new GLTFLoader().load('/assets/world/coin.glb?v=264',g=>{fieldCoinTemplate=g.scene;setFieldCoins(fieldCoinState)},undefined,e=>console.warn('Coin GLB loading failed',e));
+function animateFieldCoins(t){
+ for(const n of fieldCoinNodes.values()){
+  n.model.rotation.y=t*.00065;
+  n.model.position.y=1.08+Math.sin(t*.0016+n.coin.x)*.10;
+  n.halo.material.opacity=.35+.24*Math.sin(t*.002+n.coin.y);
+  n.group.visible=!tentRoomActive;
+ }
+}
+let fieldCoinCollectPending=false;
+async function collectFieldCoin(coinId){
+ if(fieldCoinCollectPending||!state.id)return;
+ fieldCoinCollectPending=true;
+ try{const result=await post('field-coin',{id:state.id,sessionKey,command:'collect',coinId});setFieldCoins(result.coins);toast('🪙 '+result.value.toLocaleString()+'P 획득!');void refreshTentStatus();}
+ catch(err){toast(err.message);post('field-coin',{id:state.id,command:'state'}).then(r=>setFieldCoins(r.coins)).catch(()=>{});}
+ finally{fieldCoinCollectPending=false;}
+}
+function clickedFieldCoin(ray){
+ if(!fieldCoinNodes.size)return null;
+ const candidates=[];for(const n of fieldCoinNodes.values())candidates.push(n.model);
+ const hit=ray.intersectObjects(candidates,true)[0];if(!hit)return null;
+ for(const [id,n] of fieldCoinNodes)if(n.model===hit.object||n.model.getObjectById(hit.object.id))return id;
+ return null;
+}
+
 const renderer=new THREE.WebGLRenderer({antialias:!perfWeakDevice,powerPreference:perfWeakDevice?'low-power':'high-performance'});renderer.setPixelRatio(Math.min(devicePixelRatio,performanceRatio()));renderer.shadowMap.enabled=effectivePerfPreset().shadows&&!perfMobile;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.outputColorSpace=THREE.SRGBColorSpace;host.appendChild(renderer.domElement);
 const cssRenderer=new CSS3DRenderer();cssRenderer.domElement.className='css-world';host.appendChild(cssRenderer.domElement);
 const stageVideo=document.querySelector('#youtubeScreen');stageVideo.classList.add('onstage');
@@ -7366,6 +7418,14 @@ gameTouchSurface.addEventListener('pointerup',e=>{
     else tentRoomWalkTarget={x:THREE.MathUtils.clamp(target.point.x,-4.6,4.6),z:THREE.MathUtils.clamp(target.point.z,-3.6,3.6)};}
   return;
  }
+ // Clicking a glowing world coin requests an authoritative pickup. Not a walk tap.
+ if(!tentPlaceMode&&!rockPlacementMode&&!slamMode){
+  const bounds=renderer.domElement.getBoundingClientRect();
+  pointer.set(((e.clientX-bounds.left)/bounds.width)*2-1,-((e.clientY-bounds.top)/bounds.height)*2+1);
+  groundRay.setFromCamera(pointer,camera);
+  const coinId=clickedFieldCoin(groundRay);
+  if(coinId){void collectFieldCoin(coinId);return;}
+ }
  // An actual tent is a world entrance: prioritize its mesh over nearby
  // avatars so clicking a door does not accidentally open a duo invitation.
  if(!tentPlaceMode&&!rockPlacementMode&&!slamMode){
@@ -7743,7 +7803,7 @@ function tick(t){
  const minimalScenery=perfMode==='eco'||(perfMode==='auto'&&perfWeakDevice);
  if(!minimalScenery||t-(updateOcean.lastEco||0)>1000){updateOcean(t);updateOcean.lastEco=t;}
  if(!minimalScenery)animateSky(t);
- updateMoshTrails(t);updateSlamDust(t);updateBubbles(t);animateShow(t);animateCampfire(t);updateFiretruckShow(t);
+ updateMoshTrails(t);updateSlamDust(t);updateBubbles(t);animateShow(t);animateCampfire(t);updateFiretruckShow(t);animateFieldCoins(t);
  if(!minimalScenery)updateHourlyFireworks(t);
  animateToastSparks(t);
  if(state.id)updateRhythmBoothButton();if(rhythmGame.open)drawRhythmGame();if(state.id)updatePowerBoothButton();updatePowerGame();updateMoleGame();
