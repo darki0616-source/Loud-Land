@@ -300,8 +300,8 @@ function updatePowerGame(){
  if(elapsed>powerGame.activeUntil+400){powerUi.strike.disabled=true;void strikePowerGame(true);}
 }
 
-// v261: image-aligned whack-a-mole with cache-safe deployment.
-const moleGame={open:false,running:false,pending:false,finishing:false,playId:null,startedAt:0,offset:0,delay:1500,interval:750,positions:[],coins:5,best:0,score:0,combo:0,hitIndex:-1,activeIndex:-1,leaderboard:[],reward:null};
+// v262: lower mole sprite and accelerate each round from 1100ms to 400ms.
+const moleGame={open:false,running:false,pending:false,finishing:false,playId:null,startedAt:0,offset:0,delay:1500,interval:750,intervals:[],starts:[],duration:30000,positions:[],coins:5,best:0,score:0,combo:0,hitIndex:-1,activeIndex:-1,leaderboard:[],reward:null};
 let moleUi=null,moleHammerRevision='';
 function ensureMoleUI(){
  if(moleUi)return moleUi;
@@ -321,7 +321,7 @@ function ensureMoleUI(){
  .moleHole{position:absolute;left:var(--hole-x);top:var(--hole-y);width:25%;height:24%;transform:translate(-50%,-50%);appearance:none;-webkit-appearance:none;border:0!important;border-radius:0!important;background:transparent!important;background-image:none!important;box-shadow:none!important;outline:0;overflow:visible;touch-action:manipulation;cursor:pointer;padding:0;pointer-events:auto;-webkit-tap-highlight-color:transparent}
  .moleHole::before,.moleHole::after{content:none!important;display:none!important;background:none!important;box-shadow:none!important}
  /* Anchor the mole's feet to the actual hole center, not below the hole. */
- .moleHole .moleSprite{position:absolute;left:-3%;right:-3%;top:auto;bottom:49%;height:110%;background:url('/assets/mole/mole.png') center bottom/contain no-repeat;opacity:0;transform:translateY(42%);transition:transform .11s,opacity .09s;pointer-events:none}
+ .moleHole .moleSprite{position:absolute;left:-3%;right:-3%;top:auto;bottom:31%;height:110%;background:url('/assets/mole/mole.png') center bottom/contain no-repeat;opacity:0;transform:translateY(42%);transition:transform .11s,opacity .09s;pointer-events:none}
  .moleHole.active .moleSprite{opacity:1;transform:translateY(0)}
  .moleHole.hit .moleSprite{background-image:url('/assets/mole/hit.png');opacity:1;transform:translateY(5%)}
  #moleMessage{padding:12px;text-align:center;font-weight:1000;background:#081e1cdd;border-radius:14px;font-size:clamp(15px,4vw,21px)}
@@ -333,7 +333,7 @@ function ensureMoleUI(){
  #moleRule{text-align:center;font-size:12px;line-height:1.5;background:#071b16bb;padding:8px;border-radius:9px}
  @media(max-width:600px){#moleShell{gap:8px;padding-left:9px;padding-right:9px}#moleBoard{max-height:none}#moleStats{font-size:13px;padding:9px}}
  `;document.head.append(css);
- const el=document.createElement('div');el.id='moleOverlay';el.innerHTML=`<div id="moleShell"><div id="moleHead"><div id="moleTitle" role="img" aria-label="두더지왕"></div><button id="moleClose" type="button">닫기</button></div><div id="moleStats"><span id="moleCoins">🎟️ 5/5</span><span id="moleScore">점수 0</span><span id="moleTime">30초</span></div><div id="moleBoard"><div id="moleGrid">${Array.from({length:9},(_,i)=>`<button class="moleHole" type="button" data-hole="${i}" style="--hole-x:${[22,50,78][i%3]}%;--hole-y:${[25.2,50.2,75.0][Math.floor(i/3)]}%" aria-label="${i+1}번 구멍"><span class="moleSprite"></span></button>`).join('')}</div></div><div id="moleMessage" aria-live="polite">시작하면 두더지가 무작위로 등장합니다!</div><button id="moleStart" type="button" aria-label="두더지왕 시작 · 코인 1개"></button><section id="moleRank"><b>🏆 오늘의 두더지왕 TOP 5</b><ol id="moleRankList"></ol><div id="moleReward">어제 1등 기록 없음</div></section><div id="moleRule">0~999: 1P · 1,000~1,999: 10P · 2,000~2,999: 30P · 3,000+: 50P<br>하루 5코인 · 한국시간 자정 충전 · 30초 게임 · <span style="opacity:.7;font-size:10px">v261</span></div></div>`;
+ const el=document.createElement('div');el.id='moleOverlay';el.innerHTML=`<div id="moleShell"><div id="moleHead"><div id="moleTitle" role="img" aria-label="두더지왕"></div><button id="moleClose" type="button">닫기</button></div><div id="moleStats"><span id="moleCoins">🎟️ 5/5</span><span id="moleScore">점수 0</span><span id="moleTime">30초</span></div><div id="moleBoard"><div id="moleGrid">${Array.from({length:9},(_,i)=>`<button class="moleHole" type="button" data-hole="${i}" style="--hole-x:${[22,50,78][i%3]}%;--hole-y:${[25.2,50.2,75.0][Math.floor(i/3)]}%" aria-label="${i+1}번 구멍"><span class="moleSprite"></span></button>`).join('')}</div></div><div id="moleMessage" aria-live="polite">시작하면 두더지가 무작위로 등장합니다!</div><button id="moleStart" type="button" aria-label="두더지왕 시작 · 코인 1개"></button><section id="moleRank"><b>🏆 오늘의 두더지왕 TOP 5</b><ol id="moleRankList"></ol><div id="moleReward">어제 1등 기록 없음</div></section><div id="moleRule">0~999: 1P · 1,000~1,999: 10P · 2,000~2,999: 30P · 3,000+: 50P<br>하루 5코인 · 한국시간 자정 충전 · 30초 게임 · 시간이 갈수록 빨라짐 · <span style="opacity:.7;font-size:10px">v262</span></div></div>`;
  document.body.append(el);
  moleUi={el,coins:el.querySelector('#moleCoins'),score:el.querySelector('#moleScore'),time:el.querySelector('#moleTime'),msg:el.querySelector('#moleMessage'),start:el.querySelector('#moleStart'),holes:[...el.querySelectorAll('.moleHole')],rank:el.querySelector('#moleRankList'),reward:el.querySelector('#moleReward')};
  el.querySelector('#moleClose').onclick=closeMoleGame;
@@ -349,19 +349,22 @@ function renderMoleUI(){if(!moleUi)return;moleUi.coins.textContent=`🎟️ 코�
 async function openMoleGame(){if(!nearRhythmBooth())return toast('게임부스 근처에서 플레이하세요.');ensureMoleUI();moleGame.open=true;moleUi.el.classList.add('show');moleUi.start.hidden=false;moleUi.msg.textContent='30초 동안 나타나는 두더지를 빠르게 터치하세요!';
  try{const r=await post('mole',{id:state.id,sessionKey,command:'state'});moleGame.coins=r.account.coins;moleGame.best=r.best;applyMoleState(r.mole);}catch(e){toast(e.message)}renderMoleUI();}
 function closeMoleGame(){moleGame.open=false;moleUi?.el.classList.remove('show');if(moleGame.running){moleGame.running=false;moleGame.playId=null;toast('게임을 닫았어요. 코인은 반환되지 않습니다.');}updateRhythmBoothButton();}
+// Cumulative slot boundaries shared with the server. Every round remains 30 seconds.
+function moleBuildSlotStarts(intervals){const starts=[0];for(const duration of intervals)starts.push(starts[starts.length-1]+duration);return starts;}
+function moleSlotIndex(elapsed,starts){if(elapsed<0)return -1;if(!starts||starts.length<2||elapsed>=starts[starts.length-1])return (starts?.length||1)-1;let lo=0,hi=starts.length-1;while(lo+1<hi){const mid=(lo+hi)>>1;if(starts[mid]<=elapsed)lo=mid;else hi=mid;}return lo;}
 async function startMoleGame(){if(moleGame.pending||moleGame.running||!nearRhythmBooth())return;moleGame.pending=true;moleUi.start.disabled=true;const sent=Date.now();
- try{const r=await post('mole',{id:state.id,sessionKey,command:'start'});moleGame.playId=r.playId;moleGame.startedAt=r.startedAt;moleGame.offset=r.serverNow+(Date.now()-sent)/2-Date.now();moleGame.positions=r.positions;moleGame.interval=r.interval;moleGame.delay=r.delay;moleGame.coins=r.account.coins;moleGame.score=0;moleGame.combo=0;moleGame.hitIndex=-1;moleGame.activeIndex=-1;moleGame.running=true;moleGame.finishing=false;moleUi.start.hidden=true;moleUi.msg.textContent='준비!';renderMoleUI();}catch(e){toast(e.message);}finally{moleGame.pending=false;renderMoleUI();}}
-async function hitMole(hole){if(!moleGame.running||!moleGame.playId)return;const elapsed=Date.now()+moleGame.offset-moleGame.startedAt-moleGame.delay,index=Math.floor(elapsed/moleGame.interval);if(index<0||index>=moleGame.positions.length||moleGame.positions[index]!==hole||moleGame.hitIndex===index)return;
+ try{const r=await post('mole',{id:state.id,sessionKey,command:'start'});moleGame.playId=r.playId;moleGame.startedAt=r.startedAt;moleGame.offset=r.serverNow+(Date.now()-sent)/2-Date.now();moleGame.positions=r.positions;moleGame.interval=r.interval;moleGame.intervals=Array.isArray(r.intervals)&&r.intervals.length===r.positions.length?r.intervals:Array(r.positions.length).fill(r.interval);moleGame.starts=moleBuildSlotStarts(moleGame.intervals);moleGame.duration=moleGame.starts[moleGame.starts.length-1];moleGame.delay=r.delay;moleGame.coins=r.account.coins;moleGame.score=0;moleGame.combo=0;moleGame.hitIndex=-1;moleGame.activeIndex=-1;moleGame.running=true;moleGame.finishing=false;moleUi.start.hidden=true;moleUi.msg.textContent='준비!';renderMoleUI();}catch(e){toast(e.message);}finally{moleGame.pending=false;renderMoleUI();}}
+async function hitMole(hole){if(!moleGame.running||!moleGame.playId)return;const elapsed=Date.now()+moleGame.offset-moleGame.startedAt-moleGame.delay,index=moleSlotIndex(elapsed,moleGame.starts);if(index<0||index>=moleGame.positions.length||moleGame.positions[index]!==hole||moleGame.hitIndex===index)return;
  moleGame.hitIndex=index;const cell=moleUi.holes[hole];cell.classList.add('hit');
  try{const r=await post('mole',{id:state.id,sessionKey,command:'hit',playId:moleGame.playId,index,hole});moleGame.score=r.score;moleGame.combo=r.combo;moleUi.msg.textContent=`💥 HIT! ${r.combo} COMBO`;renderMoleUI();}catch(e){cell.classList.remove('hit');moleUi.msg.textContent=e.message||'타이밍을 놓쳤어요.';}}
 async function finishMoleGame(){if(moleGame.finishing||!moleGame.playId)return;moleGame.finishing=true;moleGame.running=false;moleUi.msg.textContent='점수 계산 중...';
  try{const r=await post('mole',{id:state.id,sessionKey,command:'finish',playId:moleGame.playId});moleGame.score=r.score;moleGame.best=r.best;moleGame.coins=r.account.coins;applyMoleState(r.mole);moleUi.msg.textContent=`🏆 ${r.score.toLocaleString()}점 · +${r.prize}P 획득!`;void refreshTentStatus();}
  catch(e){moleUi.msg.textContent=e.message||'결과 저장 실패';}
  finally{moleGame.playId=null;moleGame.finishing=false;moleUi.start.hidden=false;moleUi.holes.forEach(h=>h.classList.remove('active','hit'));renderMoleUI();}}
-function updateMoleGame(){if(!moleGame.open||!moleGame.running||!moleUi)return;const elapsed=Date.now()+moleGame.offset-moleGame.startedAt-moleGame.delay;const index=Math.floor(elapsed/moleGame.interval);
+function updateMoleGame(){if(!moleGame.open||!moleGame.running||!moleUi)return;const elapsed=Date.now()+moleGame.offset-moleGame.startedAt-moleGame.delay;const index=moleSlotIndex(elapsed,moleGame.starts);
  if(elapsed<0){moleUi.msg.textContent=`${Math.ceil(-elapsed/1000)}초 후 시작!`;moleUi.time.textContent='30초';return;}
  if(index>=moleGame.positions.length){moleUi.time.textContent='0초';moleUi.holes.forEach(h=>h.classList.remove('active'));void finishMoleGame();return;}
- moleUi.time.textContent=`${Math.ceil((moleGame.positions.length*moleGame.interval-elapsed)/1000)}초`;
+ moleUi.time.textContent=`${Math.ceil((moleGame.duration-elapsed)/1000)}초`;
  if(index!==moleGame.activeIndex){moleGame.activeIndex=index;moleUi.holes.forEach((h,i)=>{h.classList.toggle('active',i===moleGame.positions[index]);h.classList.remove('hit');});moleUi.msg.textContent='두더지를 터치!';}
 }
 
