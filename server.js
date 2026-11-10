@@ -135,9 +135,9 @@ const MOLE_DAILY_COINS=5,MOLE_INTERVAL_MS=750,MOLE_SLOTS=40,MOLE_DELAY_MS=1500;
 const MOLE_INTERVALS_MS=Array.from({length:MOLE_SLOTS},(_,i)=>Math.round(1100-700*i/(MOLE_SLOTS-1)));
 const MOLE_SLOT_STARTS_MS=[0];for(const ms of MOLE_INTERVALS_MS)MOLE_SLOT_STARTS_MS.push(MOLE_SLOT_STARTS_MS[MOLE_SLOT_STARTS_MS.length-1]+ms);
 const MOLE_DURATION_MS=MOLE_SLOT_STARTS_MS[MOLE_SLOTS];
-const moleAccounts=new Map(),moleScores=new Map();
+const moleAccounts=new Map(),moleScores=new Map(),moleFinishTimers=new Map();
 let moleDay=kstDate(),moleReward=null,moleHammerRevision='';
-function moleAccount(identity){const today=kstDate();let a=moleAccounts.get(identity);if(!a){a={day:today,used:0,bonus:0,session:null};moleAccounts.set(identity,a)}if(a.day!==today){a.day=today;a.used=0;a.session=null;scheduleSave()}return a;}
+function moleAccount(identity){const today=kstDate();let a=moleAccounts.get(identity);if(!a){a={day:today,used:0,bonus:0,session:null,lastResult:null};moleAccounts.set(identity,a)}if(a.day!==today){a.day=today;a.used=0;a.session=null;a.lastResult=null;scheduleSave()}return a;}
 function moleAccountView(p){const a=moleAccount(p.badgeIdentity);return {coins:Math.max(0,MOLE_DAILY_COINS-a.used),limit:MOLE_DAILY_COINS,day:a.day,used:a.used};}
 function molePrize(score){return score>=3000?50:score>=2000?30:score>=1000?10:1;}
 function moleRows(){return [...moleScores.entries()].map(([identity,r])=>({identity,name:r.name,score:r.score,at:r.at})).sort((a,b)=>b.score-a.score||a.at-b.at||a.name.localeCompare(b.name,'ko-KR')).slice(0,5);}
@@ -146,6 +146,30 @@ function syncPlayerMoleKing(p){if(!p)return false;const yes=playerIsMoleKing(p);
 function rotateMoleDay(){const day=kstDate();if(day===moleDay)return;const winner=moleDay===previousKstDate(day)?moleRows()[0]:null;moleReward=winner?{date:day,identity:winner.identity,name:winner.name,score:winner.score,sourceDate:moleDay}:null;moleDay=day;moleScores.clear();for(const p of players.values())if(syncPlayerMoleKing(p))broadcast({type:'profile',player:p});scheduleSave();broadcast({type:'mole-state',mole:publicMoleState()});}
 function publicMoleState(){rotateMoleDay();return {day:moleDay,leaderboard:moleRows().map(({identity,at,...r},i)=>({rank:i+1,...r})),reward:moleReward&&moleReward.date===kstDate()?{title:'두더지왕',name:moleReward.name,score:moleReward.score,sourceDate:moleReward.sourceDate}:null,hammerRevision:moleHammerRevision,booth:RHYTHM_BOOTH};}
 function molePattern(){const seq=[];let prev=-1;for(let i=0;i<MOLE_SLOTS;i++){let pos=crypto.randomInt(0,8);if(pos>=prev&&prev>=0)pos++;seq.push(pos);prev=pos;}return seq;}
+// v263: Commit results once on the server, even if the browser's finish request is late or lost.
+// The last committed result is kept so retries cannot award points twice.
+async function commitMoleResult(identity,playId){
+ const a=moleAccounts.get(identity),session=a?.session;
+ if(!session||session.id!==playId||a.day!==kstDate())return a?.lastResult?.playId===playId?a.lastResult:null;
+ const endAt=session.startedAt+MOLE_DELAY_MS+MOLE_DURATION_MS;
+ if(Date.now()<endAt)return null;
+ const score=session.score,prize=molePrize(score),now=Date.now();
+ const result={playId,score,prize};
+ a.session=null;a.lastResult=result;a.bonus+=prize;
+ const best=moleScores.get(identity);
+ if(!best||score>best.score)moleScores.set(identity,{name:clean(session.name,18)||best?.name||'ROCKER',score,at:now});
+ await saveNow();broadcast({type:'mole-state',mole:publicMoleState()});
+ return result;
+}
+function scheduleMoleFinish(identity,session){
+ const previous=moleFinishTimers.get(identity);if(previous)clearTimeout(previous);
+ const delay=Math.max(100,session.startedAt+MOLE_DELAY_MS+MOLE_DURATION_MS+1400-Date.now());
+ const timer=setTimeout(()=>{
+  if(moleFinishTimers.get(identity)===timer)moleFinishTimers.delete(identity);
+  void commitMoleResult(identity,session.id).catch(e=>console.error('Mole result save failed:',e.message));
+ },delay);
+ timer.unref();moleFinishTimers.set(identity,timer);
+}
 const badgeStats=new Map();
 // No account required: coins belong to the existing persistent badge identity.
 // All purchases and equipment are server-validated. Guests without the stable
@@ -451,7 +475,7 @@ const SB_KEY=process.env.SUPABASE_SECRET_KEY||'';
 const useSupabase=Boolean(SB_URL&&SB_KEY);
 let restored=false;
 let saveChain=Promise.resolve();
-function stateData(){return {version:14,moleDay,moleHammerRevision,moleReward,moleScores:Object.fromEntries(moleScores),moleAccounts:Object.fromEntries([...moleAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),powerDay,powerReward,powerScores:Object.fromEntries(powerScores),powerAccounts:Object.fromEntries([...powerAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),rhythmAccounts:Object.fromEntries([...rhythmAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),furnitureCatalogEdits:Object.fromEntries(furnitureCatalogEdits),furnitureStats:Object.fromEntries([...furnitureStats].map(([id,v])=>[id,{spent:v.spent,owned:v.owned}])),tentStats:Object.fromEntries([...tentStats].map(([identity,t])=>[identity,storedTent(t)])),announcements:{entry:entranceNotices,ticker:tickerNotices,intervalMinutes:tickerIntervalMinutes,immediateHistory:immediateNoticeHistory},music,queue:[...queue],history:[...history],nextTrackToken,customMd:Object.fromEntries(customMd),shopStats:Object.fromEntries([...shopStats].map(([k,v])=>[k,{spent:0,refunded:v.refunded||0,owned:v.owned,equipped:v.equipped}])),badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),rhythm:{day:rhythmDay,reward:rhythmReward,scores:Object.fromEntries([...rhythmScores].map(([k,v])=>[k,{name:v.name,score:Math.max(0,Math.floor(Number(v.score)||0)),updatedAt:Number(v.updatedAt)||0}]))},savedAt:Date.now()}}
+function stateData(){return {version:14,moleDay,moleHammerRevision,moleReward,moleScores:Object.fromEntries(moleScores),moleAccounts:Object.fromEntries([...moleAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session,lastResult:v.lastResult}])),powerDay,powerReward,powerScores:Object.fromEntries(powerScores),powerAccounts:Object.fromEntries([...powerAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),rhythmAccounts:Object.fromEntries([...rhythmAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),furnitureCatalogEdits:Object.fromEntries(furnitureCatalogEdits),furnitureStats:Object.fromEntries([...furnitureStats].map(([id,v])=>[id,{spent:v.spent,owned:v.owned}])),tentStats:Object.fromEntries([...tentStats].map(([identity,t])=>[identity,storedTent(t)])),announcements:{entry:entranceNotices,ticker:tickerNotices,intervalMinutes:tickerIntervalMinutes,immediateHistory:immediateNoticeHistory},music,queue:[...queue],history:[...history],nextTrackToken,customMd:Object.fromEntries(customMd),shopStats:Object.fromEntries([...shopStats].map(([k,v])=>[k,{spent:0,refunded:v.refunded||0,owned:v.owned,equipped:v.equipped}])),badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),rhythm:{day:rhythmDay,reward:rhythmReward,scores:Object.fromEntries([...rhythmScores].map(([k,v])=>[k,{name:v.name,score:Math.max(0,Math.floor(Number(v.score)||0)),updatedAt:Number(v.updatedAt)||0}]))},savedAt:Date.now()}}
 function applySaved(d){
  if(!d||typeof d!=='object')return;
  // Restore furniture metadata BEFORE tents/inventories that reference these IDs.
@@ -518,7 +542,10 @@ function applySaved(d){
  if(typeof d.moleDay==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(d.moleDay))moleDay=d.moleDay;
  if(d.moleScores&&typeof d.moleScores==='object'&&(moleDay===kstDate()||moleDay===previousKstDate()))for(const [identity,row] of Object.entries(d.moleScores).slice(0,50000)){if(!/^[a-zA-Z0-9_-]{20,100}$/.test(identity)||!row)continue;moleScores.set(identity,{name:clean(row.name,18)||'ROCKER',score:Math.max(0,Math.min(10000,Math.floor(Number(row.score)||0))),at:Number(row.at)||Date.now()});}
  if(d.moleReward&&typeof d.moleReward==='object'&&/^[a-zA-Z0-9_-]{20,100}$/.test(d.moleReward.identity||''))moleReward={date:String(d.moleReward.date||''),identity:d.moleReward.identity,name:clean(d.moleReward.name,18)||'ROCKER',score:Math.max(0,Math.floor(Number(d.moleReward.score)||0)),sourceDate:String(d.moleReward.sourceDate||'')};
- if(d.moleAccounts&&typeof d.moleAccounts==='object')for(const [identity,row] of Object.entries(d.moleAccounts).slice(0,50000)){if(!/^[a-zA-Z0-9_-]{20,100}$/.test(identity)||!row)continue;const day=/^\d{4}-\d{2}-\d{2}$/.test(row.day)?row.day:kstDate(),v=row.session;const session=v&&typeof v.id==='string'&&/^[a-f0-9-]{36}$/.test(v.id)&&Number.isFinite(v.startedAt)&&Array.isArray(v.positions)&&v.positions.length===MOLE_SLOTS?{id:v.id,startedAt:v.startedAt,positions:v.positions.map(n=>Math.max(0,Math.min(8,Math.floor(Number(n)||0)))),hits:Array.isArray(v.hits)?v.hits.filter(n=>Number.isInteger(n)&&n>=0&&n<MOLE_SLOTS):[],score:Math.max(0,Math.floor(Number(v.score)||0)),lastHit:Number(v.lastHit)||-2}:null;moleAccounts.set(identity,{day,used:Math.max(0,Math.min(5,Math.floor(Number(row.used)||0))),bonus:Math.max(0,Math.floor(Number(row.bonus)||0)),session:day===kstDate()?session:null});}
+ if(d.moleAccounts&&typeof d.moleAccounts==='object')for(const [identity,row] of Object.entries(d.moleAccounts).slice(0,50000)){if(!/^[a-zA-Z0-9_-]{20,100}$/.test(identity)||!row)continue;const day=/^\d{4}-\d{2}-\d{2}$/.test(row.day)?row.day:kstDate(),v=row.session;const session=v&&typeof v.id==='string'&&/^[a-f0-9-]{36}$/.test(v.id)&&Number.isFinite(v.startedAt)&&Array.isArray(v.positions)&&v.positions.length===MOLE_SLOTS?{id:v.id,name:clean(v.name,18)||'ROCKER',startedAt:v.startedAt,positions:v.positions.map(n=>Math.max(0,Math.min(8,Math.floor(Number(n)||0)))),hits:Array.isArray(v.hits)?v.hits.filter(n=>Number.isInteger(n)&&n>=0&&n<MOLE_SLOTS):[],score:Math.max(0,Math.floor(Number(v.score)||0)),lastHit:Number(v.lastHit)||-2}:null;const restoredSession=day===kstDate()?session:null;
+ const lastResult=row.lastResult&&/^[a-f0-9-]{36}$/.test(row.lastResult.playId||'')?{playId:row.lastResult.playId,score:Math.max(0,Math.floor(Number(row.lastResult.score)||0)),prize:Math.max(0,Math.floor(Number(row.lastResult.prize)||0))}:null;
+ moleAccounts.set(identity,{day,used:Math.max(0,Math.min(5,Math.floor(Number(row.used)||0))),bonus:Math.max(0,Math.floor(Number(row.bonus)||0)),session:restoredSession,lastResult});
+ if(restoredSession)scheduleMoleFinish(identity,restoredSession);}
  if(typeof d.powerDay==='string' &&/^\d{4}-\d{2}-\d{2}$/.test(d.powerDay))powerDay=d.powerDay;
  if(d.powerScores&&typeof d.powerScores==='object'&&(powerDay===kstDate()||powerDay===previousKstDate()))for(const [identity,row] of Object.entries(d.powerScores).slice(0,50000)){
   if(!/^[a-zA-Z0-9_-]{20,100}$/.test(identity)||!row||typeof row!=='object')continue;
@@ -1359,11 +1386,24 @@ const server=http.createServer(async(req,res)=>{
         if(command==='state')return json(res,200,{mole:publicMoleState(),account:moleAccountView(p),best:moleScores.get(p.badgeIdentity)?.score||0});
         if(command==='start'){
           if(p.tentRoomId||Math.hypot(p.x-RHYTHM_BOOTH.x,p.y-RHYTHM_BOOTH.y)>RHYTHM_BOOTH.radius)return json(res,403,{error:'게임부스 가까이에서만 플레이할 수 있어요.'});
+          if(a.session){
+            if(Date.now()>=a.session.startedAt+MOLE_DELAY_MS+MOLE_DURATION_MS)await commitMoleResult(p.badgeIdentity,a.session.id);
+            else return json(res,409,{error:'이미 진행 중인 두더지왕 게임이 있어요.'});
+          }
           if(a.used>=MOLE_DAILY_COINS)return json(res,409,{error:'오늘 두더지왕 코인 5개를 모두 사용했어요.'});
-          a.used++;a.session={id:crypto.randomUUID(),startedAt:Date.now(),positions:molePattern(),hits:[],score:0,lastHit:-2};await saveNow();
+          a.used++;a.session={id:crypto.randomUUID(),name:p.name,startedAt:Date.now(),positions:molePattern(),hits:[],score:0,lastHit:-2};a.lastResult=null;
+          await saveNow();scheduleMoleFinish(p.badgeIdentity,a.session);
           return json(res,200,{ok:true,playId:a.session.id,startedAt:a.session.startedAt,serverNow:Date.now(),delay:MOLE_DELAY_MS,interval:MOLE_INTERVAL_MS,intervals:MOLE_INTERVALS_MS,positions:a.session.positions,account:moleAccountView(p)});
         }
-        const session=a.session;if(!session||session.id!==d.playId)return json(res,409,{error:'게임 기록이 만료됐어요.'});
+        const session=a.session;
+        if(command==='finish'&&a.lastResult?.playId===d.playId){
+          const result=a.lastResult;return json(res,200,{ok:true,score:result.score,prize:result.prize,points:tentPointBalance(p),best:moleScores.get(p.badgeIdentity)?.score||result.score,account:moleAccountView(p),mole:publicMoleState()});
+        }
+        if(!session||session.id!==d.playId)return json(res,409,{error:'게임 기록이 만료됐어요.'});
+        if(command==='abandon'){
+          a.session=null;const timer=moleFinishTimers.get(p.badgeIdentity);if(timer)clearTimeout(timer);moleFinishTimers.delete(p.badgeIdentity);
+          await saveNow();return json(res,200,{ok:true});
+        }
         if(command==='hit'){
           const index=Number(d.index),hole=Number(d.hole),elapsed=Date.now()-session.startedAt-MOLE_DELAY_MS;
           if(!Number.isInteger(index)||index<0||index>=MOLE_SLOTS||!Number.isInteger(hole)||hole!==session.positions[index])return json(res,400,{error:'잘못된 두더지 위치입니다.'});
@@ -1373,11 +1413,11 @@ const server=http.createServer(async(req,res)=>{
           return json(res,200,{ok:true,score:session.score,combo});
         }
         if(command==='finish'){
-          const elapsed=Date.now()-session.startedAt;if(elapsed<MOLE_DELAY_MS+MOLE_DURATION_MS-200)return json(res,409,{error:'아직 게임이 진행 중이에요.'});
-          const score=session.score,prize=molePrize(score);a.session=null;a.bonus+=prize;
-          const best=moleScores.get(p.badgeIdentity);if(!best||score>best.score)moleScores.set(p.badgeIdentity,{name:p.name,score,at:Date.now()});
-          await saveNow();broadcast({type:'mole-state',mole:publicMoleState()});
-          return json(res,200,{ok:true,score,prize,points:tentPointBalance(p),best:moleScores.get(p.badgeIdentity)?.score||score,account:moleAccountView(p),mole:publicMoleState()});
+          const remaining=session.startedAt+MOLE_DELAY_MS+MOLE_DURATION_MS-Date.now();
+          if(remaining>0)return json(res,409,{error:'아직 게임이 진행 중이에요.',retryAfterMs:Math.min(2000,remaining+80)});
+          const result=await commitMoleResult(p.badgeIdentity,d.playId);
+          if(!result)return json(res,409,{error:'게임 결과를 아직 저장할 수 없어요.'});
+          return json(res,200,{ok:true,score:result.score,prize:result.prize,points:tentPointBalance(p),best:moleScores.get(p.badgeIdentity)?.score||result.score,account:moleAccountView(p),mole:publicMoleState()});
         }
         return json(res,400,{error:'알 수 없는 두더지왕 명령입니다.'});
       }
