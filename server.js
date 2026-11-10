@@ -129,6 +129,19 @@ function broadcastRhythmState(){broadcast({type:'rhythm-state',rhythm:publicRhyt
 function maybeRotateRhythmDay(){const today=kstDate();if(rhythmDay===today)return false;const rows=rhythmRows();const winner=rhythmDay===previousKstDate(today)?rows[0]:null;rhythmReward=winner?{date:today,identity:winner.identity,name:winner.name,score:winner.score,sourceDate:rhythmDay}:null;rhythmDay=today;rhythmScores.clear();let changed=false;for(const person of players.values())if(syncPlayerRhythmKing(person)){broadcast({type:'profile',player:person});changed=true;}scheduleSave();broadcastRhythmState();return changed;}
 function restoreRhythmKingState(){for(const person of players.values())if(syncPlayerRhythmKing(person))broadcast({type:'profile',player:person});}
 // Total online time per stable browser identity, persisted alongside the playlist.
+// v259: Whack-a-mole, server-generated fresh pattern every round.
+const MOLE_DAILY_COINS=5,MOLE_INTERVAL_MS=750,MOLE_SLOTS=40,MOLE_DELAY_MS=1500;
+const moleAccounts=new Map(),moleScores=new Map();
+let moleDay=kstDate(),moleReward=null,moleHammerRevision='';
+function moleAccount(identity){const today=kstDate();let a=moleAccounts.get(identity);if(!a){a={day:today,used:0,bonus:0,session:null};moleAccounts.set(identity,a)}if(a.day!==today){a.day=today;a.used=0;a.session=null;scheduleSave()}return a;}
+function moleAccountView(p){const a=moleAccount(p.badgeIdentity);return {coins:Math.max(0,MOLE_DAILY_COINS-a.used),limit:MOLE_DAILY_COINS,day:a.day,used:a.used};}
+function molePrize(score){return score>=3000?50:score>=2000?30:score>=1000?10:1;}
+function moleRows(){return [...moleScores.entries()].map(([identity,r])=>({identity,name:r.name,score:r.score,at:r.at})).sort((a,b)=>b.score-a.score||a.at-b.at||a.name.localeCompare(b.name,'ko-KR')).slice(0,5);}
+function playerIsMoleKing(p){return Boolean(p&&p.badgeIdentity&&moleReward&&moleReward.date===kstDate()&&moleReward.identity===p.badgeIdentity);}
+function syncPlayerMoleKing(p){if(!p)return false;const yes=playerIsMoleKing(p);if(Boolean(p.moleKing)===yes)return false;p.moleKing=yes;if(!yes&&p.action==='moleking')p.action='idle';return true;}
+function rotateMoleDay(){const day=kstDate();if(day===moleDay)return;const winner=moleDay===previousKstDate(day)?moleRows()[0]:null;moleReward=winner?{date:day,identity:winner.identity,name:winner.name,score:winner.score,sourceDate:moleDay}:null;moleDay=day;moleScores.clear();for(const p of players.values())if(syncPlayerMoleKing(p))broadcast({type:'profile',player:p});scheduleSave();broadcast({type:'mole-state',mole:publicMoleState()});}
+function publicMoleState(){rotateMoleDay();return {day:moleDay,leaderboard:moleRows().map(({identity,at,...r},i)=>({rank:i+1,...r})),reward:moleReward&&moleReward.date===kstDate()?{title:'두더지왕',name:moleReward.name,score:moleReward.score,sourceDate:moleReward.sourceDate}:null,hammerRevision:moleHammerRevision,booth:RHYTHM_BOOTH};}
+function molePattern(){const seq=[];let prev=-1;for(let i=0;i<MOLE_SLOTS;i++){let pos=crypto.randomInt(0,8);if(pos>=prev&&prev>=0)pos++;seq.push(pos);prev=pos;}return seq;}
 const badgeStats=new Map();
 // No account required: coins belong to the existing persistent badge identity.
 // All purchases and equipment are server-validated. Guests without the stable
@@ -247,7 +260,7 @@ async function serveFurnitureModel(req,res,id){
 const TENT_FURNITURE_MAX_PLACED=30;
 const furnitureStats=new Map();
 function furnitureRecord(identity){if(!furnitureStats.has(identity))furnitureStats.set(identity,{spent:0,owned:{}});return furnitureStats.get(identity);}
-function tentPointBalance(p){const earned=Math.floor(badgeTotal(p)/60)+(p.badgeIdentity?rhythmAccount(p.badgeIdentity).bonus+powerAccount(p.badgeIdentity).bonus:0);return Math.max(0,earned-(tentOwnedBy(p.badgeIdentity)?TENT_COST:0)-(furnitureStats.get(p.badgeIdentity)?.spent||0));}
+function tentPointBalance(p){const earned=Math.floor(badgeTotal(p)/60)+(p.badgeIdentity?rhythmAccount(p.badgeIdentity).bonus+powerAccount(p.badgeIdentity).bonus+moleAccount(p.badgeIdentity).bonus:0);return Math.max(0,earned-(tentOwnedBy(p.badgeIdentity)?TENT_COST:0)-(furnitureStats.get(p.badgeIdentity)?.spent||0));}
 function safeFurniturePose(item,x,z,angle){
  if(!item||!Number.isFinite(x)||!Number.isFinite(z)||!Number.isFinite(angle))return false;
  if(angle<0||angle>=360||angle%45!==0)return false;
@@ -402,7 +415,7 @@ function shopRecord(identity){
 }
 function getShopView(p,now=Date.now()){
  const record=shopRecord(p.badgeIdentity);
- const earned=Math.floor(badgeTotal(p,now)/60)+(p.badgeIdentity?rhythmAccount(p.badgeIdentity).bonus+powerAccount(p.badgeIdentity).bonus:0); // time points + rhythm bonuses
+ const earned=Math.floor(badgeTotal(p,now)/60)+(p.badgeIdentity?rhythmAccount(p.badgeIdentity).bonus+powerAccount(p.badgeIdentity).bonus+moleAccount(p.badgeIdentity).bonus:0); // time points + rhythm bonuses
  return {points:tentPointBalance(p),earned,spent:(tentOwnedBy(p.badgeIdentity)?TENT_COST:0)+(furnitureStats.get(p.badgeIdentity)?.spent||0),refunded:record.refunded||0,testing:true,owned:Object.keys(publicMdItems()),equipped:{...record.equipped},items:publicMdItems()};
 }
 function setShopAppearance(p){
@@ -434,7 +447,7 @@ const SB_KEY=process.env.SUPABASE_SECRET_KEY||'';
 const useSupabase=Boolean(SB_URL&&SB_KEY);
 let restored=false;
 let saveChain=Promise.resolve();
-function stateData(){return {version:13,powerDay,powerReward,powerScores:Object.fromEntries(powerScores),powerAccounts:Object.fromEntries([...powerAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),rhythmAccounts:Object.fromEntries([...rhythmAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),furnitureCatalogEdits:Object.fromEntries(furnitureCatalogEdits),furnitureStats:Object.fromEntries([...furnitureStats].map(([id,v])=>[id,{spent:v.spent,owned:v.owned}])),tentStats:Object.fromEntries([...tentStats].map(([identity,t])=>[identity,storedTent(t)])),announcements:{entry:entranceNotices,ticker:tickerNotices,intervalMinutes:tickerIntervalMinutes,immediateHistory:immediateNoticeHistory},music,queue:[...queue],history:[...history],nextTrackToken,customMd:Object.fromEntries(customMd),shopStats:Object.fromEntries([...shopStats].map(([k,v])=>[k,{spent:0,refunded:v.refunded||0,owned:v.owned,equipped:v.equipped}])),badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),rhythm:{day:rhythmDay,reward:rhythmReward,scores:Object.fromEntries([...rhythmScores].map(([k,v])=>[k,{name:v.name,score:Math.max(0,Math.floor(Number(v.score)||0)),updatedAt:Number(v.updatedAt)||0}]))},savedAt:Date.now()}}
+function stateData(){return {version:14,moleDay,moleHammerRevision,moleReward,moleScores:Object.fromEntries(moleScores),moleAccounts:Object.fromEntries([...moleAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),powerDay,powerReward,powerScores:Object.fromEntries(powerScores),powerAccounts:Object.fromEntries([...powerAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),rhythmAccounts:Object.fromEntries([...rhythmAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),furnitureCatalogEdits:Object.fromEntries(furnitureCatalogEdits),furnitureStats:Object.fromEntries([...furnitureStats].map(([id,v])=>[id,{spent:v.spent,owned:v.owned}])),tentStats:Object.fromEntries([...tentStats].map(([identity,t])=>[identity,storedTent(t)])),announcements:{entry:entranceNotices,ticker:tickerNotices,intervalMinutes:tickerIntervalMinutes,immediateHistory:immediateNoticeHistory},music,queue:[...queue],history:[...history],nextTrackToken,customMd:Object.fromEntries(customMd),shopStats:Object.fromEntries([...shopStats].map(([k,v])=>[k,{spent:0,refunded:v.refunded||0,owned:v.owned,equipped:v.equipped}])),badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),rhythm:{day:rhythmDay,reward:rhythmReward,scores:Object.fromEntries([...rhythmScores].map(([k,v])=>[k,{name:v.name,score:Math.max(0,Math.floor(Number(v.score)||0)),updatedAt:Number(v.updatedAt)||0}]))},savedAt:Date.now()}}
 function applySaved(d){
  if(!d||typeof d!=='object')return;
  // Restore furniture metadata BEFORE tents/inventories that reference these IDs.
@@ -497,7 +510,12 @@ function applySaved(d){
  if(d.badgeStats&&typeof d.badgeStats==='object')for(const [k,v] of Object.entries(d.badgeStats).slice(0,30000)){
   if(/^[a-zA-Z0-9_-]{20,100}$/.test(k)&&Number.isFinite(v)&&v>=0)badgeStats.set(k,{seconds:Math.min(v,315360000)});
  }
- if(typeof d.powerDay==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(d.powerDay))powerDay=d.powerDay;
+ if(typeof d.moleHammerRevision==='string'&&/^[a-f0-9]{16}$/.test(d.moleHammerRevision))moleHammerRevision=d.moleHammerRevision;
+ if(typeof d.moleDay==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(d.moleDay))moleDay=d.moleDay;
+ if(d.moleScores&&typeof d.moleScores==='object'&&(moleDay===kstDate()||moleDay===previousKstDate()))for(const [identity,row] of Object.entries(d.moleScores).slice(0,50000)){if(!/^[a-zA-Z0-9_-]{20,100}$/.test(identity)||!row)continue;moleScores.set(identity,{name:clean(row.name,18)||'ROCKER',score:Math.max(0,Math.min(10000,Math.floor(Number(row.score)||0))),at:Number(row.at)||Date.now()});}
+ if(d.moleReward&&typeof d.moleReward==='object'&&/^[a-zA-Z0-9_-]{20,100}$/.test(d.moleReward.identity||''))moleReward={date:String(d.moleReward.date||''),identity:d.moleReward.identity,name:clean(d.moleReward.name,18)||'ROCKER',score:Math.max(0,Math.floor(Number(d.moleReward.score)||0)),sourceDate:String(d.moleReward.sourceDate||'')};
+ if(d.moleAccounts&&typeof d.moleAccounts==='object')for(const [identity,row] of Object.entries(d.moleAccounts).slice(0,50000)){if(!/^[a-zA-Z0-9_-]{20,100}$/.test(identity)||!row)continue;const day=/^\d{4}-\d{2}-\d{2}$/.test(row.day)?row.day:kstDate(),v=row.session;const session=v&&typeof v.id==='string'&&/^[a-f0-9-]{36}$/.test(v.id)&&Number.isFinite(v.startedAt)&&Array.isArray(v.positions)&&v.positions.length===MOLE_SLOTS?{id:v.id,startedAt:v.startedAt,positions:v.positions.map(n=>Math.max(0,Math.min(8,Math.floor(Number(n)||0)))),hits:Array.isArray(v.hits)?v.hits.filter(n=>Number.isInteger(n)&&n>=0&&n<MOLE_SLOTS):[],score:Math.max(0,Math.floor(Number(v.score)||0)),lastHit:Number(v.lastHit)||-2}:null;moleAccounts.set(identity,{day,used:Math.max(0,Math.min(5,Math.floor(Number(row.used)||0))),bonus:Math.max(0,Math.floor(Number(row.bonus)||0)),session:day===kstDate()?session:null});}
+ if(typeof d.powerDay==='string' &&/^\d{4}-\d{2}-\d{2}$/.test(d.powerDay))powerDay=d.powerDay;
  if(d.powerScores&&typeof d.powerScores==='object'&&(powerDay===kstDate()||powerDay===previousKstDate()))for(const [identity,row] of Object.entries(d.powerScores).slice(0,50000)){
   if(!/^[a-zA-Z0-9_-]{20,100}$/.test(identity)||!row||typeof row!=='object')continue;
   powerScores.set(identity,{name:clean(row.name,18)||'ROCKER',score:Math.max(0,Math.min(1000,Math.floor(Number(row.score)||0))),at:Number(row.at)||Date.now()});
@@ -566,6 +584,7 @@ async function restorePlaylist(){
  resetNoticeTicker();
  maybeRotateRhythmDay();
  rotatePowerDay();
+ rotateMoleDay();
  // One-time v114 migration: legacy spent points were converted into refunded credits.
  // Persist the zero-spend records immediately so restarts never re-deduct them.
  if([...shopStats.values()].some(r=>r.refunded>0))scheduleSave();
@@ -633,7 +652,7 @@ function endDuo(duo){if(!duo||!activeDuos.has(duo.id))return;activeDuos.delete(d
 function clearDuosFor(id){for(const duo of [...activeDuos.values()])if(duo.a===id||duo.b===id)endDuo(duo);for(const [inviteId,invite] of duoInvites)if(invite.from===id||invite.to===id){duoInvites.delete(inviteId);broadcast({type:'duo-invite-ended',id:inviteId,to:invite.to})}}
 function duoDistance(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
 setInterval(()=>{const now=Date.now();for(const duo of [...activeDuos.values()])if(duo.endAt<=now)endDuo(duo);for(const [key,invite] of duoInvites)if(invite.expiresAt<=now){duoInvites.delete(key);broadcast({type:'duo-invite-ended',id:key,to:invite.to})}},700).unref();
-const snapshot=(viewerId=null)=>({type:'snapshot',tents:allPlacedTents(),announcements:publicNoticeState(),interactions:[...activeDuos.values()].filter(x=>x.endAt>Date.now()),players:[...players.values()],chat:chatHistory.filter(entry=>entry.roomId===(players.get(viewerId)?.tentRoomId||null)),...musicState(),skipVote:publicSkipVote(),skipVoteCooldownUntil,slam:publicSlam(),slamCooldownUntil,rockPlay:publicRock(),crowdSurf:activeSurfRide&&activeSurfRide.startAt+activeSurfRide.duration>Date.now()?activeSurfRide:null,rockCooldowns:{...rockCooldowns},rockRunningUntil,rhythm:publicRhythmState(),power:publicPowerState(),count:players.size});
+const snapshot=(viewerId=null)=>({type:'snapshot',tents:allPlacedTents(),announcements:publicNoticeState(),interactions:[...activeDuos.values()].filter(x=>x.endAt>Date.now()),players:[...players.values()],chat:chatHistory.filter(entry=>entry.roomId===(players.get(viewerId)?.tentRoomId||null)),...musicState(),skipVote:publicSkipVote(),skipVoteCooldownUntil,slam:publicSlam(),slamCooldownUntil,rockPlay:publicRock(),crowdSurf:activeSurfRide&&activeSurfRide.startAt+activeSurfRide.duration>Date.now()?activeSurfRide:null,rockCooldowns:{...rockCooldowns},rockRunningUntil,rhythm:publicRhythmState(),power:publicPowerState(),mole:publicMoleState(),count:players.size});
 const clamp=(n,min,max)=>Math.min(max,Math.max(min,Number(n)||0));
 const SERVER_X_MIN=20,SERVER_X_MAX=1380,SERVER_Y_MIN=60,SERVER_Y_MAX=1100;
 function cleanup(){const now=Date.now();for(const [id,p] of players)if(now-p.seen>180000){settleBadge(p,Math.min(now,p.seen+45000));settleBadge(p);clearDuosFor(id);players.delete(id);forgetSession(id);voterLeaves(id);if(activeSlam?.participants.delete(id))slamUpdate();rockMemberLeaves(id);pauseForEmpty();const r=clients.get(id);if(r){r.end();clients.delete(id)}broadcast({type:'leave',id,count:players.size});sendTentUpdate()}}
@@ -647,7 +666,7 @@ setInterval(()=>{
  for(const p of players.values())if(p.badgeIdentity&&now-p.seen<=45000)settleBadge(p,now);
  if(changed)console.log('Visitor badge rank updated');
 },60000).unref();
-setInterval(()=>{if(restored){maybeRotateRhythmDay();rotatePowerDay()}},30000).unref();
+setInterval(()=>{if(restored){maybeRotateRhythmDay();rotatePowerDay();rotateMoleDay()}},30000).unref();
 
 function videoId(input){const v=String(input||'').trim();if(/^[\w-]{11}$/.test(v))return v;try{const u=new URL(v);const host=u.hostname.replace(/^www\./,'');if(host==='youtu.be')return /^[\w-]{11}$/.test(u.pathname.slice(1))?u.pathname.slice(1):null;if(['youtube.com','m.youtube.com','music.youtube.com','youtube-nocookie.com'].includes(host)){const id=u.searchParams.get('v')||u.pathname.match(/\/(?:embed|shorts|live)\/([\w-]{11})/)?.[1];return /^[\w-]{11}$/.test(id||'')?id:null}}catch{}return null}
 // Read the actual public YouTube title server-side; never trust a user-submitted title.
@@ -725,6 +744,12 @@ async function receive(req){let raw='';for await(const chunk of req){raw+=chunk;
 const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.ico':'image/x-icon','.gltf':'model/gltf+json','.bin':'application/octet-stream'};
 const server=http.createServer(async(req,res)=>{
   const url=new URL(req.url,'http://localhost');
+  if(url.pathname==='/api/mole-hammer-model'&&req.method==='GET'){
+    if(!moleHammerRevision)return json(res,404,{error:'망치 GLB가 아직 등록되지 않았어요.'});
+    try{let bytes;if(useSupabase){const r=await fetch(SB_URL+'/storage/v1/object/'+encodeURIComponent(TENT_ASSET_BUCKET)+'/'+storageObjectPath('mole-hammer',moleHammerRevision),{headers:storageHeaders(),signal:AbortSignal.timeout(20000)});if(!r.ok)throw Error('Storage '+r.status);bytes=Buffer.from(await r.arrayBuffer());}else bytes=fs.readFileSync(path.join(TENT_MODEL_DIR,'mole-hammer-'+moleHammerRevision+'.glb'));
+      res.writeHead(200,{'content-type':'model/gltf-binary','content-length':bytes.length,'cache-control':'public,max-age=3600'});return res.end(bytes);
+    }catch(e){return json(res,404,{error:'망치 GLB 파일을 불러오지 못했어요.'});}
+  }
   if(url.pathname.startsWith('/api/tent-item-model/')&&req.method==='GET'){
    const id=url.pathname.slice('/api/tent-item-model/'.length);
    if(!TENT_ITEM_ID.test(id))return json(res,404,{error:'모델 없음'});
@@ -895,6 +920,15 @@ const server=http.createServer(async(req,res)=>{
        }
        return json(res,400,{error:'알 수 없는 관리자 명령입니다.'});
       }
+      if(url.pathname==='/api/mole-admin'){
+        if(!MD_ADMIN_KEY||!adminAuthorized(req))return json(res,403,{error:'관리자 키를 확인해 주세요.'});
+        if(d.command==='state')return json(res,200,{ok:true,revision:moleHammerRevision,url:moleHammerRevision?'/api/mole-hammer-model?v='+moleHammerRevision:''});
+        if(d.command==='save-hammer'){
+          const revision=String(d.revision||'');if(!/^[a-f0-9]{16}$/.test(revision)||!await storageExists('mole-hammer',revision))return json(res,400,{error:'GLB 파일을 먼저 업로드해 주세요.'});
+          moleHammerRevision=revision;await strictSaveAdmin();broadcast({type:'mole-state',mole:publicMoleState()});return json(res,200,{ok:true,revision});
+        }
+        return json(res,400,{error:'잘못된 관리자 명령입니다.'});
+      }
       if(url.pathname==='/api/join'){
         const sessionKey=typeof d.sessionKey==='string'&&/^[a-zA-Z0-9_-]{20,100}$/.test(d.sessionKey)?d.sessionKey:null;
         const badgeIdentity=typeof d.badgeIdentity==='string'&&/^[a-zA-Z0-9_-]{20,100}$/.test(d.badgeIdentity)?d.badgeIdentity:null;
@@ -906,15 +940,15 @@ const server=http.createServer(async(req,res)=>{
           if(existing){
             maybeRotateRhythmDay();
             existing.seen=Date.now();
-            syncPlayerRhythmKing(existing);syncPlayerPowerKing(existing);
+            syncPlayerRhythmKing(existing);syncPlayerPowerKing(existing);syncPlayerMoleKing(existing);
             if(pageId)pageOwners.set(existingId,pageId);
             return json(res,200,{id:existingId,reused:true,...snapshot(existingId)});
           }
           if(existingId)sessionPlayers.delete(sessionKey);
         }
         maybeRotateRhythmDay();
-        const id=crypto.randomUUID(),p={id,badgeSince:Date.now(),badgeTier:'bronze',badgeSeconds:0,name:clean(d.name,18)||'ROCKER',flagText:cleanFlag(d.flagText),flagImage:d.flagImage?storeFlagImage(d.flagImage)||'':'',color:colors.includes(d.color)?d.color:colors[0],...apparel(d),gender:d.gender==='female'?'female':'male',x:clamp(190+Math.random()*880,SERVER_X_MIN,SERVER_X_MAX),y:clamp(390+Math.random()*420,SERVER_Y_MIN,SERVER_Y_MAX),facing:0,action:'idle',pose:'stand',glowColor:'lime',glowEnabled:false,headbangBpm:120,headbangBeatAt:Date.now(),seen:Date.now(),rhythmKing:false,powerKing:false};
-        Object.defineProperty(p,'badgeIdentity',{value:badgeIdentity,writable:true,enumerable:false});updateBadge(p);syncPlayerRhythmKing(p);syncPlayerPowerKing(p);setShopAppearance(p);players.set(id,p);
+        const id=crypto.randomUUID(),p={id,badgeSince:Date.now(),badgeTier:'bronze',badgeSeconds:0,name:clean(d.name,18)||'ROCKER',flagText:cleanFlag(d.flagText),flagImage:d.flagImage?storeFlagImage(d.flagImage)||'':'',color:colors.includes(d.color)?d.color:colors[0],...apparel(d),gender:d.gender==='female'?'female':'male',x:clamp(190+Math.random()*880,SERVER_X_MIN,SERVER_X_MAX),y:clamp(390+Math.random()*420,SERVER_Y_MIN,SERVER_Y_MAX),facing:0,action:'idle',pose:'stand',glowColor:'lime',glowEnabled:false,headbangBpm:120,headbangBeatAt:Date.now(),seen:Date.now(),rhythmKing:false,powerKing:false,moleKing:false};
+        Object.defineProperty(p,'badgeIdentity',{value:badgeIdentity,writable:true,enumerable:false});updateBadge(p);syncPlayerRhythmKing(p);syncPlayerPowerKing(p);syncPlayerMoleKing(p);setShopAppearance(p);players.set(id,p);
         if(sessionKey){sessionPlayers.set(sessionKey,id);playerSessions.set(id,sessionKey)}
         if(pageId)pageOwners.set(id,pageId);
         resumeForFirst();broadcast({type:'join',player:p,count:players.size});return json(res,200,{id,reused:false,...snapshot(id)});
@@ -968,9 +1002,9 @@ const server=http.createServer(async(req,res)=>{
         }
         if(command==='room-action'){
           if(!p.tentRoomId)return json(res,400,{error:'먼저 텐트에 입장해 주세요.'});
-          const allowed=['idle','peace','jump','run','wave','clap','sit','lie','drink','snack','headbang','buriburi','groove','dougie','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','powerking','putyourhandsup','heartbow','drum','electricguitar','bassguitar','vocal'];
+          const allowed=['idle','peace','jump','run','wave','clap','sit','lie','drink','snack','headbang','buriburi','groove','dougie','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','powerking','moleking','putyourhandsup','heartbow','drum','electricguitar','bassguitar','vocal'];
           const action=String(d.action||'idle');
-          p.action=allowed.includes(action)&&!(action==='beatking'&&!playerIsRhythmKing(p))&&!(action==='powerking'&&!playerIsPowerKing(p))?action:'idle';
+          p.action=allowed.includes(action)&&!(action==='beatking'&&!playerIsRhythmKing(p))&&!(action==='powerking'&&!playerIsPowerKing(p))&&!(action==='moleking'&&!playerIsMoleKing(p))?action:'idle';
           p.pose=['stand','sit','lie'].includes(d.pose)?d.pose:'stand';
           p.headbangBpm=clamp(d.headbangBpm||120,40,240);
           const beatAt=Number(d.headbangBeatAt);p.headbangBeatAt=Number.isFinite(beatAt)&&Math.abs(beatAt-Date.now())<86400000?beatAt:Date.now();
@@ -1085,7 +1119,7 @@ const server=http.createServer(async(req,res)=>{
         broadcast({type:'flag',id:p.id,flagText:p.flagText,flagImage:p.flagImage});
         return json(res,200,{ok:true,flagText:p.flagText,flagImage:p.flagImage});
       }
-      if(url.pathname==='/api/profile'){p.name=clean(d.name,18)||'ROCKER';p.color=colors.includes(d.color)?d.color:p.color;p.gender=d.gender==='female'?'female':'male';Object.assign(p,apparel(d,p));if(p.badgeIdentity&&rhythmScores.has(p.badgeIdentity)){const row=rhythmScores.get(p.badgeIdentity);row.name=p.name;rhythmScores.set(p.badgeIdentity,row);broadcastRhythmState();scheduleSave();}if(p.badgeIdentity&&powerScores.has(p.badgeIdentity)){powerScores.get(p.badgeIdentity).name=p.name;broadcast({type:'power-state',power:publicPowerState()});scheduleSave();}syncPlayerRhythmKing(p);syncPlayerPowerKing(p);broadcast({type:'profile',player:p});return json(res,200,{ok:true,player:p})}
+      if(url.pathname==='/api/profile'){p.name=clean(d.name,18)||'ROCKER';p.color=colors.includes(d.color)?d.color:p.color;p.gender=d.gender==='female'?'female':'male';Object.assign(p,apparel(d,p));if(p.badgeIdentity&&rhythmScores.has(p.badgeIdentity)){const row=rhythmScores.get(p.badgeIdentity);row.name=p.name;rhythmScores.set(p.badgeIdentity,row);broadcastRhythmState();scheduleSave();}if(p.badgeIdentity&&powerScores.has(p.badgeIdentity)){powerScores.get(p.badgeIdentity).name=p.name;broadcast({type:'power-state',power:publicPowerState()});scheduleSave();}syncPlayerRhythmKing(p);syncPlayerPowerKing(p);syncPlayerMoleKing(p);broadcast({type:'profile',player:p});return json(res,200,{ok:true,player:p})}
       if(url.pathname==='/api/duo'){
         const command=clean(d.command,20),now=Date.now();
         if(command==='invite'){
@@ -1147,7 +1181,7 @@ const server=http.createServer(async(req,res)=>{
         const beatAt=Number(d.headbangBeatAt);
         p.headbangBeatAt=Number.isFinite(beatAt)&&Math.abs(beatAt-Date.now())<86400000?beatAt:Date.now();
         if(d.action==='beatking'&&!playerIsRhythmKing(p))d.action='idle';
-        if(d.action==='powerking'&&!playerIsPowerKing(p))d.action='idle';
+        if(d.action==='powerking'&&!playerIsPowerKing(p))d.action='idle';if(d.action==='moleking'&&!playerIsMoleKing(p))d.action='idle';
         // Validate campfire-only reaction server-side so remote spectators cannot see it outside the zone.
         if(d.action==='marshmallow'){
           const kstHour=Number(new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Seoul',hour:'2-digit',hourCycle:'h23'}).format(new Date()));
@@ -1160,7 +1194,7 @@ const server=http.createServer(async(req,res)=>{
           const kstHour=Number(new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Seoul',hour:'2-digit',hourCycle:'h23'}).format(new Date()));
           if(kstHour<1||kstHour>=4)d.action='idle';
         }
-        p.action=['idle','walk','peace','jump','run','wave','clap','sit','lie','drink','snack','headbang','buriburi','groove','dougie','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','powerking','marshmallow','putyourhandsup','nightfirework','heartbow','drum','electricguitar','bassguitar','vocal','mosh-charge','slam-charge','slam-retreat','slam-celebrate','circle-run','train-run','row-paddle','toast-clink','surf-rider','surf-support','shoulder-headbang','rock-skank'].includes(d.action)?d.action:'idle';
+        p.action=['idle','walk','peace','jump','run','wave','clap','sit','lie','drink','snack','headbang','buriburi','groove','dougie','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','powerking','moleking','marshmallow','putyourhandsup','nightfirework','heartbow','drum','electricguitar','bassguitar','vocal','mosh-charge','slam-charge','slam-retreat','slam-celebrate','circle-run','train-run','row-paddle','toast-clink','surf-rider','surf-support','shoulder-headbang','rock-skank'].includes(d.action)?d.action:'idle';
         broadcast({type:'move',player:p});
         if(p.action==='cheer'&&previousAction!=='cheer')broadcast({type:'cheer',playerId:id});
         // Fire once, when the FIRST participant changes from charging to retreating.
@@ -1313,6 +1347,35 @@ const server=http.createServer(async(req,res)=>{
         }
         else return json(res,400,{error:'Invalid command'});
         return json(res,200,{ok:true,...musicState()});
+      }
+      if(url.pathname==='/api/mole'){
+        rotateMoleDay();const command=clean(d.command,20);
+        if(!p.badgeIdentity||!d.sessionKey||playerSessions.get(id)!==String(d.sessionKey))return json(res,403,{error:'게임 세션 인증이 필요해요.'});
+        const a=moleAccount(p.badgeIdentity);
+        if(command==='state')return json(res,200,{mole:publicMoleState(),account:moleAccountView(p),best:moleScores.get(p.badgeIdentity)?.score||0});
+        if(command==='start'){
+          if(p.tentRoomId||Math.hypot(p.x-RHYTHM_BOOTH.x,p.y-RHYTHM_BOOTH.y)>RHYTHM_BOOTH.radius)return json(res,403,{error:'게임부스 가까이에서만 플레이할 수 있어요.'});
+          if(a.used>=MOLE_DAILY_COINS)return json(res,409,{error:'오늘 두더지왕 코인 5개를 모두 사용했어요.'});
+          a.used++;a.session={id:crypto.randomUUID(),startedAt:Date.now(),positions:molePattern(),hits:[],score:0,lastHit:-2};await saveNow();
+          return json(res,200,{ok:true,playId:a.session.id,startedAt:a.session.startedAt,serverNow:Date.now(),delay:MOLE_DELAY_MS,interval:MOLE_INTERVAL_MS,positions:a.session.positions,account:moleAccountView(p)});
+        }
+        const session=a.session;if(!session||session.id!==d.playId)return json(res,409,{error:'게임 기록이 만료됐어요.'});
+        if(command==='hit'){
+          const index=Number(d.index),hole=Number(d.hole),elapsed=Date.now()-session.startedAt-MOLE_DELAY_MS;
+          if(!Number.isInteger(index)||index<0||index>=MOLE_SLOTS||!Number.isInteger(hole)||hole!==session.positions[index])return json(res,400,{error:'잘못된 두더지 위치입니다.'});
+          if(elapsed<index*MOLE_INTERVAL_MS-180||elapsed>(index+1)*MOLE_INTERVAL_MS+240)return json(res,409,{error:'두더지가 이미 사라졌어요.'});
+          if(session.hits.includes(index))return json(res,409,{error:'이미 맞힌 두더지입니다.'});
+          session.hits.push(index);const combo=index===session.lastHit+1?Math.min(10,session.hits.length):1;session.score+=100+combo*10;session.lastHit=index;scheduleSave();
+          return json(res,200,{ok:true,score:session.score,combo});
+        }
+        if(command==='finish'){
+          const elapsed=Date.now()-session.startedAt;if(elapsed<MOLE_DELAY_MS+MOLE_SLOTS*MOLE_INTERVAL_MS-200)return json(res,409,{error:'아직 게임이 진행 중이에요.'});
+          const score=session.score,prize=molePrize(score);a.session=null;a.bonus+=prize;
+          const best=moleScores.get(p.badgeIdentity);if(!best||score>best.score)moleScores.set(p.badgeIdentity,{name:p.name,score,at:Date.now()});
+          await saveNow();broadcast({type:'mole-state',mole:publicMoleState()});
+          return json(res,200,{ok:true,score,prize,points:tentPointBalance(p),best:moleScores.get(p.badgeIdentity)?.score||score,account:moleAccountView(p),mole:publicMoleState()});
+        }
+        return json(res,400,{error:'알 수 없는 두더지왕 명령입니다.'});
       }
       if(url.pathname==='/api/power'){
         rotatePowerDay();const command=clean(d.command,20);

@@ -300,6 +300,67 @@ function updatePowerGame(){
  if(elapsed>powerGame.activeUntil+400){powerUi.strike.disabled=true;void strikePowerGame(true);}
 }
 
+// v259: Two-dozen-second arcade reflex game, 9 holes, per-play server random schedule.
+const moleGame={open:false,running:false,pending:false,finishing:false,playId:null,startedAt:0,offset:0,delay:1500,interval:750,positions:[],coins:5,best:0,score:0,combo:0,hitIndex:-1,activeIndex:-1,leaderboard:[],reward:null};
+let moleUi=null,moleHammerRevision='';
+function ensureMoleUI(){
+ if(moleUi)return moleUi;
+ const css=document.createElement('style');css.textContent=`
+ #moleOverlay{display:none;position:fixed;inset:0;z-index:95;background:#10251e url('/assets/mole/background.png') center/cover no-repeat;color:#fff;overflow:auto;overscroll-behavior:contain}
+ #moleOverlay.show{display:block}#moleOverlay *{box-sizing:border-box}
+ #moleShell{width:min(100%,570px);margin:auto;min-height:100dvh;padding:calc(env(safe-area-inset-top,0px) + 12px) 14px calc(env(safe-area-inset-bottom,0px) + 25px);display:flex;flex-direction:column;gap:11px}
+ #moleHead{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+ #moleTitle{height:clamp(64px,18vw,112px);flex:1;background:url('/assets/mole/title.png') left center/contain no-repeat}
+ #moleClose{background:#192b29e8;color:white;border:1px solid #a3ecaa66;border-radius:12px;padding:11px 13px;font-weight:800}
+ #moleStats{display:flex;justify-content:space-between;gap:10px;padding:11px 14px;background:#071d19d9;border:1px solid #a6ff9a55;border-radius:14px;font-weight:900}
+ #moleBoard{width:100%;aspect-ratio:1000/1030;max-height:min(60dvh,580px);position:relative;background:url('/assets/mole/board.png') center/100% 100% no-repeat;border-radius:24px;overflow:hidden;touch-action:manipulation}
+ #moleGrid{position:absolute;inset:16% 8% 9%;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:repeat(3,minmax(0,1fr));gap:2%}
+ .moleHole{border:0;background:transparent;position:relative;overflow:hidden;touch-action:manipulation;cursor:pointer;padding:0}
+ .moleHole:before{content:'';position:absolute;left:11%;width:78%;height:24%;bottom:4%;border-radius:50%;background:#140f0ac9;box-shadow:inset 0 5px 7px #0008}
+ .moleHole .moleSprite{position:absolute;inset:0 3% 11%;background:url('/assets/mole/mole.png') center bottom/contain no-repeat;opacity:0;transform:translateY(42%);transition:transform .11s,opacity .09s;pointer-events:none}
+ .moleHole.active .moleSprite{opacity:1;transform:translateY(0)}
+ .moleHole.hit .moleSprite{background-image:url('/assets/mole/hit.png');opacity:1;transform:translateY(5%)}
+ #moleMessage{padding:12px;text-align:center;font-weight:1000;background:#081e1cdd;border-radius:14px;font-size:clamp(15px,4vw,21px)}
+ #moleStart{width:100%;aspect-ratio:820/170;border:0;border-radius:16px;background:#a6f65b url('/assets/mole/start-button.png') center/100% 100% no-repeat;cursor:pointer;color:transparent;font-size:0;min-height:56px}
+ #moleStart:disabled{opacity:.42}#moleStart[hidden]{display:none}
+ #moleRank{padding:16px;background:#091d1ddd url('/assets/mole/ranking.png') center/100% 100% no-repeat;border-radius:16px}
+ #moleRank ol{margin:8px 0 0;padding:0;list-style:none;display:grid;gap:5px}#moleRank li{display:flex;justify-content:space-between;font-weight:800;font-size:13px}
+ #moleReward{font-size:13px;margin-top:10px;border-top:1px solid #fff4;padding-top:8px;color:#b8ff69}
+ #moleRule{text-align:center;font-size:12px;line-height:1.5;background:#071b16bb;padding:8px;border-radius:9px}
+ @media(max-width:600px){#moleShell{gap:8px;padding-left:9px;padding-right:9px}#moleBoard{max-height:none}#moleStats{font-size:13px;padding:9px}}
+ `;document.head.append(css);
+ const el=document.createElement('div');el.id='moleOverlay';el.innerHTML=`<div id="moleShell"><div id="moleHead"><div id="moleTitle" role="img" aria-label="두더지왕"></div><button id="moleClose" type="button">닫기</button></div><div id="moleStats"><span id="moleCoins">🎟️ 5/5</span><span id="moleScore">점수 0</span><span id="moleTime">30초</span></div><div id="moleBoard"><div id="moleGrid">${Array.from({length:9},(_,i)=>`<button class="moleHole" type="button" data-hole="${i}" aria-label="${i+1}번 구멍"><span class="moleSprite"></span></button>`).join('')}</div></div><div id="moleMessage" aria-live="polite">시작하면 두더지가 무작위로 등장합니다!</div><button id="moleStart" type="button" aria-label="두더지왕 시작 · 코인 1개"></button><section id="moleRank"><b>🏆 오늘의 두더지왕 TOP 5</b><ol id="moleRankList"></ol><div id="moleReward">어제 1등 기록 없음</div></section><div id="moleRule">0~999: 1P · 1,000~1,999: 10P · 2,000~2,999: 30P · 3,000+: 50P<br>하루 5코인 · 한국시간 자정 충전 · 30초 게임</div></div>`;
+ document.body.append(el);
+ moleUi={el,coins:el.querySelector('#moleCoins'),score:el.querySelector('#moleScore'),time:el.querySelector('#moleTime'),msg:el.querySelector('#moleMessage'),start:el.querySelector('#moleStart'),holes:[...el.querySelectorAll('.moleHole')],rank:el.querySelector('#moleRankList'),reward:el.querySelector('#moleReward')};
+ el.querySelector('#moleClose').onclick=closeMoleGame;
+ moleUi.start.onclick=startMoleGame;
+ for(const hole of moleUi.holes)hole.onclick=()=>{void hitMole(Number(hole.dataset.hole));};
+ el.addEventListener('touchstart',e=>{if(e.touches.length>1)e.preventDefault()},{passive:false});
+ return moleUi;
+}
+function applyMoleState(mole){if(!mole)return;moleGame.leaderboard=mole.leaderboard||[];moleGame.reward=mole.reward||null;if(mole.hammerRevision!==undefined&&moleHammerRevision!==mole.hammerRevision){moleHammerRevision=mole.hammerRevision;refreshMoleHammerModels();}renderMoleUI();}
+function renderMoleUI(){if(!moleUi)return;moleUi.coins.textContent=`🎟️ 코인 ${moleGame.coins}/5`;moleUi.score.textContent=`점수 ${moleGame.score.toLocaleString()}`;moleUi.start.disabled=moleGame.pending||moleGame.coins<=0;
+ moleUi.rank.replaceChildren();for(let i=0;i<5;i++){const r=moleGame.leaderboard[i],li=document.createElement('li');li.textContent=`${i+1}위  ${r?.name||'---'}`;const score=document.createElement('strong');score.textContent=`${r?.score||0}점`;li.append(score);moleUi.rank.append(li);}
+ moleUi.reward.textContent=moleGame.reward?`👑 어제 두더지왕: ${moleGame.reward.name} · ${moleGame.reward.score}점`:'👑 어제 두더지왕: 기록 없음';}
+async function openMoleGame(){if(!nearRhythmBooth())return toast('게임부스 근처에서 플레이하세요.');ensureMoleUI();moleGame.open=true;moleUi.el.classList.add('show');moleUi.start.hidden=false;moleUi.msg.textContent='30초 동안 나타나는 두더지를 빠르게 터치하세요!';
+ try{const r=await post('mole',{id:state.id,sessionKey,command:'state'});moleGame.coins=r.account.coins;moleGame.best=r.best;applyMoleState(r.mole);}catch(e){toast(e.message)}renderMoleUI();}
+function closeMoleGame(){moleGame.open=false;moleUi?.el.classList.remove('show');if(moleGame.running){moleGame.running=false;moleGame.playId=null;toast('게임을 닫았어요. 코인은 반환되지 않습니다.');}updateRhythmBoothButton();}
+async function startMoleGame(){if(moleGame.pending||moleGame.running||!nearRhythmBooth())return;moleGame.pending=true;moleUi.start.disabled=true;const sent=Date.now();
+ try{const r=await post('mole',{id:state.id,sessionKey,command:'start'});moleGame.playId=r.playId;moleGame.startedAt=r.startedAt;moleGame.offset=r.serverNow+(Date.now()-sent)/2-Date.now();moleGame.positions=r.positions;moleGame.interval=r.interval;moleGame.delay=r.delay;moleGame.coins=r.account.coins;moleGame.score=0;moleGame.combo=0;moleGame.hitIndex=-1;moleGame.activeIndex=-1;moleGame.running=true;moleGame.finishing=false;moleUi.start.hidden=true;moleUi.msg.textContent='준비!';renderMoleUI();}catch(e){toast(e.message);}finally{moleGame.pending=false;renderMoleUI();}}
+async function hitMole(hole){if(!moleGame.running||!moleGame.playId)return;const elapsed=Date.now()+moleGame.offset-moleGame.startedAt-moleGame.delay,index=Math.floor(elapsed/moleGame.interval);if(index<0||index>=moleGame.positions.length||moleGame.positions[index]!==hole||moleGame.hitIndex===index)return;
+ moleGame.hitIndex=index;const cell=moleUi.holes[hole];cell.classList.add('hit');
+ try{const r=await post('mole',{id:state.id,sessionKey,command:'hit',playId:moleGame.playId,index,hole});moleGame.score=r.score;moleGame.combo=r.combo;moleUi.msg.textContent=`💥 HIT! ${r.combo} COMBO`;renderMoleUI();}catch(e){cell.classList.remove('hit');moleUi.msg.textContent=e.message||'타이밍을 놓쳤어요.';}}
+async function finishMoleGame(){if(moleGame.finishing||!moleGame.playId)return;moleGame.finishing=true;moleGame.running=false;moleUi.msg.textContent='점수 계산 중...';
+ try{const r=await post('mole',{id:state.id,sessionKey,command:'finish',playId:moleGame.playId});moleGame.score=r.score;moleGame.best=r.best;moleGame.coins=r.account.coins;applyMoleState(r.mole);moleUi.msg.textContent=`🏆 ${r.score.toLocaleString()}점 · +${r.prize}P 획득!`;void refreshTentStatus();}
+ catch(e){moleUi.msg.textContent=e.message||'결과 저장 실패';}
+ finally{moleGame.playId=null;moleGame.finishing=false;moleUi.start.hidden=false;moleUi.holes.forEach(h=>h.classList.remove('active','hit'));renderMoleUI();}}
+function updateMoleGame(){if(!moleGame.open||!moleGame.running||!moleUi)return;const elapsed=Date.now()+moleGame.offset-moleGame.startedAt-moleGame.delay;const index=Math.floor(elapsed/moleGame.interval);
+ if(elapsed<0){moleUi.msg.textContent=`${Math.ceil(-elapsed/1000)}초 후 시작!`;moleUi.time.textContent='30초';return;}
+ if(index>=moleGame.positions.length){moleUi.time.textContent='0초';moleUi.holes.forEach(h=>h.classList.remove('active'));void finishMoleGame();return;}
+ moleUi.time.textContent=`${Math.ceil((moleGame.positions.length*moleGame.interval-elapsed)/1000)}초`;
+ if(index!==moleGame.activeIndex){moleGame.activeIndex=index;moleUi.holes.forEach((h,i)=>{h.classList.toggle('active',i===moleGame.positions[index]);h.classList.remove('hit');});moleUi.msg.textContent='두더지를 터치!';}
+}
+
 // v256: One Beat Booth opens a game picker; each game keeps its own daily coins and ranking.
 let gamePickerUi=null;
 function ensureGamePicker(){
@@ -318,25 +379,28 @@ function ensureGamePicker(){
  .gamePickerChoice .gamePickerIcon{font-size:33px}.gamePickerChoice small{display:block;font-size:12px;opacity:.83;font-weight:700;margin-top:5px}
  #gamePickerPower{border-color:#ffbb70;background:linear-gradient(100deg,#7c3436aa,#51312588)}
  #gamePickerBeat{border-color:#c2a2ff;background:linear-gradient(100deg,#503b9caa,#66366d88)}
+ #gamePickerMole{border-color:#b9ff6c;background:linear-gradient(100deg,#336b42aa,#336b2588)}
  `;document.head.append(css);
- const overlay=document.createElement('div');overlay.id='gamePicker';overlay.innerHTML=`<div id="gamePickerCard" role="dialog" aria-modal="true" aria-labelledby="gamePickerTitle"><div id="gamePickerHead"><h2 id="gamePickerTitle">🎮 게임 선택</h2><button id="gamePickerClose" type="button">닫기</button></div><p id="gamePickerDesc">플레이할 게임을 선택하세요. 각 게임은 하루 5판씩 별도로 플레이할 수 있습니다.</p><button type="button" id="gamePickerBeat" class="gamePickerChoice"><span class="gamePickerIcon">🥁</span><span>박자왕<small id="gamePickerBeatCoins">리듬 게임 · 하루 5코인</small></span></button><button type="button" id="gamePickerPower" class="gamePickerChoice"><span class="gamePickerIcon">🔨</span><span>파워왕<small id="gamePickerPowerCoins">망치 타이밍 게임 · 하루 5코인</small></span></button></div>`;
+ const overlay=document.createElement('div');overlay.id='gamePicker';overlay.innerHTML=`<div id="gamePickerCard" role="dialog" aria-modal="true" aria-labelledby="gamePickerTitle"><div id="gamePickerHead"><h2 id="gamePickerTitle">🎮 게임 선택</h2><button id="gamePickerClose" type="button">닫기</button></div><p id="gamePickerDesc">플레이할 게임을 선택하세요. 각 게임은 하루 5판씩 별도로 플레이할 수 있습니다.</p><button type="button" id="gamePickerBeat" class="gamePickerChoice"><span class="gamePickerIcon">🥁</span><span>박자왕<small id="gamePickerBeatCoins">리듬 게임 · 하루 5코인</small></span></button><button type="button" id="gamePickerPower" class="gamePickerChoice"><span class="gamePickerIcon">🔨</span><span>파워왕<small id="gamePickerPowerCoins">망치 타이밍 게임 · 하루 5코인</small></span></button><button type="button" id="gamePickerMole" class="gamePickerChoice"><span class="gamePickerIcon">🐹</span><span>두더지왕<small id="gamePickerMoleCoins">순발력 게임 · 하루 5코인</small></span></button></div>`;
  document.body.append(overlay);
  const close=()=>overlay.classList.remove('show');
  overlay.querySelector('#gamePickerClose').onclick=close;
  overlay.addEventListener('pointerdown',e=>{if(e.target===overlay)close();});
  overlay.querySelector('#gamePickerBeat').onclick=()=>{close();openRhythmGame();};
  overlay.querySelector('#gamePickerPower').onclick=()=>{close();void openPowerGame();};
- gamePickerUi={overlay,beat:overlay.querySelector('#gamePickerBeatCoins'),power:overlay.querySelector('#gamePickerPowerCoins')};
+ overlay.querySelector('#gamePickerMole').onclick=()=>{close();void openMoleGame();};
+ gamePickerUi={overlay,beat:overlay.querySelector('#gamePickerBeatCoins'),power:overlay.querySelector('#gamePickerPowerCoins'),mole:overlay.querySelector('#gamePickerMoleCoins')};
  return gamePickerUi;
 }
 function openGamePicker(){
  if(!nearRhythmBooth())return toast('게임부스 근처에서만 열 수 있어요');
- if(rhythmGame.open||powerGame.open)return;
+ if(rhythmGame.open||powerGame.open||moleGame.open)return;
  const ui=ensureGamePicker();ui.beat.textContent=`리듬 게임 · 남은 코인 ${Number.isFinite(state.rhythmCoins)?state.rhythmCoins:5}/5`;
- ui.power.textContent=`망치 타이밍 게임 · 남은 코인 ${powerGame.coins}/5`;
+ ui.power.textContent=`망치 타이밍 게임 · 남은 코인 ${powerGame.coins}/5`;ui.mole.textContent=`두더지 게임 · 남은 코인 ${moleGame.coins}/5`;
  ui.overlay.classList.add('show');
  void refreshRhythmAccount();
  if(state.id)post('power',{id:state.id,sessionKey,command:'state'}).then(r=>{powerGame.coins=r.account.coins;powerGame.best=r.best;applyPowerState(r.power);if(gamePickerUi?.overlay.classList.contains('show'))gamePickerUi.power.textContent=`망치 타이밍 게임 · 남은 코인 ${powerGame.coins}/5`;}).catch(()=>{});
+ if(state.id)post('mole',{id:state.id,sessionKey,command:'state'}).then(r=>{moleGame.coins=r.account.coins;applyMoleState(r.mole);if(gamePickerUi?.overlay.classList.contains('show'))gamePickerUi.mole.textContent=`두더지 게임 · 남은 코인 ${moleGame.coins}/5`;}).catch(()=>{});
 }
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&gamePickerUi?.overlay.classList.contains('show')){gamePickerUi.overlay.classList.remove('show');e.preventDefault();e.stopImmediatePropagation();}},true);
 
@@ -504,13 +568,13 @@ function resizeRhythmCanvas(){
  }
 }
 function refreshRhythmReactionButton(){
- for(const [id,granted] of [['beatkingAction',Boolean(state.me?.rhythmKing)],['powerkingAction',Boolean(state.me?.powerKing)]]){
+ for(const [id,granted] of [['beatkingAction',Boolean(state.me?.rhythmKing)],['powerkingAction',Boolean(state.me?.powerKing)],['molekingAction',Boolean(state.me?.moleKing)]]){
   const btn=$(id);if(!btn)continue;
   btn.hidden=!granted;btn.style.display=granted?'':'none';
-  if(granted)btn.title=id==='beatkingAction'?'전날 박자왕 1등 전용':'전날 파워왕 1등 전용';
+  if(granted)btn.title=id==='beatkingAction'?'전날 박자왕 1등 전용':id==='powerkingAction'?'전날 파워왕 1등 전용':'전날 두더지왕 1등 전용';
  }
  // Revoke any already-running reaction immediately on a profile update.
- if(state.me&&((state.action==='beatking'&&!state.me.rhythmKing)||(state.action==='powerking'&&!state.me.powerKing))){state.action='idle';state.me.action='idle';state.actionUntil=0;updateActionButtons();sendMove();}
+ if(state.me&&((state.action==='beatking'&&!state.me.rhythmKing)||(state.action==='powerking'&&!state.me.powerKing)||(state.action==='moleking'&&!state.me.moleKing))){state.action='idle';state.me.action='idle';state.actionUntil=0;updateActionButtons();sendMove();}
 }
 function updateRhythmLeaderboard(){
  ensureRhythmUI();
@@ -539,7 +603,7 @@ function applyRhythmState(rhythm){
 function updateRhythmBoothButton(){
  ensureRhythmUI();
  const near=nearRhythmBooth();
- rhythmUi.boothButton.classList.toggle('show',Boolean(state.id&&near&&!rhythmGame.open&&!powerGame.open&&!gamePickerUi?.overlay.classList.contains('show')));
+ rhythmUi.boothButton.classList.toggle('show',Boolean(state.id&&near&&!rhythmGame.open&&!powerGame.open&&!moleGame.open&&!gamePickerUi?.overlay.classList.contains('show')));
  rhythmUi.boothButton.disabled=!near;
  rhythmUi.boothButton.textContent='🎮 게임플레이';
  rhythmUi.hint.classList.remove('show');
@@ -1148,7 +1212,7 @@ function handleLiveAnnouncement(event){
  if(event.kind==='immediate')queueFestivalPopup('📣 ONEseason 전체 공지',text,true);
  else if(event.kind==='ticker')queueFestivalTicker(text);
 }
-function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='snapshot'){syncTents(d.tents);state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);applyPowerState(d.power);syncCrowdSurf(d.crowdSurf);if(Array.isArray(d.chat)){$('chatMessages').replaceChildren();d.chat.filter(entry=>(entry.roomId||null)===(tentRoomActive?.id||null)).forEach(appendChat)};for(const id of duoVfx.keys())removeDuoVfx(id);activeDuos.clear();for(const duo of d.interactions||[])activeDuos.set(duo.id,duo);syncDuoStatus()}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){if((d.entry.roomId||null)===(tentRoomActive?.id||null)){appendChat(d.entry);showBubble(d.entry)}}else if(d.type==='move'){recordTrainLeader(d.player);state.players.set(d.player.id,d.player);if(d.player.id===state.id&&currentDuo())state.me={...d.player}}else if(d.type==='flag'){const player=state.players.get(d.id);if(player){player.flagText=d.flagText;player.flagImage=d.flagImage||'';}if(d.id===state.id&&state.me){state.me.flagText=d.flagText;state.me.flagImage=d.flagImage||'';currentFlagText=d.flagText;currentFlagImageId=d.flagImage||'';refreshFlagButton();}}else if(d.type==='badge'){const person=state.players.get(d.id);if(person){person.badgeTier=d.badgeTier;person.badgeSeconds=d.badgeSeconds;if(d.id===state.id&&state.me){state.me.badgeTier=d.badgeTier;state.me.badgeSeconds=d.badgeSeconds;}renderOnlinePlayers();}}else if(d.type==='profile'){state.players.set(d.player.id,d.player);if(d.player.id===state.id){state.me=d.player;refreshProfilePreview();refreshRhythmReactionButton();if(!$('punkShop').classList.contains('hidden')||!$('mdWardrobe').hidden)refreshPunkShop()}renderOnlinePlayers()}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers()}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue,d.history);else if(d.type==='slam')applySlam(d.slam,d.cooldownUntil);else if(d.type==='slam-go')onSlamGo(d);else if(d.type==='slam-impact')spawnSlamDust(d.x,d.y);else if(d.type==='toast-spark')spawnToastSpark(d.x,d.y);else if(d.type==='cheer'&&d.playerId!==state.id&&state.audioEnabled)playCheer();else if(d.type==='rockplay')applyRockPlay(d.event,d.rockCooldowns,d.rockRunningUntil);else if(d.type==='rockplay-go')onRockPlayGo(d);else if(d.type==='rockplay-cancel'){applyRockPlay(null,d.rockCooldowns,0);toast(d.reason||'인원이 부족해 취소됐어요.')} else if(d.type==='rhythm-state')applyRhythmState(d.rhythm);else if(d.type==='power-state')applyPowerState(d.power);else if(d.type==='md-catalog')syncMdCatalog(d.items);else if(d.type==='tent-furniture-catalog'){
+function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='snapshot'){syncTents(d.tents);state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);applyPowerState(d.power);applyMoleState(d.mole);syncCrowdSurf(d.crowdSurf);if(Array.isArray(d.chat)){$('chatMessages').replaceChildren();d.chat.filter(entry=>(entry.roomId||null)===(tentRoomActive?.id||null)).forEach(appendChat)};for(const id of duoVfx.keys())removeDuoVfx(id);activeDuos.clear();for(const duo of d.interactions||[])activeDuos.set(duo.id,duo);syncDuoStatus()}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){if((d.entry.roomId||null)===(tentRoomActive?.id||null)){appendChat(d.entry);showBubble(d.entry)}}else if(d.type==='move'){recordTrainLeader(d.player);state.players.set(d.player.id,d.player);if(d.player.id===state.id&&currentDuo())state.me={...d.player}}else if(d.type==='flag'){const player=state.players.get(d.id);if(player){player.flagText=d.flagText;player.flagImage=d.flagImage||'';}if(d.id===state.id&&state.me){state.me.flagText=d.flagText;state.me.flagImage=d.flagImage||'';currentFlagText=d.flagText;currentFlagImageId=d.flagImage||'';refreshFlagButton();}}else if(d.type==='badge'){const person=state.players.get(d.id);if(person){person.badgeTier=d.badgeTier;person.badgeSeconds=d.badgeSeconds;if(d.id===state.id&&state.me){state.me.badgeTier=d.badgeTier;state.me.badgeSeconds=d.badgeSeconds;}renderOnlinePlayers();}}else if(d.type==='profile'){state.players.set(d.player.id,d.player);if(d.player.id===state.id){state.me=d.player;refreshProfilePreview();refreshRhythmReactionButton();if(!$('punkShop').classList.contains('hidden')||!$('mdWardrobe').hidden)refreshPunkShop()}renderOnlinePlayers()}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers()}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue,d.history);else if(d.type==='slam')applySlam(d.slam,d.cooldownUntil);else if(d.type==='slam-go')onSlamGo(d);else if(d.type==='slam-impact')spawnSlamDust(d.x,d.y);else if(d.type==='toast-spark')spawnToastSpark(d.x,d.y);else if(d.type==='cheer'&&d.playerId!==state.id&&state.audioEnabled)playCheer();else if(d.type==='rockplay')applyRockPlay(d.event,d.rockCooldowns,d.rockRunningUntil);else if(d.type==='rockplay-go')onRockPlayGo(d);else if(d.type==='rockplay-cancel'){applyRockPlay(null,d.rockCooldowns,0);toast(d.reason||'인원이 부족해 취소됐어요.')} else if(d.type==='rhythm-state')applyRhythmState(d.rhythm);else if(d.type==='power-state')applyPowerState(d.power);else if(d.type==='mole-state')applyMoleState(d.mole);else if(d.type==='md-catalog')syncMdCatalog(d.items);else if(d.type==='tent-furniture-catalog'){
    tentFurnitureModels.clear();tentFurnitureThumbs.clear();
    if(tentFurniturePlacement){cancelTentFurniturePlacement();toast('상품 크기가 변경될 수 있어요. 배치를 다시 선택해 주세요.');}
    if(tentFurnitureData)tentFurnitureData.catalog=d.catalog||{};
@@ -1317,7 +1381,7 @@ function handleDuoEvent(d){
  if(d.type==='duo-end'){finishDuo(d.id);return}
 }
 setInterval(syncDuoStatus,250);
-const sustainedReactions=new Set(['peace','jump','run','headbang','buriburi','groove','dougie','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','powerking','marshmallow','putyourhandsup','nightfirework','heartbow','drum','electricguitar','bassguitar','vocal']);
+const sustainedReactions=new Set(['peace','jump','run','headbang','buriburi','groove','dougie','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','powerking','moleking','marshmallow','putyourhandsup','nightfirework','heartbow','drum','electricguitar','bassguitar','vocal']);
 // One shared bottom tab group: reactions / dances / chat.
 // Chat stays inside the dock instead of floating over the 3D world.
 function selectBottomMenu(menu){
@@ -1354,6 +1418,7 @@ function react(a,glowColor=null){
  if(a==='glowstick'){state.me.glowColor=glowstickColors[glowColor]?glowColor:'rainbow';state.me.glowEnabled=true;updateActionButtons();sendMove();return;}
  if(a==='beatking'&&!state.me.rhythmKing)return toast('전날 박자왕 1등만 사용할 수 있습니다.');
  if(a==='powerking'&&!state.me.powerKing)return toast('전날 파워왕 1등만 사용할 수 있습니다.');
+ if(a==='moleking'&&!state.me.moleKing)return toast('전날 두더지왕 1등만 사용할 수 있습니다.');
  if(a==='nightfirework'&&!nightFireworkAvailable())return toast('폭죽놀이는 새벽 1시부터 4시까지만 사용할 수 있어요.');
  if(a==='marshmallow'&&!campfireReactionAvailable())return toast('모닥불이 켜진 시간(20:00~03:00)에 화덕 가까이에서 사용할 수 있어요.');
  if(currentDuo())return toast('상호작용을 종료한 후 다른 동작을 사용해 주세요.');
@@ -1374,7 +1439,7 @@ function react(a,glowColor=null){
  if(state.action===a&&sustainedReactions.has(a)){
   state.action='idle';state.actionUntil=0;state.me.action='idle';
  }else{
-  if((a==='jump'||a==='run'||a==='buriburi'||a==='groove'||a==='windmill'||a==='skanking'||a==='airguitar'||a==='headspin'||a==='cheer'||a==='smoke'||a==='bubblegun'||a==='freestyle'||a==='beatking'||a==='powerking'||a==='marshmallow'||a==='putyourhandsup'||a==='nightfirework'||a==='heartbow'||a==='drum'||a==='electricguitar'||a==='bassguitar'||a==='vocal')&&state.pose!=='stand'){
+  if((a==='jump'||a==='run'||a==='buriburi'||a==='groove'||a==='windmill'||a==='skanking'||a==='airguitar'||a==='headspin'||a==='cheer'||a==='smoke'||a==='bubblegun'||a==='freestyle'||a==='beatking'||a==='powerking'||a==='moleking'||a==='marshmallow'||a==='putyourhandsup'||a==='nightfirework'||a==='heartbow'||a==='drum'||a==='electricguitar'||a==='bassguitar'||a==='vocal')&&state.pose!=='stand'){
    state.pose='stand';state.me.pose='stand';
   }
   state.action=a;state.me.action=a;if(bpmDanceActions.has(a))applyHeadbangToSelf();if(a==='cheer')playCheer();
@@ -1430,7 +1495,7 @@ glowstickStyle.textContent=`
 `;
 document.head.append(glowstickStyle);
 const beatKingButton=document.createElement('button');beatKingButton.id='beatkingAction';beatKingButton.dataset.action='beatking';beatKingButton.hidden=true;beatKingButton.style.display='none';beatKingButton.innerHTML='👑 <span>박자왕</span><em>Y</em>';beatKingButton.onclick=()=>react('beatking');$('reactionActions').append(beatKingButton);
-const powerKingButton=document.createElement('button');powerKingButton.id='powerkingAction';powerKingButton.dataset.action='powerking';powerKingButton.hidden=true;powerKingButton.style.display='none';powerKingButton.innerHTML='💪 <span>파워왕</span>';powerKingButton.onclick=()=>react('powerking');$('reactionActions').append(powerKingButton);refreshRhythmReactionButton();
+const powerKingButton=document.createElement('button');powerKingButton.id='powerkingAction';powerKingButton.dataset.action='powerking';powerKingButton.hidden=true;powerKingButton.style.display='none';powerKingButton.innerHTML='💪 <span>파워왕</span>';powerKingButton.onclick=()=>react('powerking');$('reactionActions').append(powerKingButton);const moleKingButton=document.createElement('button');moleKingButton.id='molekingAction';moleKingButton.dataset.action='moleking';moleKingButton.hidden=true;moleKingButton.style.display='none';moleKingButton.innerHTML='🔨 <span>두더지왕</span>';moleKingButton.onclick=()=>react('moleking');$('reactionActions').append(moleKingButton);refreshRhythmReactionButton();
 // The marshmallow action is local to the lit campfire, and is hidden elsewhere.
 const marshmallowButton=document.createElement('button');
 marshmallowButton.id='marshmallowAction';marshmallowButton.dataset.action='marshmallow';
@@ -1472,12 +1537,12 @@ syncNightFirework();
 const reactionMenuOrder=[
  'peace','wave','clap','putyourhandsup','cheer','jump','run','sit','lie',
  'drink','smoke','snack','toastStart','bubblegun','heartbow','glowstick',
- 'flagAction','beatking','powerking','nightfirework','marshmallow'
+ 'flagAction','beatking','powerking','moleking','nightfirework','marshmallow'
 ];
 const reactionMenu=$('reactionActions');
 for(const key of reactionMenuOrder){
- const button=key==='toastStart'||key==='flagAction'||key==='beatking'||key==='powerking'
-  ?(key==='beatking'?beatKingButton:key==='powerking'?powerKingButton:$(key))
+ const button=key==='toastStart'||key==='flagAction'||key==='beatking'||key==='powerking'||key==='moleking'
+  ?(key==='beatking'?beatKingButton:key==='powerking'?powerKingButton:key==='moleking'?moleKingButton:$(key))
   :reactionMenu.querySelector(`[data-action="${key}"]`);
  if(button)reactionMenu.append(button);
 }
@@ -5236,6 +5301,11 @@ function attachImportedHair(neck,style,color){
 for(const style of ['short','bob','bob209','long','buns'])getHairAsset(style).catch(()=>{});
 // Rounded chibi avatar: larger soft head, painted-on face, short unified hairstyle,
 // surface-colored clothing, and inexpensive shoulder/elbow/hip/knee rig.
+const moleHammerLoader=new GLTFLoader();let moleHammerTemplate=null,moleHammerPromise=null;
+function refreshMoleHammerModels(){moleHammerTemplate=null;moleHammerPromise=null;for(const a of avatars.values()){if(a.parts?.moleHammer)attachMoleHammerModel(a.parts.moleHammer);}}
+function attachMoleHammerModel(holder){if(!moleHammerRevision)return;const revision=moleHammerRevision;
+ if(!moleHammerPromise){moleHammerPromise=new Promise(resolve=>moleHammerLoader.load('/api/mole-hammer-model?v='+revision,gltf=>{const model=gltf.scene;const box=new THREE.Box3().setFromObject(model),size=box.getSize(new THREE.Vector3()),center=box.getCenter(new THREE.Vector3());model.position.sub(center);model.scale.setScalar(.95/Math.max(size.x,size.y,size.z,.001));moleHammerTemplate=model;resolve(model);},()=>{},()=>resolve(null)));}
+ moleHammerPromise.then(model=>{if(!model||moleHammerRevision!==revision||!holder.parent)return;holder.clear();holder.add(model.clone(true));});}
 function makeAvatar(p){
  const root=new THREE.Group();scene.add(root);
  const parts={}, female=p.gender==='female';
@@ -6042,6 +6112,14 @@ function makeAvatar(p){
  powerCtx.fillStyle=powerGradient;powerCtx.fillText('내가 파워왕',480,82);
  const powerTexture=new THREE.CanvasTexture(powerCanvas);powerTexture.colorSpace=THREE.SRGBColorSpace;
  const powerTitle=new THREE.Sprite(new THREE.SpriteMaterial({map:powerTexture,transparent:true,depthTest:false}));powerTitle.scale.set(7.4,1.24,1);powerTitle.position.y=4.96;powerTitle.visible=Boolean(p.powerKing);root.add(powerTitle);parts.powerTitle=powerTitle;
+ // Green four-character Mole King title. Multiple crowns stack vertically.
+ const moleCanvas=document.createElement('canvas');moleCanvas.width=960;moleCanvas.height=160;const mc=moleCanvas.getContext('2d');mc.font='900 96px Arial,sans-serif';mc.textAlign='center';mc.textBaseline='middle';mc.lineWidth=22;mc.strokeStyle='#183b18';mc.shadowColor='#b6ff3e';mc.shadowBlur=23;mc.strokeText('두더지왕',480,82);mc.fillStyle='#b6ff54';mc.fillText('두더지왕',480,82);
+ const mt=new THREE.CanvasTexture(moleCanvas);mt.colorSpace=THREE.SRGBColorSpace;const moleTitle=new THREE.Sprite(new THREE.SpriteMaterial({map:mt,transparent:true,depthTest:false}));moleTitle.scale.set(7.4,1.24,1);moleTitle.position.y=4.96;moleTitle.visible=Boolean(p.moleKing);root.add(moleTitle);parts.moleTitle=moleTitle;
+ const moleHammer=new THREE.Group();moleHammer.position.set(0,-.43,.12);parts.rightElbow.add(moleHammer);parts.moleHammer=moleHammer;
+ const hammerHandle=new THREE.Mesh(new THREE.CylinderGeometry(.048,.048,.83,8),new THREE.MeshStandardMaterial({color:'#8a593b'}));hammerHandle.position.y=.25;moleHammer.add(hammerHandle);
+ const hammerHead=new THREE.Mesh(new THREE.BoxGeometry(.53,.22,.24),new THREE.MeshStandardMaterial({color:'#c3d1db',metalness:.5,roughness:.4}));hammerHead.position.y=.70;moleHammer.add(hammerHead);moleHammer.visible=false;
+ attachMoleHammerModel(moleHammer);
+ parts.moleRainbow=[];for(let i=0;i<7;i++){const ring=new THREE.Mesh(new THREE.TorusGeometry(1,.055,7,52),new THREE.MeshBasicMaterial({color:new THREE.Color().setHSL(i/7,1,.63),transparent:true,opacity:.7,depthWrite:false}));ring.rotation.x=Math.PI/2;ring.visible=false;ring.renderOrder=50;root.add(ring);parts.moleRainbow.push(ring);}
  parts.rhythmSparkles=[];const sparkleGeo=new THREE.OctahedronGeometry(.12,0);const sparkleColors=['#ff79c5','#ffe46f','#81d9ff','#a688ff','#89ffb0'];for(let i=0;i<16;i++){const star=new THREE.Mesh(sparkleGeo,new THREE.MeshBasicMaterial({color:sparkleColors[i%sparkleColors.length],transparent:true,opacity:.94}));star.visible=false;star.renderOrder=40;root.add(star);parts.rhythmSparkles.push(star);}
  const badgeImage=new Image();badgeImage.src=badgeIconUrl(p.badgeTier);
  badgeImage.onload=()=>{ctx.drawImage(badgeImage,beginning,29,66,66);texture.needsUpdate=true;};
@@ -6536,6 +6614,16 @@ function animateAvatar(a,p,t){
   set('leftHip',-.10,0,-.10);set('rightHip',-.10,0,.10);
   set('leftKnee',.13);set('rightKnee',.13);
  }else a.powerkingYaw=0;
+ if(act==='moleking'){
+  // Lift hammer high and strike the ground ahead; impact launches seven rainbow rings.
+  const cycle=sec%2.3,hit=cycle>.82&&cycle<1.45;
+  set('upper',hit?-.24:-.06,0,0);
+  set('rightShoulder',cycle<.82?-2.68:-.72,0,.30);
+  set('rightElbow',cycle<.82?-.16:-1.0,0,.15);
+  set('leftShoulder',-.45,0,-.38);set('leftElbow',-.32);
+  set('rightHip',.08);set('leftHip',.08);set('rightKnee',.14);set('leftKnee',.14);
+  height=hit?-.09:.02;
+ }
  if(act==='windmill'){
   // One-handed B-boy freeze: tilted inversion, planted left arm, right arm
   // stretched out to the side, scissored legs (one straight, one bent).
@@ -6971,8 +7059,11 @@ function animateAvatar(a,p,t){
   bubble.material.opacity=.56*(1-THREE.MathUtils.smoothstep(phase,.72,1));
   bubble.visible=true;
  });
- if(P.rhythmTitle){P.rhythmTitle.visible=Boolean(q.rhythmKing);P.rhythmTitle.position.y=(q.powerKing?6.08:4.96)+Math.sin(sec*3.5)*.05;}
- if(P.powerTitle){P.powerTitle.visible=Boolean(q.powerKing);P.powerTitle.position.y=4.96+Math.sin(sec*3.5+1.5)*.05;}
+ if(P.rhythmTitle){P.rhythmTitle.visible=Boolean(q.rhythmKing);P.rhythmTitle.position.y=4.96+(Number(Boolean(q.powerKing))+Number(Boolean(q.moleKing)))*1.12+Math.sin(sec*3.5)*.05;}
+ if(P.powerTitle){P.powerTitle.visible=Boolean(q.powerKing);P.powerTitle.position.y=4.96+Number(Boolean(q.moleKing))*1.12+Math.sin(sec*3.5+1.5)*.05;}
+ if(P.moleTitle){P.moleTitle.visible=Boolean(q.moleKing);P.moleTitle.position.y=4.96+Math.sin(sec*3.5+2)*.05;}
+ if(P.moleHammer)P.moleHammer.visible=act==='moleking'&&Boolean(q.moleKing);
+ if(P.moleRainbow)P.moleRainbow.forEach((ring,i)=>{const phase=sec%2.3-.82,active=act==='moleking'&&q.moleKing&&phase>0&&phase<.9;ring.visible=Boolean(active);if(active){const spread=phase/.9;ring.position.set(0,.09+i*.012,1.2+spread*.8);ring.scale.setScalar(.28+spread*(2.4+i*.18));ring.material.opacity=.8*(1-spread);}});
  if(P.rhythmSparkles){P.rhythmSparkles.forEach((spark,i)=>{if(!((act==='beatking'&&q.rhythmKing)||(act==='powerking'&&q.powerKing))){spark.visible=false;return}const phase=(sec*1.8+i/5)%1;const angle=phase*Math.PI*2+i*.7;const band=(i%2?1:-1);spark.visible=true;spark.position.set(Math.cos(angle)*(1.1+phase*.5),1.1+Math.sin(phase*Math.PI*2+band)*1.1+phase*.9,.45+Math.sin(angle*1.4)*.7);const sc=.55+.35*Math.sin(phase*Math.PI);spark.scale.setScalar(sc);spark.rotation.x=sec*2.2+i;spark.rotation.y=sec*3.1+i;});}
  if(P.glowsticks){
   const enabled=Boolean(q.glowEnabled);
@@ -7528,7 +7619,7 @@ function tick(t){
    }
   }
   state.moving=!!(dx||dy)||(rockMotion?.kind==='train'&&rockMotion.leaderId!==state.id&&state.me.action==='train-run');
-  if(state.moving && (dx||dy) && (state.action==='buriburi'||state.action==='groove'||state.action==='windmill'||state.action==='airguitar'||state.action==='headspin'||state.action==='cheer'||state.action==='smoke'||state.action==='freestyle'||state.action==='beatking'||state.action==='powerking'||state.action==='marshmallow'||state.action==='heartbow'||state.action==='drum'||state.action==='electricguitar'||state.action==='bassguitar'||state.action==='vocal') && !slamMotion && !rockMotion){
+  if(state.moving && (dx||dy) && (state.action==='buriburi'||state.action==='groove'||state.action==='windmill'||state.action==='airguitar'||state.action==='headspin'||state.action==='cheer'||state.action==='smoke'||state.action==='freestyle'||state.action==='beatking'||state.action==='powerking'||state.action==='moleking'||state.action==='marshmallow'||state.action==='heartbow'||state.action==='drum'||state.action==='electricguitar'||state.action==='bassguitar'||state.action==='vocal') && !slamMotion && !rockMotion){
    state.action='idle';state.me.action='walk';state.actionUntil=0;updateActionButtons();
   }
   if(state.moving&&(dx||dy)){
@@ -7589,10 +7680,10 @@ function tick(t){
    ?{...serverPlayer,hairStyle:chosenHairStyle,hairColor:chosenHairColor}
    :serverPlayer;
   const current=avatars.get(id);
-  if(current&&(current.color!==p.color||current.name!==p.name||current.badgeTier!==(p.badgeTier||'bronze')||current.gender!==p.gender||current.pattern!==(p.pattern||'solid')||current.sash!==(p.sash||'none')||current.hairStyle!==(p.hairStyle||'short')||current.hairColor!==(p.hairColor||'#4b3932')||current.flagText!==(p.flagText||'')||current.flagImage!==(p.flagImage||'')||Boolean(current.rhythmKing)!==Boolean(p.rhythmKing)||Boolean(current.powerKing)!==Boolean(p.powerKing)||JSON.stringify(current.equipped||{})!==JSON.stringify(p.equipped||{}))){
+  if(current&&(current.color!==p.color||current.name!==p.name||current.badgeTier!==(p.badgeTier||'bronze')||current.gender!==p.gender||current.pattern!==(p.pattern||'solid')||current.sash!==(p.sash||'none')||current.hairStyle!==(p.hairStyle||'short')||current.hairColor!==(p.hairColor||'#4b3932')||current.flagText!==(p.flagText||'')||current.flagImage!==(p.flagImage||'')||Boolean(current.rhythmKing)!==Boolean(p.rhythmKing)||Boolean(current.powerKing)!==Boolean(p.powerKing)||Boolean(current.moleKing)!==Boolean(p.moleKing)||JSON.stringify(current.equipped||{})!==JSON.stringify(p.equipped||{}))){
    disposeAvatar(current.root);avatars.delete(id);
   }
-  if(!avatars.has(id)){let a=makeAvatar(p),pos=toWorld(p);a.root.position.set(pos.x,0,pos.z);a.name=p.name;a.badgeTier=p.badgeTier||'bronze';a.gender=p.gender;a.pattern=p.pattern||'solid';a.sash=p.sash||'none';a.hairStyle=p.hairStyle||'short';a.hairColor=p.hairColor||'#4b3932';a.flagText=p.flagText||'';a.flagImage=p.flagImage||'';a.rhythmKing=Boolean(p.rhythmKing);a.powerKing=Boolean(p.powerKing);a.equipped={...(p.equipped||{})};avatars.set(id,a)}
+  if(!avatars.has(id)){let a=makeAvatar(p),pos=toWorld(p);a.root.position.set(pos.x,0,pos.z);a.name=p.name;a.badgeTier=p.badgeTier||'bronze';a.gender=p.gender;a.pattern=p.pattern||'solid';a.sash=p.sash||'none';a.hairStyle=p.hairStyle||'short';a.hairColor=p.hairColor||'#4b3932';a.flagText=p.flagText||'';a.flagImage=p.flagImage||'';a.rhythmKing=Boolean(p.rhythmKing);a.powerKing=Boolean(p.powerKing);a.moleKing=Boolean(p.moleKing);a.equipped={...(p.equipped||{})};avatars.set(id,a)}
   const avatar=avatars.get(id);
   animateAvatar(avatar,p,t);
   if(avatar.parts.flagPivot?.parent?.visible){
@@ -7623,7 +7714,7 @@ function tick(t){
  updateMoshTrails(t);updateSlamDust(t);updateBubbles(t);animateShow(t);animateCampfire(t);updateFiretruckShow(t);
  if(!minimalScenery)updateHourlyFireworks(t);
  animateToastSparks(t);
- if(state.id)updateRhythmBoothButton();if(rhythmGame.open)drawRhythmGame();if(state.id)updatePowerBoothButton();updatePowerGame();
+ if(state.id)updateRhythmBoothButton();if(rhythmGame.open)drawRhythmGame();if(state.id)updatePowerBoothButton();updatePowerGame();updateMoleGame();
  {
   if(povEnabled){updatePovCamera();}else{followLocalAvatar();controls.update();keepCameraInFrontOfStage();}
   // Visitors who entered an indoor room are no longer standing outside.

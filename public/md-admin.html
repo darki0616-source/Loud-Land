@@ -8,7 +8,7 @@
 .furniture-preview-wrap{margin-top:16px;background:#101a2c;border:1px solid #40516a;border-radius:12px;overflow:hidden}.furniture-preview-wrap canvas{display:block;width:100%;aspect-ratio:460/290}.furniture-preview-wrap small{padding:9px;display:block}
 .actionrow{display:flex;gap:9px;margin-top:16px;flex-wrap:wrap}.actionrow button{flex:1}#furnitureStatus{white-space:pre-wrap;color:#d4fb83;overflow-wrap:anywhere}#furnitureStatus.error{color:#ff9fac}
 @media(max-width:640px){.furniture-layout{grid-template-columns:1fr}.furniture-list{max-height:220px}.admin-tabs button{flex:1;padding:12px 8px}}
-</style></head><body><main><h1>ONEseason · MD / 인테리어 관리자</h1><p>일반 유저 로그인과 별개인 관리자 도구야. MD 티셔츠와 텐트 인테리어 상품을 한곳에서 관리할 수 있어. 관리자 키는 이 페이지에서만 입력하고 GitHub에는 절대 넣지 마.</p><section><label for="key">관리자 키 (Render의 MD_ADMIN_KEY)</label><input id="key" type="password" autocomplete="off"><button id="load" type="button" style="margin-top:10px">관리자 확인 · 목록 불러오기</button><p id="status" role="status"></p></section><nav class="admin-tabs" aria-label="관리 기능"><button id="mdTab" type="button" class="active">👕 MD 티셔츠</button><button id="furnitureTab" type="button">🛋 인테리어 아이템</button></nav><div id="mdSection">
+</style></head><body><main><h1>ONEseason · MD / 인테리어 관리자</h1><p>일반 유저 로그인과 별개인 관리자 도구야. MD 티셔츠와 텐트 인테리어 상품을 한곳에서 관리할 수 있어. 관리자 키는 이 페이지에서만 입력하고 GitHub에는 절대 넣지 마.</p><section><label for="key">관리자 키 (Render의 MD_ADMIN_KEY)</label><input id="key" type="password" autocomplete="off"><button id="load" type="button" style="margin-top:10px">관리자 확인 · 목록 불러오기</button><p id="status" role="status"></p></section><nav class="admin-tabs" aria-label="관리 기능"><button id="mdTab" type="button" class="active">👕 MD 티셔츠</button><button id="furnitureTab" type="button">🛋 인테리어 아이템</button><button id="moleTab" type="button">🔨 두더지왕 망치</button></nav><div id="mdSection">
 <section><h2>새 티셔츠 등록</h2><p>투명 배경 PNG/WebP를 선택하면 최대 512×512 WebP로 변환해 등록해. 제작 권장: 1024×1024px 투명 PNG. 등록된 이미지는 캐릭터 몸통의 프린트로 사용돼.</p><label for="name">상품명</label><input id="name" maxlength="45" placeholder="예: DARKI SKULL TEE"><label for="color">티셔츠 바탕색</label><input id="color" type="color" value="#141414"><label for="file">프린트 디자인</label><input id="file" type="file" accept="image/png,image/jpeg,image/webp"><img id="preview" alt="미리보기"><button id="create" type="button" style="margin-top:12px">MD 티셔츠 등록</button></section><section><h2>등록 상품</h2><div id="items"></div></section><p>테스트 모드: 모든 MD 무료 착용 / 기존 구매 포인트 환불. 이 페이지는 관리자 키 없이 등록·삭제할 수 없어.</p></div>
 <div id="furnitureSection" hidden>
 <section><h2>🛋 텐트 인테리어 아이템</h2><p>GLB 3D 모델을 업로드하고 상품명, 가격, 실제 3D 모델의 가로·깊이·높이를 정하면 게임의 아이템 상점에 반영돼. 새 상품은 GLB 파일이 반드시 필요해.</p>
@@ -35,7 +35,7 @@
   <p><small>가로·깊이·높이 모두 실제 GLB 모델의 보이는 크기에 반영돼. 배치 점선도 같은 가로·깊이를 사용해. 원본 비율과 다르게 입력하면 모델이 늘어나거나 납작해질 수 있어. 판매 중인 상품의 가격을 바꿔도 기존 구매자에게 추가 청구하지 않아. 이미 배치된 상품의 가로·깊이를 수정하려면 배치 소품을 먼저 회수해야 해.</small></p>
  </div>
 </div></section>
-</div></main><script>
+</div><div id="moleSection" hidden><section><h2>🔨 두더지왕 리액션 망치 GLB 업로드</h2><p>전날 두더지왕 1등의 리액션에 사용할 GLB 모델을 업로드해. 기존 인테리어 모델과 같은 Supabase <code>tent-items</code> 버킷에 저장돼. 12MB 이하 GLB 파일을 사용하고, 텍스처는 모델 내부에 포함해야 해.</p><label for="moleGlb">망치 GLB 파일</label><input type="file" id="moleGlb" accept=".glb,model/gltf-binary"><button type="button" id="moleUpload" style="margin-top:12px">망치 업로드 · 적용</button><p id="moleAdminStatus" role="status"></p><p><small>망치는 게임 화면의 PNG 망치와 별개야. GLB는 캐릭터가 두더지왕 리액션을 할 때 손에 들고 등장해. 등록 전에는 기본 3D 망치가 표시돼.</small></p></section></div></main><script>
 const $=id=>document.getElementById(id);let dataUrl='';
 function msg(s,err=false){$('status').textContent=s;$('status').classList.toggle('error',err)}
 async function api(command,extra={}){
@@ -61,4 +61,4 @@ $('file').onchange=async()=>{dataUrl='';$('preview').removeAttribute('src');cons
 $('create').onclick=async()=>{if(!dataUrl)return msg('프린트 이미지를 먼저 선택해 줘.',true);$('create').disabled=true;
  try{const d=await api('create',{name:$('name').value,shirtColor:$('color').value,image:dataUrl});render(d.items);msg('등록 완료! MD샵과 꾸미기 화면에서 사용할 수 있어.');$('name').value='';$('file').value='';dataUrl='';$('preview').removeAttribute('src')}
  catch(e){msg(e.message,true)}finally{$('create').disabled=false}};
-</script><script src="/furniture-admin.js" type="module"></script></body></html>
+</script><script src="/furniture-admin.js" type="module"></script><script src="/mole-admin.js" type="module"></script></body></html>
