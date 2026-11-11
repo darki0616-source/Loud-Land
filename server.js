@@ -254,7 +254,7 @@ const TENT_MAX_OCCUPANCY=4;
 function loadTentFurnitureCatalog(){
  let raw;
  try{raw=JSON.parse(fs.readFileSync(path.join(PUBLIC,'assets/tent-items/catalog.json'),'utf8'));}
- catch(error){console.error('Tent furniture catalog:',error);return {};}
+ catch(error){console.warn('Tent furniture catalog:',error.message);raw={};}
  const catalog={};
  for(const [id,item] of Object.entries(raw).slice(0,60)){
   if(!/^[a-z0-9_-]{1,32}$/.test(id)||!item||typeof item!=='object')continue;
@@ -262,6 +262,15 @@ function loadTentFurnitureCatalog(){
   const asset='/assets/tent-items/'+id+'.glb';
   if(!Number.isInteger(cost)||cost<0||cost>50000||![width,depth,height].every(Number.isFinite)||width<.1||width>8||depth<.1||depth>8||height<.1||height>8||!fs.existsSync(path.join(PUBLIC,'assets/tent-items',id+'.glb')))continue;
   catalog[id]={name:String(item.name||id).slice(0,40),cost,asset,width,depth,height,description:String(item.description||'').slice(0,150),bedEnabled:typeof item.bedEnabled==='boolean'?item.bedEnabled:/(침대|매트리스|mattress|(^|[-_ ])bed($|[-_ ])|^bed|(^|[-_ ])cot($|[-_ ]))/i.test(id+' '+String(item.name||'')),bedSurfaceHeight:Number.isFinite(Number(item.bedSurfaceHeight))&&Number(item.bedSurfaceHeight)>0&&Number(item.bedSurfaceHeight)<=height?Number(item.bedSurfaceHeight):null,lightEnabled:typeof item.lightEnabled==='boolean'?item.lightEnabled:/(lantern|랜턴|등불|호롱|lamp|램프)/i.test(id+' '+String(item.name||''))};
+ }
+ // v285: Bundled fireplace is registered without replacing the owner's
+ // existing catalog.json or any administrator-created furniture entries.
+ const stoveFile=path.join(PUBLIC,'assets/tent-items/hearth_stove.glb');
+ if(fs.existsSync(stoveFile)&&!catalog.hearth_stove){
+  catalog.hearth_stove={name:'장작 난로',cost:500,asset:'/assets/tent-items/hearth_stove.glb',
+   width:1.35,depth:1.70,height:1.50,
+   description:'중앙 화구에서 불꽃이 피어오르고 주변을 따뜻하게 밝히는 난로',
+   bedEnabled:false,bedSurfaceHeight:null,lightEnabled:true};
  }
  return catalog;
 }

@@ -3161,6 +3161,61 @@ function getTentFurnitureGlowTexture(){
  tentFurnitureGlowTexture=new THREE.CanvasTexture(canvas);
  return tentFurnitureGlowTexture;
 }
+// v285: Low-cost procedural fireplace flames; no video, particles, or extra assets.
+// Each placed stove uses a few billboard flames sharing one canvas texture.
+let tentStoveFlameTexture=null;
+function getTentStoveFlameTexture(){
+ if(tentStoveFlameTexture)return tentStoveFlameTexture;
+ const canvas=document.createElement('canvas');canvas.width=128;canvas.height=256;
+ const ctx=canvas.getContext('2d');
+ const flame=ctx.createLinearGradient(0,245,0,16);
+ flame.addColorStop(0,'rgba(255,67,0,0)');
+ flame.addColorStop(.13,'rgba(255,92,4,.92)');
+ flame.addColorStop(.43,'rgba(255,170,22,.96)');
+ flame.addColorStop(.73,'rgba(255,225,83,.78)');
+ flame.addColorStop(1,'rgba(255,243,175,0)');
+ ctx.fillStyle=flame;
+ ctx.beginPath();ctx.moveTo(64,12);
+ ctx.bezierCurveTo(94,70,98,100,84,143);
+ ctx.bezierCurveTo(114,177,107,216,88,238);
+ ctx.quadraticCurveTo(64,251,40,238);
+ ctx.bezierCurveTo(15,213,21,176,43,142);
+ ctx.bezierCurveTo(32,103,44,60,64,12);ctx.fill();
+ const core=ctx.createLinearGradient(0,232,0,92);
+ core.addColorStop(0,'rgba(255,246,161,.96)');
+ core.addColorStop(.65,'rgba(255,233,114,.64)');
+ core.addColorStop(1,'rgba(255,244,167,0)');
+ ctx.fillStyle=core;ctx.beginPath();ctx.moveTo(64,87);
+ ctx.bezierCurveTo(85,145,92,187,78,226);
+ ctx.quadraticCurveTo(64,236,50,226);
+ ctx.bezierCurveTo(35,187,47,146,64,87);ctx.fill();
+ tentStoveFlameTexture=new THREE.CanvasTexture(canvas);
+ tentStoveFlameTexture.colorSpace=THREE.SRGBColorSpace;
+ return tentStoveFlameTexture;
+}
+function createTentStoveFlames(height){
+ const group=new THREE.Group();group.name='hearth-stove-flames';
+ const sprites=[];
+ const positions=[[-.12,-.055,.95,.60],[.10,.055,.98,.72],[0,.005,1.01,.94],[.055,-.065,.96,.53]];
+ for(let i=0;i<positions.length;i++){
+  const [x,z,y,factor]=positions[i];
+  const sprite=new THREE.Sprite(new THREE.SpriteMaterial({
+   map:getTentStoveFlameTexture(),transparent:true,depthWrite:false,
+   depthTest:true,blending:THREE.AdditiveBlending,opacity:.82
+  }));
+  const w=height*.32*factor,h=height*.42*factor;
+  sprite.position.set(x*height,y*height,z*height);
+  sprite.scale.set(w,h,1);
+  sprite.userData.flameBase={x:x*height,y:y*height,z:z*height,w,h,phase:i*1.91};
+  group.add(sprite);sprites.push(sprite);
+ }
+ return {group,sprites};
+}
+function disposeTentStoveFlames(flames){
+ if(!flames)return;
+ flames.group.parent?.remove(flames.group);
+ for(const sprite of flames.sprites)sprite.material.dispose();
+}
 function tentFurnitureHasLight(itemId){
  const item=tentRoomActive?.furnitureCatalog?.[itemId]||tentFurnitureData?.catalog?.[itemId];
  if(!item)return false;
@@ -3172,9 +3227,10 @@ function attachTentFurnitureLight(instanceId,itemId,obj){
  if(!tentFurnitureHasLight(itemId))return;
  const item=tentRoomActive?.furnitureCatalog?.[itemId]||tentFurnitureData?.catalog?.[itemId];
  const h=Math.max(.1,Number(item?.height)||1);
- const y=THREE.MathUtils.clamp(h*.58,.16,Math.max(.16,h-.10));
- const range=THREE.MathUtils.clamp(h*4.2,3.2,5.3);
- const light=new THREE.PointLight(0xffc477,11.5,range,2);
+ const stove=itemId==='hearth_stove';
+ const y=stove?h*.91:THREE.MathUtils.clamp(h*.58,.16,Math.max(.16,h-.10));
+ const range=stove?4.4:THREE.MathUtils.clamp(h*4.2,3.2,5.3);
+ const light=new THREE.PointLight(stove?0xff892b:0xffc477,stove?7.5:11.5,range,2);
  light.position.set(0,y,0);light.castShadow=false;
  obj.add(light);
  const glow=new THREE.Sprite(new THREE.SpriteMaterial({
@@ -3189,12 +3245,15 @@ function attachTentFurnitureLight(instanceId,itemId,obj){
    side:THREE.DoubleSide}));
  pool.rotation.x=-Math.PI/2;pool.position.y=.021;pool.renderOrder=1;
  obj.add(pool);
- tentFurnitureLightEffects.set(instanceId,{obj,light,glow,pool,phase:tentFurnitureLightEffects.size*1.87});
+ const flames=stove?createTentStoveFlames(h):null;
+ if(flames)obj.add(flames.group);
+ tentFurnitureLightEffects.set(instanceId,{obj,light,glow,pool,flames,stove,phase:tentFurnitureLightEffects.size*1.87});
 }
 function clearTentFurnitureLightEffects(){
  for(const fx of tentFurnitureLightEffects.values()){
   fx.obj.remove(fx.light,fx.glow,fx.pool);
   fx.glow.material.dispose();fx.pool.material.dispose();fx.pool.geometry.dispose();
+  disposeTentStoveFlames(fx.flames);
  }
  tentFurnitureLightEffects.clear();
 }
@@ -3209,9 +3268,16 @@ function animateTentFurnitureLightEffects(t){
   const fx=nearest[i],wave=Math.sin(t*.0023+fx.phase)*.035+
    Math.sin(t*.0081+fx.phase*1.7)*.025;
   fx.light.visible=i<4;
-  fx.light.intensity=11.5*(1+wave);
-  fx.glow.material.opacity=.46+wave*.55;
-  fx.pool.material.opacity=.16+wave*.10;
+  fx.light.intensity=(fx.stove?7.5:11.5)*(1+wave*(fx.stove?3.1:1));
+  fx.glow.material.opacity=(fx.stove?.38:.46)+wave*.55;
+  fx.pool.material.opacity=(fx.stove?.23:.16)+wave*.10;
+  if(fx.flames)for(const sprite of fx.flames.sprites){
+   const b=sprite.userData.flameBase,phase=t*.006+b.phase;
+   const flicker=1+Math.sin(phase)*.13+Math.sin(phase*1.73)*.065;
+   sprite.scale.set(b.w*(1+Math.sin(phase*1.21)*.12),b.h*flicker,1);
+   sprite.position.set(b.x+Math.sin(phase*.82)*.017,b.y+(flicker-1)*b.h*.18,b.z);
+   sprite.material.opacity=.77+Math.sin(phase*1.3)*.12;
+  }
  }
 }
 
@@ -3225,7 +3291,12 @@ async function getTentFurnitureModel(itemId){
     // v251: Width (X), height (Y) AND depth (Z) are real visible GLB
     // dimensions, not just a collision footprint. Preserve glTF's own
     // transform by scaling an outer group rather than replacing root.scale.
-    const original=gltf.scene,box=new THREE.Box3().setFromObject(original);
+    const original=gltf.scene;
+    // Meshy supplied this stove in Z-up coordinates; rotate only this asset
+    // before calculating its visible bounds and the floor-aligned scale.
+    if(itemId==='hearth_stove')original.rotation.x=-Math.PI/2;
+    original.updateMatrixWorld(true);
+    const box=new THREE.Box3().setFromObject(original);
     const size=box.getSize(new THREE.Vector3()),center=box.getCenter(new THREE.Vector3());
     if(![size.x,size.y,size.z].every(Number.isFinite)||size.y<=.00001)throw Error('3D 모델의 크기를 확인할 수 없어요.');
     const scaleY=item.height/size.y;
@@ -3393,9 +3464,10 @@ function initTentFurniturePreview(){
   tentFurniturePreviewCamera.position.set(2,1.7,3.3);tentFurniturePreviewCamera.lookAt(0,.62,0);
  }catch(err){console.warn('Furniture preview renderer unavailable',err);}
 }
-let tentPreviewModel=null,tentPreviewRequest=0;
+let tentPreviewModel=null,tentPreviewRequest=0,tentPreviewStoveFlames=null;
 async function showTentFurniturePreview(itemId){
  const requested=++tentPreviewRequest;
+ disposeTentStoveFlames(tentPreviewStoveFlames);tentPreviewStoveFlames=null;
  if(tentPreviewModel){tentFurniturePreviewScene?.remove(tentPreviewModel);tentPreviewModel=null;}
  if(!itemId)return;
  initTentFurniturePreview();
@@ -3403,6 +3475,10 @@ async function showTentFurniturePreview(itemId){
   const template=await getTentFurnitureModel(itemId);
   if(requested!==tentPreviewRequest||!tentFurniturePreviewRenderer)return;
   tentPreviewModel=template.clone(true);tentFurniturePreviewScene.add(tentPreviewModel);
+  if(itemId==='hearth_stove'){
+   tentPreviewStoveFlames=createTentStoveFlames(Number(tentFurnitureData?.catalog?.[itemId]?.height)||1.5);
+   tentPreviewModel.add(tentPreviewStoveFlames.group);
+  }
   // v251: Reframe the shop/owned preview for tall or wide furniture.
   // Without this, changing the real item size can move it off-screen.
   const bounds=new THREE.Box3().setFromObject(tentPreviewModel);
