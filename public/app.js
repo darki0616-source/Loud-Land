@@ -1222,10 +1222,13 @@ function queueFestivalPopup(title,text,autoClose=false){
 function playFestivalTicker(){
  if(tickerActive||!tickerQueue.length)return;
  tickerActive=true;
- const text=tickerQueue.shift();
+ const item=tickerQueue.shift();
+ const text=typeof item==='string'?item:item.text;
+ const isLotteryWin=!!(typeof item==='object'&&item.celebration);
  const outer=$('festivalNoticeTicker');const label=$('festivalNoticeTickerText');
  label.textContent='📢  '+text;
- const duration=Math.max(14,Math.min(36,11+text.length*.22));
+ outer.classList.toggle('lottery-win-notice',isLotteryWin);
+ const duration=isLotteryWin?16:Math.max(14,Math.min(36,11+text.length*.22));
  outer.hidden=false;
  label.style.animation='none';
  // Force the CSS marquee to restart when successive notices use same element.
@@ -1234,10 +1237,21 @@ function playFestivalTicker(){
  clearTimeout(tickerTimer);
  tickerTimer=setTimeout(()=>{outer.hidden=true;tickerActive=false;playFestivalTicker()},duration*1000+150);
 }
-function queueFestivalTicker(text){
+function queueFestivalTicker(text,celebration=false){
  if(!text)return;
- tickerQueue.push(text);
- if(tickerQueue.length>12)tickerQueue.shift();
+ const item={text,celebration};
+ if(celebration){
+  // Show jackpot announcements immediately, without permanently discarding
+  // the administrator's existing ticker or pending messages.
+  if(tickerActive){
+   const outer=$('festivalNoticeTicker');
+   const previous=$('festivalNoticeTickerText').textContent.replace(/^📢\s*/, '');
+   if(previous)tickerQueue.unshift({text:previous,celebration:outer.classList.contains('lottery-win-notice')});
+   clearTimeout(tickerTimer);tickerActive=false;outer.hidden=true;
+  }
+  tickerQueue.unshift(item);
+ }else tickerQueue.push(item);
+ if(tickerQueue.length>12)tickerQueue.length=12;
  playFestivalTicker();
 }
 function showEntryAnnouncements(items){
@@ -1250,7 +1264,10 @@ function handleLiveAnnouncement(event){
  const id=String(event.id||'');
  if(id){if(liveNoticeIds.has(id))return;liveNoticeIds.add(id);if(liveNoticeIds.size>300)liveNoticeIds.clear();}
  if(event.kind==='immediate')queueFestivalPopup('📣 ONEseason 전체 공지',text,true);
- else if(event.kind==='ticker')queueFestivalTicker(text);
+ else if(event.kind==='lottery-win'){
+  queueFestivalTicker(text,true);
+  startLotteryWinFireworks(event.tier);
+ }else if(event.kind==='ticker')queueFestivalTicker(text);
 }
 function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='pet-update'){const p=state.players.get(d.id);if(p)p.pet=d.pet;if(state.me?.id===d.id)state.me.pet=d.pet;if(d.id===state.id&&petOverlay.classList.contains('show'))refreshPetStatus();return;}if(d.type==='snapshot'){setFieldCoins(d.fieldCoins);syncTents(d.tents);state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);applyPowerState(d.power);applyMoleState(d.mole);syncCrowdSurf(d.crowdSurf);if(Array.isArray(d.chat)&&(d.chatRoomId||null)===(tentRoomActive?.id||null))renderRoomChat(d.chatRoomId||null,d.chat);for(const id of duoVfx.keys())removeDuoVfx(id);activeDuos.clear();for(const duo of d.interactions||[])activeDuos.set(duo.id,duo);syncDuoStatus()}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){receiveRoomChat(d.entry)}else if(d.type==='move'){recordTrainLeader(d.player);state.players.set(d.player.id,d.player);if(d.player.id===state.id&&currentDuo())state.me={...d.player}}else if(d.type==='flag'){const player=state.players.get(d.id);if(player){player.flagText=d.flagText;player.flagImage=d.flagImage||'';}if(d.id===state.id&&state.me){state.me.flagText=d.flagText;state.me.flagImage=d.flagImage||'';currentFlagText=d.flagText;currentFlagImageId=d.flagImage||'';refreshFlagButton();}}else if(d.type==='badge'){const person=state.players.get(d.id);if(person){person.badgeTier=d.badgeTier;person.badgeSeconds=d.badgeSeconds;if(d.id===state.id&&state.me){state.me.badgeTier=d.badgeTier;state.me.badgeSeconds=d.badgeSeconds;}renderOnlinePlayers();}}else if(d.type==='profile'){state.players.set(d.player.id,d.player);if(d.player.id===state.id){state.me=d.player;refreshProfilePreview();refreshRhythmReactionButton();if(!$('punkShop').classList.contains('hidden')||!$('mdWardrobe').hidden)refreshPunkShop()}renderOnlinePlayers()}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers()}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue,d.history);else if(d.type==='slam')applySlam(d.slam,d.cooldownUntil);else if(d.type==='slam-go')onSlamGo(d);else if(d.type==='slam-impact')spawnSlamDust(d.x,d.y);else if(d.type==='toast-spark')spawnToastSpark(d.x,d.y);else if(d.type==='cheer'&&d.playerId!==state.id&&state.audioEnabled)playCheer();else if(d.type==='rockplay')applyRockPlay(d.event,d.rockCooldowns,d.rockRunningUntil);else if(d.type==='rockplay-go')onRockPlayGo(d);else if(d.type==='rockplay-cancel'){applyRockPlay(null,d.rockCooldowns,0);toast(d.reason||'인원이 부족해 취소됐어요.')} else if(d.type==='rhythm-state')applyRhythmState(d.rhythm);else if(d.type==='power-state')applyPowerState(d.power);else if(d.type==='field-coins')setFieldCoins(d.coins);else if(d.type==='field-coin-collected'){if(d.playerId===state.id){toast('🪙 '+Number(d.value||0).toLocaleString()+'P 획득!');void refreshTentStatus();}}else if(d.type==='mole-state')applyMoleState(d.mole);else if(d.type==='md-catalog')syncMdCatalog(d.items);else if(d.type==='tent-furniture-catalog'){
    tentFurnitureModels.clear();tentFurnitureThumbs.clear();
@@ -8219,13 +8236,73 @@ const foxPetTemplates=new Map(),foxPetNodes=new Map();
 const foxPetLoader=new GLTFLoader();
 const foxPetTextureLoader=new THREE.TextureLoader();
 const foxPetTextureCache=new Map();
+// v305: Smooth faceted pet shading once per loaded GLB, including UV-seam vertices.
+// This edits normals ONLY: no vertices, triangles, UVs, texture maps or GLB files change.
+// The crease-angle guard preserves sharp edges on instruments and accessories.
+const petSmoothedGeometries=new WeakSet();
+function petSmoothGeometry(geometry){
+ if(!geometry||petSmoothedGeometries.has(geometry))return;
+ petSmoothedGeometries.add(geometry);
+ const pos=geometry.getAttribute('position');
+ let normal=geometry.getAttribute('normal');
+ if(!pos||pos.itemSize!==3||pos.count<3)return;
+ if(!normal){geometry.computeVertexNormals();normal=geometry.getAttribute('normal');}
+ if(!normal||normal.count!==pos.count)return;
+ // Weld only coincident positions for normal averaging, without welding UVs.
+ // Quantization is relative to this mesh's size, not its world-space scale.
+ geometry.computeBoundingBox();
+ const box=geometry.boundingBox;
+ const extent=Math.max(box.max.x-box.min.x,box.max.y-box.min.y,box.max.z-box.min.z,1e-5);
+ const inv=1/(extent*1e-6);
+ const groups=new Map();
+ const old=new Float32Array(pos.count*3);
+ for(let i=0;i<pos.count;i++){
+  const k=i*3;
+  const nx=normal.getX(i),ny=normal.getY(i),nz=normal.getZ(i);
+  const len=Math.hypot(nx,ny,nz)||1;
+  old[k]=nx/len;old[k+1]=ny/len;old[k+2]=nz/len;
+  const key=Math.round((pos.getX(i)-box.min.x)*inv)+','+
+   Math.round((pos.getY(i)-box.min.y)*inv)+','+
+   Math.round((pos.getZ(i)-box.min.z)*inv);
+  let list=groups.get(key);
+  if(!list){list=[];groups.set(key,list);}
+  list.push(i);
+ }
+ const creaseCos=Math.cos(68*Math.PI/180);
+ const output=new Float32Array(old);
+ for(const indices of groups.values()){
+  if(indices.length<2)continue;
+  for(const i of indices){
+   const a=i*3;let x=0,y=0,z=0;
+   for(const j of indices){
+    const b=j*3;
+    const dot=old[a]*old[b]+old[a+1]*old[b+1]+old[a+2]*old[b+2];
+    if(dot<creaseCos)continue;
+    x+=old[b];y+=old[b+1];z+=old[b+2];
+   }
+   const len=Math.hypot(x,y,z);
+   if(len>1e-8){output[a]=x/len;output[a+1]=y/len;output[a+2]=z/len;}
+  }
+ }
+ for(let i=0;i<pos.count;i++)normal.setXYZ(i,output[i*3],output[i*3+1],output[i*3+2]);
+ normal.needsUpdate=true;
+}
+function petSmoothTemplate(scene){
+ scene.traverse(obj=>{
+  if(!obj.isMesh||!obj.geometry)return;
+  petSmoothGeometry(obj.geometry);
+  for(const mat of Array.isArray(obj.material)?obj.material:[obj.material]){
+   if(mat&&mat.flatShading){mat.flatShading=false;mat.needsUpdate=true;}
+  }
+ });
+}
 const foxPetColorNames=new Map([
  ['#f16b69','red'],['#67b9f2','blue'],['#75d8a0','green'],
  ['#b68ae8','purple'],['#f4eee0','white']
 ]);
 for(const stage of [1,10,25]){
  foxPetLoader.load('/assets/pets/fox/lv'+stage+'.glb?v=275',g=>{
-  foxPetTemplates.set(stage,g.scene);
+  petSmoothTemplate(g.scene);foxPetTemplates.set(stage,g.scene);
  },undefined,e=>console.warn('Fox pet model unavailable:',stage,e));
 }
 function foxPetGetPaintedTexture(stage,color){
@@ -8269,7 +8346,7 @@ function foxPetMakeModel(stage,color){
    const mat=base.clone();
    mat.color.set(0xffffff);mat.vertexColors=false;
    // Meshy exports metallic=1 on some models, which can render black in this scene.
-   mat.metalness=0;mat.roughness=.85;mat.side=THREE.DoubleSide;
+   mat.metalness=0;mat.roughness=.85;mat.side=THREE.DoubleSide;mat.flatShading=false;
    if(paint?.ready&&paint.texture&&base.map)mat.map=paint.texture;
    // All other material maps and UVs remain unchanged.
    mat.needsUpdate=true;
@@ -8289,7 +8366,7 @@ function turtlePetLoadStage(stage){
  if(turtlePetTemplates.has(stage)||turtlePetLoading.has(stage))return;
  turtlePetLoading.add(stage);
  foxPetLoader.load('/assets/pets/turtle/lv'+stage+'.glb?v=279',g=>{
-  turtlePetTemplates.set(stage,g.scene);turtlePetLoading.delete(stage);
+  petSmoothTemplate(g.scene);turtlePetTemplates.set(stage,g.scene);turtlePetLoading.delete(stage);
  },undefined,e=>{turtlePetLoading.delete(stage);console.warn('Turtle pet model unavailable:',stage,e);});
 }
 function turtlePetGetPaintedTexture(stage,color){
@@ -8324,7 +8401,7 @@ function turtlePetMakeModel(stage,color){
   const outputMaterials=sourceMaterials.map(base=>{
    if(!base)return new THREE.MeshStandardMaterial({color:0xffffff,roughness:.85,metalness:0});
    const mat=base.clone();mat.color.set(0xffffff);mat.vertexColors=false;
-   mat.metalness=0;mat.roughness=.85;mat.side=THREE.DoubleSide;
+   mat.metalness=0;mat.roughness=.85;mat.side=THREE.DoubleSide;mat.flatShading=false;
    if(paint?.ready&&paint.texture&&base.map)mat.map=paint.texture;
    mat.needsUpdate=true;return mat;
   });
@@ -8342,7 +8419,7 @@ function catPetLoadStage(stage){
  if(catPetTemplates.has(stage)||catPetLoading.has(stage))return;
  catPetLoading.add(stage);
  foxPetLoader.load('/assets/pets/cat/lv'+stage+'.glb?v=280',g=>{
-  catPetTemplates.set(stage,g.scene);catPetLoading.delete(stage);
+  petSmoothTemplate(g.scene);catPetTemplates.set(stage,g.scene);catPetLoading.delete(stage);
  },undefined,e=>{catPetLoading.delete(stage);console.warn('Cat pet model unavailable:',stage,e);});
 }
 function catPetGetPaintedTexture(stage,color){
@@ -8377,7 +8454,7 @@ function catPetMakeModel(stage,color){
   const outputMaterials=sourceMaterials.map(base=>{
    if(!base)return new THREE.MeshStandardMaterial({color:0xffffff,roughness:.85,metalness:0});
    const mat=base.clone();mat.color.set(0xffffff);mat.vertexColors=false;
-   mat.metalness=0;mat.roughness=.85;mat.side=THREE.DoubleSide;
+   mat.metalness=0;mat.roughness=.85;mat.side=THREE.DoubleSide;mat.flatShading=false;
    if(paint?.ready&&paint.texture&&base.map)mat.map=paint.texture;
    mat.needsUpdate=true;return mat;
   });
@@ -8395,7 +8472,7 @@ function rabbitPetLoadStage(stage){
  if(rabbitPetTemplates.has(stage)||rabbitPetLoading.has(stage))return;
  rabbitPetLoading.add(stage);
  foxPetLoader.load('/assets/pets/rabbit/lv'+stage+'.glb?v=281',g=>{
-  rabbitPetTemplates.set(stage,g.scene);rabbitPetLoading.delete(stage);
+  petSmoothTemplate(g.scene);rabbitPetTemplates.set(stage,g.scene);rabbitPetLoading.delete(stage);
  },undefined,e=>{rabbitPetLoading.delete(stage);console.warn('Rabbit pet model unavailable:',stage,e);});
 }
 function rabbitPetGetPaintedTexture(stage,color){
@@ -8430,7 +8507,7 @@ function rabbitPetMakeModel(stage,color){
   const outputMaterials=sourceMaterials.map(base=>{
    if(!base)return new THREE.MeshStandardMaterial({color:0xffffff,roughness:.85,metalness:0});
    const mat=base.clone();mat.color.set(0xffffff);mat.vertexColors=false;
-   mat.metalness=0;mat.roughness=.85;mat.side=THREE.DoubleSide;
+   mat.metalness=0;mat.roughness=.85;mat.side=THREE.DoubleSide;mat.flatShading=false;
    if(paint?.ready&&paint.texture&&base.map)mat.map=paint.texture;
    mat.needsUpdate=true;return mat;
   });
@@ -8448,7 +8525,7 @@ function elephantPetLoadStage(stage){
  if(elephantPetTemplates.has(stage)||elephantPetLoading.has(stage))return;
  elephantPetLoading.add(stage);
  foxPetLoader.load('/assets/pets/elephant/lv'+stage+'.glb?v=282',g=>{
-  elephantPetTemplates.set(stage,g.scene);elephantPetLoading.delete(stage);
+  petSmoothTemplate(g.scene);elephantPetTemplates.set(stage,g.scene);elephantPetLoading.delete(stage);
  },undefined,e=>{elephantPetLoading.delete(stage);console.warn('Elephant pet model unavailable:',stage,e);});
 }
 function elephantPetGetPaintedTexture(stage,color){
@@ -8483,7 +8560,7 @@ function elephantPetMakeModel(stage,color){
   const outputMaterials=sourceMaterials.map(base=>{
    if(!base)return new THREE.MeshStandardMaterial({color:0xffffff,roughness:.85,metalness:0});
    const mat=base.clone();mat.color.set(0xffffff);mat.vertexColors=false;
-   mat.metalness=0;mat.roughness=.85;mat.side=THREE.DoubleSide;
+   mat.metalness=0;mat.roughness=.85;mat.side=THREE.DoubleSide;mat.flatShading=false;
    if(paint?.ready&&paint.texture&&base.map)mat.map=paint.texture;
    mat.needsUpdate=true;return mat;
   });
@@ -8501,7 +8578,7 @@ function wolfPetLoadStage(stage){
  if(wolfPetTemplates.has(stage)||wolfPetLoading.has(stage))return;
  wolfPetLoading.add(stage);
  foxPetLoader.load('/assets/pets/wolf/lv'+stage+'.glb?v=283',g=>{
-  wolfPetTemplates.set(stage,g.scene);wolfPetLoading.delete(stage);
+  petSmoothTemplate(g.scene);wolfPetTemplates.set(stage,g.scene);wolfPetLoading.delete(stage);
  },undefined,e=>{wolfPetLoading.delete(stage);console.warn('Wolf pet model unavailable:',stage,e);});
 }
 function wolfPetGetPaintedTexture(stage,color){
@@ -8536,7 +8613,7 @@ function wolfPetMakeModel(stage,color){
   const outputMaterials=sourceMaterials.map(base=>{
    if(!base)return new THREE.MeshStandardMaterial({color:0xffffff,roughness:.85,metalness:0});
    const mat=base.clone();mat.color.set(0xffffff);mat.vertexColors=false;
-   mat.metalness=0;mat.roughness=.85;mat.side=THREE.DoubleSide;
+   mat.metalness=0;mat.roughness=.85;mat.side=THREE.DoubleSide;mat.flatShading=false;
    if(paint?.ready&&paint.texture&&base.map)mat.map=paint.texture;
    mat.needsUpdate=true;return mat;
   });
@@ -9077,9 +9154,76 @@ gameTouchSurface.addEventListener('pointermove',e=>{
  const hit=groundRay.intersectObject(roomFloor,false)[0];if(hit)moveTentFurnitureGhost(hit.point.x,hit.point.z);
 });
 
+// v304: Lightweight screen-space fireworks for every connected player, even
+// when visiting a tent. Visual-only: the server is authoritative for rewards.
+let lotteryFireworkCanvas=null,lotteryFireworkFrame=0,lotteryFireworkToken=0;
+function startLotteryWinFireworks(tier){
+ if(!lotteryFireworkCanvas){
+  lotteryFireworkCanvas=document.createElement('canvas');
+  lotteryFireworkCanvas.className='lottery-win-fireworks';
+  lotteryFireworkCanvas.setAttribute('aria-hidden','true');
+  document.body.append(lotteryFireworkCanvas);
+ }
+ const canvas=lotteryFireworkCanvas,ctx=canvas.getContext('2d');
+ if(!ctx)return;
+ const token=++lotteryFireworkToken;
+ cancelAnimationFrame(lotteryFireworkFrame);
+ canvas.classList.add('active');
+ const reducedMotion=window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+ const duration=reducedMotion?1800:5100;
+ const colors=tier==='jackpot'?['#ffeb72','#ff7b7b','#6dfff2','#b88bff','#ff84df','#ffffff']:['#7bf8ff','#ffdd79','#d19cff','#ff85cb','#a5ffb8','#ffffff'];
+ let w=window.innerWidth,h=window.innerHeight;
+ function resize(){
+  w=window.innerWidth;h=window.innerHeight;
+  const ratio=Math.min(window.devicePixelRatio||1,2);
+  canvas.width=Math.round(w*ratio);canvas.height=Math.round(h*ratio);
+  ctx.setTransform(ratio,0,0,ratio,0,0);
+ }
+ resize();
+ const particles=[];
+ const burstPlan=[
+  [.02,.21,.27],[.36,.76,.22],[.75,.48,.38],[1.25,.15,.47],
+  [1.65,.86,.42],[2.2,.33,.2],[2.65,.67,.31],[3.2,.5,.18]
+ ];
+ let nextBurst=0,last=performance.now();const started=last;
+ function burst(rx,ry){
+  const count=reducedMotion?22:65;
+  for(let i=0;i<count;i++){
+   const angle=(i/count)*Math.PI*2+Math.random()*.22;
+   const speed=(65+Math.random()*140)*(Math.min(w,1100)/900);
+   particles.push({x:rx*w,y:ry*h,vx:Math.cos(angle)*speed,vy:Math.sin(angle)*speed,
+    life:1,maxLife:.95+Math.random()*.75,color:colors[i%colors.length],size:1.8+Math.random()*2.9});
+  }
+ }
+ function frame(now){
+  if(token!==lotteryFireworkToken)return;
+  const elapsed=(now-started)/1000,dt=Math.min(.05,(now-last)/1000);last=now;
+  if(canvas.width!==Math.round(w*Math.min(window.devicePixelRatio||1,2))||w!==window.innerWidth||h!==window.innerHeight)resize();
+  ctx.clearRect(0,0,w,h);
+  while(nextBurst<burstPlan.length&&elapsed>=burstPlan[nextBurst][0]){
+   const [,x,y]=burstPlan[nextBurst++];burst(x,y);
+  }
+  ctx.globalCompositeOperation='lighter';
+  for(let i=particles.length-1;i>=0;i--){
+   const p=particles[i];p.life-=dt/p.maxLife;
+   if(p.life<=0){particles.splice(i,1);continue;}
+   const ox=p.x,oy=p.y;p.x+=p.vx*dt;p.y+=p.vy*dt;
+   p.vx*=Math.exp(-.75*dt);p.vy+=55*dt;
+   ctx.globalAlpha=Math.min(1,p.life*1.6);
+   ctx.strokeStyle=p.color;ctx.lineWidth=p.size*Math.max(.35,p.life);
+   ctx.lineCap='round';ctx.beginPath();ctx.moveTo(ox,oy);ctx.lineTo(p.x,p.y);ctx.stroke();
+   ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,p.size*.7,0,Math.PI*2);ctx.fill();
+  }
+  ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';
+  if(now-started<duration)lotteryFireworkFrame=requestAnimationFrame(frame);
+  else{canvas.classList.remove('active');ctx.clearRect(0,0,w,h);lotteryFireworkFrame=0;}
+ }
+ lotteryFireworkFrame=requestAnimationFrame(frame);
+}
+
 // v302 scratch lottery overlay is independent of the game UI; CSS/assets are local.
 
-const lotteryCss=document.createElement('link');lotteryCss.rel='stylesheet';lotteryCss.href='/lottery.css?v=303';document.head.append(lotteryCss);
+const lotteryCss=document.createElement('link');lotteryCss.rel='stylesheet';lotteryCss.href='/lottery.css?v=304';document.head.append(lotteryCss);
 let lotteryUi=null,lotteryData=null,lotteryBusy=false,lotteryWalkToBooth=false;
 let lotteryMaskTicketId='',lotteryScratching=false,lotteryRevealing=false,lotteryLastPoint=null,lotteryCoverageAt=0;
 const lotteryNames={miss:'꽝',small:'소액 당첨',normal:'일반 당첨',high:'고액 당첨',ultra:'초고액 당첨',jackpot:'대박 당첨'};
