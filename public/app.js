@@ -3089,6 +3089,7 @@ function peperoSeededRandom(seed){
 function peperoClearStatic(x,z){
  // Leave room for the main stage entrance, festival booths, campfire and picnic mats.
  if(Math.hypot(x+38,z+7.2)<8.5)return false; // merch booth
+ if(Math.hypot(x-38,z+7.2)<8.5)return false; // lottery booth
  if(Math.hypot(x-40,z-39)<8.0)return false; // rhythm/arcade booth
  if(Math.hypot(x-34,z-10.5)<10.5)return false; // fire and seating
  if(Math.abs(x)<8&&z<-7&&z>-33)return false; // stage entrance and centre
@@ -4687,6 +4688,44 @@ mdMarketTentLoader.load('/assets/world/market_tent_optimized.glb?v=202',gltf=>{
 },undefined,error=>{
  console.warn('MD 마켓 텐트를 불러오지 못해 기본 부스를 사용합니다.',error);
 });
+// v302: Lottery Shop — reuse the EXACT market-tent GLB used by the MD shop,
+// mirrored to the audience's stage-right side, with English signage only.
+const lotteryBoothTargets=[];
+const lotteryBoothGroup=new THREE.Group();lotteryBoothGroup.position.set(38,0,-7.2);scene.add(lotteryBoothGroup);
+function lotteryBoothFallback(){
+ const body=new THREE.Mesh(new THREE.BoxGeometry(8.7,4.4,5.5),mat('#523184'));
+ body.position.y=2.35;lotteryBoothGroup.add(body);lotteryBoothTargets.push(body);
+ const roof=new THREE.Mesh(new THREE.ConeGeometry(6.6,2.1,4),mat('#b58be4'));
+ roof.position.y=5.35;roof.rotation.y=Math.PI/4;lotteryBoothGroup.add(roof);lotteryBoothTargets.push(roof);
+ const title=new THREE.Mesh(new THREE.PlaneGeometry(7.0,1.05),label('LOTTERY SHOP',55,'#fff0b7','#45216d'));
+ title.position.set(0,4.12,2.79);lotteryBoothGroup.add(title);lotteryBoothTargets.push(title);
+}
+lotteryBoothFallback();
+new GLTFLoader().load('/assets/world/market_tent_optimized.glb?v=202',gltf=>{
+ const tent=gltf.scene,bounds=new THREE.Box3().setFromObject(tent),size=bounds.getSize(new THREE.Vector3());
+ if(bounds.isEmpty()||Math.min(size.x,size.y,size.z)<.001)return;
+ const scale=5.35/size.y,center=bounds.getCenter(new THREE.Vector3());
+ const rotated=center.clone().applyAxisAngle(new THREE.Vector3(0,1,0),-Math.PI/2);
+ tent.rotation.y=-Math.PI/2;tent.scale.setScalar(scale);
+ tent.position.set(-rotated.x*scale,-bounds.min.y*scale+.06,-rotated.z*scale);
+ const picks=[];tent.traverse(node=>{if(node.isMesh){node.castShadow=false;node.receiveShadow=true;picks.push(node)}});
+ if(!picks.length)return;
+ lotteryBoothGroup.clear();lotteryBoothTargets.length=0;
+ lotteryBoothGroup.add(tent);lotteryBoothTargets.push(...picks);
+ const frontZ=size.x*scale*.5+.16;
+ const sign=new THREE.Mesh(new THREE.PlaneGeometry(4.65,.79),label('LOTTERY SHOP',55,'#ffe7ac','#462267'));
+ sign.position.set(0,3.65,frontZ);lotteryBoothGroup.add(sign);lotteryBoothTargets.push(sign);
+ const hint=new THREE.Mesh(new THREE.PlaneGeometry(4.15,.59),label('SCRATCH TICKETS',46,'#fff8ea','#8244b5'));
+ hint.position.set(0,2.8,frontZ+.018);lotteryBoothGroup.add(hint);lotteryBoothTargets.push(hint);
+ const panel=new THREE.Mesh(new THREE.PlaneGeometry(Math.max(4.1,size.z*scale*.9),4.15),
+  new THREE.MeshBasicMaterial({color:'#fff',transparent:true,opacity:0,depthWrite:false,side:THREE.DoubleSide}));
+ panel.position.set(0,2.22,frontZ+.04);lotteryBoothGroup.add(panel);lotteryBoothTargets.push(panel);
+ // Emissive ticket icons: lightweight, no dynamic lights in low-spec mode.
+ for(const side of [-1,1]){
+  const star=new THREE.Mesh(new THREE.OctahedronGeometry(.28,0),new THREE.MeshStandardMaterial({color:'#ffd66b',emissive:'#ffc46e',emissiveIntensity:1.0}));
+  star.position.set(side*2.4,4.33,frontZ+.02);lotteryBoothGroup.add(star);
+ }
+},undefined,e=>console.warn('Lottery booth model fallback:',e));
 // Crowd barrier
 // Keep the front fence, but open the centre so the new stage stairs are usable.
 for(let x=-34;x<=34;x+=3){
@@ -8082,6 +8121,17 @@ gameTouchSurface.addEventListener('pointerup',e=>{
  if(!$('chatPanel').classList.contains('hidden'))selectBottomMenu('reaction');
  const bounds=renderer.domElement.getBoundingClientRect();pointer.set(((e.clientX-bounds.left)/bounds.width)*2-1,-((e.clientY-bounds.top)/bounds.height)*2+1);
  groundRay.setFromCamera(pointer,camera);
+ if(!rockPlacementMode&&!slamMode&&groundRay.intersectObjects(lotteryBoothTargets,false).length){
+  if(nearLotteryBooth())openLotteryShop();
+  else{
+   lotteryWalkToBooth=true;
+   state.walkTarget={x:clampServerX(38/.058+600),y:clampServerY((.3-8)/.058+500)};
+   const spot=toWorld(state.walkTarget);moveMarker.position.set(spot.x,.065,spot.z);
+   moveMarker.visible=true;moveMarkerUntil=performance.now()+1150;
+   toast('복권샵 앞으로 이동합니다.');
+  }
+  return;
+ }
  if(!rockPlacementMode&&!slamMode&&groundRay.intersectObjects(mdBoothTargets,false).length){openPunkShop();return;}
  if(!rockPlacementMode&&!slamMode&&rhythmBoothTargets.length&&groundRay.intersectObjects(rhythmBoothTargets,false).length){if(nearRhythmBooth())openGamePicker();else toast('게임부스에 가까이 와주세요');return;}
  if(!groundRay.ray.intersectPlane(groundPlane,hit))return;
@@ -8908,7 +8958,7 @@ function tick(t){
  updateMoshTrails(t);updateSlamDust(t);updateBubbles(t);animateShow(t);animateCampfire(t);animateTentOutdoorDecor(t);updateFiretruckShow(t);animateFieldCoins(t);
  if(!minimalScenery)updateHourlyFireworks(t);
  animateToastSparks(t);
- if(state.id)updateRhythmBoothButton();if(rhythmGame.open)drawRhythmGame();if(state.id)updatePowerBoothButton();updatePowerGame();updateMoleGame();
+ if(state.id)updateLotteryBoothButton(); if(state.id)updateRhythmBoothButton();if(rhythmGame.open)drawRhythmGame();if(state.id)updatePowerBoothButton();updatePowerGame();updateMoleGame();
  {
   if(povEnabled){updatePovCamera();}else{followLocalAvatar();controls.update();keepCameraInFrontOfStage();}
   // Visitors who entered an indoor room are no longer standing outside.
@@ -9026,3 +9076,142 @@ gameTouchSurface.addEventListener('pointermove',e=>{
  groundRay.setFromCamera(pointer,camera);
  const hit=groundRay.intersectObject(roomFloor,false)[0];if(hit)moveTentFurnitureGhost(hit.point.x,hit.point.z);
 });
+
+// v302 scratch lottery overlay is independent of the game UI; CSS/assets are local.
+
+const lotteryCss=document.createElement('link');lotteryCss.rel='stylesheet';lotteryCss.href='/lottery.css?v=302';document.head.append(lotteryCss);
+let lotteryUi=null,lotteryData=null,lotteryBusy=false,lotteryWalkToBooth=false;
+let lotteryMaskTicketId='',lotteryScratching=false,lotteryRevealing=false,lotteryLastPoint=null,lotteryCoverageAt=0;
+const lotteryNames={miss:'꽝',small:'소액 당첨',normal:'일반 당첨',high:'고액 당첨',jackpot:'대박 당첨'};
+const lotteryIcons=new Set(['star','coin','diamond','crown','broken']);
+function nearLotteryBooth(){
+ if(!state.me||tentRoomActive)return false;
+ return Math.hypot((state.me.x-600)*.058-38,(state.me.y-500)*.058+8-(-7.2))<=9.5;
+}
+function ensureLotteryUi(){
+ if(lotteryUi)return;
+ const btn=document.createElement('button');btn.type='button';btn.className='lottery-near-button';btn.textContent='🎟️ 복권샵 이용하기';
+ btn.addEventListener('click',openLotteryShop);document.body.append(btn);
+ const overlay=document.createElement('div');overlay.id='lotteryOverlay';overlay.className='lottery-overlay';overlay.hidden=true;
+ overlay.innerHTML=`<section class="lottery-window" role="dialog" aria-modal="true" aria-labelledby="lotteryTitle">
+  <header class="lottery-head"><div><small>ONEseason FESTIVAL</small><h2 id="lotteryTitle">🎟️ LOTTERY SHOP</h2></div><button class="lottery-close" type="button" aria-label="닫기">×</button></header>
+  <div class="lottery-subhead"><span class="lottery-wallet" id="lotteryWallet">보유 0P</span><span class="lottery-remaining" id="lotteryRemaining">오늘 남은 복권 5 / 5</span></div>
+  <div class="lottery-main"><div class="lottery-ticket" aria-label="스크래치 복권"><div class="lottery-scratch-field" id="lotteryScratchField"><div class="lottery-symbols" id="lotterySymbols"></div><canvas class="lottery-scratch-canvas" id="lotteryScratchCanvas" aria-label="마우스나 손가락으로 긁어서 결과를 확인하세요"></canvas></div><div class="lottery-prize-tag" id="lotteryPrizeTag">100P · 행운을 긁어보세요</div></div>
+  <aside class="lottery-side"><div class="lottery-info"><h3>✦ 당첨 확률과 보상</h3><table class="lottery-odds"><tbody><tr><td>✕ 꽝</td><td>30%</td><td>0P</td></tr><tr><td>🪙 소액</td><td>30%</td><td>50P</td></tr><tr><td>⭐ 일반</td><td>30%</td><td>100P</td></tr><tr><td>💎 고액</td><td>9.95%</td><td>300P</td></tr><tr><td>👑 대박</td><td>0.05%</td><td>5,000P</td></tr></tbody></table></div>
+  <div class="lottery-info lottery-guide"><h3>✦ 이용 방법</h3><strong>PC는 마우스로, 모바일은 손가락으로</strong> 은색 부분을 문질러 긁으세요.<br>1장 100P · 하루 5장 · 한국시간 자정 초기화</div>
+  <div class="lottery-message" id="lotteryMessage" aria-live="polite">복권을 구매하면 긁을 수 있어요.</div><button class="lottery-reveal-button" id="lotteryReveal" type="button">🎁 당첨 결과 확인</button><button class="lottery-action" id="lotteryBuy" type="button">100P로 복권 구매하기</button></aside></div>
+  <div class="lottery-note">게임 내 포인트 전용 · 현금 교환 불가 · 당첨 결과는 서버에서 무작위로 결정됩니다.</div></section>`;
+ document.body.append(overlay);
+ const ui={overlay,btn,window:overlay.querySelector('.lottery-window'),close:overlay.querySelector('.lottery-close'),wallet:overlay.querySelector('#lotteryWallet'),remaining:overlay.querySelector('#lotteryRemaining'),field:overlay.querySelector('#lotteryScratchField'),symbols:overlay.querySelector('#lotterySymbols'),canvas:overlay.querySelector('#lotteryScratchCanvas'),prize:overlay.querySelector('#lotteryPrizeTag'),message:overlay.querySelector('#lotteryMessage'),buy:overlay.querySelector('#lotteryBuy'),reveal:overlay.querySelector('#lotteryReveal')};
+ lotteryUi=ui;
+ ui.close.onclick=closeLotteryShop;overlay.addEventListener('click',e=>{if(e.target===overlay)closeLotteryShop()});
+ ui.buy.onclick=buyLotteryTicket;ui.reveal.onclick=revealLotteryTicket;
+ document.addEventListener('keydown',e=>{if(overlay.hidden)return;if(e.key==='Escape'){e.preventDefault();e.stopImmediatePropagation();closeLotteryShop();return}if(!e.target.closest?.('button,input,textarea')){e.preventDefault();e.stopImmediatePropagation();state.keys.clear();}},true);
+ ui.canvas.addEventListener('pointerdown',lotteryPointerDown);
+ ui.canvas.addEventListener('pointermove',lotteryPointerMove);
+ ui.canvas.addEventListener('pointerup',lotteryPointerUp);
+ ui.canvas.addEventListener('pointercancel',lotteryPointerUp);
+ window.addEventListener('resize',()=>{if(!overlay.hidden&&lotteryData?.ticket){lotteryMaskTicketId='';requestAnimationFrame(lotteryDrawFoil)}},{passive:true});
+}
+function updateLotteryBoothButton(){
+ if(!state.id)return;
+ ensureLotteryUi();
+ const near=nearLotteryBooth();
+ lotteryUi.btn.classList.toggle('show',near&&lotteryUi.overlay.hidden);
+ if(lotteryWalkToBooth&&near){lotteryWalkToBooth=false;state.walkTarget=null;openLotteryShop();}
+}
+async function openLotteryShop(){
+ if(!state.id)return toast('입장 후 이용할 수 있어요.');
+ if(!nearLotteryBooth())return toast('복권샵 부스 근처에서 이용해 주세요.');
+ ensureLotteryUi();lotteryWalkToBooth=false;state.walkTarget=null;state.keys.clear();
+ lotteryUi.overlay.hidden=false;lotteryUi.btn.classList.remove('show');
+ lotteryUi.message.textContent='복권 정보를 불러오는 중…';
+ try{const r=await post('lottery',{id:state.id,sessionKey,command:'state'});lotteryData=r.lottery;lotteryRender();}
+ catch(e){lotteryUi.message.textContent=e.message;}
+}
+function closeLotteryShop(){if(!lotteryUi)return;lotteryUi.overlay.hidden=true;state.keys.clear();lotteryScratching=false;}
+function lotterySetSymbols(symbols){
+ const list=Array.isArray(symbols)&&symbols.length===3?symbols:['star','coin','diamond'];
+ lotteryUi.symbols.replaceChildren();
+ for(const item of list){const cell=document.createElement('div');cell.className='lottery-symbol';const img=document.createElement('img');
+  img.src='/assets/lottery/'+(lotteryIcons.has(item)?item:'broken')+'.svg';img.alt='복권 그림';cell.append(img);lotteryUi.symbols.append(cell);}
+}
+function lotteryRender(){
+ const ui=lotteryUi,d=lotteryData;if(!ui||!d)return;
+ ui.wallet.textContent='🪙 보유 '+Number(d.points||0).toLocaleString()+'P';
+ ui.remaining.textContent='오늘 남은 복권 '+d.remaining+' / '+d.limit;
+ const ticket=d.ticket,won=d.lastResult;
+ ui.window.classList.toggle('jackpot',!ticket&&won?.tier==='jackpot');
+ ui.field.classList.toggle('active',!!ticket);
+ ui.reveal.classList.remove('show');
+ if(ticket){
+  lotterySetSymbols(ticket.symbols);
+  ui.prize.textContent='✨ 손가락이나 마우스로 긁어주세요!';
+  ui.message.textContent='은색 코팅을 충분히 긁으면 당첨금이 공개돼요.';
+  ui.buy.textContent='먼저 현재 복권을 긁어주세요';ui.buy.disabled=true;
+  if(lotteryMaskTicketId!==ticket.id)requestAnimationFrame(lotteryDrawFoil);
+ }else{
+  lotteryMaskTicketId='';
+  lotterySetSymbols(won?.symbols||['star','coin','diamond']);
+  if(won){ui.prize.textContent=(lotteryNames[won.tier]||'당첨 결과')+' · '+Number(won.prize).toLocaleString()+'P';ui.message.textContent=won.prize?'🎉 '+won.prize.toLocaleString()+'P가 지급됐어요!':'다음 복권에는 행운이 함께하길!';}
+  else{ui.prize.textContent='🎟️ 100P · 행운을 긁어보세요';ui.message.textContent='복권을 구매하면 긁을 수 있어요.';}
+  ui.buy.disabled=lotteryBusy||d.remaining<=0||d.points<d.price;
+  ui.buy.textContent=d.remaining<=0?'오늘 5장 모두 구매했어요':d.points<d.price?'포인트가 부족해요':`🎟️ 복권 1장 구매 · ${d.price}P`;
+ }
+}
+async function buyLotteryTicket(){
+ if(lotteryBusy||lotteryData?.ticket||!state.id)return;
+ if(!nearLotteryBooth())return toast('복권샵 가까이에서 구매해 주세요.');
+ lotteryBusy=true;lotteryUi.buy.disabled=true;lotteryUi.message.textContent='행운의 복권을 준비하는 중…';
+ try{const r=await post('lottery',{id:state.id,sessionKey,command:'buy'});lotteryData=r.lottery;lotteryMaskTicketId='';lotteryRender();void refreshTentStatus();}
+ catch(e){lotteryUi.message.textContent=e.message;}
+ finally{lotteryBusy=false;if(lotteryData)lotteryRender()}
+}
+function lotteryDrawFoil(){
+ if(!lotteryUi||lotteryUi.overlay.hidden||!lotteryData?.ticket)return;
+ const c=lotteryUi.canvas,rect=c.getBoundingClientRect();if(rect.width<30||rect.height<30)return;
+ const dpr=Math.min(2,window.devicePixelRatio||1),w=rect.width,h=rect.height;
+ c.width=Math.round(w*dpr);c.height=Math.round(h*dpr);
+ const ctx=c.getContext('2d',{willReadFrequently:true});ctx.setTransform(dpr,0,0,dpr,0,0);
+ const grad=ctx.createLinearGradient(0,0,w,h);grad.addColorStop(0,'#a7a4b8');grad.addColorStop(.23,'#f4f4fa');grad.addColorStop(.50,'#b7b4c7');grad.addColorStop(.77,'#dedbe7');grad.addColorStop(1,'#8c879d');
+ ctx.fillStyle=grad;ctx.fillRect(0,0,w,h);
+ // Foil sparkle pattern, deterministic and lightweight.
+ for(let i=0;i<125;i++){const x=((i*73.31)%w),y=((i*47.17)%h);ctx.fillStyle=i%3?'#fff9':'#6e668c55';ctx.fillRect(x,y,i%4===0?3:1.5,i%4===0?3:1.5)}
+ ctx.strokeStyle='#ffffff45';ctx.lineWidth=1;for(let i=-h;i<w+h;i+=16){ctx.beginPath();ctx.moveTo(i,0);ctx.lineTo(i+h,h);ctx.stroke()}
+ ctx.fillStyle='#554c71';ctx.textAlign='center';ctx.textBaseline='middle';ctx.font=`900 ${Math.min(25,w*.07)}px system-ui,sans-serif`;ctx.fillText('✦ 긁어서 행운을 확인 ✦',w/2,h/2);
+ lotteryMaskTicketId=lotteryData.ticket.id;lotteryCoverageAt=0;lotteryScratching=false;lotteryLastPoint=null;
+}
+function lotteryPoint(e){const rect=lotteryUi.canvas.getBoundingClientRect();return {x:e.clientX-rect.left,y:e.clientY-rect.top}}
+function lotteryScratchAt(p){
+ const c=lotteryUi.canvas,ctx=c.getContext('2d',{willReadFrequently:true});
+ const rect=c.getBoundingClientRect(),dpr=c.width/Math.max(1,rect.width);
+ ctx.save();ctx.setTransform(dpr,0,0,dpr,0,0);ctx.globalCompositeOperation='destination-out';
+ ctx.lineWidth=Math.max(26,rect.width*.105);ctx.lineCap='round';ctx.lineJoin='round';
+ ctx.beginPath();if(lotteryLastPoint){ctx.moveTo(lotteryLastPoint.x,lotteryLastPoint.y);ctx.lineTo(p.x,p.y)}else{ctx.moveTo(p.x,p.y);ctx.lineTo(p.x+.1,p.y+.1)}ctx.stroke();ctx.restore();
+ lotteryLastPoint=p;
+ if(performance.now()-lotteryCoverageAt>110){lotteryCoverageAt=performance.now();lotteryCheckCoverage()}
+}
+function lotteryPointerDown(e){if(!lotteryData?.ticket||lotteryRevealing)return;e.preventDefault();e.stopPropagation();lotteryScratching=true;lotteryLastPoint=null;lotteryUi.canvas.setPointerCapture(e.pointerId);lotteryScratchAt(lotteryPoint(e));}
+function lotteryPointerMove(e){if(!lotteryScratching||!lotteryData?.ticket)return;e.preventDefault();lotteryScratchAt(lotteryPoint(e));}
+function lotteryPointerUp(e){if(!lotteryScratching)return;e.preventDefault();lotteryScratching=false;lotteryLastPoint=null;lotteryCheckCoverage();}
+function lotteryCheckCoverage(){
+ if(!lotteryData?.ticket||lotteryRevealing)return;
+ const c=lotteryUi.canvas,ctx=c.getContext('2d',{willReadFrequently:true});if(!c.width||!c.height)return;
+ const pixels=ctx.getImageData(0,0,c.width,c.height).data;
+ let empty=0,total=0;
+ const stepX=Math.max(1,Math.floor(c.width/32)),stepY=Math.max(1,Math.floor(c.height/18));
+ for(let y=stepY/2|0;y<c.height;y+=stepY)for(let x=stepX/2|0;x<c.width;x+=stepX){total++;if(pixels[(y*c.width+x)*4+3]<110)empty++}
+ if(total&&empty/total>=.52){lotteryUi.reveal.classList.add('show');void revealLotteryTicket()}
+}
+async function revealLotteryTicket(){
+ if(lotteryRevealing||!lotteryData?.ticket)return;
+ lotteryRevealing=true;lotteryUi.message.textContent='서버에서 당첨 결과를 확인하는 중…';
+ const ticketId=lotteryData.ticket.id;
+ try{
+  const r=await post('lottery',{id:state.id,sessionKey,command:'reveal',ticketId});
+  lotteryData=r.lottery;lotteryUi.reveal.classList.remove('show');lotteryRender();
+  toast(r.result.prize?`🎟️ ${Number(r.result.prize).toLocaleString()}P 당첨!`:'🎟️ 아쉽지만 꽝!');
+  void refreshTentStatus();
+ }catch(e){lotteryUi.message.textContent=e.message+' · 다시 결과 확인을 눌러주세요.';lotteryUi.reveal.classList.add('show');}
+ finally{lotteryRevealing=false}
+}
