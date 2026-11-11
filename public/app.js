@@ -5765,10 +5765,13 @@ function normalizeMoleHammerModel(gltfScene){
  upright.updateMatrixWorld(true);
  const box=new THREE.Box3().setFromObject(upright),size=box.getSize(new THREE.Vector3());
  const center=box.getCenter(new THREE.Vector3());
- // Center BEFORE scaling, then scale the whole centered hierarchy together.
- upright.position.sub(center);
- const fitted=new THREE.Group();fitted.scale.setScalar(1.85/Math.max(size.x,size.y,size.z,.001));
- fitted.position.y=.48;fitted.add(upright);
+ // v291: Put the hammer's HANDLE END at the grip pivot (local Y=0).
+ // Its HEAD extends along +Y, so the animation can swing it down toward
+ // the floor without reversing the mesh or burying it in the character.
+ upright.position.set(-center.x,-box.min.y,-center.z);
+ const fitted=new THREE.Group();
+ fitted.scale.setScalar(Math.min(1.68/Math.max(size.y,.001),1.32/Math.max(size.x,size.z,.001)));
+ fitted.add(upright);
  fitted.traverse(obj=>{if(obj.isMesh){obj.castShadow=true;obj.frustumCulled=false;}});
  return fitted;
 }
@@ -6616,11 +6619,12 @@ function makeAvatar(p){
  // Green four-character Mole King title. Multiple crowns stack vertically.
  const moleCanvas=document.createElement('canvas');moleCanvas.width=960;moleCanvas.height=160;const mc=moleCanvas.getContext('2d');mc.font='900 96px Arial,sans-serif';mc.textAlign='center';mc.textBaseline='middle';mc.lineWidth=22;mc.strokeStyle='#183b18';mc.shadowColor='#b6ff3e';mc.shadowBlur=23;mc.strokeText('두더지왕',480,82);mc.fillStyle='#b6ff54';mc.fillText('두더지왕',480,82);
  const mt=new THREE.CanvasTexture(moleCanvas);mt.colorSpace=THREE.SRGBColorSpace;const moleTitle=new THREE.Sprite(new THREE.SpriteMaterial({map:mt,transparent:true,depthTest:false}));moleTitle.scale.set(7.4,1.24,1);moleTitle.position.y=4.96;moleTitle.visible=Boolean(p.moleKing);root.add(moleTitle);parts.moleTitle=moleTitle;
- // v290: Larger award hammer held slightly forward of the wrist to avoid
- // clipping into the avatar. The built-in hammer remains a visible fallback.
- const moleHammer=new THREE.Group();moleHammer.position.set(.08,-.43,.40);parts.rightElbow.add(moleHammer);parts.moleHammer=moleHammer;
- const hammerHandle=new THREE.Mesh(new THREE.CylinderGeometry(.065,.065,1.30,10),new THREE.MeshStandardMaterial({color:'#8a593b'}));hammerHandle.position.y=.43;moleHammer.add(hammerHandle);
- const hammerHead=new THREE.Mesh(new THREE.BoxGeometry(.88,.34,.42),new THREE.MeshStandardMaterial({color:'#c3d1db',metalness:.5,roughness:.4}));hammerHead.position.y=1.12;moleHammer.add(hammerHead);moleHammer.visible=false;
+ // v291: The award hammer is held at a ROOT-SPACE grip pivot, not at the
+ // elbow. The hand is IK-posed to this pivot during the overhead smash.
+ // This keeps the head facing the ground through the entire strike.
+ const moleHammer=new THREE.Group();moleHammer.position.set(.73,1.78,.46);root.add(moleHammer);parts.moleHammer=moleHammer;
+ const hammerHandle=new THREE.Mesh(new THREE.CylinderGeometry(.065,.065,1.30,10),new THREE.MeshStandardMaterial({color:'#8a593b'}));hammerHandle.position.y=.61;moleHammer.add(hammerHandle);
+ const hammerHead=new THREE.Mesh(new THREE.BoxGeometry(.88,.34,.42),new THREE.MeshStandardMaterial({color:'#c3d1db',metalness:.5,roughness:.4}));hammerHead.position.y=1.38;moleHammer.add(hammerHead);moleHammer.visible=false;
  attachMoleHammerModel(moleHammer);
  parts.moleRainbow=[];for(let i=0;i<7;i++){const ring=new THREE.Mesh(new THREE.TorusGeometry(1,.055,7,52),new THREE.MeshBasicMaterial({color:new THREE.Color().setHSL(i/7,1,.63),transparent:true,opacity:.7,depthWrite:false}));ring.rotation.x=Math.PI/2;ring.visible=false;ring.renderOrder=50;root.add(ring);parts.moleRainbow.push(ring);}
  parts.rhythmSparkles=[];const sparkleGeo=new THREE.OctahedronGeometry(.12,0);const sparkleColors=['#ff79c5','#ffe46f','#81d9ff','#a688ff','#89ffb0'];for(let i=0;i<16;i++){const star=new THREE.Mesh(sparkleGeo,new THREE.MeshBasicMaterial({color:sparkleColors[i%sparkleColors.length],transparent:true,opacity:.94}));star.visible=false;star.renderOrder=40;root.add(star);parts.rhythmSparkles.push(star);}
@@ -7118,14 +7122,26 @@ function animateAvatar(a,p,t){
   set('leftKnee',.13);set('rightKnee',.13);
  }else a.powerkingYaw=0;
  if(act==='moleking'){
-  // Lift hammer high and strike the ground ahead; impact launches seven rainbow rings.
-  const cycle=sec%2.3,hit=cycle>.82&&cycle<1.45;
-  set('upper',hit?-.24:-.06,0,0);
-  set('rightShoulder',cycle<.82?-2.68:-.72,0,.30);
-  set('rightElbow',cycle<.82?-.16:-1.0,0,.15);
+  // v291: A real overhead smash, with the hammer head hitting the ground
+  // IN FRONT (+Z) of the avatar. Animate the hammer in root space rather
+  // than letting elbow rotation twist its handle across the chest.
+  const cycle=sec%2.3;
+  const ease=v=>{const x=THREE.MathUtils.clamp(v,0,1);return x*x*(3-2*x)};
+  const downswing=ease((cycle-.64)/.35);
+  const recovery=ease((cycle-1.21)/.61);
+  const strike=downswing*(1-recovery);
+  const gripY=1.78-.37*strike,gripZ=.46+.23*strike;
+  if(P.moleHammer){
+   P.moleHammer.position.set(.73,gripY,gripZ);
+   P.moleHammer.rotation.set(2.68*strike,0,-.06);
+  }
+  // The hand follows the handle, rather than the handle following the elbow.
+  rightHandTarget=new THREE.Vector3(.73,gripY-1.03,gripZ);
+  ikMode='mole-hammer';
+  set('upper',-.06-.12*strike,0,0);
   set('leftShoulder',-.45,0,-.38);set('leftElbow',-.32);
   set('rightHip',.08);set('leftHip',.08);set('rightKnee',.14);set('leftKnee',.14);
-  height=hit?-.09:.02;
+  height=-.045*strike;
  }
  if(act==='windmill'){
   // One-handed B-boy freeze: tilted inversion, planted left arm, right arm
@@ -7435,7 +7451,8 @@ function animateAvatar(a,p,t){
   o.rotation.y+=(target[1]-o.rotation.y)*alpha;
   o.rotation.z+=(target[2]-o.rotation.z)*alpha;
  }
- if(ikMode==='duo-both'){
+ if(ikMode==='mole-hammer')placeHandIK(P,'right',rightHandTarget,.86);
+ else if(ikMode==='duo-both'){
   placeHandIK(P,'left',leftHandTarget,.58);placeHandIK(P,'right',rightHandTarget,.58);
  }else if(ikMode==='duo-right')placeHandIK(P,'right',rightHandTarget,.68);
  else if(ikMode==='drum'){
@@ -7566,7 +7583,7 @@ function animateAvatar(a,p,t){
  if(P.powerTitle){P.powerTitle.visible=Boolean(q.powerKing);P.powerTitle.position.y=4.96+Number(Boolean(q.moleKing))*1.12+Math.sin(sec*3.5+1.5)*.05;}
  if(P.moleTitle){P.moleTitle.visible=Boolean(q.moleKing);P.moleTitle.position.y=4.96+Math.sin(sec*3.5+2)*.05;}
  if(P.moleHammer)P.moleHammer.visible=act==='moleking'&&Boolean(q.moleKing);
- if(P.moleRainbow)P.moleRainbow.forEach((ring,i)=>{const phase=sec%2.3-.82,active=act==='moleking'&&q.moleKing&&phase>0&&phase<.9;ring.visible=Boolean(active);if(active){const spread=phase/.9;ring.position.set(0,.09+i*.012,1.2+spread*.8);ring.scale.setScalar(.28+spread*(2.4+i*.18));ring.material.opacity=.8*(1-spread);}});
+ if(P.moleRainbow)P.moleRainbow.forEach((ring,i)=>{const phase=sec%2.3-.99,active=act==='moleking'&&q.moleKing&&phase>0&&phase<.9;ring.visible=Boolean(active);if(active){const spread=phase/.9;ring.position.set(0,.09+i*.012,1.2+spread*.8);ring.scale.setScalar(.28+spread*(2.4+i*.18));ring.material.opacity=.8*(1-spread);}});
  if(P.rhythmSparkles){P.rhythmSparkles.forEach((spark,i)=>{if(!((act==='beatking'&&q.rhythmKing)||(act==='powerking'&&q.powerKing))){spark.visible=false;return}const phase=(sec*1.8+i/5)%1;const angle=phase*Math.PI*2+i*.7;const band=(i%2?1:-1);spark.visible=true;spark.position.set(Math.cos(angle)*(1.1+phase*.5),1.1+Math.sin(phase*Math.PI*2+band)*1.1+phase*.9,.45+Math.sin(angle*1.4)*.7);const sc=.55+.35*Math.sin(phase*Math.PI);spark.scale.setScalar(sc);spark.rotation.x=sec*2.2+i;spark.rotation.y=sec*3.1+i;});}
  if(P.glowsticks){
   const enabled=Boolean(q.glowEnabled);
