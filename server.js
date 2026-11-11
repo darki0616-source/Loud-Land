@@ -92,7 +92,7 @@ function previousKstDate(day=kstDate()){return new Date(Date.parse(day+'T00:00:0
 let rhythmDay=kstDate();
 const rhythmScores=new Map();
 // v265: Server-owned collectible coins. No expiry; balances and coins survive restarts.
-const FIELD_COIN_INTERVAL=10*60*1000, FIELD_COIN_MAX=6;
+const FIELD_COIN_INTERVAL=5*60*1000, FIELD_COIN_MAX=6;
 const fieldCoins=new Map(), fieldCoinBonuses=new Map();
 let fieldCoinLastSpawnAt=Date.now()-FIELD_COIN_INTERVAL;
 const fieldCoinPublic=()=>[...fieldCoins.values()].map(({id,x,y,value,createdAt})=>({id,x,y,value,createdAt}));

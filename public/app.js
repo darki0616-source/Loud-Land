@@ -5923,7 +5923,7 @@ function normalizeMoleHammerModel(gltfScene){
  fitted.traverse(obj=>{if(obj.isMesh){obj.castShadow=true;obj.frustumCulled=false;}});
  return fitted;
 }
-function refreshMoleHammerModels(){moleHammerTemplate=null;moleHammerPromise=null;for(const a of avatars.values()){if(a.parts?.moleHammer)attachMoleHammerModel(a.parts.moleHammer);}}
+function refreshMoleHammerModels(){moleHammerTemplate=null;moleHammerPromise=null;for(const a of avatars.values()){if(a.parts?.moleHammerVisual)attachMoleHammerModel(a.parts.moleHammerVisual);}}
 function attachMoleHammerModel(holder){if(!moleHammerRevision)return;const revision=moleHammerRevision;
  if(!moleHammerPromise){moleHammerPromise=new Promise(resolve=>moleHammerLoader.load('/api/mole-hammer-model?v='+revision,gltf=>{
   try{const model=normalizeMoleHammerModel(gltf.scene);moleHammerTemplate=model;resolve(model);}
@@ -6771,9 +6771,13 @@ function makeAvatar(p){
  // elbow. The hand is IK-posed to this pivot during the overhead smash.
  // This keeps the head facing the ground through the entire strike.
  const moleHammer=new THREE.Group();moleHammer.position.set(.73,1.78,.46);root.add(moleHammer);parts.moleHammer=moleHammer;
- const hammerHandle=new THREE.Mesh(new THREE.CylinderGeometry(.065,.065,1.30,10),new THREE.MeshStandardMaterial({color:'#8a593b'}));hammerHandle.position.y=.61;moleHammer.add(hammerHandle);
- const hammerHead=new THREE.Mesh(new THREE.BoxGeometry(.88,.34,.42),new THREE.MeshStandardMaterial({color:'#c3d1db',metalness:.5,roughness:.4}));hammerHead.position.y=1.38;moleHammer.add(hammerHead);moleHammer.visible=false;
- attachMoleHammerModel(moleHammer);
+ // v299: Turn the hammer VISUAL 90 degrees around local Y, without rotating
+ // the root-space swing pivot. This presents the striking face (not the side)
+ // to the ground while preserving the overhead smash animation.
+ const moleHammerVisual=new THREE.Group();moleHammerVisual.rotation.y=Math.PI/2;moleHammer.add(moleHammerVisual);parts.moleHammerVisual=moleHammerVisual;
+ const hammerHandle=new THREE.Mesh(new THREE.CylinderGeometry(.065,.065,1.30,10),new THREE.MeshStandardMaterial({color:'#8a593b'}));hammerHandle.position.y=.61;moleHammerVisual.add(hammerHandle);
+ const hammerHead=new THREE.Mesh(new THREE.BoxGeometry(.88,.34,.42),new THREE.MeshStandardMaterial({color:'#c3d1db',metalness:.5,roughness:.4}));hammerHead.position.y=1.38;moleHammerVisual.add(hammerHead);moleHammer.visible=false;
+ attachMoleHammerModel(moleHammerVisual);
  parts.moleRainbow=[];for(let i=0;i<7;i++){const ring=new THREE.Mesh(new THREE.TorusGeometry(1,.055,7,52),new THREE.MeshBasicMaterial({color:new THREE.Color().setHSL(i/7,1,.63),transparent:true,opacity:.7,depthWrite:false}));ring.rotation.x=Math.PI/2;ring.visible=false;ring.renderOrder=50;root.add(ring);parts.moleRainbow.push(ring);}
  parts.rhythmSparkles=[];const sparkleGeo=new THREE.OctahedronGeometry(.12,0);const sparkleColors=['#ff79c5','#ffe46f','#81d9ff','#a688ff','#89ffb0'];for(let i=0;i<16;i++){const star=new THREE.Mesh(sparkleGeo,new THREE.MeshBasicMaterial({color:sparkleColors[i%sparkleColors.length],transparent:true,opacity:.94}));star.visible=false;star.renderOrder=40;root.add(star);parts.rhythmSparkles.push(star);}
  const badgeImage=new Image();badgeImage.src=badgeIconUrl(p.badgeTier);
