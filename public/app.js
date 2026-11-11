@@ -967,7 +967,7 @@ async function restoreSession(){
    if(!r.ok)throw Error('재접속 실패');const d=await r.json();
    const old=state.me;state.id=d.id;state.me=d.players.find(x=>x.id===d.id);currentFlagImageId=state.me?.flagImage||'';
    if(old){state.me.x=old.x;state.me.y=old.y;state.me.facing=old.facing;state.me.action=old.action;state.me.pose=old.pose;}
-   state.players=new Map(d.players.map(x=>[x.id,x]));refreshProfilePreview();renderOnlinePlayers();syncTents(d.tents);setFieldCoins(d.fieldCoins);listen();refreshTentStatus();
+   state.players=new Map(d.players.map(x=>[x.id,x]));refreshProfilePreview();renderOnlinePlayers();syncTents(d.tents);setFieldCoins(d.fieldCoins);listen();refreshTentStatus();refreshPetStatus();
    applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);
    applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);applyPowerState(d.power);if(d.crowdSurf)syncCrowdSurf(d.crowdSurf);
    sendMove();toast('서버 연결이 자동 복구됐어요');
@@ -1244,7 +1244,7 @@ function handleLiveAnnouncement(event){
  if(event.kind==='immediate')queueFestivalPopup('📣 ONEseason 전체 공지',text,true);
  else if(event.kind==='ticker')queueFestivalTicker(text);
 }
-function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='snapshot'){setFieldCoins(d.fieldCoins);syncTents(d.tents);state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);applyPowerState(d.power);applyMoleState(d.mole);syncCrowdSurf(d.crowdSurf);if(Array.isArray(d.chat)){$('chatMessages').replaceChildren();d.chat.filter(entry=>(entry.roomId||null)===(tentRoomActive?.id||null)).forEach(appendChat)};for(const id of duoVfx.keys())removeDuoVfx(id);activeDuos.clear();for(const duo of d.interactions||[])activeDuos.set(duo.id,duo);syncDuoStatus()}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){if((d.entry.roomId||null)===(tentRoomActive?.id||null)){appendChat(d.entry);showBubble(d.entry)}}else if(d.type==='move'){recordTrainLeader(d.player);state.players.set(d.player.id,d.player);if(d.player.id===state.id&&currentDuo())state.me={...d.player}}else if(d.type==='flag'){const player=state.players.get(d.id);if(player){player.flagText=d.flagText;player.flagImage=d.flagImage||'';}if(d.id===state.id&&state.me){state.me.flagText=d.flagText;state.me.flagImage=d.flagImage||'';currentFlagText=d.flagText;currentFlagImageId=d.flagImage||'';refreshFlagButton();}}else if(d.type==='badge'){const person=state.players.get(d.id);if(person){person.badgeTier=d.badgeTier;person.badgeSeconds=d.badgeSeconds;if(d.id===state.id&&state.me){state.me.badgeTier=d.badgeTier;state.me.badgeSeconds=d.badgeSeconds;}renderOnlinePlayers();}}else if(d.type==='profile'){state.players.set(d.player.id,d.player);if(d.player.id===state.id){state.me=d.player;refreshProfilePreview();refreshRhythmReactionButton();if(!$('punkShop').classList.contains('hidden')||!$('mdWardrobe').hidden)refreshPunkShop()}renderOnlinePlayers()}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers()}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue,d.history);else if(d.type==='slam')applySlam(d.slam,d.cooldownUntil);else if(d.type==='slam-go')onSlamGo(d);else if(d.type==='slam-impact')spawnSlamDust(d.x,d.y);else if(d.type==='toast-spark')spawnToastSpark(d.x,d.y);else if(d.type==='cheer'&&d.playerId!==state.id&&state.audioEnabled)playCheer();else if(d.type==='rockplay')applyRockPlay(d.event,d.rockCooldowns,d.rockRunningUntil);else if(d.type==='rockplay-go')onRockPlayGo(d);else if(d.type==='rockplay-cancel'){applyRockPlay(null,d.rockCooldowns,0);toast(d.reason||'인원이 부족해 취소됐어요.')} else if(d.type==='rhythm-state')applyRhythmState(d.rhythm);else if(d.type==='power-state')applyPowerState(d.power);else if(d.type==='field-coins')setFieldCoins(d.coins);else if(d.type==='mole-state')applyMoleState(d.mole);else if(d.type==='md-catalog')syncMdCatalog(d.items);else if(d.type==='tent-furniture-catalog'){
+function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='pet-update'){const p=state.players.get(d.id);if(p)p.pet=d.pet;if(state.me?.id===d.id)state.me.pet=d.pet;if(d.id===state.id&&petOverlay.classList.contains('show'))refreshPetStatus();return;}if(d.type==='snapshot'){setFieldCoins(d.fieldCoins);syncTents(d.tents);state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);applyPowerState(d.power);applyMoleState(d.mole);syncCrowdSurf(d.crowdSurf);if(Array.isArray(d.chat)){$('chatMessages').replaceChildren();d.chat.filter(entry=>(entry.roomId||null)===(tentRoomActive?.id||null)).forEach(appendChat)};for(const id of duoVfx.keys())removeDuoVfx(id);activeDuos.clear();for(const duo of d.interactions||[])activeDuos.set(duo.id,duo);syncDuoStatus()}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){if((d.entry.roomId||null)===(tentRoomActive?.id||null)){appendChat(d.entry);showBubble(d.entry)}}else if(d.type==='move'){recordTrainLeader(d.player);state.players.set(d.player.id,d.player);if(d.player.id===state.id&&currentDuo())state.me={...d.player}}else if(d.type==='flag'){const player=state.players.get(d.id);if(player){player.flagText=d.flagText;player.flagImage=d.flagImage||'';}if(d.id===state.id&&state.me){state.me.flagText=d.flagText;state.me.flagImage=d.flagImage||'';currentFlagText=d.flagText;currentFlagImageId=d.flagImage||'';refreshFlagButton();}}else if(d.type==='badge'){const person=state.players.get(d.id);if(person){person.badgeTier=d.badgeTier;person.badgeSeconds=d.badgeSeconds;if(d.id===state.id&&state.me){state.me.badgeTier=d.badgeTier;state.me.badgeSeconds=d.badgeSeconds;}renderOnlinePlayers();}}else if(d.type==='profile'){state.players.set(d.player.id,d.player);if(d.player.id===state.id){state.me=d.player;refreshProfilePreview();refreshRhythmReactionButton();if(!$('punkShop').classList.contains('hidden')||!$('mdWardrobe').hidden)refreshPunkShop()}renderOnlinePlayers()}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers()}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue,d.history);else if(d.type==='slam')applySlam(d.slam,d.cooldownUntil);else if(d.type==='slam-go')onSlamGo(d);else if(d.type==='slam-impact')spawnSlamDust(d.x,d.y);else if(d.type==='toast-spark')spawnToastSpark(d.x,d.y);else if(d.type==='cheer'&&d.playerId!==state.id&&state.audioEnabled)playCheer();else if(d.type==='rockplay')applyRockPlay(d.event,d.rockCooldowns,d.rockRunningUntil);else if(d.type==='rockplay-go')onRockPlayGo(d);else if(d.type==='rockplay-cancel'){applyRockPlay(null,d.rockCooldowns,0);toast(d.reason||'인원이 부족해 취소됐어요.')} else if(d.type==='rhythm-state')applyRhythmState(d.rhythm);else if(d.type==='power-state')applyPowerState(d.power);else if(d.type==='field-coins')setFieldCoins(d.coins);else if(d.type==='mole-state')applyMoleState(d.mole);else if(d.type==='md-catalog')syncMdCatalog(d.items);else if(d.type==='tent-furniture-catalog'){
    tentFurnitureModels.clear();tentFurnitureThumbs.clear();
    if(tentFurniturePlacement){cancelTentFurniturePlacement();toast('상품 크기가 변경될 수 있어요. 배치를 다시 선택해 주세요.');}
    if(tentFurnitureData)tentFurnitureData.catalog=d.catalog||{};
@@ -1273,7 +1273,7 @@ function updateSkipVoteUI(){
 async function castSkipVote(choice){const vote=state.skipVote;if(!vote||!state.id)return;try{await post('music',{id:state.id,command:'vote-cast',voteId:vote.id,choice})}catch(e){toast(e.message)}}
 function showSkipVoteResult(d){applySkipVote(null,state.skipVoteCooldownUntil);let msg=d.passed?'✅ 과반수 찬성! 요청한 곡으로 이동합니다':d.reason==='timeout'?'투표 시간이 종료되어 현재 곡을 유지합니다':'투표가 부결되어 현재 곡을 유지합니다';notice(msg)}
 setInterval(()=>{updateSkipVoteUI();updateSharedMusicButtons()},500);
-let joining=false;async function join(options={}){const auto=Boolean(options?.auto);if(editingProfile)return updateProfile();if(joining)return;joining=true;manualExit=false;try{let d=await post('join',{sessionKey,pageId,badgeIdentity,flagText:currentFlagText,flagImage:currentFlagImageData,name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender,pattern:chosenPattern,sash:chosenSash,hairStyle:chosenHairStyle,hairColor:chosenHairColor});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);applyHeadbangToSelf();currentFlagImageId=state.me?.flagImage||'';state.pose=state.me?.pose||'stand';cameraFollowInitialized=false;state.players=new Map(d.players.map(p=>[p.id,p]));renderOnlinePlayers();refreshPunkShop();$('joinModal').classList.add('hidden');$('reopenJoin').hidden=true;$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='페스티벌 참가 중';$('avatarPreview').querySelector('b').style.background=chosenColor;saveProfile(state.me);applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);applyPowerState(d.power);if(d.crowdSurf)syncCrowdSurf(d.crowdSurf);syncTents(d.tents);listen();refreshTentStatus();$('audioModal').classList.add('hidden');setPersonalAudio(true);showMovementGuide();showEntryAnnouncements(d.announcements?.entry);if(!auto)toast('ONEseason에 오신 것을 환영합니다!')}catch(e){if(auto)$('joinModal').classList.remove('hidden');$('joinError').textContent='입장 실패: '+(e?.message||'연결을 확인해주세요');console.error('ONEseason join error:',e)}finally{joining=false}}
+let joining=false;async function join(options={}){const auto=Boolean(options?.auto);if(editingProfile)return updateProfile();if(joining)return;joining=true;manualExit=false;try{let d=await post('join',{sessionKey,pageId,badgeIdentity,flagText:currentFlagText,flagImage:currentFlagImageData,name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender,pattern:chosenPattern,sash:chosenSash,hairStyle:chosenHairStyle,hairColor:chosenHairColor});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);applyHeadbangToSelf();currentFlagImageId=state.me?.flagImage||'';state.pose=state.me?.pose||'stand';cameraFollowInitialized=false;state.players=new Map(d.players.map(p=>[p.id,p]));renderOnlinePlayers();refreshPunkShop();$('joinModal').classList.add('hidden');$('reopenJoin').hidden=true;$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='페스티벌 참가 중';$('avatarPreview').querySelector('b').style.background=chosenColor;saveProfile(state.me);applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);applyPowerState(d.power);if(d.crowdSurf)syncCrowdSurf(d.crowdSurf);syncTents(d.tents);listen();refreshTentStatus();refreshPetStatus();$('audioModal').classList.add('hidden');setPersonalAudio(true);showMovementGuide();showEntryAnnouncements(d.announcements?.entry);if(!auto)toast('ONEseason에 오신 것을 환영합니다!')}catch(e){if(auto)$('joinModal').classList.remove('hidden');$('joinError').textContent='입장 실패: '+(e?.message||'연결을 확인해주세요');console.error('ONEseason join error:',e)}finally{joining=false}}
 $('audioYes').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(true);toast(state.music.id?'음악 재생을 허용했어요':'음악이 등록되면 바로 재생돼요')};$('audioNo').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(false);toast('내 소리를 끈 상태로 입장했어요')};// First tap must save even if the nickname field currently has keyboard focus.
 // A pointerdown listener runs BEFORE Safari's keyboard dismissal can consume
 // the subsequent click. De-duplicate that click and block duplicate requests.
@@ -2461,6 +2461,50 @@ let perfAutoScale=1;
 const perfPresets={eco:{fps:20,pixel:.40,foreground:.36,shadows:false},balanced:{fps:45,pixel:1,foreground:.85,shadows:false},high:{fps:60,pixel:1.45,foreground:1.08,shadows:true}};
 function effectivePerfPreset(){return perfMode==='eco'?perfPresets.eco:perfMode==='high'?perfPresets.high:(perfWeakDevice?perfPresets.eco:perfPresets.balanced)}
 function performanceRatio(){return Math.max(.32,Math.min(1.45,effectivePerfPreset().pixel*perfAutoScale))}
+
+// v269: lightweight fox pet panel, with all state validated by the server.
+const petUIStyle=document.createElement('style');petUIStyle.textContent=`
+#petMenuButton{border:1px solid rgba(255,255,255,.23);background:rgba(19,22,43,.8);color:#fff;border-radius:12px;padding:8px 12px;font-weight:800;cursor:pointer}
+#petOverlay{position:fixed;inset:0;z-index:6000;background:rgba(0,0,0,.63);display:none;align-items:center;justify-content:center;padding:14px}
+#petOverlay.show{display:flex}#petPanel{width:min(420px,100%);max-height:85dvh;overflow-y:auto;background:linear-gradient(155deg,#24223c,#131828);color:#fff;border:1px solid #55536e;border-radius:22px;padding:20px;box-shadow:0 16px 60px #0009}
+#petPanel h2{margin:0 0 10px;font-size:23px}#petPanel p{margin:8px 0;color:#d9d9e7;line-height:1.6}#petPanel button{border:1px solid #6b6880;border-radius:12px;padding:11px 13px;background:#353650;color:#fff;font-weight:800;cursor:pointer}#petPanel button:disabled{opacity:.45;cursor:not-allowed}#petPanel button.pet-primary{background:#b267ff;border-color:#b267ff;color:#14101c}#petPanel .pet-actions{display:flex;flex-wrap:wrap;gap:7px;margin:12px 0}#petPanel .pet-progress{height:10px;background:#48465b;border-radius:99px;overflow:hidden}#petPanel .pet-progress>span{display:block;height:100%;background:#b79cff}#petPanel .pet-muted{font-size:12px;color:#c0baca}#petPanel .pet-close{float:right;background:none;border:0;font-size:24px;padding:0 4px}
+`;document.head.append(petUIStyle);
+const petMenuButton=document.createElement('button');petMenuButton.id='petMenuButton';petMenuButton.type='button';petMenuButton.textContent='🦊 펫';
+(document.querySelector('.hudright')||document.body).insertBefore(petMenuButton,$('playersToggle')||null);
+const petOverlay=document.createElement('div');petOverlay.id='petOverlay';petOverlay.innerHTML=`<section id="petPanel" role="dialog" aria-modal="true" aria-label="펫 관리"><button class="pet-close" type="button" aria-label="닫기">×</button><h2>🦊 ONEseason 펫</h2><div id="petPanelBody">불러오는 중...</div></section>`;
+document.body.append(petOverlay);
+const petPanelBody=petOverlay.querySelector('#petPanelBody');
+let petViewState=null,petPending=false;
+function petHtmlSafe(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function petCountdown(ms){const h=Math.floor(Math.max(0,ms)/3600000),m=Math.floor(Math.max(0,ms)%3600000/60000);return h+'시간 '+m+'분';}
+function renderPetPanel(){
+ if(!petOverlay.classList.contains('show'))return;
+ const d=petViewState;if(!d){petPanelBody.textContent='펫 정보를 불러오는 중...';return;}
+ const pet=d.pet,points=Number(d.points)||0;
+ if(!pet){petPanelBody.innerHTML=`<p>🥚 알에서 시작하는 여우 펫! 색상은 무작위로 결정돼요.</p><p>입양비 <b>${d.cost.toLocaleString()}P</b> · 부화까지 6시간 · 현재 <b>${points.toLocaleString()}P</b></p><p class="pet-muted">현재 모델이 준비된 종은 여우 한 종류예요. 다른 9종은 추후 추가됩니다.</p><div class="pet-actions"><button class="pet-primary" data-pet-action="adopt" ${petPending||points<d.cost?'disabled':''}>🥚 랜덤 알 입양</button></div>`;return;}
+ const remain=pet.hatchAt-Date.now();
+ if(remain>0){petPanelBody.innerHTML=`<p style="font-size:36px">🥚</p><p>여우 알 부화까지 <b>${petCountdown(remain)}</b></p><p>색상: <span style="display:inline-block;background:${pet.color};width:15px;height:15px;border-radius:50%;vertical-align:middle"></span> · 잔여 포인트 ${points.toLocaleString()}P</p><p class="pet-muted">브라우저를 닫아도 서버 시간 기준으로 부화가 진행돼요.</p><div class="pet-actions"><button data-pet-action="release" ${petPending?'disabled':''}>펫 삭제</button></div>`;return;}
+ const level=pet.level,prev=level>1?40*(level-1)+8*(level-1)*level:0,next=pet.nextXp;
+ const progress=next===null?100:Math.max(0,Math.min(100,100*(pet.xp-prev)/(next-prev)));
+ petPanelBody.innerHTML=`<p>🦊 <b>일렉 여우</b> · Lv.${level} / ${d.maxLevel} · ${level>=25?'최종 진화':level>=10?'1차 진화':'기본 형태'}</p><p>진화: Lv.10 / Lv.25 · 소환: Lv.5부터</p><div class="pet-progress"><span style="width:${progress}%"></span></div><p class="pet-muted">XP ${pet.xp.toLocaleString()} ${next===null?'· MAX':'/ '+next.toLocaleString()} · 포인트 ${points.toLocaleString()}P</p><div class="pet-actions">${Object.entries(d.foods).map(([key,f])=>`<button data-pet-action="feed" data-pet-food="${key}" ${petPending||level>=30||points<f.cost?'disabled':''}>${petHtmlSafe(f.name)} ${f.cost}P<br><small>+${f.xp}XP</small></button>`).join('')}</div><div class="pet-actions"><button class="pet-primary" data-pet-action="${pet.summoned?'unsummon':'summon'}" ${petPending||level<5?'disabled':''}>${pet.summoned?'펫 소환 해제':'🦊 펫 소환'}</button><button data-pet-action="release" ${petPending?'disabled':''}>펫 삭제</button></div><p class="pet-muted">펫을 삭제하면 기존 성장 기록과 사용한 포인트는 복구되지 않아요.</p>`;
+}
+async function petRequest(command,extra={}){
+ if(petPending||!state.id)return;petPending=true;renderPetPanel();
+ try{const d=await post('pet',{id:state.id,sessionKey,command,...extra});petViewState=d;renderPetPanel();if(command!=='status'){void refreshTentStatus();toast(command==='adopt'?'🥚 여우 알을 입양했어요!':command==='feed'?'🍖 먹이를 줬어요!':command==='release'?'펫을 삭제했어요.':'펫 설정을 변경했어요.');}}
+ catch(e){toast(e.message);}finally{petPending=false;renderPetPanel();}
+}
+function refreshPetStatus(){if(state.id)void petRequest('status');}
+petMenuButton.onclick=()=>{if(!state.id)return toast('페스티벌에 입장한 뒤 이용해 주세요.');petOverlay.classList.add('show');renderPetPanel();refreshPetStatus();};
+petOverlay.querySelector('.pet-close').onclick=()=>petOverlay.classList.remove('show');
+petOverlay.onclick=e=>{if(e.target===petOverlay)petOverlay.classList.remove('show');};
+petPanelBody.onclick=e=>{
+ const b=e.target.closest('button[data-pet-action]');if(!b||petPending)return;
+ const command=b.dataset.petAction;
+ if(command==='release'&&!confirm('펫을 영구 삭제할까요? 레벨과 사용한 포인트는 복구되지 않습니다.'))return;
+ void petRequest(command,command==='feed'?{food:b.dataset.petFood}:command==='release'?{confirm:'DELETE'}:{});
+};
+setInterval(()=>{if(petOverlay.classList.contains('show'))renderPetPanel();},30000);
+
 const host=$('world');const scene=new THREE.Scene();scene.background=new THREE.Color('#78bfff');scene.fog=new THREE.FogExp2('#78bfff',.0068);
 const camera=new THREE.PerspectiveCamera(56,1,.1,350);camera.position.set(0,27,39);
 
@@ -7696,6 +7740,63 @@ function disposeAvatar(root){
  for(const material of materials)if(!sharedWingResources.has(material))material.dispose();
  for(const texture of textures)if(!sharedWingResources.has(texture))texture.dispose();
 }
+
+// v269: shared static GLB meshes; simple whole-body movement, no bones.
+const foxPetTemplates=new Map(),foxPetNodes=new Map();
+const foxPetLoader=new GLTFLoader();
+for(const stage of [1,10,25])foxPetLoader.load('/assets/pets/fox/lv'+stage+'.glb?v=269',g=>{foxPetTemplates.set(stage,g.scene);},undefined,e=>console.warn('Fox pet model unavailable:',stage,e));
+function foxPetMakeModel(stage,color){
+ const template=foxPetTemplates.get(stage);if(!template)return null;
+ const mesh=template.clone(true),bounds=new THREE.Box3().setFromObject(mesh);
+ const size=bounds.getSize(new THREE.Vector3()),center=bounds.getCenter(new THREE.Vector3());
+ const height=stage===25?1.65:stage===10?1.45:1.25;
+ const scale=height/Math.max(.01,size.y);mesh.scale.setScalar(scale);
+ mesh.position.set(-center.x*scale,-bounds.min.y*scale,-center.z*scale);
+ const tint=new THREE.Color(color);
+ mesh.traverse(obj=>{if(!obj.isMesh)return;
+  // Imported meshes have no material/texture; recolor a copy, never the shared GLB.
+  const base=obj.material;
+  if(base&&base.map){obj.material=base.clone();obj.material.color.multiply(tint);}
+  else obj.material=new THREE.MeshStandardMaterial({color:tint,roughness:.86,metalness:.05});
+  obj.castShadow=false;obj.receiveShadow=false;
+ });return mesh;
+}
+function foxPetDispose(entry){entry.root.parent?.remove(entry.root);entry.model?.traverse(o=>{if(o.isMesh){for(const m of Array.isArray(o.material)?o.material:[o.material])m?.dispose?.();}});}
+function animateFoxPets(t,indoor=false){
+ const now=t*.001,visible=new Set(),roomId=tentRoomActive?.id;
+ for(const p of state.players.values()){
+  const pet=p.pet;if(!pet?.summoned||!pet.hatched||pet.level<5)continue;
+  if(indoor?(p.tentRoomId!==roomId):(!!p.tentRoomId))continue;
+  const avatar=indoor?tentRoomAvatars.get(p.id):avatars.get(p.id);if(!avatar)continue;
+  const stage=pet.stage,color=pet.color,signature=stage+'|'+color;
+  let entry=foxPetNodes.get(p.id);
+  if(entry&&entry.signature!==signature){foxPetDispose(entry);foxPetNodes.delete(p.id);entry=null;}
+  if(!entry){
+   const model=foxPetMakeModel(stage,color);if(!model)continue;
+   const root=new THREE.Group(),pivot=new THREE.Group();root.add(pivot);pivot.add(model);
+   root.position.copy(avatar.root.position);(indoor?tentRoomScene:scene).add(root);
+   entry={root,pivot,model,signature,lastX:root.position.x,lastZ:root.position.z};foxPetNodes.set(p.id,entry);
+  }
+  const parent=indoor?tentRoomScene:scene;if(entry.root.parent!==parent)parent.add(entry.root);
+  const yaw=Number(p.id===state.id&&indoor?tentRoomLocal?.facing:p.facing)||0;
+  const anchor=avatar.root.position;
+  const tx=anchor.x-Math.sin(yaw)*1.65+Math.cos(yaw)*1.15;
+  const tz=anchor.z-Math.cos(yaw)*1.65-Math.sin(yaw)*1.15;
+  const factor=Math.min(.14,.035+Math.max(0,t-(animateFoxPets.lastT||t))*.00065);
+  entry.root.position.x+= (tx-entry.root.position.x)*factor;
+  entry.root.position.z+= (tz-entry.root.position.z)*factor;
+  const moving=Math.hypot(tx-entry.root.position.x,tz-entry.root.position.z)>.35;
+  const ground=indoor?0:Math.max(0,anchor.y*.45);
+  entry.root.position.y=ground+(moving?Math.abs(Math.sin(now*10))*.10:Math.sin(now*2.4+p.id.length)*.055);
+  entry.root.rotation.y+=Math.atan2(Math.sin(yaw-entry.root.rotation.y),Math.cos(yaw-entry.root.rotation.y))*.09;
+  entry.pivot.rotation.z=Math.sin(now*(moving?9:2.5)+p.id.length)*(moving?.095:.045);
+  entry.pivot.rotation.x=Math.sin(now*(moving?7:2)+p.id.length)*.045;
+  visible.add(p.id);
+ }
+ for(const [id,entry] of [...foxPetNodes])if(!visible.has(id)){foxPetDispose(entry);foxPetNodes.delete(id);}
+ animateFoxPets.lastT=t;
+}
+
 function tick(t){
  // Skip complete draw passes on slower hardware, without changing time-based
  // animations, networking or the YouTube player clock.
@@ -7711,6 +7812,7 @@ function tick(t){
  const frameDelta=Math.min(50,Math.max(0,t-(tick.lastFrame??t)));tick.lastFrame=t;
  if(tentRoomActive){
   updateTentInterior(frameDelta,t);
+  animateFoxPets(t,true);
   animateTentFurnitureLightEffects(t);
   renderer.render(tentRoomScene,camera);
   return; // No outdoor avatars, stage, water, fireworks or second renderer.
@@ -7957,6 +8059,7 @@ function tick(t){
   }
  }
  for(let [id,a] of avatars)if(!state.players.has(id)){disposeAvatar(a.root);avatars.delete(id)}
+ animateFoxPets(t,false);
  if(moveMarker.visible){moveMarker.material.opacity=Math.min(.75,Math.max(0,(moveMarkerUntil-t)/1050)*.75);if(t>moveMarkerUntil)moveMarker.visible=false}
  updateDuoVfx();updateEnvironment();
  const minimalScenery=perfMode==='eco'||(perfMode==='auto'&&perfWeakDevice);

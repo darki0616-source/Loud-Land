@@ -206,6 +206,30 @@ const badgeStats=new Map();
 // badge identity cannot spend points; client-provided balances are ignored.
 const shopStats=new Map();
 // v242: Paid, persistent personal campsite (MD wardrobe remains free for testing).
+
+// v269: one persistent cosmetic fox pet per badge identity; no rigging required.
+// Pet purchases and food use the SAME authoritative points ledger as tents.
+const PET_ADOPTION_COST=1000, PET_HATCH_MS=6*60*60*1000, PET_MAX_LEVEL=30;
+const PET_FOODS={snack:{cost:30,xp:15,name:'간식'},meal:{cost:100,xp:60,name:'식사'},feast:{cost:250,xp:170,name:'특식'}};
+const PET_COLORS=['#f16b69','#67b9f2','#75d8a0','#b68ae8','#f4eee0'];
+const petStats=new Map();
+function petLevel(xp){
+ let level=1;while(level<PET_MAX_LEVEL&&xp>=40*level+8*level*(level+1))level++;
+ return level;
+}
+function petPublic(pet){
+ if(!pet)return null;
+ const level=petLevel(pet.xp),hatched=Date.now()>=pet.hatchAt;
+ return {species:'fox',color:pet.color,adoptedAt:pet.adoptedAt,hatchAt:pet.hatchAt,
+  hatched,level:hatched?level:0,xp:pet.xp,nextXp:level<PET_MAX_LEVEL?40*level+8*level*(level+1):null,
+  stage:level>=25?25:level>=10?10:1,summoned:hatched&&level>=5&&!!pet.summoned};
+}
+function petAccount(identity){if(!petStats.has(identity))petStats.set(identity,{spent:0,pet:null});return petStats.get(identity);}
+function petView(p){const record=petAccount(p.badgeIdentity);return {pet:petPublic(record.pet),points:tentPointBalance(p),cost:PET_ADOPTION_COST,hatchMs:PET_HATCH_MS,foods:PET_FOODS,availableSpecies:['fox'],maxLevel:PET_MAX_LEVEL};}
+function syncPetPlayers(identity){
+ const record=petStats.get(identity);for(const other of players.values())if(other.badgeIdentity===identity){other.pet=petPublic(record?.pet);broadcast({type:'pet-update',id:other.id,pet:other.pet});}
+}
+
 const TENT_COST=3000;
 const tentStats=new Map();
 const TENT_COLORS=['#ed9a77','#8dc3ad','#8ea8d8','#c49acb','#dfc576','#d6a3a3','#92b9ba','#d5d9e5'];
@@ -318,7 +342,7 @@ async function serveFurnitureModel(req,res,id){
 const TENT_FURNITURE_MAX_PLACED=30;
 const furnitureStats=new Map();
 function furnitureRecord(identity){if(!furnitureStats.has(identity))furnitureStats.set(identity,{spent:0,owned:{}});return furnitureStats.get(identity);}
-function tentPointBalance(p){const earned=Math.floor(badgeTotal(p)/60)+(p.badgeIdentity?rhythmAccount(p.badgeIdentity).bonus+powerAccount(p.badgeIdentity).bonus+moleAccount(p.badgeIdentity).bonus+(fieldCoinBonuses.get(p.badgeIdentity)||0):0);return Math.max(0,earned-(tentOwnedBy(p.badgeIdentity)?TENT_COST:0)-(furnitureStats.get(p.badgeIdentity)?.spent||0));}
+function tentPointBalance(p){const earned=Math.floor(badgeTotal(p)/60)+(p.badgeIdentity?rhythmAccount(p.badgeIdentity).bonus+powerAccount(p.badgeIdentity).bonus+moleAccount(p.badgeIdentity).bonus+(fieldCoinBonuses.get(p.badgeIdentity)||0):0);return Math.max(0,earned-(tentOwnedBy(p.badgeIdentity)?TENT_COST:0)-(furnitureStats.get(p.badgeIdentity)?.spent||0)-(petStats.get(p.badgeIdentity)?.spent||0));}
 function safeFurniturePose(item,x,z,angle){
  if(!item||!Number.isFinite(x)||!Number.isFinite(z)||!Number.isFinite(angle))return false;
  if(angle<0||angle>=360||angle%45!==0)return false;
@@ -474,7 +498,7 @@ function shopRecord(identity){
 function getShopView(p,now=Date.now()){
  const record=shopRecord(p.badgeIdentity);
  const earned=Math.floor(badgeTotal(p,now)/60)+(p.badgeIdentity?rhythmAccount(p.badgeIdentity).bonus+powerAccount(p.badgeIdentity).bonus+moleAccount(p.badgeIdentity).bonus+(fieldCoinBonuses.get(p.badgeIdentity)||0):0); // time points + game and field coin rewards
- return {points:tentPointBalance(p),earned,spent:(tentOwnedBy(p.badgeIdentity)?TENT_COST:0)+(furnitureStats.get(p.badgeIdentity)?.spent||0),refunded:record.refunded||0,testing:true,owned:Object.keys(publicMdItems()),equipped:{...record.equipped},items:publicMdItems()};
+ return {points:tentPointBalance(p),earned,spent:(tentOwnedBy(p.badgeIdentity)?TENT_COST:0)+(furnitureStats.get(p.badgeIdentity)?.spent||0)+(petStats.get(p.badgeIdentity)?.spent||0),refunded:record.refunded||0,testing:true,owned:Object.keys(publicMdItems()),equipped:{...record.equipped},items:publicMdItems()};
 }
 function setShopAppearance(p){
  p.equipped=p.badgeIdentity?{...shopRecord(p.badgeIdentity).equipped}:{};
@@ -505,9 +529,19 @@ const SB_KEY=process.env.SUPABASE_SECRET_KEY||'';
 const useSupabase=Boolean(SB_URL&&SB_KEY);
 let restored=false;
 let saveChain=Promise.resolve();
-function stateData(){return {version:15,fieldCoinLastSpawnAt,fieldCoins:fieldCoinPublic(),fieldCoinBonuses:Object.fromEntries(fieldCoinBonuses),moleDay,moleHammerRevision,moleReward,moleScores:Object.fromEntries(moleScores),moleAccounts:Object.fromEntries([...moleAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session,lastResult:v.lastResult}])),powerDay,powerReward,powerScores:Object.fromEntries(powerScores),powerAccounts:Object.fromEntries([...powerAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),rhythmAccounts:Object.fromEntries([...rhythmAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),furnitureCatalogEdits:Object.fromEntries(furnitureCatalogEdits),furnitureStats:Object.fromEntries([...furnitureStats].map(([id,v])=>[id,{spent:v.spent,owned:v.owned}])),tentStats:Object.fromEntries([...tentStats].map(([identity,t])=>[identity,storedTent(t)])),announcements:{entry:entranceNotices,ticker:tickerNotices,intervalMinutes:tickerIntervalMinutes,immediateHistory:immediateNoticeHistory},music,queue:[...queue],history:[...history],nextTrackToken,customMd:Object.fromEntries(customMd),shopStats:Object.fromEntries([...shopStats].map(([k,v])=>[k,{spent:0,refunded:v.refunded||0,owned:v.owned,equipped:v.equipped}])),badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),rhythm:{day:rhythmDay,reward:rhythmReward,scores:Object.fromEntries([...rhythmScores].map(([k,v])=>[k,{name:v.name,score:Math.max(0,Math.floor(Number(v.score)||0)),updatedAt:Number(v.updatedAt)||0}]))},savedAt:Date.now()}}
+function stateData(){return {version:16,petStats:Object.fromEntries([...petStats].map(([identity,record])=>[identity,{spent:record.spent,pet:record.pet}])),fieldCoinLastSpawnAt,fieldCoins:fieldCoinPublic(),fieldCoinBonuses:Object.fromEntries(fieldCoinBonuses),moleDay,moleHammerRevision,moleReward,moleScores:Object.fromEntries(moleScores),moleAccounts:Object.fromEntries([...moleAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session,lastResult:v.lastResult}])),powerDay,powerReward,powerScores:Object.fromEntries(powerScores),powerAccounts:Object.fromEntries([...powerAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),rhythmAccounts:Object.fromEntries([...rhythmAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),furnitureCatalogEdits:Object.fromEntries(furnitureCatalogEdits),furnitureStats:Object.fromEntries([...furnitureStats].map(([id,v])=>[id,{spent:v.spent,owned:v.owned}])),tentStats:Object.fromEntries([...tentStats].map(([identity,t])=>[identity,storedTent(t)])),announcements:{entry:entranceNotices,ticker:tickerNotices,intervalMinutes:tickerIntervalMinutes,immediateHistory:immediateNoticeHistory},music,queue:[...queue],history:[...history],nextTrackToken,customMd:Object.fromEntries(customMd),shopStats:Object.fromEntries([...shopStats].map(([k,v])=>[k,{spent:0,refunded:v.refunded||0,owned:v.owned,equipped:v.equipped}])),badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),rhythm:{day:rhythmDay,reward:rhythmReward,scores:Object.fromEntries([...rhythmScores].map(([k,v])=>[k,{name:v.name,score:Math.max(0,Math.floor(Number(v.score)||0)),updatedAt:Number(v.updatedAt)||0}]))},savedAt:Date.now()}}
 function applySaved(d){
  if(!d||typeof d!=='object')return;
+ petStats.clear();
+ if(d.petStats&&typeof d.petStats==='object')for(const [identity,r] of Object.entries(d.petStats).slice(0,30000)){
+  if(!/^[a-zA-Z0-9_-]{20,100}$/.test(identity)||!r||typeof r!=='object')continue;
+  const spent=Number.isSafeInteger(r.spent)&&r.spent>=0&&r.spent<1000000000?r.spent:0;
+  const x=r.pet;let pet=null;
+  if(x&&x.species==='fox'&&PET_COLORS.includes(x.color)&&Number.isFinite(x.adoptedAt)&&Number.isFinite(x.hatchAt)&&Number.isSafeInteger(x.xp)&&x.xp>=0&&x.xp<=1000000){
+   pet={species:'fox',color:x.color,adoptedAt:x.adoptedAt,hatchAt:x.hatchAt,xp:x.xp,summoned:!!x.summoned};
+  }
+  petStats.set(identity,{spent,pet});
+ }
  fieldCoins.clear();fieldCoinBonuses.clear();
  if(d.fieldCoinBonuses&&typeof d.fieldCoinBonuses==='object')for(const [key,value] of Object.entries(d.fieldCoinBonuses).slice(0,50000))if(/^[a-zA-Z0-9_-]{20,100}$/.test(key)&&Number.isSafeInteger(value)&&value>=0)fieldCoinBonuses.set(key,value);
  if(Number.isFinite(Number(d.fieldCoinLastSpawnAt)))fieldCoinLastSpawnAt=Math.min(Date.now(),Math.max(0,Number(d.fieldCoinLastSpawnAt)));
@@ -1006,7 +1040,7 @@ const server=http.createServer(async(req,res)=>{
           if(existing){
             maybeRotateRhythmDay();
             existing.seen=Date.now();
-            syncPlayerRhythmKing(existing);syncPlayerPowerKing(existing);syncPlayerMoleKing(existing);
+            syncPlayerRhythmKing(existing);syncPlayerPowerKing(existing);syncPlayerMoleKing(existing);existing.pet=petPublic(petStats.get(existing.badgeIdentity)?.pet);
             if(pageId)pageOwners.set(existingId,pageId);
             return json(res,200,{id:existingId,reused:true,...snapshot(existingId)});
           }
@@ -1014,7 +1048,7 @@ const server=http.createServer(async(req,res)=>{
         }
         maybeRotateRhythmDay();
         const id=crypto.randomUUID(),p={id,badgeSince:Date.now(),badgeTier:'bronze',badgeSeconds:0,name:clean(d.name,18)||'ROCKER',flagText:cleanFlag(d.flagText),flagImage:d.flagImage?storeFlagImage(d.flagImage)||'':'',color:colors.includes(d.color)?d.color:colors[0],...apparel(d),gender:d.gender==='female'?'female':'male',x:clamp(190+Math.random()*880,SERVER_X_MIN,SERVER_X_MAX),y:clamp(390+Math.random()*420,SERVER_Y_MIN,SERVER_Y_MAX),facing:0,action:'idle',pose:'stand',glowColor:'lime',glowEnabled:false,headbangBpm:120,headbangBeatAt:Date.now(),seen:Date.now(),rhythmKing:false,powerKing:false,moleKing:false};
-        Object.defineProperty(p,'badgeIdentity',{value:badgeIdentity,writable:true,enumerable:false});updateBadge(p);syncPlayerRhythmKing(p);syncPlayerPowerKing(p);syncPlayerMoleKing(p);setShopAppearance(p);players.set(id,p);
+        Object.defineProperty(p,'badgeIdentity',{value:badgeIdentity,writable:true,enumerable:false});updateBadge(p);syncPlayerRhythmKing(p);syncPlayerPowerKing(p);syncPlayerMoleKing(p);setShopAppearance(p);p.pet=petPublic(petStats.get(p.badgeIdentity)?.pet);players.set(id,p);
         if(sessionKey){sessionPlayers.set(sessionKey,id);playerSessions.set(id,sessionKey)}
         if(pageId)pageOwners.set(id,pageId);
         resumeForFirst();broadcast({type:'join',player:p,count:players.size});return json(res,200,{id,reused:false,...snapshot(id)});
@@ -1033,6 +1067,39 @@ const server=http.createServer(async(req,res)=>{
         broadcast({type:'field-coins',coins:fieldCoinPublic()});
         await saveNow();
         return json(res,200,{ok:true,value:coin.value,points:tentPointBalance(p),coins:fieldCoinPublic()});
+      }
+
+      if(url.pathname==='/api/pet'){
+        if(playerSessions.get(id)!==String(d.sessionKey||'')||!p.badgeIdentity)return json(res,403,{error:'본인 세션에서만 펫을 관리할 수 있어요.'});
+        const command=String(d.command||'status');
+        if(command==='status')return json(res,200,{ok:true,...petView(p)});
+        const record=petAccount(p.badgeIdentity);
+        const pet=record.pet;
+        if(command==='adopt'){
+          if(pet)return json(res,409,{error:'이미 펫이 있어요. 기존 펫을 삭제한 후 새 알을 입양할 수 있어요.'});
+          if(tentPointBalance(p)<PET_ADOPTION_COST)return json(res,400,{error:`입양 포인트가 부족해요. (${tentPointBalance(p)}/${PET_ADOPTION_COST}P)`});
+          const now=Date.now();record.spent+=PET_ADOPTION_COST;
+          record.pet={species:'fox',color:PET_COLORS[crypto.randomInt(PET_COLORS.length)],adoptedAt:now,hatchAt:now+PET_HATCH_MS,xp:0,summoned:false};
+        }else if(command==='feed'){
+          if(!pet)return json(res,400,{error:'먼저 펫 알을 입양해 주세요.'});
+          if(Date.now()<pet.hatchAt)return json(res,400,{error:'알이 부화한 다음 먹이를 줄 수 있어요.'});
+          if(petLevel(pet.xp)>=PET_MAX_LEVEL)return json(res,400,{error:'이미 최고 레벨이에요.'});
+          const food=PET_FOODS[String(d.food||'')];if(!food)return json(res,400,{error:'존재하지 않는 먹이예요.'});
+          if(tentPointBalance(p)<food.cost)return json(res,400,{error:'먹이를 살 포인트가 부족해요.'});
+          record.spent+=food.cost;pet.xp=Math.min(1000000,pet.xp+food.xp);
+        }else if(command==='summon'){
+          if(!pet||Date.now()<pet.hatchAt||petLevel(pet.xp)<5)return json(res,400,{error:'부화 후 Lv.5부터 소환할 수 있어요.'});
+          pet.summoned=true;
+        }else if(command==='unsummon'){
+          if(!pet)return json(res,400,{error:'펫이 없어요.'});pet.summoned=false;
+        }else if(command==='release'){
+          if(!pet)return json(res,400,{error:'삭제할 펫이 없어요.'});
+          if(d.confirm!=='DELETE')return json(res,400,{error:'펫 삭제 확인이 필요해요.'});
+          record.pet=null; // spent points never refunded
+        }else return json(res,400,{error:'지원하지 않는 펫 기능입니다.'});
+        syncPetPlayers(p.badgeIdentity);
+        await saveNow();
+        return json(res,200,{ok:true,...petView(p)});
       }
       if(url.pathname==='/api/heartbeat'){return json(res,200,{ok:true})}
       if(url.pathname==='/api/tent'){
