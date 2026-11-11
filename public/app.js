@@ -7741,95 +7741,72 @@ function disposeAvatar(root){
  for(const texture of textures)if(!sharedWingResources.has(texture))texture.dispose();
 }
 
-// v274: geometry separated into FurColor, FurPaws and FixedOriginal to protect guitar and white details.
-// v272 COLOR_0 vertex tinting is removed: it could hide texture detail or render black.
+// v275: Use artist-painted UV textures verbatim. No fur masks, vertex tints, or mesh splits.
+// Lv.1 has five supplied color variants. Lv.10 and Lv.25 keep their original GLB textures
+// until matching color variants are supplied for those stages.
 const foxPetTemplates=new Map(),foxPetNodes=new Map();
-const foxPetMasks=new Map(),foxPetColorCache=new Map();
 const foxPetLoader=new GLTFLoader();
+const foxPetTextureLoader=new THREE.TextureLoader();
+const foxPetTextureCache=new Map();
+const foxPetColorNames=new Map([
+ ['#f16b69','red'],['#67b9f2','blue'],['#75d8a0','green'],
+ ['#b68ae8','purple'],['#f4eee0','white']
+]);
 for(const stage of [1,10,25]){
- foxPetLoader.load('/assets/pets/fox/lv'+stage+'.glb?v=274',g=>{
+ foxPetLoader.load('/assets/pets/fox/lv'+stage+'.glb?v=275',g=>{
   foxPetTemplates.set(stage,g.scene);
  },undefined,e=>console.warn('Fox pet model unavailable:',stage,e));
- const img=new Image();
- img.onload=()=>foxPetMasks.set(stage,img);
- img.onerror=e=>console.warn('Fox fur mask unavailable:',stage,e);
- img.src='/assets/pets/fox/fur_mask_lv'+stage+'.png?v=274';
 }
-const foxFurReferenceLight={1:209,10:139,25:134};
-function foxPetFurTexture(stage,color,baseTexture,kind="fur"){
- const key=stage+'|'+color+'|'+kind;
- if(foxPetColorCache.has(key))return foxPetColorCache.get(key);
- const mask=foxPetMasks.get(stage),src=baseTexture?.image;
- if(!mask||!src)return null;
- const w=src.width||src.naturalWidth,h=src.height||src.naturalHeight;
- if(!w||!h)return null;
- const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;
- const ctx=canvas.getContext('2d',{willReadFrequently:true});
- if(!ctx)return null;
- ctx.drawImage(src,0,0,w,h);
- const pixels=ctx.getImageData(0,0,w,h);
- const maskCanvas=document.createElement('canvas');maskCanvas.width=w;maskCanvas.height=h;
- const mc=maskCanvas.getContext('2d',{willReadFrequently:true});
- if(!mc)return null;
- mc.drawImage(mask,0,0,w,h);
- const maskPixels=mc.getImageData(0,0,w,h).data;
- const safeColor=/^#[0-9a-fA-F]{6}$/.test(color)?color:'#f16b69';
- const tr=parseInt(safeColor.slice(1,3),16);
- const tg=parseInt(safeColor.slice(3,5),16);
- const tb=parseInt(safeColor.slice(5,7),16);
- const data=pixels.data,reference=kind==='paws'?(stage===1?175:95):(foxFurReferenceLight[stage]||150);
- for(let i=0;i<data.length;i+=4){
-  const r=data[i],g=data[i+1],b=data[i+2];
-  const neutral=Math.max(r,g,b)-Math.min(r,g,b)<100&&Math.min(r,g,b)>60;
-  const warm=r>g*1.14&&g>b*.85&&r>20&&r<210;
-  const a=kind==='paws'?(neutral||warm||maskPixels[i]>20?1:0):maskPixels[i]/255;
-  if(a<.005)continue; // FixedOriginal mesh always uses its untouched original texture.
-  const light=Math.min(1.5,Math.max(.45,(.2126*r+.7152*g+.0722*b)/reference));
-  data[i]=r*(1-a)+Math.min(255,tr*light)*a;
-  data[i+1]=g*(1-a)+Math.min(255,tg*light)*a;
-  data[i+2]=b*(1-a)+Math.min(255,tb*light)*a;
- }
- ctx.putImageData(pixels,0,0);
- const texture=new THREE.CanvasTexture(canvas);
- texture.colorSpace=baseTexture.colorSpace||THREE.SRGBColorSpace;
- texture.flipY=baseTexture.flipY;
- texture.wrapS=baseTexture.wrapS;texture.wrapT=baseTexture.wrapT;
- texture.magFilter=baseTexture.magFilter;texture.minFilter=baseTexture.minFilter;
- texture.anisotropy=Math.min(4,baseTexture.anisotropy||1);
- foxPetColorCache.set(key,texture);
- return texture;
+function foxPetGetPaintedTexture(stage,color){
+ if(stage!==1)return undefined; // No matching textures yet for evolved foxes.
+ const name=foxPetColorNames.get(String(color||'').toLowerCase())||'white';
+ const key=stage+'|'+name;
+ let record=foxPetTextureCache.get(key);
+ if(record)return record;
+ record={ready:false,failed:false,texture:null};
+ foxPetTextureCache.set(key,record);
+ const url='/assets/pets/fox/fox_lv1_'+name+'.png?v=275';
+ record.texture=foxPetTextureLoader.load(url,texture=>{
+  texture.flipY=false; // GLB UVs expect glTF's texture orientation, not TextureLoader default.
+  texture.colorSpace=THREE.SRGBColorSpace;
+  texture.anisotropy=Math.min(4,renderer.capabilities.getMaxAnisotropy());
+  texture.needsUpdate=true;
+  record.ready=true;
+ },undefined,e=>{
+  record.failed=true;
+  console.warn('Fox painted texture unavailable; original GLB texture will be used:',url,e);
+ });
+ // Set flipY immediately as well, before first upload to the GPU.
+ record.texture.flipY=false;
+ record.texture.colorSpace=THREE.SRGBColorSpace;
+ return record;
 }
 function foxPetMakeModel(stage,color){
  const template=foxPetTemplates.get(stage);
- if(!template||!foxPetMasks.has(stage))return null;
+ if(!template)return null;
+ const paint=foxPetGetPaintedTexture(stage,color);
+ if(paint&&!paint.ready&&!paint.failed)return null;
  const mesh=template.clone(true),bounds=new THREE.Box3().setFromObject(mesh);
  const size=bounds.getSize(new THREE.Vector3()),center=bounds.getCenter(new THREE.Vector3());
  const height=stage===25?1.65:stage===10?1.45:1.25;
  const scale=height/Math.max(.01,size.y);mesh.scale.setScalar(scale);
  mesh.position.set(-center.x*scale,-bounds.min.y*scale,-center.z*scale);
- let textured=false;
  mesh.traverse(obj=>{if(!obj.isMesh)return;
   const sourceMaterials=Array.isArray(obj.material)?obj.material:[obj.material];
   const outputMaterials=sourceMaterials.map(base=>{
    if(!base)return new THREE.MeshStandardMaterial({color:0xffffff,roughness:.85,metalness:0});
    const mat=base.clone();
    mat.color.set(0xffffff);mat.vertexColors=false;
+   // Meshy exports metallic=1 on some models, which can render black in this scene.
    mat.metalness=0;mat.roughness=.85;mat.side=THREE.DoubleSide;
-   if(base.map){
-    const kind=obj.name==='FurColor'?'fur':obj.name==='FurPaws'?'paws':null;
-    if(kind){
-     const furMap=foxPetFurTexture(stage,color,base.map,kind);
-     if(furMap){mat.map=furMap;textured=true;}
-     else mat.map=base.map;
-    }else mat.map=base.map; // FixedOriginal: never recolor eyes, muzzle, guitar, or tail tip.
-   }
+   if(paint?.ready&&paint.texture&&base.map)mat.map=paint.texture;
+   // All other material maps and UVs remain unchanged.
    mat.needsUpdate=true;
    return mat;
   });
   obj.material=Array.isArray(obj.material)?outputMaterials:outputMaterials[0];
   obj.castShadow=false;obj.receiveShadow=false;
  });
- if(!textured)console.warn('Fox fur tint unavailable; preserving original texture',stage);
  return mesh;
 }
 function foxPetDispose(entry){entry.root.parent?.remove(entry.root);entry.model?.traverse(o=>{if(o.isMesh){for(const m of Array.isArray(o.material)?o.material:[o.material])m?.dispose?.();if(o.userData.foxPetOwnGeometry)o.geometry?.dispose?.();}});}
