@@ -18,7 +18,24 @@ function forgetSession(id){
   playerSessions.delete(id);pageOwners.delete(id);
 }
 
+// v298: Keep separate, bounded histories for the festival and each tent.
+// Switching locations must not erase either room's conversation.
 const chatHistory=[];
+const CHAT_ROOM_LIMIT=35,CHAT_TOTAL_LIMIT=900;
+function chatForRoom(roomId){
+ const room=roomId||null;
+ return chatHistory.filter(entry=>(entry.roomId||null)===room).slice(-CHAT_ROOM_LIMIT);
+}
+function retainChat(entry){
+ chatHistory.push(entry);
+ // Bound each room independently, so a busy festival cannot evict tent messages.
+ let count=0;
+ for(let i=chatHistory.length-1;i>=0;i--){
+  if((chatHistory[i].roomId||null)!==(entry.roomId||null))continue;
+  if(++count>CHAT_ROOM_LIMIT)chatHistory.splice(i,1);
+ }
+ while(chatHistory.length>CHAT_TOTAL_LIMIT)chatHistory.shift();
+}
 let activeSlam=null,slamCooldownUntil=0;
 let pendingSlamImpact=null; // Last launch roster; exactly one shared first-arrival dust burst
 const SLAM_COUNTDOWN_MS=5000,SLAM_COOLDOWN_MS=15000;
@@ -823,7 +840,7 @@ function endDuo(duo){if(!duo||!activeDuos.has(duo.id))return;activeDuos.delete(d
 function clearDuosFor(id){for(const duo of [...activeDuos.values()])if(duo.a===id||duo.b===id)endDuo(duo);for(const [inviteId,invite] of duoInvites)if(invite.from===id||invite.to===id){duoInvites.delete(inviteId);broadcast({type:'duo-invite-ended',id:inviteId,to:invite.to})}}
 function duoDistance(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
 setInterval(()=>{const now=Date.now();for(const duo of [...activeDuos.values()])if(duo.endAt<=now)endDuo(duo);for(const [key,invite] of duoInvites)if(invite.expiresAt<=now){duoInvites.delete(key);broadcast({type:'duo-invite-ended',id:key,to:invite.to})}},700).unref();
-const snapshot=(viewerId=null)=>({type:'snapshot',tents:allPlacedTents(),announcements:publicNoticeState(),interactions:[...activeDuos.values()].filter(x=>x.endAt>Date.now()),players:[...players.values()],chat:chatHistory.filter(entry=>entry.roomId===(players.get(viewerId)?.tentRoomId||null)),...musicState(),skipVote:publicSkipVote(),skipVoteCooldownUntil,slam:publicSlam(),slamCooldownUntil,rockPlay:publicRock(),crowdSurf:activeSurfRide&&activeSurfRide.startAt+activeSurfRide.duration>Date.now()?activeSurfRide:null,rockCooldowns:{...rockCooldowns},rockRunningUntil,rhythm:publicRhythmState(),power:publicPowerState(),mole:publicMoleState(),fieldCoins:fieldCoinPublic(),count:players.size});
+const snapshot=(viewerId=null)=>({type:'snapshot',tents:allPlacedTents(),announcements:publicNoticeState(),interactions:[...activeDuos.values()].filter(x=>x.endAt>Date.now()),players:[...players.values()],chatRoomId:players.get(viewerId)?.tentRoomId||null,chat:chatForRoom(players.get(viewerId)?.tentRoomId||null),...musicState(),skipVote:publicSkipVote(),skipVoteCooldownUntil,slam:publicSlam(),slamCooldownUntil,rockPlay:publicRock(),crowdSurf:activeSurfRide&&activeSurfRide.startAt+activeSurfRide.duration>Date.now()?activeSurfRide:null,rockCooldowns:{...rockCooldowns},rockRunningUntil,rhythm:publicRhythmState(),power:publicPowerState(),mole:publicMoleState(),fieldCoins:fieldCoinPublic(),count:players.size});
 const clamp=(n,min,max)=>Math.min(max,Math.max(min,Number(n)||0));
 const SERVER_X_MIN=20,SERVER_X_MAX=1380,SERVER_Y_MIN=60,SERVER_Y_MAX=1100;
 function cleanup(){const now=Date.now();for(const [id,p] of players)if(now-p.seen>180000){settleBadge(p,Math.min(now,p.seen+45000));settleBadge(p);clearDuosFor(id);players.delete(id);forgetSession(id);voterLeaves(id);if(activeSlam?.participants.delete(id))slamUpdate();rockMemberLeaves(id);pauseForEmpty();const r=clients.get(id);if(r){r.end();clients.delete(id)}broadcast({type:'leave',id,count:players.size});sendTentUpdate()}}
@@ -1203,14 +1220,14 @@ const server=http.createServer(async(req,res)=>{
           p.tentRoomId=selected.id;p.tentRoomX=0;p.tentRoomZ=2;p.tentRoomFacing=0;
           p.action='idle';p.pose='stand';broadcast({type:'tent-room',playerId:p.id,roomId:p.tentRoomId,x:0,z:2,action:'idle',pose:'stand'});
           sendTentUpdate();
-          return json(res,200,{ok:true,room:publicTent(selected),furnitureCatalog:TENT_FURNITURE_CATALOG,canDecorate:record?.id===selected.id,tents:allPlacedTents()});
+          return json(res,200,{ok:true,room:publicTent(selected),furnitureCatalog:TENT_FURNITURE_CATALOG,canDecorate:record?.id===selected.id,tents:allPlacedTents(),chatRoomId:selected.id,chat:chatForRoom(selected.id)});
         }
         if(command==='exit'){
           const hadRoom=Boolean(p.tentRoomId);
           p.tentRoomId=null;p.tentRoomX=0;p.tentRoomZ=0;p.action='idle';p.pose='stand';
           broadcast({type:'tent-room',playerId:p.id,roomId:null,x:0,z:0,action:'idle',pose:'stand'});
           if(hadRoom)sendTentUpdate();
-          return json(res,200,{ok:true});
+          return json(res,200,{ok:true,chatRoomId:null,chat:chatForRoom(null)});
         }
         if(command==='room-move'){
           if(!p.tentRoomId)return json(res,400,{error:'먼저 텐트에 입장해 주세요.'});
@@ -1460,7 +1477,7 @@ const server=http.createServer(async(req,res)=>{
         p.lastChat=Date.now();
         const roomId=p.tentRoomId||null;
         const entry={id:crypto.randomUUID(),playerId:p.id,name:p.name,message,at:Date.now(),roomId};
-        chatHistory.push(entry);if(chatHistory.length>90)chatHistory.shift();
+        retainChat(entry);
         for(const [viewerId,stream] of clients){if((players.get(viewerId)?.tentRoomId||null)!==roomId)continue;try{send(stream,{type:'chat',entry})}catch{}}
         return json(res,200,{ok:true});
       }
