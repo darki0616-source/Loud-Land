@@ -7742,9 +7742,11 @@ function disposeAvatar(root){
 }
 
 // v269: shared static GLB meshes; simple whole-body movement, no bones.
+// v272: FOX COLOR_0 RGBA encodes fixed detail RGB + recolorable fur mask in alpha.
+// Unlike v269, never apply one tint to the whole model: eyes/muzzle/guitar stay fixed.
 const foxPetTemplates=new Map(),foxPetNodes=new Map();
 const foxPetLoader=new GLTFLoader();
-for(const stage of [1,10,25])foxPetLoader.load('/assets/pets/fox/lv'+stage+'.glb?v=269',g=>{foxPetTemplates.set(stage,g.scene);},undefined,e=>console.warn('Fox pet model unavailable:',stage,e));
+for(const stage of [1,10,25])foxPetLoader.load('/assets/pets/fox/lv'+stage+'.glb?v=272',g=>{foxPetTemplates.set(stage,g.scene);},undefined,e=>console.warn('Fox pet model unavailable:',stage,e));
 function foxPetMakeModel(stage,color){
  const template=foxPetTemplates.get(stage);if(!template)return null;
  const mesh=template.clone(true),bounds=new THREE.Box3().setFromObject(mesh);
@@ -7754,14 +7756,33 @@ function foxPetMakeModel(stage,color){
  mesh.position.set(-center.x*scale,-bounds.min.y*scale,-center.z*scale);
  const tint=new THREE.Color(color);
  mesh.traverse(obj=>{if(!obj.isMesh)return;
-  // Imported meshes have no material/texture; recolor a copy, never the shared GLB.
-  const base=obj.material;
-  if(base&&base.map){obj.material=base.clone();obj.material.color.multiply(tint);}
-  else obj.material=new THREE.MeshStandardMaterial({color:tint,roughness:.86,metalness:.05});
+  const attr=obj.geometry?.getAttribute('color');
+  if(attr?.itemSize===4){
+   // GLB COLOR_0 stores RGB for fixed details, A=fur color weight (0..1).
+   // Use a private geometry so different players can have different fur colors.
+   const geometry=obj.geometry.clone();
+   const a=geometry.getAttribute('color');
+   const scale=a.normalized?(a.array instanceof Uint8Array?1/255:a.array instanceof Uint16Array?1/65535:1):1;
+   const rgb=new Float32Array(a.count*3);
+   for(let i=0;i<a.count;i++){
+    const j=i*4,k=i*3,fur=Math.max(0,Math.min(1,a.array[j+3]*scale));
+    rgb[k]=a.array[j]*scale*(1-fur)+tint.r*fur;
+    rgb[k+1]=a.array[j+1]*scale*(1-fur)+tint.g*fur;
+    rgb[k+2]=a.array[j+2]*scale*(1-fur)+tint.b*fur;
+   }
+   geometry.setAttribute('color',new THREE.Float32BufferAttribute(rgb,3));
+   obj.geometry=geometry;obj.userData.foxPetOwnGeometry=true;
+   obj.material=new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:true,roughness:.84,metalness:.04,side:THREE.DoubleSide});
+  }else{
+   // Fallback for older models that have not been repainted.
+   const base=obj.material;
+   if(base?.map){obj.material=base.clone();obj.material.color.multiply(tint);}
+   else obj.material=new THREE.MeshStandardMaterial({color:tint,roughness:.86,metalness:.05});
+  }
   obj.castShadow=false;obj.receiveShadow=false;
  });return mesh;
 }
-function foxPetDispose(entry){entry.root.parent?.remove(entry.root);entry.model?.traverse(o=>{if(o.isMesh){for(const m of Array.isArray(o.material)?o.material:[o.material])m?.dispose?.();}});}
+function foxPetDispose(entry){entry.root.parent?.remove(entry.root);entry.model?.traverse(o=>{if(o.isMesh){for(const m of Array.isArray(o.material)?o.material:[o.material])m?.dispose?.();if(o.userData.foxPetOwnGeometry)o.geometry?.dispose?.();}});}
 function animateFoxPets(t,indoor=false){
  const now=t*.001,visible=new Set(),roomId=tentRoomActive?.id;
  for(const p of state.players.values()){
