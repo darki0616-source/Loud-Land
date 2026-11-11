@@ -3327,9 +3327,9 @@ async function getTentFurnitureModel(itemId){
     // dimensions, not just a collision footprint. Preserve glTF's own
     // transform by scaling an outer group rather than replacing root.scale.
     const original=gltf.scene;
-    // Meshy supplied this stove in Z-up coordinates; rotate only this asset
-    // before calculating its visible bounds and the floor-aligned scale.
-    if(itemId==='hearth_stove')original.rotation.x=-Math.PI/2;
+    // v287: Hearth stove GLB is already Y-up. Do NOT rotate it on X:
+    // the previous -90-degree correction tipped the stove onto its side.
+    // Keep its original glTF orientation before floor alignment and fitting.
     original.updateMatrixWorld(true);
     const box=new THREE.Box3().setFromObject(original);
     const size=box.getSize(new THREE.Vector3()),center=box.getCenter(new THREE.Vector3());
