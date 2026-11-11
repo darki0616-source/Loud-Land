@@ -232,11 +232,12 @@ const shopStats=new Map();
 // Pet purchases and food use the SAME authoritative points ledger as tents.
 // v284: egg identity stays secret until natural hatching; no instant-hatch test endpoint.
 // Pets may continue to be summoned from egg stage and immediately after hatching.
-const PET_ADOPTION_COST=1000, PET_HATCH_MS=6*60*60*1000, PET_MAX_LEVEL=30;
+const PET_ADOPTION_COST=1000, PET_HATCH_MS=4*60*60*1000, PET_MAX_LEVEL=30;
 const PET_FOODS={snack:{cost:30,xp:15,name:'간식'},meal:{cost:100,xp:60,name:'식사'},feast:{cost:250,xp:170,name:'특식'}};
 const PET_COLORS=['#f16b69','#67b9f2','#75d8a0','#b68ae8','#f4eee0'];
 const PET_SPECIES=['fox','turtle','cat','rabbit','elephant','wolf']; // Equal odds; existing pet species and saved records are preserved.
 const petStats=new Map();
+let petHatchDurationMigrated=false;
 function petLevel(xp){
  let level=1;while(level<PET_MAX_LEVEL&&xp>=40*level+8*level*(level+1))level++;
  return level;
@@ -587,13 +588,16 @@ let saveChain=Promise.resolve();
 function stateData(){return {version:16,petStats:Object.fromEntries([...petStats].map(([identity,record])=>[identity,{spent:record.spent,pet:record.pet}])),fieldCoinLastSpawnAt,fieldCoins:fieldCoinPublic(),fieldCoinBonuses:Object.fromEntries(fieldCoinBonuses),moleDay,moleHammerRevision,moleReward,moleScores:Object.fromEntries(moleScores),moleAccounts:Object.fromEntries([...moleAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session,lastResult:v.lastResult}])),powerDay,powerReward,powerScores:Object.fromEntries(powerScores),powerAccounts:Object.fromEntries([...powerAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),rhythmAccounts:Object.fromEntries([...rhythmAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),furnitureCatalogEdits:Object.fromEntries(furnitureCatalogEdits),furnitureStats:Object.fromEntries([...furnitureStats].map(([id,v])=>[id,{spent:v.spent,owned:v.owned}])),tentStats:Object.fromEntries([...tentStats].map(([identity,t])=>[identity,storedTent(t)])),announcements:{entry:entranceNotices,ticker:tickerNotices,intervalMinutes:tickerIntervalMinutes,immediateHistory:immediateNoticeHistory},music,queue:[...queue],history:[...history],nextTrackToken,customMd:Object.fromEntries(customMd),shopStats:Object.fromEntries([...shopStats].map(([k,v])=>[k,{spent:0,refunded:v.refunded||0,owned:v.owned,equipped:v.equipped}])),badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),rhythm:{day:rhythmDay,reward:rhythmReward,scores:Object.fromEntries([...rhythmScores].map(([k,v])=>[k,{name:v.name,score:Math.max(0,Math.floor(Number(v.score)||0)),updatedAt:Number(v.updatedAt)||0}]))},savedAt:Date.now()}}
 function applySaved(d){
  if(!d||typeof d!=='object')return;
- petStats.clear();
+ petStats.clear();petHatchDurationMigrated=false;
  if(d.petStats&&typeof d.petStats==='object')for(const [identity,r] of Object.entries(d.petStats).slice(0,30000)){
   if(!/^[a-zA-Z0-9_-]{20,100}$/.test(identity)||!r||typeof r!=='object')continue;
   const spent=Number.isSafeInteger(r.spent)&&r.spent>=0&&r.spent<1000000000?r.spent:0;
   const x=r.pet;let pet=null;
   if(x&&PET_SPECIES.includes(x.species)&&PET_COLORS.includes(x.color)&&Number.isFinite(x.adoptedAt)&&Number.isFinite(x.hatchAt)&&Number.isSafeInteger(x.xp)&&x.xp>=0&&x.xp<=1000000){
-   pet={species:x.species,color:x.color,adoptedAt:x.adoptedAt,hatchAt:x.hatchAt,xp:x.xp,summoned:!!x.summoned};
+   // v297: shorten existing eggs too; never postpone a previously scheduled hatch.
+   const hatchAt=Math.min(x.hatchAt,x.adoptedAt+PET_HATCH_MS);
+   if(hatchAt!==x.hatchAt)petHatchDurationMigrated=true;
+   pet={species:x.species,color:x.color,adoptedAt:x.adoptedAt,hatchAt,xp:x.xp,summoned:!!x.summoned};
   }
   petStats.set(identity,{spent,pet});
  }
@@ -742,7 +746,7 @@ async function restorePlaylist(){
  maintainFieldCoins();
  // One-time v114 migration: legacy spent points were converted into refunded credits.
  // Persist the zero-spend records immediately so restarts never re-deduct them.
- if([...shopStats.values()].some(r=>r.refunded>0))scheduleSave();
+ if(petHatchDurationMigrated||[...shopStats.values()].some(r=>r.refunded>0))scheduleSave();
 }
 function saveNow(){
  if(!restored)return Promise.resolve();
