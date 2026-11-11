@@ -436,7 +436,7 @@ const TENT_ENTER_DISTANCE=5.0;
 function tentEntranceDistance(player,tent){return Math.hypot((player.x-600)*.058-tent.x,(player.y-500)*.058+8-tent.z);}
 const TENT_PAINTS={default:null,red:'#ef615a',orange:'#f59b42',yellow:'#f4dd63',green:'#78bd89',blue:'#709bda',black:'#292d38',white:'#f5f5f1'};
 function tentOccupancy(roomId){let count=0;for(const p of players.values())if(p.tentRoomId===roomId)count++;return count;}
-function publicTent(record){return {id:record.id,name:record.name,color:record.color,placed:!!record.placed,x:record.placed?record.x:null,z:record.placed?record.z:null,occupancy:tentOccupancy(record.id),capacity:TENT_MAX_OCCUPANCY,wallColor:record.wallColor||'default',floorColor:record.floorColor||'default',exteriorType:record.exteriorType||'none',exteriorText:record.exteriorType==='text'?(record.exteriorText||''):'',exteriorImageId:record.exteriorType==='image'?tentExteriorImageId(record):'',furnishings:(record.furnishings||[]).map(x=>({...x}))};}
+function publicTent(record){return {id:record.id,name:record.name,color:record.color,placed:!!record.placed,x:record.placed?record.x:null,z:record.placed?record.z:null,occupancy:tentOccupancy(record.id),capacity:TENT_MAX_OCCUPANCY,wallColor:record.wallColor||'default',floorColor:record.floorColor||'default',roomLightOn:record.roomLightOn!==false,exteriorType:record.exteriorType||'none',exteriorText:record.exteriorType==='text'?(record.exteriorText||''):'',exteriorImageId:record.exteriorType==='image'?tentExteriorImageId(record):'',furnishings:(record.furnishings||[]).map(x=>({...x}))};}
 function allPlacedTents(){return [...tentStats.values()].filter(t=>t.placed).map(publicTent)}
 function tentOwnedBy(identity){return identity?tentStats.get(identity)||null:null}
 function tentView(player){
@@ -607,7 +607,7 @@ function applySaved(d){
   const artImage=decodeTentExteriorImage(t.exteriorImage);
   const artType=['none','text','image'].includes(t.exteriorType)?t.exteriorType:'none';
   const artText=clean(t.exteriorText,TENT_EXTERIOR_MAX_TEXT);
-  const record={id:t.id,name:clean(t.name,22)||'나의 텐트',color:TENT_COLORS.includes(t.color)?t.color:TENT_COLORS[0],wallColor:Object.hasOwn(TENT_PAINTS,t.wallColor)?t.wallColor:'default',floorColor:Object.hasOwn(TENT_PAINTS,t.floorColor)?t.floorColor:'default',exteriorType:artType==='image'&&!artImage?'none':artType==='text'&&!artText?'none':artType,exteriorText:artText,exteriorImage:artImage?.source||'',furnishings:[],placed:false,x:null,z:null};
+  const record={id:t.id,name:clean(t.name,22)||'나의 텐트',color:TENT_COLORS.includes(t.color)?t.color:TENT_COLORS[0],wallColor:Object.hasOwn(TENT_PAINTS,t.wallColor)?t.wallColor:'default',floorColor:Object.hasOwn(TENT_PAINTS,t.floorColor)?t.floorColor:'default',roomLightOn:t.roomLightOn!==false,exteriorType:artType==='image'&&!artImage?'none':artType==='text'&&!artText?'none':artType,exteriorText:artText,exteriorImage:artImage?.source||'',furnishings:[],placed:false,x:null,z:null};
   if(Array.isArray(t.furnishings))for(const f of t.furnishings.slice(0,TENT_FURNITURE_MAX_PLACED)){
    const x=Number(f.x),z=Number(f.z),rotation=Number(f.rotation);
    if(!TENT_FURNITURE_CATALOG[f.itemId]||!/^[-a-f0-9]{36}$/.test(f.instanceId||'')||record.furnishings.some(x=>x.instanceId===f.instanceId))continue;
@@ -1145,7 +1145,7 @@ const server=http.createServer(async(req,res)=>{
           if(record)return json(res,409,{error:'이미 텐트를 보유하고 있어요.',...tentView(p)});
           const earned=tentPointBalance(p);
           if(earned<TENT_COST)return json(res,400,{error:`포인트가 부족해요. (${earned.toLocaleString()}/${TENT_COST.toLocaleString()}P)`});
-          record={id:crypto.randomUUID(),name:clean(p.name+'의 텐트',22),color:TENT_COLORS[0],wallColor:'default',floorColor:'default',exteriorType:'none',exteriorText:'',exteriorImage:'',furnishings:[],placed:false,x:null,z:null};
+          record={id:crypto.randomUUID(),name:clean(p.name+'의 텐트',22),color:TENT_COLORS[0],wallColor:'default',floorColor:'default',roomLightOn:true,exteriorType:'none',exteriorText:'',exteriorImage:'',furnishings:[],placed:false,x:null,z:null};
           tentStats.set(p.badgeIdentity,record);
           await saveNow();
           return json(res,200,{ok:true,...tentView(p)});
@@ -1222,6 +1222,13 @@ const server=http.createServer(async(req,res)=>{
           if(found<0)return json(res,404,{error:'배치된 아이템을 찾지 못했어요.'});
           record.furnishings.splice(found,1);
           await saveNow();sendTentUpdate();return json(res,200,{ok:true,...furnitureInventoryView(p),room:publicTent(record)});
+        }
+        if(command==='room-light'){
+          if(!record||!p.tentRoomId||p.tentRoomId!==record.id)return json(res,403,{error:'텐트 주인만 전체 조명을 조작할 수 있어요.'});
+          if(typeof d.enabled!=='boolean')return json(res,400,{error:'조명 상태가 올바르지 않아요.'});
+          record.roomLightOn=d.enabled;
+          await saveNow();sendTentUpdate();
+          return json(res,200,{ok:true,room:publicTent(record)});
         }
         if(command==='decorate'){
           if(!record||!p.tentRoomId||p.tentRoomId!==record.id)return json(res,403,{error:'텐트 주인만 실내를 꾸밀 수 있어요.'});
