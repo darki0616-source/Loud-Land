@@ -210,7 +210,7 @@ function nearRhythmBooth(){
 const powerGame={open:false,running:false,pending:false,playId:null,startedAt:0,clockOffset:0,activeUntil:10500,countdown:2400,coins:5,day:'',best:0,leaderboard:[],result:null};
 let powerUi=null;
 function nearPowerBooth(){return !tentRoomActive&&nearRhythmBooth();}
-function powerGaugeAt(elapsed){const period=1800,phase=((elapsed-2400)%period+period)%period/period;return phase<.5?phase*2:(1-phase)*2;}
+function powerGaugeAt(elapsed){const period=1500,phase=((elapsed-2400)%period+period)%period/period;return phase<.5?phase*2:(1-phase)*2;}
 function ensurePowerUI(){
  if(powerUi)return powerUi;
  const style=document.createElement('style');style.textContent=`
@@ -285,8 +285,13 @@ async function startPowerGame(){
 }
 async function strikePowerGame(force=false){
  if(!powerGame.running||!powerGame.playId||(!force&&powerUi.strike.disabled))return;
- const playId=powerGame.playId;powerGame.running=false;powerUi.strike.disabled=true;powerUi.message.textContent='💥 측정 중...';powerUi.hammer.classList.remove('hit');void powerUi.hammer.offsetWidth;powerUi.hammer.classList.add('hit');
- try{const r=await post('power',{id:state.id,sessionKey,command:'strike',playId});powerGame.playId=null;powerGame.best=r.best;powerGame.coins=r.account.coins;applyPowerState(r.power);powerUi.message.textContent=`💥 ${r.score}점! +${r.prize}P 획득!`;powerUi.start.hidden=false;powerUi.strike.hidden=true;renderPowerUI();void refreshTentStatus();}
+ // Capture the gauge position synchronously with the user's tap, before any network request.
+ const strikeElapsed=Math.round(Date.now()+powerGame.clockOffset-powerGame.startedAt);
+ const strikePosition=powerGaugeAt(strikeElapsed);
+ const playId=powerGame.playId;powerGame.running=false;powerUi.strike.disabled=true;
+ powerUi.needle.style.left=(strikePosition*100).toFixed(2)+'%';
+ powerUi.message.textContent='💥 측정 중...';powerUi.hammer.classList.remove('hit');void powerUi.hammer.offsetWidth;powerUi.hammer.classList.add('hit');
+ try{const r=await post('power',{id:state.id,sessionKey,command:'strike',playId,strikeElapsed});powerGame.playId=null;powerGame.best=r.best;powerGame.coins=r.account.coins;applyPowerState(r.power);powerUi.message.textContent=`💥 ${r.score}점! +${r.prize}P 획득! · 바 위치 ${Math.round((r.position??strikePosition)*100)}%`;powerUi.start.hidden=false;powerUi.strike.hidden=true;renderPowerUI();void refreshTentStatus();}
  catch(e){powerUi.message.textContent=e.message||'점수 저장 실패';powerGame.playId=null;powerUi.start.hidden=false;powerUi.strike.hidden=true;}
 }
 function updatePowerGame(){
@@ -1244,7 +1249,7 @@ function handleLiveAnnouncement(event){
  if(event.kind==='immediate')queueFestivalPopup('📣 ONEseason 전체 공지',text,true);
  else if(event.kind==='ticker')queueFestivalTicker(text);
 }
-function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='pet-update'){const p=state.players.get(d.id);if(p)p.pet=d.pet;if(state.me?.id===d.id)state.me.pet=d.pet;if(d.id===state.id&&petOverlay.classList.contains('show'))refreshPetStatus();return;}if(d.type==='snapshot'){setFieldCoins(d.fieldCoins);syncTents(d.tents);state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);applyPowerState(d.power);applyMoleState(d.mole);syncCrowdSurf(d.crowdSurf);if(Array.isArray(d.chat)){$('chatMessages').replaceChildren();d.chat.filter(entry=>(entry.roomId||null)===(tentRoomActive?.id||null)).forEach(appendChat)};for(const id of duoVfx.keys())removeDuoVfx(id);activeDuos.clear();for(const duo of d.interactions||[])activeDuos.set(duo.id,duo);syncDuoStatus()}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){if((d.entry.roomId||null)===(tentRoomActive?.id||null)){appendChat(d.entry);showBubble(d.entry)}}else if(d.type==='move'){recordTrainLeader(d.player);state.players.set(d.player.id,d.player);if(d.player.id===state.id&&currentDuo())state.me={...d.player}}else if(d.type==='flag'){const player=state.players.get(d.id);if(player){player.flagText=d.flagText;player.flagImage=d.flagImage||'';}if(d.id===state.id&&state.me){state.me.flagText=d.flagText;state.me.flagImage=d.flagImage||'';currentFlagText=d.flagText;currentFlagImageId=d.flagImage||'';refreshFlagButton();}}else if(d.type==='badge'){const person=state.players.get(d.id);if(person){person.badgeTier=d.badgeTier;person.badgeSeconds=d.badgeSeconds;if(d.id===state.id&&state.me){state.me.badgeTier=d.badgeTier;state.me.badgeSeconds=d.badgeSeconds;}renderOnlinePlayers();}}else if(d.type==='profile'){state.players.set(d.player.id,d.player);if(d.player.id===state.id){state.me=d.player;refreshProfilePreview();refreshRhythmReactionButton();if(!$('punkShop').classList.contains('hidden')||!$('mdWardrobe').hidden)refreshPunkShop()}renderOnlinePlayers()}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers()}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue,d.history);else if(d.type==='slam')applySlam(d.slam,d.cooldownUntil);else if(d.type==='slam-go')onSlamGo(d);else if(d.type==='slam-impact')spawnSlamDust(d.x,d.y);else if(d.type==='toast-spark')spawnToastSpark(d.x,d.y);else if(d.type==='cheer'&&d.playerId!==state.id&&state.audioEnabled)playCheer();else if(d.type==='rockplay')applyRockPlay(d.event,d.rockCooldowns,d.rockRunningUntil);else if(d.type==='rockplay-go')onRockPlayGo(d);else if(d.type==='rockplay-cancel'){applyRockPlay(null,d.rockCooldowns,0);toast(d.reason||'인원이 부족해 취소됐어요.')} else if(d.type==='rhythm-state')applyRhythmState(d.rhythm);else if(d.type==='power-state')applyPowerState(d.power);else if(d.type==='field-coins')setFieldCoins(d.coins);else if(d.type==='mole-state')applyMoleState(d.mole);else if(d.type==='md-catalog')syncMdCatalog(d.items);else if(d.type==='tent-furniture-catalog'){
+function listen(){state.es?.close();state.es=new EventSource('/api/events?id='+encodeURIComponent(state.id));state.es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='pet-update'){const p=state.players.get(d.id);if(p)p.pet=d.pet;if(state.me?.id===d.id)state.me.pet=d.pet;if(d.id===state.id&&petOverlay.classList.contains('show'))refreshPetStatus();return;}if(d.type==='snapshot'){setFieldCoins(d.fieldCoins);syncTents(d.tents);state.players=new Map(d.players.map(p=>[p.id,p]));$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);applyPowerState(d.power);applyMoleState(d.mole);syncCrowdSurf(d.crowdSurf);if(Array.isArray(d.chat)){$('chatMessages').replaceChildren();d.chat.filter(entry=>(entry.roomId||null)===(tentRoomActive?.id||null)).forEach(appendChat)};for(const id of duoVfx.keys())removeDuoVfx(id);activeDuos.clear();for(const duo of d.interactions||[])activeDuos.set(duo.id,duo);syncDuoStatus()}else if(d.type==='join'){state.players.set(d.player.id,d.player);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers();if(d.player.id!==state.id)notice(d.player.name+' 들어왔습니다')}else if(d.type==='chat'){if((d.entry.roomId||null)===(tentRoomActive?.id||null)){appendChat(d.entry);showBubble(d.entry)}}else if(d.type==='move'){recordTrainLeader(d.player);state.players.set(d.player.id,d.player);if(d.player.id===state.id&&currentDuo())state.me={...d.player}}else if(d.type==='flag'){const player=state.players.get(d.id);if(player){player.flagText=d.flagText;player.flagImage=d.flagImage||'';}if(d.id===state.id&&state.me){state.me.flagText=d.flagText;state.me.flagImage=d.flagImage||'';currentFlagText=d.flagText;currentFlagImageId=d.flagImage||'';refreshFlagButton();}}else if(d.type==='badge'){const person=state.players.get(d.id);if(person){person.badgeTier=d.badgeTier;person.badgeSeconds=d.badgeSeconds;if(d.id===state.id&&state.me){state.me.badgeTier=d.badgeTier;state.me.badgeSeconds=d.badgeSeconds;}renderOnlinePlayers();}}else if(d.type==='profile'){state.players.set(d.player.id,d.player);if(d.player.id===state.id){state.me=d.player;refreshProfilePreview();refreshRhythmReactionButton();if(!$('punkShop').classList.contains('hidden')||!$('mdWardrobe').hidden)refreshPunkShop()}renderOnlinePlayers()}else if(d.type==='leave'){state.players.delete(d.id);$('online').textContent=d.count;updateCrowdCount(d.count);renderOnlinePlayers()}else if(d.type==='music')applyMusic(d.music,d.serverNow,d.queue,d.history);else if(d.type==='slam')applySlam(d.slam,d.cooldownUntil);else if(d.type==='slam-go')onSlamGo(d);else if(d.type==='slam-impact')spawnSlamDust(d.x,d.y);else if(d.type==='toast-spark')spawnToastSpark(d.x,d.y);else if(d.type==='cheer'&&d.playerId!==state.id&&state.audioEnabled)playCheer();else if(d.type==='rockplay')applyRockPlay(d.event,d.rockCooldowns,d.rockRunningUntil);else if(d.type==='rockplay-go')onRockPlayGo(d);else if(d.type==='rockplay-cancel'){applyRockPlay(null,d.rockCooldowns,0);toast(d.reason||'인원이 부족해 취소됐어요.')} else if(d.type==='rhythm-state')applyRhythmState(d.rhythm);else if(d.type==='power-state')applyPowerState(d.power);else if(d.type==='field-coins')setFieldCoins(d.coins);else if(d.type==='field-coin-collected'){if(d.playerId===state.id){toast('🪙 '+Number(d.value||0).toLocaleString()+'P 획득!');void refreshTentStatus();}}else if(d.type==='mole-state')applyMoleState(d.mole);else if(d.type==='md-catalog')syncMdCatalog(d.items);else if(d.type==='tent-furniture-catalog'){
    tentFurnitureModels.clear();tentFurnitureThumbs.clear();
    if(tentFurniturePlacement){cancelTentFurniturePlacement();toast('상품 크기가 변경될 수 있어요. 배치를 다시 선택해 주세요.');}
    if(tentFurnitureData)tentFurnitureData.catalog=d.catalog||{};
@@ -1946,7 +1951,7 @@ function playCheer(){
   audio.play().catch(error=>console.warn('Cheer sound could not play',error));
  }catch(error){console.warn('Cheer sound unavailable',error)}
 }
-function sendMove(){if(!state.id||!state.me||currentDuo())return;let p=state.me;if(tentRoomActive){tentRequest('room-action',{action:p.action,pose:p.pose,glowColor:p.glowColor,glowEnabled:p.glowEnabled,headbangBpm:p.headbangBpm,headbangBeatAt:p.headbangBeatAt}).catch(()=>{});return;}post('move',{id:state.id,x:Math.round(p.x),y:Math.round(p.y),facing:p.facing,action:p.action,pose:p.pose||'stand',glowColor:p.glowColor||'lime',glowEnabled:Boolean(p.glowEnabled),headbangBpm:Math.max(40,Math.min(240,Number(p.headbangBpm)||120)),headbangBeatAt:Number(p.headbangBeatAt)||headbangServerTime()}).catch(()=>{})}
+function sendMove(){if(!state.id||!state.me||currentDuo())return;let p=state.me;if(tentRoomActive){tentRequest('room-action',{action:p.action,pose:p.pose,glowColor:p.glowColor,glowEnabled:p.glowEnabled,headbangBpm:p.headbangBpm,headbangBeatAt:p.headbangBeatAt}).catch(()=>{});return;}post('move',{id:state.id,sessionKey,x:Math.round(p.x),y:Math.round(p.y),facing:p.facing,action:p.action,pose:p.pose||'stand',glowColor:p.glowColor||'lime',glowEnabled:Boolean(p.glowEnabled),headbangBpm:Math.max(40,Math.min(240,Number(p.headbangBpm)||120)),headbangBeatAt:Number(p.headbangBeatAt)||headbangServerTime()}).catch(()=>{})}
 // Shared SLAM countdown (server timestamps, 15 s global launch cooldown).
 const slamButton=$('slamButton'),slamInfo=$('slamInfo'),slamMarker=$('slamMarker'),slamCount=$('slamCount'),slamMembers=$('slamMembers'),slamJoin=$('slamJoin');
 function slamNow(){return Date.now()+state.serverDelta}
@@ -2601,14 +2606,6 @@ function animateFieldCoins(t){
   n.halo.material.opacity=.35+.24*Math.sin(t*.002+n.coin.y);
   n.group.visible=!tentRoomActive;
  }
-}
-let fieldCoinCollectPending=false;
-async function collectFieldCoin(coinId){
- if(fieldCoinCollectPending||!state.id)return;
- fieldCoinCollectPending=true;
- try{const result=await post('field-coin',{id:state.id,sessionKey,command:'collect',coinId});setFieldCoins(result.coins);toast('🪙 '+result.value.toLocaleString()+'P 획득!');void refreshTentStatus();}
- catch(err){toast(err.message);post('field-coin',{id:state.id,command:'state'}).then(r=>setFieldCoins(r.coins)).catch(()=>{});}
- finally{fieldCoinCollectPending=false;}
 }
 function clickedFieldCoin(ray){
  if(!fieldCoinNodes.size)return null;
@@ -7980,13 +7977,26 @@ gameTouchSurface.addEventListener('pointerup',e=>{
     else tentRoomWalkTarget={x:THREE.MathUtils.clamp(target.point.x,-4.6,4.6),z:THREE.MathUtils.clamp(target.point.z,-3.6,3.6)};}
   return;
  }
- // Clicking a glowing world coin requests an authoritative pickup. Not a walk tap.
- if(!tentPlaceMode&&!rockPlacementMode&&!slamMode){
+ // Tapping a coin is a WALK destination, not a second collect action.
+ // Pickup happens automatically on the server when we arrive nearby.
+ if(!tentPlaceMode&&!rockPlacementMode&&!slamMode&&!currentDuo()){
   const bounds=renderer.domElement.getBoundingClientRect();
   pointer.set(((e.clientX-bounds.left)/bounds.width)*2-1,-((e.clientY-bounds.top)/bounds.height)*2+1);
   groundRay.setFromCamera(pointer,camera);
   const coinId=clickedFieldCoin(groundRay);
-  if(coinId){void collectFieldCoin(coinId);return;}
+  const coin=coinId?fieldCoinNodes.get(coinId)?.coin:null;
+  if(coin){
+   closeDuoMenu();
+   if(!$('chatPanel').classList.contains('hidden'))selectBottomMenu('reaction');
+   state.benchTarget=null;
+   if(slamMotion){slamMotion=null;state.action='idle';state.actionUntil=0;state.me.action='idle'}
+   if(rockMotion&&!(rockMotion.kind==='train'&&rockMotion.leaderId===state.id))finishRockMotion();
+   if(state.pose!=='stand'){state.pose='stand';state.me.pose='stand';updateActionButtons()}
+   state.walkTarget={x:coin.x,y:coin.y};
+   const spot=toWorld(coin);
+   moveMarker.position.set(spot.x,.065,spot.z);moveMarker.visible=true;moveMarkerUntil=performance.now()+1150;
+   return;
+  }
  }
  // An actual tent is a world entrance: prioritize its mesh over nearby
  // avatars so clicking a door does not accidentally open a duo invitation.

@@ -104,6 +104,25 @@ function maintainFieldCoins(now=Date.now()){
 }
 setInterval(()=>{if(restored)maintainFieldCoins()},15000).unref();
 
+// v294: Automatically pick up a field coin when the player's SERVER-reported
+// position enters its pickup radius. The server removes the coin first, so
+// simultaneous arrivals can never receive the same reward twice.
+const FIELD_COIN_PICKUP_RADIUS=1.65; // world units (server coords use 0.058 units/pixel)
+function collectNearbyFieldCoin(p){
+ if(!p||!p.badgeIdentity||p.tentRoomId||!fieldCoins.size)return false;
+ for(const coin of fieldCoins.values()){
+  if(Math.hypot((p.x-coin.x)*.058,(p.y-coin.y)*.058)>FIELD_COIN_PICKUP_RADIUS)continue;
+  fieldCoins.delete(coin.id);
+  fieldCoinBonuses.set(p.badgeIdentity,(fieldCoinBonuses.get(p.badgeIdentity)||0)+coin.value);
+  broadcast({type:'field-coins',coins:fieldCoinPublic()});
+  broadcast({type:'field-coin-collected',playerId:p.id,value:coin.value});
+  scheduleSave();
+  return true;
+ }
+ return false;
+}
+
+
 // v252: 5 server-issued plays per KST day; bonuses are lifetime point credits.
 const RHYTHM_DAILY_COINS=5;
 const rhythmAccounts=new Map();
@@ -119,7 +138,9 @@ function rhythmPrize(score){return score>=120000?50:score>=80000?30:score>=50000
 // v254: Separate hammer-game coins; score is computed from the server's own clock.
 // Shared Beat Booth proximity for both games.
 const POWER_BOOTH=RHYTHM_BOOTH;
-const POWER_DAILY_COINS=5,POWER_COUNTDOWN_MS=2400,POWER_PERIOD_MS=1800,POWER_ACTIVE_MS=10500;
+const POWER_DAILY_COINS=5,POWER_COUNTDOWN_MS=2400,POWER_PERIOD_MS=1500,POWER_ACTIVE_MS=10500;
+// Permit a short network transit time while checking the reported tap moment against server time.
+const POWER_MAX_STRIKE_LAG_MS=650,POWER_CLOCK_SKEW_MS=180;
 const powerAccounts=new Map(),powerScores=new Map();
 let powerDay=kstDate();
 function powerAccount(identity){
@@ -131,7 +152,7 @@ function powerAccount(identity){
 function powerAccountView(p){const a=powerAccount(p.badgeIdentity);return {coins:Math.max(0,POWER_DAILY_COINS-a.used),limit:POWER_DAILY_COINS,used:a.used,day:a.day};}
 function powerPrize(score){return score>=900?50:score>=700?30:score>=500?10:1;}
 function powerGauge(elapsed){const phase=((elapsed-POWER_COUNTDOWN_MS)%POWER_PERIOD_MS+POWER_PERIOD_MS)%POWER_PERIOD_MS/POWER_PERIOD_MS;return phase<.5?phase*2:(1-phase)*2;}
-function powerScore(elapsed){return elapsed<POWER_COUNTDOWN_MS||elapsed>POWER_ACTIVE_MS?0:Math.max(0,Math.min(1000,Math.round(1000-2000*Math.abs(powerGauge(elapsed)-.5))));}
+function powerScore(elapsed){return elapsed<POWER_COUNTDOWN_MS||elapsed>POWER_ACTIVE_MS?0:Math.max(0,Math.min(1000,Math.round(1000-4500*Math.abs(powerGauge(elapsed)-.5))));}
 // v255: Yesterday's highest score owns the Power King title and reaction for today only.
 // Keep identity private: never include it in public leaderboard/reward payloads.
 let powerReward=null;
@@ -1415,6 +1436,9 @@ const server=http.createServer(async(req,res)=>{
         }
         p.action=['idle','walk','peace','jump','run','wave','clap','sit','lie','drink','snack','headbang','buriburi','groove','dougie','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','powerking','moleking','marshmallow','putyourhandsup','nightfirework','heartbow','drum','electricguitar','bassguitar','vocal','mosh-charge','slam-charge','slam-retreat','slam-celebrate','circle-run','train-run','row-paddle','toast-clink','surf-rider','surf-support','shoulder-headbang','rock-skank'].includes(d.action)?d.action:'idle';
         broadcast({type:'move',player:p});
+        // Only a movement packet from this player's private session may
+        // award coins; publicly visible avatar IDs are not authentication.
+        if(playerSessions.get(id)&&playerSessions.get(id)===String(d.sessionKey||''))collectNearbyFieldCoin(p);
         if(p.action==='cheer'&&previousAction!=='cheer')broadcast({type:'cheer',playerId:id});
         // Fire once, when the FIRST participant changes from charging to retreating.
         // This is server-broadcast, so spectators see the same dust burst.
@@ -1627,13 +1651,20 @@ const server=http.createServer(async(req,res)=>{
           const session=account.session;
           if(!session||session.id!==d.playId)return json(res,409,{error:'유효한 플레이가 아닙니다.'});
           const elapsed=Date.now()-session.startedAt;
-          // One strike per coin; do not trust client-supplied scores or timing.
-          const score=powerScore(elapsed),prize=powerPrize(score);
+          // The client sends the gauge position's timestamp at the actual tap, not after HTTP latency.
+          // Never accept a score from the client; verify the reported tap time is close to server time.
+          const reportedElapsed=Number(d.strikeElapsed);
+          const validTap=Number.isFinite(reportedElapsed)&&reportedElapsed>=0&&
+            reportedElapsed<=POWER_ACTIVE_MS+400&&
+            reportedElapsed>=elapsed-POWER_MAX_STRIKE_LAG_MS&&
+            reportedElapsed<=elapsed+POWER_CLOCK_SKEW_MS;
+          const scoreElapsed=validTap?reportedElapsed:elapsed;
+          const score=powerScore(scoreElapsed),prize=powerPrize(score);
           account.session=null;account.bonus+=prize;
           const best=powerScores.get(p.badgeIdentity);
           if(!best||score>best.score)powerScores.set(p.badgeIdentity,{name:p.name,score,at:Date.now()});
           await saveNow();broadcast({type:'power-state',power:publicPowerState()});
-          return json(res,200,{ok:true,score,prize,points:tentPointBalance(p),best:powerScores.get(p.badgeIdentity)?.score||score,account:powerAccountView(p),power:publicPowerState()});
+          return json(res,200,{ok:true,score,prize,position:powerGauge(scoreElapsed),points:tentPointBalance(p),best:powerScores.get(p.badgeIdentity)?.score||score,account:powerAccountView(p),power:publicPowerState()});
         }
         return json(res,400,{error:'지원하지 않는 파워왕 명령입니다.'});
       }
