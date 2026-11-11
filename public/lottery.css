@@ -30,3 +30,7 @@
 .lottery-window.jackpot{animation:lottery-glow 1s ease-in-out 4 alternate}@keyframes lottery-glow{from{box-shadow:0 20px 70px #0009,0 0 20px #9d68ff}to{box-shadow:0 20px 70px #0009,0 0 90px #ffdc5a}}
 @media(max-width:650px){.lottery-overlay{padding:7px;align-items:flex-start}.lottery-window{max-height:calc(100dvh - 14px);border-radius:16px}.lottery-head{padding:13px 15px}.lottery-subhead{padding:10px 14px}.lottery-main{display:flex;flex-direction:column;align-items:center;gap:10px;padding:12px}.lottery-ticket{width:min(100%,340px);max-height:none}.lottery-side{width:100%;display:grid;grid-template-columns:1fr 1fr;gap:9px}.lottery-side .lottery-info:first-child{grid-column:1/-1}.lottery-side .lottery-action,.lottery-side .lottery-message,.lottery-side .lottery-reveal-button{grid-column:1/-1}.lottery-info{padding:10px}.lottery-info h3{font-size:12px}.lottery-odds{font-size:11px}.lottery-odds td{padding:6px 0}.lottery-guide{font-size:11px}.lottery-note{padding:0 12px 12px}.lottery-near-button{bottom:180px}}
 @media(max-width:380px){.lottery-side{grid-template-columns:1fr}.lottery-side .lottery-info:first-child{grid-column:auto}}
+
+/* v303: distinct celebration for the new 1,000P ultra-high prize. */
+.lottery-window.ultra{animation:lottery-ultra-glow 1s ease-in-out 3 alternate}
+@keyframes lottery-ultra-glow{from{box-shadow:0 20px 70px #0009,0 0 15px #6ab6ff}to{box-shadow:0 20px 70px #0009,0 0 65px #85edff}}

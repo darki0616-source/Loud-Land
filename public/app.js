@@ -9079,11 +9079,11 @@ gameTouchSurface.addEventListener('pointermove',e=>{
 
 // v302 scratch lottery overlay is independent of the game UI; CSS/assets are local.
 
-const lotteryCss=document.createElement('link');lotteryCss.rel='stylesheet';lotteryCss.href='/lottery.css?v=302';document.head.append(lotteryCss);
+const lotteryCss=document.createElement('link');lotteryCss.rel='stylesheet';lotteryCss.href='/lottery.css?v=303';document.head.append(lotteryCss);
 let lotteryUi=null,lotteryData=null,lotteryBusy=false,lotteryWalkToBooth=false;
 let lotteryMaskTicketId='',lotteryScratching=false,lotteryRevealing=false,lotteryLastPoint=null,lotteryCoverageAt=0;
-const lotteryNames={miss:'꽝',small:'소액 당첨',normal:'일반 당첨',high:'고액 당첨',jackpot:'대박 당첨'};
-const lotteryIcons=new Set(['star','coin','diamond','crown','broken']);
+const lotteryNames={miss:'꽝',small:'소액 당첨',normal:'일반 당첨',high:'고액 당첨',ultra:'초고액 당첨',jackpot:'대박 당첨'};
+const lotteryIcons=new Set(['star','coin','diamond','gem','crown','broken']);
 function nearLotteryBooth(){
  if(!state.me||tentRoomActive)return false;
  return Math.hypot((state.me.x-600)*.058-38,(state.me.y-500)*.058+8-(-7.2))<=9.5;
@@ -9097,7 +9097,7 @@ function ensureLotteryUi(){
   <header class="lottery-head"><div><small>ONEseason FESTIVAL</small><h2 id="lotteryTitle">🎟️ LOTTERY SHOP</h2></div><button class="lottery-close" type="button" aria-label="닫기">×</button></header>
   <div class="lottery-subhead"><span class="lottery-wallet" id="lotteryWallet">보유 0P</span><span class="lottery-remaining" id="lotteryRemaining">오늘 남은 복권 5 / 5</span></div>
   <div class="lottery-main"><div class="lottery-ticket" aria-label="스크래치 복권"><div class="lottery-scratch-field" id="lotteryScratchField"><div class="lottery-symbols" id="lotterySymbols"></div><canvas class="lottery-scratch-canvas" id="lotteryScratchCanvas" aria-label="마우스나 손가락으로 긁어서 결과를 확인하세요"></canvas></div><div class="lottery-prize-tag" id="lotteryPrizeTag">100P · 행운을 긁어보세요</div></div>
-  <aside class="lottery-side"><div class="lottery-info"><h3>✦ 당첨 확률과 보상</h3><table class="lottery-odds"><tbody><tr><td>✕ 꽝</td><td>30%</td><td>0P</td></tr><tr><td>🪙 소액</td><td>30%</td><td>50P</td></tr><tr><td>⭐ 일반</td><td>30%</td><td>100P</td></tr><tr><td>💎 고액</td><td>9.95%</td><td>300P</td></tr><tr><td>👑 대박</td><td>0.05%</td><td>5,000P</td></tr></tbody></table></div>
+  <aside class="lottery-side"><div class="lottery-info"><h3>✦ 당첨 확률과 보상</h3><table class="lottery-odds"><tbody><tr><td>✕ 꽝</td><td>30%</td><td>0P</td></tr><tr><td>🪙 소액</td><td>25%</td><td>50P</td></tr><tr><td>⭐ 일반</td><td>25%</td><td>100P</td></tr><tr><td>💎 고액</td><td>15%</td><td>300P</td></tr><tr><td>✨ 초고액</td><td>4%</td><td>1,000P</td></tr><tr><td>👑 대박</td><td>1%</td><td>5,000P</td></tr></tbody></table></div>
   <div class="lottery-info lottery-guide"><h3>✦ 이용 방법</h3><strong>PC는 마우스로, 모바일은 손가락으로</strong> 은색 부분을 문질러 긁으세요.<br>1장 100P · 하루 5장 · 한국시간 자정 초기화</div>
   <div class="lottery-message" id="lotteryMessage" aria-live="polite">복권을 구매하면 긁을 수 있어요.</div><button class="lottery-reveal-button" id="lotteryReveal" type="button">🎁 당첨 결과 확인</button><button class="lottery-action" id="lotteryBuy" type="button">100P로 복권 구매하기</button></aside></div>
   <div class="lottery-note">게임 내 포인트 전용 · 현금 교환 불가 · 당첨 결과는 서버에서 무작위로 결정됩니다.</div></section>`;
@@ -9142,6 +9142,7 @@ function lotteryRender(){
  ui.remaining.textContent='오늘 남은 복권 '+d.remaining+' / '+d.limit;
  const ticket=d.ticket,won=d.lastResult;
  ui.window.classList.toggle('jackpot',!ticket&&won?.tier==='jackpot');
+ ui.window.classList.toggle('ultra',!ticket&&won?.tier==='ultra');
  ui.field.classList.toggle('active',!!ticket);
  ui.reveal.classList.remove('show');
  if(ticket){

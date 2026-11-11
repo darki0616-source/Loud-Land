@@ -288,11 +288,12 @@ const LOTTERY_PRICE=100,LOTTERY_DAILY_LIMIT=5;
 const LOTTERY_BOOTH={x:38,z:-7.2,radius:9.5};
 const LOTTERY_PRIZES=[
  {tier:'miss',chance:3000,prize:0,symbols:['star','coin','diamond']},
- {tier:'small',chance:3000,prize:50,symbols:['coin','coin','coin']},
- {tier:'normal',chance:3000,prize:100,symbols:['star','star','star']},
- {tier:'high',chance:995,prize:300,symbols:['diamond','diamond','diamond']},
- {tier:'jackpot',chance:5,prize:5000,symbols:['crown','crown','crown']}
-]; // 10,000 tickets: 30/30/30/9.95/.05 percent.
+ {tier:'small',chance:2500,prize:50,symbols:['coin','coin','coin']},
+ {tier:'normal',chance:2500,prize:100,symbols:['star','star','star']},
+ {tier:'high',chance:1500,prize:300,symbols:['diamond','diamond','diamond']},
+ {tier:'ultra',chance:400,prize:1000,symbols:['gem','gem','gem']},
+ {tier:'jackpot',chance:100,prize:5000,symbols:['crown','crown','crown']}
+]; // 10,000 tickets: 30/25/25/15/4/1 percent. Total = 10,000.
 const lotteryStats=new Map();
 function lotteryAccount(identity){
  const today=kstDate();let a=lotteryStats.get(identity);
