@@ -7741,9 +7741,10 @@ function disposeAvatar(root){
  for(const texture of textures)if(!sharedWingResources.has(texture))texture.dispose();
 }
 
-// v275: Use artist-painted UV textures verbatim. No fur masks, vertex tints, or mesh splits.
-// Lv.1 has five supplied color variants. Lv.10 and Lv.25 keep their original GLB textures
-// until matching color variants are supplied for those stages.
+// v276: Artist-painted UV textures for all three evolution stages.
+// Drop fox_lv{stage}_{color}.png (stage=1,10,25; color=red,blue,green,purple,white)
+// into /public/assets/pets/fox/. Missing variants fall back to the original GLB texture.
+// No masks, vertex tints, mesh splits, or runtime recoloring.
 const foxPetTemplates=new Map(),foxPetNodes=new Map();
 const foxPetLoader=new GLTFLoader();
 const foxPetTextureLoader=new THREE.TextureLoader();
@@ -7758,14 +7759,14 @@ for(const stage of [1,10,25]){
  },undefined,e=>console.warn('Fox pet model unavailable:',stage,e));
 }
 function foxPetGetPaintedTexture(stage,color){
- if(stage!==1)return undefined; // No matching textures yet for evolved foxes.
+ if(stage!==1&&stage!==10&&stage!==25)return undefined;
  const name=foxPetColorNames.get(String(color||'').toLowerCase())||'white';
  const key=stage+'|'+name;
  let record=foxPetTextureCache.get(key);
  if(record)return record;
  record={ready:false,failed:false,texture:null};
  foxPetTextureCache.set(key,record);
- const url='/assets/pets/fox/fox_lv1_'+name+'.png?v=275';
+ const url='/assets/pets/fox/fox_lv'+stage+'_'+name+'.png?v=276';
  record.texture=foxPetTextureLoader.load(url,texture=>{
   texture.flipY=false; // GLB UVs expect glTF's texture orientation, not TextureLoader default.
   texture.colorSpace=THREE.SRGBColorSpace;
