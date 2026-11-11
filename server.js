@@ -272,6 +272,14 @@ function loadTentFurnitureCatalog(){
    description:'중앙 화구에서 불꽃이 피어오르고 주변을 따뜻하게 밝히는 난로',
    bedEnabled:false,bedSurfaceHeight:null,lightEnabled:true};
  }
+ // v286: Built-in floor lamp, preserving administrator catalog entries.
+ const lampFile=path.join(PUBLIC,'assets/tent-items/floor_lamp.glb');
+ if(fs.existsSync(lampFile)&&!catalog.floor_lamp){
+  catalog.floor_lamp={name:'스탠드 조명',cost:350,asset:'/assets/tent-items/floor_lamp.glb',
+   width:0.62,depth:0.62,height:1.85,
+   description:'상단 갓 안쪽에서 은은한 따뜻한 빛이 퍼지는 스탠드 조명',
+   bedEnabled:false,bedSurfaceHeight:null,lightEnabled:true};
+ }
  return catalog;
 }
 // v249: Live administrator catalog. Metadata lives in the persisted game state,

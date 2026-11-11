@@ -3216,6 +3216,34 @@ function disposeTentStoveFlames(flames){
  flames.group.parent?.remove(flames.group);
  for(const sprite of flames.sprites)sprite.material.dispose();
 }
+// v286: The supplied floor lamp is Y-up, with the open shade at the very top.
+// All positions are in the fitted furniture's local coordinates.
+function createTentFloorLampGlow(height,width){
+ const group=new THREE.Group();group.name='floor-lamp-top-light';
+ const openingY=height*.978;
+ const radius=Math.max(.075,width*.255);
+ const disk=new THREE.Mesh(new THREE.CircleGeometry(radius,24),
+  new THREE.MeshBasicMaterial({color:0xfff2cb,transparent:true,opacity:.80,
+   side:THREE.DoubleSide,depthWrite:false,blending:THREE.AdditiveBlending,toneMapped:false}));
+ disk.rotation.x=-Math.PI/2;disk.position.set(0,openingY,0);
+ disk.renderOrder=3;group.add(disk);
+ const bulb=new THREE.Mesh(new THREE.SphereGeometry(Math.max(.038,width*.077),12,8),
+  new THREE.MeshBasicMaterial({color:0xfff7e2,toneMapped:false}));
+ bulb.position.set(0,openingY+.016,0);group.add(bulb);
+ const halo=new THREE.Sprite(new THREE.SpriteMaterial({
+  map:getTentFurnitureGlowTexture(),color:0xffe3ae,transparent:true,
+  depthWrite:false,depthTest:false,blending:THREE.AdditiveBlending,opacity:.35}));
+ halo.position.set(0,openingY+.035,0);
+ halo.scale.set(width*1.35,width*1.35,1);halo.renderOrder=4;group.add(halo);
+ return {group,disk,bulb,halo};
+}
+function disposeTentFloorLampGlow(effect){
+ if(!effect)return;
+ effect.group.parent?.remove(effect.group);
+ effect.disk.geometry.dispose();effect.disk.material.dispose();
+ effect.bulb.geometry.dispose();effect.bulb.material.dispose();
+ effect.halo.material.dispose();
+}
 function tentFurnitureHasLight(itemId){
  const item=tentRoomActive?.furnitureCatalog?.[itemId]||tentFurnitureData?.catalog?.[itemId];
  if(!item)return false;
@@ -3227,17 +3255,19 @@ function attachTentFurnitureLight(instanceId,itemId,obj){
  if(!tentFurnitureHasLight(itemId))return;
  const item=tentRoomActive?.furnitureCatalog?.[itemId]||tentFurnitureData?.catalog?.[itemId];
  const h=Math.max(.1,Number(item?.height)||1);
- const stove=itemId==='hearth_stove';
- const y=stove?h*.91:THREE.MathUtils.clamp(h*.58,.16,Math.max(.16,h-.10));
- const range=stove?4.4:THREE.MathUtils.clamp(h*4.2,3.2,5.3);
- const light=new THREE.PointLight(stove?0xff892b:0xffc477,stove?7.5:11.5,range,2);
+ const stove=itemId==='hearth_stove',lamp=itemId==='floor_lamp';
+ const y=lamp?h*.97:stove?h*.91:THREE.MathUtils.clamp(h*.58,.16,Math.max(.16,h-.10));
+ const range=lamp?4.8:stove?4.4:THREE.MathUtils.clamp(h*4.2,3.2,5.3);
+ const light=new THREE.PointLight(lamp?0xffe4b3:stove?0xff892b:0xffc477,
+  lamp?6.5:stove?7.5:11.5,range,2);
  light.position.set(0,y,0);light.castShadow=false;
  obj.add(light);
  const glow=new THREE.Sprite(new THREE.SpriteMaterial({
   map:getTentFurnitureGlowTexture(),color:0xffd396,transparent:true,
   blending:THREE.AdditiveBlending,depthWrite:false,depthTest:false,opacity:.46
  }));
- glow.scale.set(Math.max(.32,Math.min(.75,h*.65)),Math.max(.37,Math.min(.83,h*.73)),1);
+ glow.scale.set(lamp?1.05:Math.max(.32,Math.min(.75,h*.65)),
+  lamp?1.05:Math.max(.37,Math.min(.83,h*.73)),1);
  glow.position.set(0,y,0);glow.renderOrder=3;obj.add(glow);
  const pool=new THREE.Mesh(new THREE.PlaneGeometry(range*1.35,range*1.35),
   new THREE.MeshBasicMaterial({map:getTentFurnitureGlowTexture(),color:0xffc477,
@@ -3247,13 +3277,17 @@ function attachTentFurnitureLight(instanceId,itemId,obj){
  obj.add(pool);
  const flames=stove?createTentStoveFlames(h):null;
  if(flames)obj.add(flames.group);
- tentFurnitureLightEffects.set(instanceId,{obj,light,glow,pool,flames,stove,phase:tentFurnitureLightEffects.size*1.87});
+ const lampGlow=lamp?createTentFloorLampGlow(h,Number(item?.width)||.62):null;
+ if(lampGlow)obj.add(lampGlow.group);
+ tentFurnitureLightEffects.set(instanceId,{obj,light,glow,pool,flames,stove,lamp,lampGlow,
+  phase:tentFurnitureLightEffects.size*1.87});
 }
 function clearTentFurnitureLightEffects(){
  for(const fx of tentFurnitureLightEffects.values()){
   fx.obj.remove(fx.light,fx.glow,fx.pool);
   fx.glow.material.dispose();fx.pool.material.dispose();fx.pool.geometry.dispose();
   disposeTentStoveFlames(fx.flames);
+  disposeTentFloorLampGlow(fx.lampGlow);
  }
  tentFurnitureLightEffects.clear();
 }
@@ -3268,9 +3302,10 @@ function animateTentFurnitureLightEffects(t){
   const fx=nearest[i],wave=Math.sin(t*.0023+fx.phase)*.035+
    Math.sin(t*.0081+fx.phase*1.7)*.025;
   fx.light.visible=i<4;
-  fx.light.intensity=(fx.stove?7.5:11.5)*(1+wave*(fx.stove?3.1:1));
-  fx.glow.material.opacity=(fx.stove?.38:.46)+wave*.55;
-  fx.pool.material.opacity=(fx.stove?.23:.16)+wave*.10;
+  fx.light.intensity=(fx.lamp?6.5:fx.stove?7.5:11.5)*(1+wave*(fx.stove?3.1:fx.lamp?.45:1));
+  fx.glow.material.opacity=(fx.lamp?.32:fx.stove?.38:.46)+wave*(fx.lamp?.28:.55);
+  fx.pool.material.opacity=(fx.lamp?.12:fx.stove?.23:.16)+wave*.10;
+  if(fx.lampGlow)fx.lampGlow.halo.material.opacity=.35+wave*.20;
   if(fx.flames)for(const sprite of fx.flames.sprites){
    const b=sprite.userData.flameBase,phase=t*.006+b.phase;
    const flicker=1+Math.sin(phase)*.13+Math.sin(phase*1.73)*.065;
@@ -3465,9 +3500,12 @@ function initTentFurniturePreview(){
  }catch(err){console.warn('Furniture preview renderer unavailable',err);}
 }
 let tentPreviewModel=null,tentPreviewRequest=0,tentPreviewStoveFlames=null;
+let tentPreviewLampGlow=null,tentPreviewLampLight=null;
 async function showTentFurniturePreview(itemId){
  const requested=++tentPreviewRequest;
  disposeTentStoveFlames(tentPreviewStoveFlames);tentPreviewStoveFlames=null;
+ disposeTentFloorLampGlow(tentPreviewLampGlow);tentPreviewLampGlow=null;
+ if(tentPreviewLampLight){tentPreviewLampLight.parent?.remove(tentPreviewLampLight);tentPreviewLampLight=null;}
  if(tentPreviewModel){tentFurniturePreviewScene?.remove(tentPreviewModel);tentPreviewModel=null;}
  if(!itemId)return;
  initTentFurniturePreview();
@@ -3478,6 +3516,15 @@ async function showTentFurniturePreview(itemId){
   if(itemId==='hearth_stove'){
    tentPreviewStoveFlames=createTentStoveFlames(Number(tentFurnitureData?.catalog?.[itemId]?.height)||1.5);
    tentPreviewModel.add(tentPreviewStoveFlames.group);
+  }
+  if(itemId==='floor_lamp'){
+   const spec=tentFurnitureData?.catalog?.[itemId]||{};
+   const height=Number(spec.height)||1.85;
+   tentPreviewLampGlow=createTentFloorLampGlow(height,Number(spec.width)||.62);
+   tentPreviewModel.add(tentPreviewLampGlow.group);
+   tentPreviewLampLight=new THREE.PointLight(0xffe4b3,3.5,3,2);
+   tentPreviewLampLight.position.set(0,height*.97,0);
+   tentPreviewModel.add(tentPreviewLampLight);
   }
   // v251: Reframe the shop/owned preview for tall or wide furniture.
   // Without this, changing the real item size can move it off-screen.
