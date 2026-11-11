@@ -2929,6 +2929,23 @@ const BADGE_INFO={
 };
 
 const controls=new OrbitControls(camera,gameTouchSurface);controls.enableDamping=true;controls.dampingFactor=.07;controls.minDistance=3.2;controls.maxDistance=105;controls.maxPolarAngle=Math.PI/2.12;controls.target.set(0,1,4);controls.enablePan=false;
+// v301: Keyboard movement follows the current camera heading, not fixed map axes.
+// Project the view direction onto the ground so looking up/down never changes speed.
+// Keep this separate from click-to-walk destinations and scripted group movements.
+const cameraMoveForward=new THREE.Vector3();
+function cameraRelativeKeyboardMove(horizontal,vertical){
+ if(povEnabled&&!tentRoomActive)camera.getWorldDirection(cameraMoveForward);
+ else cameraMoveForward.subVectors(controls.target,camera.position);
+ cameraMoveForward.y=0;
+ if(cameraMoveForward.lengthSq()<1e-8)cameraMoveForward.set(0,0,-1);
+ cameraMoveForward.normalize();
+ // Positive horizontal means screen-right; negative vertical means forward.
+ return {
+  x:-cameraMoveForward.z*horizontal-cameraMoveForward.x*vertical,
+  z:cameraMoveForward.x*horizontal-cameraMoveForward.z*vertical
+ };
+}
+
 // v242: Lightweight outdoor tents and a separate shared square interior.
 // Indoor avatars move in local room coordinates; the outside festival world
 // remains running and music is unaffected. Room movement is server-synced.
@@ -3997,6 +4014,7 @@ function updateTentInterior(frameDelta,t){
  const k=state.keys,local=tentRoomLocal;
  let dx=Number(k.has('d')||k.has('arrowright'))-Number(k.has('a')||k.has('arrowleft'));
  let dz=Number(k.has('s')||k.has('arrowdown'))-Number(k.has('w')||k.has('arrowup'));
+ if(dx||dz){const move=cameraRelativeKeyboardMove(dx,dz);dx=move.x;dz=move.z;}
  if(tentFurniturePlacement){dx=0;dz=0;tentRoomWalkTarget=null;}
  if(dx||dz)tentRoomWalkTarget=null;
  if(tentRoomWalkTarget){
@@ -8643,6 +8661,8 @@ function tick(t){
   let dx=0,dy=0,speed=3.2,k=state.keys;
   dx+=+(k.has('d')||k.has('arrowright'))-+(k.has('a')||k.has('arrowleft'));
   dy+=+(k.has('s')||k.has('arrowdown'))-+(k.has('w')||k.has('arrowup'));
+  const cameraKeyboardMoving=Boolean(dx||dy);
+  if(cameraKeyboardMoving){const move=cameraRelativeKeyboardMove(dx,dy);dx=move.x;dy=move.z;}
   if(dx||dy){
    state.walkTarget=null;state.benchTarget=null;
    if(slamMotion)finishSlamMotion();
@@ -8823,7 +8843,9 @@ function tick(t){
     state.me.x=clampServerX(state.me.x+dx/n*speed);
     state.me.y=clampServerY(state.me.y+dy/n*speed);
    }
-   if(state.action!=='skanking'||slamMotion||rockMotion)state.me.facing=Math.atan2(dx,dy);
+   // In POV, keep the view heading stable while strafing or backing up.
+   // Otherwise changing facing would rotate the POV camera every frame.
+   if((state.action!=='skanking'||slamMotion||rockMotion)&&!(povEnabled&&cameraKeyboardMoving&&!slamMotion&&!rockMotion))state.me.facing=Math.atan2(dx,dy);
    if(state.pose!=='stand'){state.pose='stand';state.me.pose='stand';updateActionButtons()}
    if(['sit','lie'].includes(state.action)){state.action='idle';state.me.action='idle'}
    if(!slamMotion&&!rockMotion&&(state.action==='idle'||state.action==='walk'))state.me.action='walk';
