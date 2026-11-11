@@ -207,13 +207,14 @@ const badgeStats=new Map();
 const shopStats=new Map();
 // v242: Paid, persistent personal campsite (MD wardrobe remains free for testing).
 
-// v269: one persistent cosmetic fox pet per badge identity; no rigging required.
+// v279: one persistent cosmetic pet per badge identity; fox and drum turtle; no rigging required.
 // Pet purchases and food use the SAME authoritative points ledger as tents.
 // v277: testing keeps a manual instant-hatch button; eggs now exist and can be summoned before hatching.
 const PET_TEST_INSTANT=true;
 const PET_ADOPTION_COST=1000, PET_HATCH_MS=6*60*60*1000, PET_MAX_LEVEL=30;
 const PET_FOODS={snack:{cost:30,xp:15,name:'간식'},meal:{cost:100,xp:60,name:'식사'},feast:{cost:250,xp:170,name:'특식'}};
 const PET_COLORS=['#f16b69','#67b9f2','#75d8a0','#b68ae8','#f4eee0'];
+const PET_SPECIES=['fox','turtle']; // Equal odds; existing fox pets retain their species.
 const petStats=new Map();
 function petLevel(xp){
  let level=1;while(level<PET_MAX_LEVEL&&xp>=40*level+8*level*(level+1))level++;
@@ -222,12 +223,12 @@ function petLevel(xp){
 function petPublic(pet){
  if(!pet)return null;
  const level=petLevel(pet.xp),hatched=Date.now()>=pet.hatchAt;
- return {species:'fox',color:pet.color,adoptedAt:pet.adoptedAt,hatchAt:pet.hatchAt,
+ return {species:PET_SPECIES.includes(pet.species)?pet.species:'fox',color:pet.color,adoptedAt:pet.adoptedAt,hatchAt:pet.hatchAt,
   hatched,level:hatched?level:0,xp:pet.xp,nextXp:level<PET_MAX_LEVEL?40*level+8*level*(level+1):null,
   stage:hatched?(level>=25?25:level>=10?10:1):0,summoned:!!pet.summoned&&(!hatched||PET_TEST_INSTANT||level>=5),testInstant:PET_TEST_INSTANT};
 }
 function petAccount(identity){if(!petStats.has(identity))petStats.set(identity,{spent:0,pet:null});return petStats.get(identity);}
-function petView(p){const record=petAccount(p.badgeIdentity);return {pet:petPublic(record.pet),points:tentPointBalance(p),cost:PET_ADOPTION_COST,hatchMs:PET_HATCH_MS,foods:PET_FOODS,availableSpecies:['fox'],maxLevel:PET_MAX_LEVEL,testInstant:PET_TEST_INSTANT};}
+function petView(p){const record=petAccount(p.badgeIdentity);return {pet:petPublic(record.pet),points:tentPointBalance(p),cost:PET_ADOPTION_COST,hatchMs:PET_HATCH_MS,foods:PET_FOODS,availableSpecies:PET_SPECIES,maxLevel:PET_MAX_LEVEL,testInstant:PET_TEST_INSTANT};}
 function syncPetPlayers(identity){
  const record=petStats.get(identity);for(const other of players.values())if(other.badgeIdentity===identity){other.pet=petPublic(record?.pet);broadcast({type:'pet-update',id:other.id,pet:other.pet});}
 }
@@ -549,8 +550,8 @@ function applySaved(d){
   if(!/^[a-zA-Z0-9_-]{20,100}$/.test(identity)||!r||typeof r!=='object')continue;
   const spent=Number.isSafeInteger(r.spent)&&r.spent>=0&&r.spent<1000000000?r.spent:0;
   const x=r.pet;let pet=null;
-  if(x&&x.species==='fox'&&PET_COLORS.includes(x.color)&&Number.isFinite(x.adoptedAt)&&Number.isFinite(x.hatchAt)&&Number.isSafeInteger(x.xp)&&x.xp>=0&&x.xp<=1000000){
-   pet={species:'fox',color:x.color,adoptedAt:x.adoptedAt,hatchAt:x.hatchAt,xp:x.xp,summoned:!!x.summoned};
+  if(x&&PET_SPECIES.includes(x.species)&&PET_COLORS.includes(x.color)&&Number.isFinite(x.adoptedAt)&&Number.isFinite(x.hatchAt)&&Number.isSafeInteger(x.xp)&&x.xp>=0&&x.xp<=1000000){
+   pet={species:x.species,color:x.color,adoptedAt:x.adoptedAt,hatchAt:x.hatchAt,xp:x.xp,summoned:!!x.summoned};
   }
   petStats.set(identity,{spent,pet});
  }
@@ -1091,7 +1092,7 @@ const server=http.createServer(async(req,res)=>{
           if(pet)return json(res,409,{error:'이미 펫이 있어요. 기존 펫을 삭제한 후 새 알을 입양할 수 있어요.'});
           if(tentPointBalance(p)<PET_ADOPTION_COST)return json(res,400,{error:`입양 포인트가 부족해요. (${tentPointBalance(p)}/${PET_ADOPTION_COST}P)`});
           const now=Date.now();record.spent+=PET_ADOPTION_COST;
-          record.pet={species:'fox',color:PET_COLORS[crypto.randomInt(PET_COLORS.length)],adoptedAt:now,hatchAt:now+PET_HATCH_MS,xp:0,summoned:true};
+          record.pet={species:PET_SPECIES[crypto.randomInt(PET_SPECIES.length)],color:PET_COLORS[crypto.randomInt(PET_COLORS.length)],adoptedAt:now,hatchAt:now+PET_HATCH_MS,xp:0,summoned:true};
         }else if(command==='feed'){
           if(!pet)return json(res,400,{error:'먼저 펫 알을 입양해 주세요.'});
           if(Date.now()<pet.hatchAt)return json(res,400,{error:'알이 부화한 다음 먹이를 줄 수 있어요.'});
@@ -1101,7 +1102,7 @@ const server=http.createServer(async(req,res)=>{
           record.spent+=food.cost;pet.xp=Math.min(1000000,pet.xp+food.xp);
         }else if(command==='summon'){
           if(!pet)return json(res,400,{error:'먼저 펫 알을 입양해 주세요.'});
-          if(Date.now()>=pet.hatchAt&&!PET_TEST_INSTANT&&petLevel(pet.xp)<5)return json(res,400,{error:'부화한 여우는 Lv.5부터 소환할 수 있어요.'});
+          if(Date.now()>=pet.hatchAt&&!PET_TEST_INSTANT&&petLevel(pet.xp)<5)return json(res,400,{error:'부화한 펫은 Lv.5부터 소환할 수 있어요.'});
           pet.summoned=true;
         }else if(command==='hatch'){
           if(!PET_TEST_INSTANT)return json(res,403,{error:'테스트 부화 기능이 비활성화됐어요.'});
