@@ -2486,14 +2486,14 @@ function renderPetPanel(){
  petPreviewSync();
  if(!pet){petPanelBody.innerHTML=`<p>🥚 알에서 시작하는 펫! 여우·거북이·고양이·토끼·코끼리·늑대 중 한 종류가 각각 약 16.7% 확률로 나와요. 색상도 무작위로 결정돼요.</p><p>입양비 <b>${d.cost.toLocaleString()}P</b> · 부화까지 6시간 · 알부터 소환 가능 · 현재 <b>${points.toLocaleString()}P</b></p><p class="pet-muted">현재 일렉 여우·드럼 거북이·피아노 고양이·바이올린 토끼·트럼펫 코끼리·늑대 6종을 입양할 수 있어요. 기존 펫은 유지되며 새 펫을 입양하려면 먼저 삭제해야 해요.</p><div class="pet-actions"><button class="pet-primary" data-pet-action="adopt" ${petPending||points<d.cost?'disabled':''}>🥚 랜덤 알 입양</button></div>`;return;}
  const remain=pet.hatchAt-Date.now();
- if(!pet.hatched){petPanelBody.innerHTML=`<p>🥚 <b>${petHtmlSafe(petSpeciesLabels[pet.species]||'펫')}의 알</b> · 부화까지 <b>${remain>0?petCountdown(remain):'잠시 후'}</b></p><p>색상: <span style="display:inline-block;background:${pet.color};width:15px;height:15px;border-radius:50%;vertical-align:middle"></span> · 잔여 포인트 ${points.toLocaleString()}P</p><p class="pet-muted">알도 소환할 수 있고, 부화 전까지 주인을 따라다녀요. 브라우저를 닫아도 부화 시간이 흘러요.</p><div class="pet-actions"><button class="pet-primary" data-pet-action="${pet.summoned?'unsummon':'summon'}" ${petPending?'disabled':''}>${pet.summoned?'🥚 알 소환 해제':'🥚 알 소환'}</button>${d.testInstant?`<button data-pet-action="hatch" ${petPending?'disabled':''}>🧪 테스트 즉시 부화</button>`:''}<button data-pet-action="release" ${petPending?'disabled':''}>펫 삭제</button></div>`;return;}
+ if(!pet.hatched){petPanelBody.innerHTML=`<p>🥚 <b>정체를 알 수 없는 알</b> · 부화까지 <b>${remain>0?petCountdown(remain):'잠시 후'}</b></p><p>색상: <span style="display:inline-block;background:${pet.color};width:15px;height:15px;border-radius:50%;vertical-align:middle"></span> · 잔여 포인트 ${points.toLocaleString()}P</p><p class="pet-muted">알도 소환할 수 있고, 부화 전까지 주인을 따라다녀요. 브라우저를 닫아도 부화 시간이 흘러요.</p><div class="pet-actions"><button class="pet-primary" data-pet-action="${pet.summoned?'unsummon':'summon'}" ${petPending?'disabled':''}>${pet.summoned?'🥚 알 소환 해제':'🥚 알 소환'}</button><button data-pet-action="release" ${petPending?'disabled':''}>펫 삭제</button></div>`;return;}
  const level=pet.level,prev=level>1?40*(level-1)+8*(level-1)*level:0,next=pet.nextXp;
  const progress=next===null?100:Math.max(0,Math.min(100,100*(pet.xp-prev)/(next-prev)));
- petPanelBody.innerHTML=`<p>${petSpeciesIcons[pet.species]||'🐾'} <b>${petHtmlSafe(petSpeciesLabels[pet.species]||'펫')}</b> · Lv.${level} / ${d.maxLevel} · ${level>=25?'최종 진화':level>=10?'1차 진화':'기본 형태'}</p><p>진화: Lv.10 / Lv.25 · ${d.testInstant?'🧪 테스트 중: 레벨 제한 없이 즉시 소환 가능':'소환: Lv.5부터'}</p><div class="pet-progress"><span style="width:${progress}%"></span></div><p class="pet-muted">XP ${pet.xp.toLocaleString()} ${next===null?'· MAX':'/ '+next.toLocaleString()} · 포인트 ${points.toLocaleString()}P</p><div class="pet-actions">${Object.entries(d.foods).map(([key,f])=>`<button data-pet-action="feed" data-pet-food="${key}" ${petPending||level>=30||points<f.cost?'disabled':''}>${petHtmlSafe(f.name)} ${f.cost}P<br><small>+${f.xp}XP</small></button>`).join('')}</div><div class="pet-actions"><button class="pet-primary" data-pet-action="${pet.summoned?'unsummon':'summon'}" ${petPending||(level<5&&!d.testInstant)?'disabled':''}>${pet.summoned?'펫 소환 해제':(petSpeciesIcons[pet.species]||'🐾')+' 펫 소환'}</button><button data-pet-action="release" ${petPending?'disabled':''}>펫 삭제</button></div><p class="pet-muted">펫을 삭제하면 기존 성장 기록과 사용한 포인트는 복구되지 않아요.</p>`;
+ petPanelBody.innerHTML=`<p>${petSpeciesIcons[pet.species]||'🐾'} <b>${petHtmlSafe(petSpeciesLabels[pet.species]||'펫')}</b> · Lv.${level} / ${d.maxLevel} · ${level>=25?'최종 진화':level>=10?'1차 진화':'기본 형태'}</p><p>진화: Lv.10 / Lv.25 · 소환: 부화 직후부터 가능</p><div class="pet-progress"><span style="width:${progress}%"></span></div><p class="pet-muted">XP ${pet.xp.toLocaleString()} ${next===null?'· MAX':'/ '+next.toLocaleString()} · 포인트 ${points.toLocaleString()}P</p><div class="pet-actions">${Object.entries(d.foods).map(([key,f])=>`<button data-pet-action="feed" data-pet-food="${key}" ${petPending||level>=30||points<f.cost?'disabled':''}>${petHtmlSafe(f.name)} ${f.cost}P<br><small>+${f.xp}XP</small></button>`).join('')}</div><div class="pet-actions"><button class="pet-primary" data-pet-action="${pet.summoned?'unsummon':'summon'}" ${petPending?'disabled':''}>${pet.summoned?'펫 소환 해제':(petSpeciesIcons[pet.species]||'🐾')+' 펫 소환'}</button><button data-pet-action="release" ${petPending?'disabled':''}>펫 삭제</button></div><p class="pet-muted">펫을 삭제하면 기존 성장 기록과 사용한 포인트는 복구되지 않아요.</p>`;
 }
 async function petRequest(command,extra={}){
  if(petPending||!state.id)return;petPending=true;renderPetPanel();
- try{const d=await post('pet',{id:state.id,sessionKey,command,...extra});petViewState=d;renderPetPanel();if(command!=='status'){void refreshTentStatus();toast(command==='adopt'?'🥚 알을 입양하고 소환했어요!':command==='hatch'?'🐾 알이 즉시 부화했어요!':command==='feed'?'🍖 먹이를 줬어요!':command==='release'?'펫을 삭제했어요.':'펫 설정을 변경했어요.');}}
+ try{const d=await post('pet',{id:state.id,sessionKey,command,...extra});petViewState=d;renderPetPanel();if(command!=='status'){void refreshTentStatus();toast(command==='adopt'?'🥚 알을 입양하고 소환했어요!':command==='feed'?'🍖 먹이를 줬어요!':command==='release'?'펫을 삭제했어요.':'펫 설정을 변경했어요.');}}
  catch(e){toast(e.message);}finally{petPending=false;renderPetPanel();}
 }
 function refreshPetStatus(){if(state.id)void petRequest('status');}
@@ -8131,7 +8131,7 @@ function petPreviewSync(){
  const pet=petViewState?.pet;
  if(!pet){petPreviewWrap.classList.remove('show');if(petPreviewEntry){foxPetDispose(petPreviewEntry);petPreviewEntry=null;}return;}
  petPreviewWrap.classList.add('show');
- petPreviewWrap.querySelector('#petPreviewLabel').textContent=pet.hatched?`${petSpeciesLabels[pet.species]||'내 펫'} · Lv.${pet.level}`:`${petSpeciesLabels[pet.species]||'내 펫'} · 알`;
+ petPreviewWrap.querySelector('#petPreviewLabel').textContent=pet.hatched?`${petSpeciesLabels[pet.species]||'내 펫'} · Lv.${pet.level}`:'미확인 알 · 부화 대기';
  petPreviewInit();if(!petPreviewRenderer)return;
  const signature=(pet.species||'fox')+'|'+(pet.hatched?pet.stage:0)+'|'+pet.color;
  if(petPreviewEntry?.signature===signature)return;
@@ -8164,7 +8164,7 @@ function foxPetDispose(entry){entry.root.parent?.remove(entry.root);entry.model?
 function animateFoxPets(t,indoor=false){
  const now=t*.001,visible=new Set(),roomId=tentRoomActive?.id;
  for(const p of state.players.values()){
-  const pet=p.pet;if(!pet?.summoned||(pet.hatched&&pet.level<5&&!pet.testInstant))continue;
+  const pet=p.pet;if(!pet?.summoned)continue;
   if(indoor?(p.tentRoomId!==roomId):(!!p.tentRoomId))continue;
   const avatar=indoor?tentRoomAvatars.get(p.id):avatars.get(p.id);if(!avatar)continue;
   const stage=pet.hatched?pet.stage:0,color=pet.color,signature=(pet.species||'fox')+'|'+stage+'|'+color;

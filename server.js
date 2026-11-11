@@ -209,8 +209,8 @@ const shopStats=new Map();
 
 // v283: one persistent cosmetic pet per badge identity; fox, turtle, cat, rabbit, elephant, wolf; no rigging required.
 // Pet purchases and food use the SAME authoritative points ledger as tents.
-// v277: testing keeps a manual instant-hatch button; eggs now exist and can be summoned before hatching.
-const PET_TEST_INSTANT=true;
+// v284: egg identity stays secret until natural hatching; no instant-hatch test endpoint.
+// Pets may continue to be summoned from egg stage and immediately after hatching.
 const PET_ADOPTION_COST=1000, PET_HATCH_MS=6*60*60*1000, PET_MAX_LEVEL=30;
 const PET_FOODS={snack:{cost:30,xp:15,name:'간식'},meal:{cost:100,xp:60,name:'식사'},feast:{cost:250,xp:170,name:'특식'}};
 const PET_COLORS=['#f16b69','#67b9f2','#75d8a0','#b68ae8','#f4eee0'];
@@ -223,12 +223,12 @@ function petLevel(xp){
 function petPublic(pet){
  if(!pet)return null;
  const level=petLevel(pet.xp),hatched=Date.now()>=pet.hatchAt;
- return {species:PET_SPECIES.includes(pet.species)?pet.species:'fox',color:pet.color,adoptedAt:pet.adoptedAt,hatchAt:pet.hatchAt,
+ return {species:hatched?(PET_SPECIES.includes(pet.species)?pet.species:'fox'):null,color:pet.color,adoptedAt:pet.adoptedAt,hatchAt:pet.hatchAt,
   hatched,level:hatched?level:0,xp:pet.xp,nextXp:level<PET_MAX_LEVEL?40*level+8*level*(level+1):null,
-  stage:hatched?(level>=25?25:level>=10?10:1):0,summoned:!!pet.summoned&&(!hatched||PET_TEST_INSTANT||level>=5),testInstant:PET_TEST_INSTANT};
+  stage:hatched?(level>=25?25:level>=10?10:1):0,summoned:!!pet.summoned};
 }
 function petAccount(identity){if(!petStats.has(identity))petStats.set(identity,{spent:0,pet:null});return petStats.get(identity);}
-function petView(p){const record=petAccount(p.badgeIdentity);return {pet:petPublic(record.pet),points:tentPointBalance(p),cost:PET_ADOPTION_COST,hatchMs:PET_HATCH_MS,foods:PET_FOODS,availableSpecies:PET_SPECIES,maxLevel:PET_MAX_LEVEL,testInstant:PET_TEST_INSTANT};}
+function petView(p){const record=petAccount(p.badgeIdentity);return {pet:petPublic(record.pet),points:tentPointBalance(p),cost:PET_ADOPTION_COST,hatchMs:PET_HATCH_MS,foods:PET_FOODS,availableSpecies:PET_SPECIES,maxLevel:PET_MAX_LEVEL};}
 function syncPetPlayers(identity){
  const record=petStats.get(identity);for(const other of players.values())if(other.badgeIdentity===identity){other.pet=petPublic(record?.pet);broadcast({type:'pet-update',id:other.id,pet:other.pet});}
 }
@@ -1102,13 +1102,7 @@ const server=http.createServer(async(req,res)=>{
           record.spent+=food.cost;pet.xp=Math.min(1000000,pet.xp+food.xp);
         }else if(command==='summon'){
           if(!pet)return json(res,400,{error:'먼저 펫 알을 입양해 주세요.'});
-          if(Date.now()>=pet.hatchAt&&!PET_TEST_INSTANT&&petLevel(pet.xp)<5)return json(res,400,{error:'부화한 펫은 Lv.5부터 소환할 수 있어요.'});
           pet.summoned=true;
-        }else if(command==='hatch'){
-          if(!PET_TEST_INSTANT)return json(res,403,{error:'테스트 부화 기능이 비활성화됐어요.'});
-          if(!pet)return json(res,400,{error:'먼저 펫 알을 입양해 주세요.'});
-          if(Date.now()>=pet.hatchAt)return json(res,409,{error:'이미 부화한 펫이에요.'});
-          pet.hatchAt=Date.now();pet.summoned=true;
         }else if(command==='unsummon'){
           if(!pet)return json(res,400,{error:'펫이 없어요.'});pet.summoned=false;
         }else if(command==='release'){
