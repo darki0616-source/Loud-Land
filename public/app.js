@@ -2548,11 +2548,11 @@ const petUIStyle=document.createElement('style');petUIStyle.textContent=`
 #petMenuButton{border:1px solid rgba(255,255,255,.23);background:rgba(19,22,43,.8);color:#fff;border-radius:12px;padding:8px 12px;font-weight:800;cursor:pointer}
 #petOverlay{position:fixed;inset:0;z-index:6000;background:rgba(0,0,0,.63);display:none;align-items:center;justify-content:center;padding:14px}
 #petOverlay.show{display:flex}#petPanel{width:min(420px,100%);max-height:85dvh;overflow-y:auto;background:linear-gradient(155deg,#24223c,#131828);color:#fff;border:1px solid #55536e;border-radius:22px;padding:20px;box-shadow:0 16px 60px #0009}
-#petPanel h2{margin:0 0 10px;font-size:23px}#petPreviewWrap{display:none;position:relative;margin:8px 0 14px;border:1px solid #77738b66;border-radius:16px;background:radial-gradient(ellipse at 50% 65%,#4b456c 0%,#282942 58%,#1a1d32 100%);overflow:hidden;height:208px}#petPreviewWrap.show{display:block}#petPreviewCanvas{display:block;width:100%;height:100%}#petPreviewLabel{position:absolute;left:12px;top:10px;font-size:12px;font-weight:800;color:#eee9ff;pointer-events:none}#petPreviewLoading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#ccc8dc;font-size:12px;pointer-events:none}#petPreviewLoading[hidden]{display:none}#petPanel p{margin:8px 0;color:#d9d9e7;line-height:1.6}#petPanel button{border:1px solid #6b6880;border-radius:12px;padding:11px 13px;background:#353650;color:#fff;font-weight:800;cursor:pointer}#petPanel button:disabled{opacity:.45;cursor:not-allowed}#petPanel button.pet-primary{background:#b267ff;border-color:#b267ff;color:#14101c}#petPanel .pet-actions{display:flex;flex-wrap:wrap;gap:7px;margin:12px 0}#petPanel .pet-progress{height:10px;background:#48465b;border-radius:99px;overflow:hidden}#petPanel .pet-progress>span{display:block;height:100%;background:#b79cff}#petPanel .pet-muted{font-size:12px;color:#c0baca}#petPanel .pet-close{float:right;background:none;border:0;font-size:24px;padding:0 4px}#petShowcaseTools{margin-top:16px;padding-top:13px;border-top:1px solid #77738b66}#petShowcaseButton{width:100%;background:#485077!important;border-color:#9298cc!important}#petShowcaseHelp{font-size:12px;color:#c0baca;margin:8px 0 0;line-height:1.5}
+#petPanel h2{margin:0 0 10px;font-size:23px}#petPreviewWrap{display:none;position:relative;margin:8px 0 14px;border:1px solid #77738b66;border-radius:16px;background:radial-gradient(ellipse at 50% 65%,#4b456c 0%,#282942 58%,#1a1d32 100%);overflow:hidden;height:208px}#petPreviewWrap.show{display:block}#petPreviewCanvas{display:block;width:100%;height:100%}#petPreviewLabel{position:absolute;left:12px;top:10px;font-size:12px;font-weight:800;color:#eee9ff;pointer-events:none}#petPreviewLoading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#ccc8dc;font-size:12px;pointer-events:none}#petPreviewLoading[hidden]{display:none}#petPanel p{margin:8px 0;color:#d9d9e7;line-height:1.6}#petPanel button{border:1px solid #6b6880;border-radius:12px;padding:11px 13px;background:#353650;color:#fff;font-weight:800;cursor:pointer}#petPanel button:disabled{opacity:.45;cursor:not-allowed}#petPanel button.pet-primary{background:#b267ff;border-color:#b267ff;color:#14101c}#petPanel .pet-actions{display:flex;flex-wrap:wrap;gap:7px;margin:12px 0}#petPanel .pet-progress{height:10px;background:#48465b;border-radius:99px;overflow:hidden}#petPanel .pet-progress>span{display:block;height:100%;background:#b79cff}#petPanel .pet-muted{font-size:12px;color:#c0baca}#petPanel .pet-close{float:right;background:none;border:0;font-size:24px;padding:0 4px}
 `;document.head.append(petUIStyle);
 const petMenuButton=document.createElement('button');petMenuButton.id='petMenuButton';petMenuButton.type='button';petMenuButton.textContent='🐾 펫';
 (document.querySelector('.hudright')||document.body).insertBefore(petMenuButton,$('playersToggle')||null);
-const petOverlay=document.createElement('div');petOverlay.id='petOverlay';petOverlay.innerHTML=`<section id="petPanel" role="dialog" aria-modal="true" aria-label="펫 관리"><button class="pet-close" type="button" aria-label="닫기">×</button><h2>🐾 ONEseason 펫</h2><div id="petPreviewWrap"><canvas id="petPreviewCanvas" aria-label="내 펫 3D 미리보기"></canvas><span id="petPreviewLabel">내 펫</span><span id="petPreviewLoading">3D 모델 불러오는 중...</span></div><div id="petPanelBody">불러오는 중...</div><div id="petShowcaseTools"><button id="petShowcaseButton" type="button">🔎 전체 펫 18종 전시</button><p id="petShowcaseHelp">무대 앞에 6종 × Lv.1·10·25 모델을 한 줄로 전시합니다. 내 화면에서만 표시되며 펫 기록은 변경되지 않습니다.</p></div></section>`;
+const petOverlay=document.createElement('div');petOverlay.id='petOverlay';petOverlay.innerHTML=`<section id="petPanel" role="dialog" aria-modal="true" aria-label="펫 관리"><button class="pet-close" type="button" aria-label="닫기">×</button><h2>🐾 ONEseason 펫</h2><div id="petPreviewWrap"><canvas id="petPreviewCanvas" aria-label="내 펫 3D 미리보기"></canvas><span id="petPreviewLabel">내 펫</span><span id="petPreviewLoading">3D 모델 불러오는 중...</span></div><div id="petPanelBody">불러오는 중...</div></section>`;
 document.body.append(petOverlay);
 const petPanelBody=petOverlay.querySelector('#petPanelBody');
 let petViewState=null,petPending=false;
@@ -8236,74 +8236,65 @@ const foxPetTemplates=new Map(),foxPetNodes=new Map();
 const foxPetLoader=new GLTFLoader();
 const foxPetTextureLoader=new THREE.TextureLoader();
 const foxPetTextureCache=new Map();
-// v305: Smooth faceted pet shading once per loaded GLB, including UV-seam vertices.
-// This edits normals ONLY: no vertices, triangles, UVs, texture maps or GLB files change.
-// The crease-angle guard preserves sharp edges on instruments and accessories.
-const petSmoothedGeometries=new WeakSet();
-function petSmoothGeometry(geometry){
- if(!geometry||petSmoothedGeometries.has(geometry))return;
- petSmoothedGeometries.add(geometry);
- const pos=geometry.getAttribute('position');
- let normal=geometry.getAttribute('normal');
- if(!pos||pos.itemSize!==3||pos.count<3)return;
- if(!normal){geometry.computeVertexNormals();normal=geometry.getAttribute('normal');}
- if(!normal||normal.count!==pos.count)return;
- // Weld only coincident positions for normal averaging, without welding UVs.
- // Quantization is relative to this mesh's size, not its world-space scale.
- geometry.computeBoundingBox();
- const box=geometry.boundingBox;
- const extent=Math.max(box.max.x-box.min.x,box.max.y-box.min.y,box.max.z-box.min.z,1e-5);
- const inv=1/(extent*1e-6);
- const groups=new Map();
- const old=new Float32Array(pos.count*3);
- for(let i=0;i<pos.count;i++){
-  const k=i*3;
-  const nx=normal.getX(i),ny=normal.getY(i),nz=normal.getZ(i);
-  const len=Math.hypot(nx,ny,nz)||1;
-  old[k]=nx/len;old[k+1]=ny/len;old[k+2]=nz/len;
-  const key=Math.round((pos.getX(i)-box.min.x)*inv)+','+
-   Math.round((pos.getY(i)-box.min.y)*inv)+','+
-   Math.round((pos.getZ(i)-box.min.z)*inv);
-  let list=groups.get(key);
-  if(!list){list=[];groups.set(key,list);}
-  list.push(i);
+// v307: Pet assets are noncritical to first paint. Do not request any pet GLB
+// until a summoned pet or the pet preview needs it.
+// Cap expensive downloads + GLB parsing on mobile, and yield to the browser
+// without altering imported meshes. Existing GLB/PNG paths stay intact.
+const petAssetVersions={fox:275,turtle:279,cat:280,rabbit:281,elephant:282,wolf:283};
+const petModelQueue=[];
+const petModelFailed=new Set();
+const petMaxConcurrentLoads=perfWeakDevice?1:2;
+let petModelActiveLoads=0;
+function petModelIsNeeded(species,stage){
+ const preview=petViewState?.pet;
+ if(petOverlay.classList.contains('show')&&preview?.hatched&&preview.species===species&&preview.stage===stage)return true;
+ for(const p of state.players.values()){
+  if(p.pet?.summoned&&p.pet.hatched&&p.pet.species===species&&p.pet.stage===stage)return true;
  }
- const creaseCos=Math.cos(68*Math.PI/180);
- const output=new Float32Array(old);
- for(const indices of groups.values()){
-  if(indices.length<2)continue;
-  for(const i of indices){
-   const a=i*3;let x=0,y=0,z=0;
-   for(const j of indices){
-    const b=j*3;
-    const dot=old[a]*old[b]+old[a+1]*old[b+1]+old[a+2]*old[b+2];
-    if(dot<creaseCos)continue;
-    x+=old[b];y+=old[b+1];z+=old[b+2];
-   }
-   const len=Math.hypot(x,y,z);
-   if(len>1e-8){output[a]=x/len;output[a+1]=y/len;output[a+2]=z/len;}
-  }
- }
- for(let i=0;i<pos.count;i++)normal.setXYZ(i,output[i*3],output[i*3+1],output[i*3+2]);
- normal.needsUpdate=true;
+ return false;
 }
-function petSmoothTemplate(scene){
- scene.traverse(obj=>{
-  if(!obj.isMesh||!obj.geometry)return;
-  petSmoothGeometry(obj.geometry);
-  for(const mat of Array.isArray(obj.material)?obj.material:[obj.material]){
-   if(mat&&mat.flatShading){mat.flatShading=false;mat.needsUpdate=true;}
+function petPumpModelQueue(){
+ while(petModelActiveLoads<petMaxConcurrentLoads&&petModelQueue.length){
+  const task=petModelQueue.shift();
+  if(!petModelIsNeeded(task.species,task.stage)){
+   task.onCancel();
+   continue;
   }
- });
+  petModelActiveLoads++;
+  const finish=()=>{petModelActiveLoads--;petPumpModelQueue();};
+  const url='/assets/pets/'+task.species+'/lv'+task.stage+'.glb?v='+petAssetVersions[task.species];
+  foxPetLoader.load(url,gltf=>{
+   // Use the GLB's original normals and shading; do not recompute geometry.
+   try{task.onLoad(gltf.scene);}
+   catch(error){console.warn('Pet model setup failed:',url,error);task.onError(error);}
+   finally{finish();}
+  },undefined,error=>{
+   petModelFailed.add(task.species+'|'+task.stage);
+   task.onError(error);
+   finish();
+  });
+ }
+}
+function petQueueModel(species,stage,onLoad,onError,onCancel){
+ const key=species+'|'+stage;
+ if(petModelFailed.has(key))return;
+ petModelQueue.push({species,stage,onLoad,onError,onCancel});
+ petPumpModelQueue();
 }
 const foxPetColorNames=new Map([
  ['#f16b69','red'],['#67b9f2','blue'],['#75d8a0','green'],
  ['#b68ae8','purple'],['#f4eee0','white']
 ]);
-for(const stage of [1,10,25]){
- foxPetLoader.load('/assets/pets/fox/lv'+stage+'.glb?v=275',g=>{
-  petSmoothTemplate(g.scene);foxPetTemplates.set(stage,g.scene);
- },undefined,e=>console.warn('Fox pet model unavailable:',stage,e));
+// Fox used to fetch all three evolution stages on every first visit.
+// Now it follows the same on-demand policy as the other five species.
+const foxPetLoading=new Set();
+function foxPetLoadStage(stage){
+ if(foxPetTemplates.has(stage)||foxPetLoading.has(stage)||petModelFailed.has('fox|'+stage))return;
+ foxPetLoading.add(stage);
+ petQueueModel('fox',stage,
+  scene=>{foxPetTemplates.set(stage,scene);foxPetLoading.delete(stage);},
+  error=>{foxPetLoading.delete(stage);console.warn('Fox pet model unavailable:',stage,error);},
+  ()=>foxPetLoading.delete(stage));
 }
 function foxPetGetPaintedTexture(stage,color){
  if(stage!==1&&stage!==10&&stage!==25)return undefined;
@@ -8331,7 +8322,7 @@ function foxPetGetPaintedTexture(stage,color){
 }
 function foxPetMakeModel(stage,color){
  const template=foxPetTemplates.get(stage);
- if(!template)return null;
+ if(!template){foxPetLoadStage(stage);return null;}
  const paint=foxPetGetPaintedTexture(stage,color);
  if(paint&&!paint.ready&&!paint.failed)return null;
  const mesh=template.clone(true),bounds=new THREE.Box3().setFromObject(mesh);
@@ -8346,7 +8337,7 @@ function foxPetMakeModel(stage,color){
    const mat=base.clone();
    mat.color.set(0xffffff);mat.vertexColors=false;
    // Meshy exports metallic=1 on some models, which can render black in this scene.
-   mat.metalness=0;mat.roughness=.85;mat.side=THREE.DoubleSide;mat.flatShading=false;
+   mat.metalness=0;mat.roughness=.85;mat.side=THREE.DoubleSide;
    if(paint?.ready&&paint.texture&&base.map)mat.map=paint.texture;
    // All other material maps and UVs remain unchanged.
    mat.needsUpdate=true;
@@ -8363,11 +8354,12 @@ function foxPetMakeModel(stage,color){
 const turtlePetTemplates=new Map(),turtlePetLoading=new Set();
 const turtlePetTextureCache=new Map();
 function turtlePetLoadStage(stage){
- if(turtlePetTemplates.has(stage)||turtlePetLoading.has(stage))return;
+ if(turtlePetTemplates.has(stage)||turtlePetLoading.has(stage)||petModelFailed.has('turtle|'+stage))return;
  turtlePetLoading.add(stage);
- foxPetLoader.load('/assets/pets/turtle/lv'+stage+'.glb?v=279',g=>{
-  petSmoothTemplate(g.scene);turtlePetTemplates.set(stage,g.scene);turtlePetLoading.delete(stage);
- },undefined,e=>{turtlePetLoading.delete(stage);console.warn('Turtle pet model unavailable:',stage,e);});
+ petQueueModel('turtle',stage,
+  scene=>{turtlePetTemplates.set(stage,scene);turtlePetLoading.delete(stage);},
+  error=>{turtlePetLoading.delete(stage);console.warn('Turtle pet model unavailable:',stage,error);},
+  ()=>turtlePetLoading.delete(stage));
 }
 function turtlePetGetPaintedTexture(stage,color){
  if(![1,10,25].includes(stage))return undefined;
@@ -8401,7 +8393,7 @@ function turtlePetMakeModel(stage,color){
   const outputMaterials=sourceMaterials.map(base=>{
    if(!base)return new THREE.MeshStandardMaterial({color:0xffffff,roughness:.85,metalness:0});
    const mat=base.clone();mat.color.set(0xffffff);mat.vertexColors=false;
-   mat.metalness=0;mat.roughness=.85;mat.side=THREE.DoubleSide;mat.flatShading=false;
+   mat.metalness=0;mat.roughness=.85;mat.side=THREE.DoubleSide;
    if(paint?.ready&&paint.texture&&base.map)mat.map=paint.texture;
    mat.needsUpdate=true;return mat;
   });
@@ -8416,11 +8408,12 @@ function turtlePetMakeModel(stage,color){
 const catPetTemplates=new Map(),catPetLoading=new Set();
 const catPetTextureCache=new Map();
 function catPetLoadStage(stage){
- if(catPetTemplates.has(stage)||catPetLoading.has(stage))return;
+ if(catPetTemplates.has(stage)||catPetLoading.has(stage)||petModelFailed.has('cat|'+stage))return;
  catPetLoading.add(stage);
- foxPetLoader.load('/assets/pets/cat/lv'+stage+'.glb?v=280',g=>{
-  petSmoothTemplate(g.scene);catPetTemplates.set(stage,g.scene);catPetLoading.delete(stage);
- },undefined,e=>{catPetLoading.delete(stage);console.warn('Cat pet model unavailable:',stage,e);});
+ petQueueModel('cat',stage,
+  scene=>{catPetTemplates.set(stage,scene);catPetLoading.delete(stage);},
+  error=>{catPetLoading.delete(stage);console.warn('Cat pet model unavailable:',stage,error);},
+  ()=>catPetLoading.delete(stage));
 }
 function catPetGetPaintedTexture(stage,color){
  if(![1,10,25].includes(stage))return undefined;
@@ -8454,7 +8447,7 @@ function catPetMakeModel(stage,color){
   const outputMaterials=sourceMaterials.map(base=>{
    if(!base)return new THREE.MeshStandardMaterial({color:0xffffff,roughness:.85,metalness:0});
    const mat=base.clone();mat.color.set(0xffffff);mat.vertexColors=false;
-   mat.metalness=0;mat.roughness=.85;mat.side=THREE.DoubleSide;mat.flatShading=false;
+   mat.metalness=0;mat.roughness=.85;mat.side=THREE.DoubleSide;
    if(paint?.ready&&paint.texture&&base.map)mat.map=paint.texture;
    mat.needsUpdate=true;return mat;
   });
@@ -8469,11 +8462,12 @@ function catPetMakeModel(stage,color){
 const rabbitPetTemplates=new Map(),rabbitPetLoading=new Set();
 const rabbitPetTextureCache=new Map();
 function rabbitPetLoadStage(stage){
- if(rabbitPetTemplates.has(stage)||rabbitPetLoading.has(stage))return;
+ if(rabbitPetTemplates.has(stage)||rabbitPetLoading.has(stage)||petModelFailed.has('rabbit|'+stage))return;
  rabbitPetLoading.add(stage);
- foxPetLoader.load('/assets/pets/rabbit/lv'+stage+'.glb?v=281',g=>{
-  petSmoothTemplate(g.scene);rabbitPetTemplates.set(stage,g.scene);rabbitPetLoading.delete(stage);
- },undefined,e=>{rabbitPetLoading.delete(stage);console.warn('Rabbit pet model unavailable:',stage,e);});
+ petQueueModel('rabbit',stage,
+  scene=>{rabbitPetTemplates.set(stage,scene);rabbitPetLoading.delete(stage);},
+  error=>{rabbitPetLoading.delete(stage);console.warn('Rabbit pet model unavailable:',stage,error);},
+  ()=>rabbitPetLoading.delete(stage));
 }
 function rabbitPetGetPaintedTexture(stage,color){
  if(![1,10,25].includes(stage))return undefined;
@@ -8507,7 +8501,7 @@ function rabbitPetMakeModel(stage,color){
   const outputMaterials=sourceMaterials.map(base=>{
    if(!base)return new THREE.MeshStandardMaterial({color:0xffffff,roughness:.85,metalness:0});
    const mat=base.clone();mat.color.set(0xffffff);mat.vertexColors=false;
-   mat.metalness=0;mat.roughness=.85;mat.side=THREE.DoubleSide;mat.flatShading=false;
+   mat.metalness=0;mat.roughness=.85;mat.side=THREE.DoubleSide;
    if(paint?.ready&&paint.texture&&base.map)mat.map=paint.texture;
    mat.needsUpdate=true;return mat;
   });
@@ -8522,11 +8516,12 @@ function rabbitPetMakeModel(stage,color){
 const elephantPetTemplates=new Map(),elephantPetLoading=new Set();
 const elephantPetTextureCache=new Map();
 function elephantPetLoadStage(stage){
- if(elephantPetTemplates.has(stage)||elephantPetLoading.has(stage))return;
+ if(elephantPetTemplates.has(stage)||elephantPetLoading.has(stage)||petModelFailed.has('elephant|'+stage))return;
  elephantPetLoading.add(stage);
- foxPetLoader.load('/assets/pets/elephant/lv'+stage+'.glb?v=282',g=>{
-  petSmoothTemplate(g.scene);elephantPetTemplates.set(stage,g.scene);elephantPetLoading.delete(stage);
- },undefined,e=>{elephantPetLoading.delete(stage);console.warn('Elephant pet model unavailable:',stage,e);});
+ petQueueModel('elephant',stage,
+  scene=>{elephantPetTemplates.set(stage,scene);elephantPetLoading.delete(stage);},
+  error=>{elephantPetLoading.delete(stage);console.warn('Elephant pet model unavailable:',stage,error);},
+  ()=>elephantPetLoading.delete(stage));
 }
 function elephantPetGetPaintedTexture(stage,color){
  if(![1,10,25].includes(stage))return undefined;
@@ -8560,7 +8555,7 @@ function elephantPetMakeModel(stage,color){
   const outputMaterials=sourceMaterials.map(base=>{
    if(!base)return new THREE.MeshStandardMaterial({color:0xffffff,roughness:.85,metalness:0});
    const mat=base.clone();mat.color.set(0xffffff);mat.vertexColors=false;
-   mat.metalness=0;mat.roughness=.85;mat.side=THREE.DoubleSide;mat.flatShading=false;
+   mat.metalness=0;mat.roughness=.85;mat.side=THREE.DoubleSide;
    if(paint?.ready&&paint.texture&&base.map)mat.map=paint.texture;
    mat.needsUpdate=true;return mat;
   });
@@ -8575,11 +8570,12 @@ function elephantPetMakeModel(stage,color){
 const wolfPetTemplates=new Map(),wolfPetLoading=new Set();
 const wolfPetTextureCache=new Map();
 function wolfPetLoadStage(stage){
- if(wolfPetTemplates.has(stage)||wolfPetLoading.has(stage))return;
+ if(wolfPetTemplates.has(stage)||wolfPetLoading.has(stage)||petModelFailed.has('wolf|'+stage))return;
  wolfPetLoading.add(stage);
- foxPetLoader.load('/assets/pets/wolf/lv'+stage+'.glb?v=283',g=>{
-  petSmoothTemplate(g.scene);wolfPetTemplates.set(stage,g.scene);wolfPetLoading.delete(stage);
- },undefined,e=>{wolfPetLoading.delete(stage);console.warn('Wolf pet model unavailable:',stage,e);});
+ petQueueModel('wolf',stage,
+  scene=>{wolfPetTemplates.set(stage,scene);wolfPetLoading.delete(stage);},
+  error=>{wolfPetLoading.delete(stage);console.warn('Wolf pet model unavailable:',stage,error);},
+  ()=>wolfPetLoading.delete(stage));
 }
 function wolfPetGetPaintedTexture(stage,color){
  if(![1,10,25].includes(stage))return undefined;
@@ -8613,7 +8609,7 @@ function wolfPetMakeModel(stage,color){
   const outputMaterials=sourceMaterials.map(base=>{
    if(!base)return new THREE.MeshStandardMaterial({color:0xffffff,roughness:.85,metalness:0});
    const mat=base.clone();mat.color.set(0xffffff);mat.vertexColors=false;
-   mat.metalness=0;mat.roughness=.85;mat.side=THREE.DoubleSide;mat.flatShading=false;
+   mat.metalness=0;mat.roughness=.85;mat.side=THREE.DoubleSide;
    if(paint?.ready&&paint.texture&&base.map)mat.map=paint.texture;
    mat.needsUpdate=true;return mat;
   });
@@ -8626,86 +8622,6 @@ function petMakeModel(species,stage,color){
  return species==='wolf'?wolfPetMakeModel(stage,color):species==='elephant'?elephantPetMakeModel(stage,color):species==='rabbit'?rabbitPetMakeModel(stage,color):species==='cat'?catPetMakeModel(stage,color):species==='turtle'?turtlePetMakeModel(stage,color):foxPetMakeModel(stage,color);
 }
 // v277: Lightweight procedural egg, no extra asset or animation rig required.
-// v306: On-demand, client-only visual QA display of every species and evolution.
-// 6 species x 3 stages = 18 pets in ONE row in front of the main stage.
-// Do not spawn network players, mutate real pet ownership, or fetch assets until
-// the user opts in. This keeps normal multiplayer sessions low-spec friendly.
-const petShowcaseSpecies=['fox','turtle','cat','rabbit','elephant','wolf'];
-const petShowcaseStages=[1,10,25];
-const petShowcaseColors={fox:'#f16b69',turtle:'#75d8a0',cat:'#67b9f2',rabbit:'#b68ae8',elephant:'#f4eee0',wolf:'#f16b69'};
-const petShowcaseButton=petOverlay.querySelector('#petShowcaseButton');
-let petShowcaseEnabled=false,petShowcaseGroup=null,petShowcaseEntries=[],petShowcaseLastTry=0;
-function petShowcaseBuild(){
- if(petShowcaseGroup)return;
- petShowcaseGroup=new THREE.Group();petShowcaseGroup.name='Pet QA showcase: 18 models';scene.add(petShowcaseGroup);
- const stride=3.25,groupGap=.8,total=17*stride+5*groupGap;
- for(let speciesIndex=0;speciesIndex<petShowcaseSpecies.length;speciesIndex++){
-  const species=petShowcaseSpecies[speciesIndex];
-  for(let stageIndex=0;stageIndex<petShowcaseStages.length;stageIndex++){
-   const stage=petShowcaseStages[stageIndex];
-   const i=speciesIndex*3+stageIndex;
-   const x=-total/2+i*stride+speciesIndex*groupGap;
-   const stand=new THREE.Group();stand.position.set(x,0,14.2);petShowcaseGroup.add(stand);
-   const platform=new THREE.Mesh(new THREE.CylinderGeometry(1.31,1.36,.23,18),new THREE.MeshStandardMaterial({color:'#2b3047',roughness:.83}));
-   platform.position.y=.16;platform.receiveShadow=false;stand.add(platform);
-   const ring=new THREE.Mesh(new THREE.CylinderGeometry(1.25,1.25,.035,18),new THREE.MeshStandardMaterial({color:petShowcaseColors[species],roughness:.7,emissive:petShowcaseColors[species],emissiveIntensity:.13}));
-   ring.position.y=.292;stand.add(ring);
-   const modelRoot=new THREE.Group();modelRoot.position.y=.315;stand.add(modelRoot);
-   const title=new THREE.Mesh(new THREE.PlaneGeometry(3.12,.67),label((petSpeciesLabels[species]||species)+' Lv.'+stage,44,'#fffdf1','#292642'));
-   title.position.set(0,2.47,.10);stand.add(title);
-   petShowcaseEntries.push({species,stage,color:petShowcaseColors[species],modelRoot,model:null,platform,ring,title,index:i});
-  }
- }
-}
-function petShowcaseClear(){
- if(!petShowcaseGroup)return;
- for(const entry of petShowcaseEntries){
-  if(entry.model){foxPetDispose({root:entry.model,model:entry.model});entry.model=null;}
-  for(const mesh of [entry.platform,entry.ring,entry.title]){
-   mesh.geometry?.dispose();
-   for(const mat of (Array.isArray(mesh.material)?mesh.material:[mesh.material])){
-    mat?.map?.dispose();mat?.dispose();
-   }
-  }
- }
- petShowcaseGroup.parent?.remove(petShowcaseGroup);
- petShowcaseGroup=null;petShowcaseEntries=[];
-}
-function petShowcaseSetEnabled(enabled){
- petShowcaseEnabled=!!enabled;
- if(petShowcaseEnabled){petShowcaseBuild();petShowcaseLastTry=0;}
- else petShowcaseClear();
- petShowcaseButton.textContent=petShowcaseEnabled?'✕ 전체 펫 전시 종료':'🔎 전체 펫 18종 전시';
- petShowcaseButton.setAttribute('aria-pressed',String(petShowcaseEnabled));
-}
-function petShowcaseAnimate(t){
- if(!petShowcaseEnabled)return;
- // Load in the background after clicking; keep retrying while GLBs and painted
- // textures are resolving. The pet factories deduplicate asset requests.
- if(t-petShowcaseLastTry>450){
-  petShowcaseLastTry=t;
-  for(const entry of petShowcaseEntries){
-   if(entry.model)continue;
-   const model=petMakeModel(entry.species,entry.stage,entry.color);
-   if(model){entry.model=model;entry.modelRoot.add(model);}
-  }
- }
- // Slowly turn every pet so its front, sides and mesh shading can be checked.
- for(const entry of petShowcaseEntries)if(entry.model)entry.modelRoot.rotation.y=t*.00021;
-}
-petShowcaseButton.addEventListener('click',()=>{
- if(!state.id)return toast('페스티벌에 입장한 뒤 이용해 주세요.');
- if(!petShowcaseEnabled&&tentRoomActive)return toast('펫 전시는 텐트 밖에서 확인할 수 있어요.');
- petShowcaseSetEnabled(!petShowcaseEnabled);
- petOverlay.classList.remove('show');
- if(petShowcaseEnabled){
-  // Walk toward the middle of the row; no teleport or server-side state change.
-  state.benchTarget=null;
-  if(state.me){state.pose='stand';state.me.pose='stand';updateActionButtons();}
-  state.walkTarget={x:clampServerX(600),y:clampServerY((20.5-8)/.058+500)};
-  toast('🔎 무대 앞에 펫 18종을 일렬로 전시했어요. 전시 장소로 이동합니다.');
- }else toast('펫 전시를 종료했어요.');
-});
 function foxPetMakeEgg(color){
  const egg=new THREE.Group();
  const shape=new THREE.SphereGeometry(.55,24,18);
@@ -8802,10 +8718,16 @@ function petDanceHopAt(player,serverNow){
 }
 function animateFoxPets(t,indoor=false){
  const now=t*.001,beatNow=headbangServerTime(),visible=new Set(),roomId=tentRoomActive?.id;
- for(const p of state.players.values()){
+ // Load our own pet first. On mobile, avoid downloading/instantiating distant
+ // strangers' multi-megabyte pet models until their owners are nearby.
+ const petPlayers=[...state.players.values()];
+ const selfIndex=petPlayers.findIndex(p=>p.id===state.id);
+ if(selfIndex>0)petPlayers.unshift(...petPlayers.splice(selfIndex,1));
+ for(const p of petPlayers){
   const pet=p.pet;if(!pet?.summoned)continue;
   if(indoor?(p.tentRoomId!==roomId):(!!p.tentRoomId))continue;
   const avatar=indoor?tentRoomAvatars.get(p.id):avatars.get(p.id);if(!avatar)continue;
+  if(perfWeakDevice&&p.id!==state.id&&avatar.root.position.distanceToSquared(camera.position)>42*42)continue;
   const stage=pet.hatched?pet.stage:0,color=pet.color,signature=(pet.species||'fox')+'|'+stage+'|'+color;
   let entry=foxPetNodes.get(p.id);
   if(entry&&entry.signature!==signature){foxPetDispose(entry);foxPetNodes.delete(p.id);entry=null;}
@@ -9107,7 +9029,6 @@ function tick(t){
  }
  for(let [id,a] of avatars)if(!state.players.has(id)){disposeAvatar(a.root);avatars.delete(id)}
  animateFoxPets(t,false);
- petShowcaseAnimate(t);
  if(moveMarker.visible){moveMarker.material.opacity=Math.min(.75,Math.max(0,(moveMarkerUntil-t)/1050)*.75);if(t>moveMarkerUntil)moveMarker.visible=false}
  updateDuoVfx();updateEnvironment();
  const minimalScenery=perfMode==='eco'||(perfMode==='auto'&&perfWeakDevice);
