@@ -2548,11 +2548,11 @@ const petUIStyle=document.createElement('style');petUIStyle.textContent=`
 #petMenuButton{border:1px solid rgba(255,255,255,.23);background:rgba(19,22,43,.8);color:#fff;border-radius:12px;padding:8px 12px;font-weight:800;cursor:pointer}
 #petOverlay{position:fixed;inset:0;z-index:6000;background:rgba(0,0,0,.63);display:none;align-items:center;justify-content:center;padding:14px}
 #petOverlay.show{display:flex}#petPanel{width:min(420px,100%);max-height:85dvh;overflow-y:auto;background:linear-gradient(155deg,#24223c,#131828);color:#fff;border:1px solid #55536e;border-radius:22px;padding:20px;box-shadow:0 16px 60px #0009}
-#petPanel h2{margin:0 0 10px;font-size:23px}#petPreviewWrap{display:none;position:relative;margin:8px 0 14px;border:1px solid #77738b66;border-radius:16px;background:radial-gradient(ellipse at 50% 65%,#4b456c 0%,#282942 58%,#1a1d32 100%);overflow:hidden;height:208px}#petPreviewWrap.show{display:block}#petPreviewCanvas{display:block;width:100%;height:100%}#petPreviewLabel{position:absolute;left:12px;top:10px;font-size:12px;font-weight:800;color:#eee9ff;pointer-events:none}#petPreviewLoading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#ccc8dc;font-size:12px;pointer-events:none}#petPreviewLoading[hidden]{display:none}#petPanel p{margin:8px 0;color:#d9d9e7;line-height:1.6}#petPanel button{border:1px solid #6b6880;border-radius:12px;padding:11px 13px;background:#353650;color:#fff;font-weight:800;cursor:pointer}#petPanel button:disabled{opacity:.45;cursor:not-allowed}#petPanel button.pet-primary{background:#b267ff;border-color:#b267ff;color:#14101c}#petPanel .pet-actions{display:flex;flex-wrap:wrap;gap:7px;margin:12px 0}#petPanel .pet-progress{height:10px;background:#48465b;border-radius:99px;overflow:hidden}#petPanel .pet-progress>span{display:block;height:100%;background:#b79cff}#petPanel .pet-muted{font-size:12px;color:#c0baca}#petPanel .pet-close{float:right;background:none;border:0;font-size:24px;padding:0 4px}
+#petPanel h2{margin:0 0 10px;font-size:23px}#petPreviewWrap{display:none;position:relative;margin:8px 0 14px;border:1px solid #77738b66;border-radius:16px;background:radial-gradient(ellipse at 50% 65%,#4b456c 0%,#282942 58%,#1a1d32 100%);overflow:hidden;height:208px}#petPreviewWrap.show{display:block}#petPreviewCanvas{display:block;width:100%;height:100%}#petPreviewLabel{position:absolute;left:12px;top:10px;font-size:12px;font-weight:800;color:#eee9ff;pointer-events:none}#petPreviewLoading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#ccc8dc;font-size:12px;pointer-events:none}#petPreviewLoading[hidden]{display:none}#petPanel p{margin:8px 0;color:#d9d9e7;line-height:1.6}#petPanel button{border:1px solid #6b6880;border-radius:12px;padding:11px 13px;background:#353650;color:#fff;font-weight:800;cursor:pointer}#petPanel button:disabled{opacity:.45;cursor:not-allowed}#petPanel button.pet-primary{background:#b267ff;border-color:#b267ff;color:#14101c}#petPanel .pet-actions{display:flex;flex-wrap:wrap;gap:7px;margin:12px 0}#petPanel .pet-progress{height:10px;background:#48465b;border-radius:99px;overflow:hidden}#petPanel .pet-progress>span{display:block;height:100%;background:#b79cff}#petPanel .pet-muted{font-size:12px;color:#c0baca}#petPanel .pet-close{float:right;background:none;border:0;font-size:24px;padding:0 4px}#petShowcaseTools{margin-top:16px;padding-top:13px;border-top:1px solid #77738b66}#petShowcaseButton{width:100%;background:#485077!important;border-color:#9298cc!important}#petShowcaseHelp{font-size:12px;color:#c0baca;margin:8px 0 0;line-height:1.5}
 `;document.head.append(petUIStyle);
 const petMenuButton=document.createElement('button');petMenuButton.id='petMenuButton';petMenuButton.type='button';petMenuButton.textContent='🐾 펫';
 (document.querySelector('.hudright')||document.body).insertBefore(petMenuButton,$('playersToggle')||null);
-const petOverlay=document.createElement('div');petOverlay.id='petOverlay';petOverlay.innerHTML=`<section id="petPanel" role="dialog" aria-modal="true" aria-label="펫 관리"><button class="pet-close" type="button" aria-label="닫기">×</button><h2>🐾 ONEseason 펫</h2><div id="petPreviewWrap"><canvas id="petPreviewCanvas" aria-label="내 펫 3D 미리보기"></canvas><span id="petPreviewLabel">내 펫</span><span id="petPreviewLoading">3D 모델 불러오는 중...</span></div><div id="petPanelBody">불러오는 중...</div></section>`;
+const petOverlay=document.createElement('div');petOverlay.id='petOverlay';petOverlay.innerHTML=`<section id="petPanel" role="dialog" aria-modal="true" aria-label="펫 관리"><button class="pet-close" type="button" aria-label="닫기">×</button><h2>🐾 ONEseason 펫</h2><div id="petPreviewWrap"><canvas id="petPreviewCanvas" aria-label="내 펫 3D 미리보기"></canvas><span id="petPreviewLabel">내 펫</span><span id="petPreviewLoading">3D 모델 불러오는 중...</span></div><div id="petPanelBody">불러오는 중...</div><div id="petShowcaseTools"><button id="petShowcaseButton" type="button">🔎 전체 펫 18종 전시</button><p id="petShowcaseHelp">무대 앞에 6종 × Lv.1·10·25 모델을 한 줄로 전시합니다. 내 화면에서만 표시되며 펫 기록은 변경되지 않습니다.</p></div></section>`;
 document.body.append(petOverlay);
 const petPanelBody=petOverlay.querySelector('#petPanelBody');
 let petViewState=null,petPending=false;
@@ -8626,6 +8626,86 @@ function petMakeModel(species,stage,color){
  return species==='wolf'?wolfPetMakeModel(stage,color):species==='elephant'?elephantPetMakeModel(stage,color):species==='rabbit'?rabbitPetMakeModel(stage,color):species==='cat'?catPetMakeModel(stage,color):species==='turtle'?turtlePetMakeModel(stage,color):foxPetMakeModel(stage,color);
 }
 // v277: Lightweight procedural egg, no extra asset or animation rig required.
+// v306: On-demand, client-only visual QA display of every species and evolution.
+// 6 species x 3 stages = 18 pets in ONE row in front of the main stage.
+// Do not spawn network players, mutate real pet ownership, or fetch assets until
+// the user opts in. This keeps normal multiplayer sessions low-spec friendly.
+const petShowcaseSpecies=['fox','turtle','cat','rabbit','elephant','wolf'];
+const petShowcaseStages=[1,10,25];
+const petShowcaseColors={fox:'#f16b69',turtle:'#75d8a0',cat:'#67b9f2',rabbit:'#b68ae8',elephant:'#f4eee0',wolf:'#f16b69'};
+const petShowcaseButton=petOverlay.querySelector('#petShowcaseButton');
+let petShowcaseEnabled=false,petShowcaseGroup=null,petShowcaseEntries=[],petShowcaseLastTry=0;
+function petShowcaseBuild(){
+ if(petShowcaseGroup)return;
+ petShowcaseGroup=new THREE.Group();petShowcaseGroup.name='Pet QA showcase: 18 models';scene.add(petShowcaseGroup);
+ const stride=3.25,groupGap=.8,total=17*stride+5*groupGap;
+ for(let speciesIndex=0;speciesIndex<petShowcaseSpecies.length;speciesIndex++){
+  const species=petShowcaseSpecies[speciesIndex];
+  for(let stageIndex=0;stageIndex<petShowcaseStages.length;stageIndex++){
+   const stage=petShowcaseStages[stageIndex];
+   const i=speciesIndex*3+stageIndex;
+   const x=-total/2+i*stride+speciesIndex*groupGap;
+   const stand=new THREE.Group();stand.position.set(x,0,14.2);petShowcaseGroup.add(stand);
+   const platform=new THREE.Mesh(new THREE.CylinderGeometry(1.31,1.36,.23,18),new THREE.MeshStandardMaterial({color:'#2b3047',roughness:.83}));
+   platform.position.y=.16;platform.receiveShadow=false;stand.add(platform);
+   const ring=new THREE.Mesh(new THREE.CylinderGeometry(1.25,1.25,.035,18),new THREE.MeshStandardMaterial({color:petShowcaseColors[species],roughness:.7,emissive:petShowcaseColors[species],emissiveIntensity:.13}));
+   ring.position.y=.292;stand.add(ring);
+   const modelRoot=new THREE.Group();modelRoot.position.y=.315;stand.add(modelRoot);
+   const title=new THREE.Mesh(new THREE.PlaneGeometry(3.12,.67),label((petSpeciesLabels[species]||species)+' Lv.'+stage,44,'#fffdf1','#292642'));
+   title.position.set(0,2.47,.10);stand.add(title);
+   petShowcaseEntries.push({species,stage,color:petShowcaseColors[species],modelRoot,model:null,platform,ring,title,index:i});
+  }
+ }
+}
+function petShowcaseClear(){
+ if(!petShowcaseGroup)return;
+ for(const entry of petShowcaseEntries){
+  if(entry.model){foxPetDispose({root:entry.model,model:entry.model});entry.model=null;}
+  for(const mesh of [entry.platform,entry.ring,entry.title]){
+   mesh.geometry?.dispose();
+   for(const mat of (Array.isArray(mesh.material)?mesh.material:[mesh.material])){
+    mat?.map?.dispose();mat?.dispose();
+   }
+  }
+ }
+ petShowcaseGroup.parent?.remove(petShowcaseGroup);
+ petShowcaseGroup=null;petShowcaseEntries=[];
+}
+function petShowcaseSetEnabled(enabled){
+ petShowcaseEnabled=!!enabled;
+ if(petShowcaseEnabled){petShowcaseBuild();petShowcaseLastTry=0;}
+ else petShowcaseClear();
+ petShowcaseButton.textContent=petShowcaseEnabled?'✕ 전체 펫 전시 종료':'🔎 전체 펫 18종 전시';
+ petShowcaseButton.setAttribute('aria-pressed',String(petShowcaseEnabled));
+}
+function petShowcaseAnimate(t){
+ if(!petShowcaseEnabled)return;
+ // Load in the background after clicking; keep retrying while GLBs and painted
+ // textures are resolving. The pet factories deduplicate asset requests.
+ if(t-petShowcaseLastTry>450){
+  petShowcaseLastTry=t;
+  for(const entry of petShowcaseEntries){
+   if(entry.model)continue;
+   const model=petMakeModel(entry.species,entry.stage,entry.color);
+   if(model){entry.model=model;entry.modelRoot.add(model);}
+  }
+ }
+ // Slowly turn every pet so its front, sides and mesh shading can be checked.
+ for(const entry of petShowcaseEntries)if(entry.model)entry.modelRoot.rotation.y=t*.00021;
+}
+petShowcaseButton.addEventListener('click',()=>{
+ if(!state.id)return toast('페스티벌에 입장한 뒤 이용해 주세요.');
+ if(!petShowcaseEnabled&&tentRoomActive)return toast('펫 전시는 텐트 밖에서 확인할 수 있어요.');
+ petShowcaseSetEnabled(!petShowcaseEnabled);
+ petOverlay.classList.remove('show');
+ if(petShowcaseEnabled){
+  // Walk toward the middle of the row; no teleport or server-side state change.
+  state.benchTarget=null;
+  if(state.me){state.pose='stand';state.me.pose='stand';updateActionButtons();}
+  state.walkTarget={x:clampServerX(600),y:clampServerY((20.5-8)/.058+500)};
+  toast('🔎 무대 앞에 펫 18종을 일렬로 전시했어요. 전시 장소로 이동합니다.');
+ }else toast('펫 전시를 종료했어요.');
+});
 function foxPetMakeEgg(color){
  const egg=new THREE.Group();
  const shape=new THREE.SphereGeometry(.55,24,18);
@@ -9027,6 +9107,7 @@ function tick(t){
  }
  for(let [id,a] of avatars)if(!state.players.has(id)){disposeAvatar(a.root);avatars.delete(id)}
  animateFoxPets(t,false);
+ petShowcaseAnimate(t);
  if(moveMarker.visible){moveMarker.material.opacity=Math.min(.75,Math.max(0,(moveMarkerUntil-t)/1050)*.75);if(t>moveMarkerUntil)moveMarker.visible=false}
  updateDuoVfx();updateEnvironment();
  const minimalScenery=perfMode==='eco'||(perfMode==='auto'&&perfWeakDevice);
