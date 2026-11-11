@@ -1998,6 +1998,36 @@ const TENT_COLORS=['#ed9a77','#8dc3ad','#8ea8d8','#c49acb','#dfc576','#d6a3a3','
 const TENT_ENTER_DISTANCE=5.0;
 let tentStatus=null,tentList=[],tentPlaceMode=false,tentPickedColor=TENT_COLORS[0];
 let tentExteriorMode='none',tentExteriorImageData='',tentExteriorSavedImageId='',tentExteriorBusy=false;
+let tentCustomizeTab='color',tentOutdoorBusy=false;
+const TENT_OUTDOOR_ITEMS=[['string_lights','💡','전구 가랜드','텐트 정면과 지붕에 따뜻한 전구'],['mini_campfire','🔥','개인 작은 모닥불','텐트 옆에서 타오르는 작은 모닥불']];
+function showTentCustomizeTab(tab){
+ tentCustomizeTab=['color','side','items'].includes(tab)?tab:'color';
+ for(const [key,id] of [['color','tentTabColor'],['side','tentTabSide'],['items','tentTabItems']])$(id).hidden=key!==tentCustomizeTab;
+ document.querySelectorAll('[data-tent-tab]').forEach(b=>{const active=b.dataset.tentTab===tentCustomizeTab;b.classList.toggle('selected',active);b.setAttribute('aria-selected',String(active))});
+}
+document.querySelectorAll('[data-tent-tab]').forEach(b=>b.onclick=()=>showTentCustomizeTab(b.dataset.tentTab));
+showTentCustomizeTab('color');
+function renderTentOutdoorItems(){
+ const host=$('tentOutdoorItems');host.replaceChildren();
+ const decor=tentStatus?.tent?.outdoorDecor||{owned:{},enabled:{}};
+ for(const [id,emoji,name,description] of TENT_OUTDOOR_ITEMS){
+  const owned=!!decor.owned?.[id],enabled=!!decor.enabled?.[id];
+  const item=document.createElement('div');item.className='tent-outdoor-item';
+  const info=document.createElement('div'),title=document.createElement('strong'),hint=document.createElement('small');
+  title.textContent=emoji+' '+name;hint.textContent=description+' · '+(owned?'구매 완료':'500P');info.append(title,hint);
+  const button=document.createElement('button');button.type='button';button.disabled=tentOutdoorBusy||(!owned&&Number(tentStatus?.points||0)<500);
+  button.textContent=owned?(enabled?'설치 중 · 숨기기':'다시 설치'):'500P 구매';
+  button.onclick=async()=>{
+   if(tentOutdoorBusy)return;
+   if(!owned&&!confirm(name+'을(를) 500P로 구매할까요?'))return;
+   tentOutdoorBusy=true;renderTentOutdoorItems();
+   try{const data=await tentRequest('outdoor-decor',{itemId:id,action:owned?'toggle':'buy',...(owned?{enabled:!enabled}:{})});showTentState(data);syncTents(data.tents);toast(owned?(enabled?'아이템을 숨겼어요.':'아이템을 설치했어요.'):'구매하고 텐트에 설치했어요.');}
+   catch(error){toast(error.message)}finally{tentOutdoorBusy=false;renderTentOutdoorItems()}
+  };
+  item.append(info,button);host.append(item);
+ }
+}
+
 const TENT_EXTERIOR_IMAGE_MAX_SOURCE_BYTES=8*1024*1024;
 const TENT_EXTERIOR_COMPRESSED_MAX_LENGTH=118000;
 function updateTentExteriorForm(){
@@ -2070,6 +2100,7 @@ async function refreshTentStatus(){
 function showTentState(data){
  tentStatus=data;
  $('tentPoints').textContent=(data.points||0).toLocaleString()+'P';
+ renderTentOutdoorItems();
  $('tentPurchaseArea').hidden=Boolean(data.owned);
  $('tentManageArea').hidden=!data.owned;
  $('tentBuyBtn').disabled=Boolean(data.owned)||Number(data.points)<3000;
@@ -3783,6 +3814,57 @@ function pruneTentExteriorTextures(){
   texture.dispose();tentExteriorTextures.delete(key);
  }
 }
+// v293: Exterior decoration meshes are not tent entrance click targets.
+const tentFireAnimations=new Set(),tentOutdoorLightNodes=new Set();
+function makeTentStringLights(group){
+ const root=new THREE.Group();root.userData.tentDecorNoClick=true;group.add(root);
+ const wireMat=new THREE.MeshBasicMaterial({color:0x37332d});
+ const socketMat=new THREE.MeshStandardMaterial({color:0x302c28,roughness:1});
+ const bulbMat=new THREE.MeshBasicMaterial({color:0xffd58a});
+ const points=[];
+ // Front triangular outline, following the roof edge and above the entrance.
+ const left=new THREE.Vector3(-1.88,.22,1.91),peak=new THREE.Vector3(0,2.91,1.91),right=new THREE.Vector3(1.88,.22,1.91);
+ for(let i=0;i<=6;i++)points.push(left.clone().lerp(peak,i/6));
+ for(let i=1;i<=6;i++)points.push(peak.clone().lerp(right,i/6));
+ // One additional ridge strand extends to the back of the tent.
+ for(let i=1;i<=6;i++)points.push(new THREE.Vector3(0,2.92,1.91-i*.6));
+ const cable=new THREE.BufferGeometry().setFromPoints(points.slice(0,13));
+ root.add(new THREE.Line(cable,wireMat));
+ const ridge=new THREE.BufferGeometry().setFromPoints([peak,new THREE.Vector3(0,2.92,-1.7)]);root.add(new THREE.Line(ridge,wireMat.clone()));
+ const bulbGeo=new THREE.SphereGeometry(.09,7,5),socketGeo=new THREE.CylinderGeometry(.075,.075,.11,6);
+ for(let i=0;i<points.length;i++){
+  const p=points[i];if(i%2!==0)continue;
+  const socket=new THREE.Mesh(socketGeo,socketMat.clone());socket.position.copy(p);socket.position.y-=.04;root.add(socket);
+  const bulb=new THREE.Mesh(bulbGeo,bulbMat.clone());bulb.position.copy(p);bulb.position.y-=.14;root.add(bulb);
+ }
+ const glow=new THREE.PointLight(0xffc878,1.0,5.2,2);glow.position.set(0,2.5,1.65);root.add(glow);tentOutdoorLightNodes.add(glow);
+}
+function makeTentMiniCampfire(group){
+ const root=new THREE.Group();root.position.set(2.4,.03,1.35);root.userData.tentDecorNoClick=true;group.add(root);
+ const stoneMat=new THREE.MeshStandardMaterial({color:0x7e7c78,roughness:1});
+ const logMat=new THREE.MeshStandardMaterial({color:0x6a3824,roughness:1});
+ const flameMats=[new THREE.MeshBasicMaterial({color:0xff9b32,transparent:true,opacity:.94,depthWrite:false}),new THREE.MeshBasicMaterial({color:0xffe66a,transparent:true,opacity:.93,depthWrite:false})];
+ for(let i=0;i<9;i++){const a=i*Math.PI*2/9,stone=new THREE.Mesh(new THREE.DodecahedronGeometry(.17,0),stoneMat.clone());stone.position.set(Math.cos(a)*.55,.10,Math.sin(a)*.55);root.add(stone)}
+ for(let i=0;i<3;i++){const log=new THREE.Mesh(new THREE.CylinderGeometry(.09,.11,.9,6),logMat.clone());log.rotation.z=Math.PI/2;log.rotation.y=i*Math.PI/3;log.position.y=.13;root.add(log)}
+ const flames=[];
+ for(let i=0;i<5;i++){
+  const flame=new THREE.Mesh(new THREE.ConeGeometry(i%2?.15:.22,.62+i*.08,5),flameMats[i%2].clone());
+  const a=i*Math.PI*2/5;flame.position.set(Math.cos(a)*.17,.43,Math.sin(a)*.17);root.add(flame);flames.push(flame);
+ }
+ const light=new THREE.PointLight(0xff8b3d,1.6,4.3,2);light.position.y=.63;root.add(light);tentOutdoorLightNodes.add(light);
+ tentFireAnimations.add({root,flames,light,phase:Math.random()*6.28});
+}
+function animateTentOutdoorDecor(t){
+ // Cap real-time lighting work: distant camps keep their visible emissive bulbs,
+ // but do not contribute costly dynamic lights until a player approaches.
+ const lightPosition=new THREE.Vector3();
+ for(const light of tentOutdoorLightNodes){light.getWorldPosition(lightPosition);light.visible=Math.hypot(lightPosition.x-camera.position.x,lightPosition.z-camera.position.z)<23;}
+ for(const effect of tentFireAnimations){
+  const wave=t*.004+effect.phase;
+  effect.flames.forEach((f,i)=>{f.scale.y=.83+.19*Math.sin(wave*2+i*1.9);f.rotation.z=.08*Math.sin(wave+i);});
+  effect.light.intensity=1.4+.22*Math.sin(wave*2);
+ }
+}
 function createTentGraphic(tent){
  const group=new THREE.Group();group.position.set(tent.x,.11,tent.z);group.userData.tentId=tent.id;
  const canvasMat=new THREE.MeshStandardMaterial({color:tent.color,side:THREE.DoubleSide,roughness:.95});
@@ -3816,11 +3898,17 @@ function createTentGraphic(tent){
  const door=new THREE.Mesh(new THREE.ShapeGeometry(doorShape),darkMat);door.position.z=1.83;group.add(door);
  const footprint=new THREE.Mesh(new THREE.BoxGeometry(4,.10,3.9),new THREE.MeshStandardMaterial({color:'#4b4635',roughness:1}));
  footprint.position.y=-.03;group.add(footprint);
+ // v293: Procedural, low-poly outdoor decorations. No extra GLB files.
+ const outdoor=tent.outdoorDecor?.enabled||{};
+ if(outdoor.string_lights)makeTentStringLights(group);
+ if(outdoor.mini_campfire)makeTentMiniCampfire(group);
+
  const label=createTentNameSprite(`${tent.name}  ${Number(tent.occupancy)||0}/${tent.capacity||4}`);group.add(label);
- group.traverse(mesh=>{if(mesh.isMesh){mesh.castShadow=false;mesh.receiveShadow=true;mesh.userData.tentId=tent.id;tentClickMeshes.push(mesh)}});
+ group.traverse(mesh=>{if(mesh.isMesh){mesh.castShadow=false;mesh.receiveShadow=true;mesh.userData.tentId=tent.id;if(!mesh.parent?.userData?.tentDecorNoClick&&!mesh.parent?.parent?.userData?.tentDecorNoClick)tentClickMeshes.push(mesh)}});
  scene.add(group);tentWorldMeshes.set(tent.id,group);
 }
 function updateTentModels(){
+ tentFireAnimations.clear();tentOutdoorLightNodes.clear();
  for(const root of tentWorldMeshes.values()){
   scene.remove(root);root.traverse(obj=>{if(obj.geometry)obj.geometry.dispose();if(obj.material){const materials=Array.isArray(obj.material)?obj.material:[obj.material];for(const m of materials){if(m.map&&!m.map.userData?.tentExteriorCache)m.map.dispose();m.dispose();}}});
  }
@@ -8732,7 +8820,7 @@ function tick(t){
  const minimalScenery=perfMode==='eco'||(perfMode==='auto'&&perfWeakDevice);
  if(!minimalScenery||t-(updateOcean.lastEco||0)>1000){updateOcean(t);updateOcean.lastEco=t;}
  if(!minimalScenery)animateSky(t);
- updateMoshTrails(t);updateSlamDust(t);updateBubbles(t);animateShow(t);animateCampfire(t);updateFiretruckShow(t);animateFieldCoins(t);
+ updateMoshTrails(t);updateSlamDust(t);updateBubbles(t);animateShow(t);animateCampfire(t);animateTentOutdoorDecor(t);updateFiretruckShow(t);animateFieldCoins(t);
  if(!minimalScenery)updateHourlyFireworks(t);
  animateToastSparks(t);
  if(state.id)updateRhythmBoothButton();if(rhythmGame.open)drawRhythmGame();if(state.id)updatePowerBoothButton();updatePowerGame();updateMoleGame();
