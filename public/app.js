@@ -5731,11 +5731,62 @@ function attachImportedHair(neck,style,color){
 for(const style of ['short','bob','bob209','long','buns'])getHairAsset(style).catch(()=>{});
 // Rounded chibi avatar: larger soft head, painted-on face, short unified hairstyle,
 // surface-colored clothing, and inexpensive shoulder/elbow/hip/knee rig.
+// v290: Normalize admin-uploaded hammer GLBs in a separate transform hierarchy.
+// The previous implementation subtracted the unscaled bounds center from the
+// model position and then scaled the model, moving many uploads out of view.
 const moleHammerLoader=new GLTFLoader();let moleHammerTemplate=null,moleHammerPromise=null;
+function normalizeMoleHammerModel(gltfScene){
+ const axisFix=new THREE.Group();axisFix.add(gltfScene);
+ const rawSize=new THREE.Box3().setFromObject(axisFix).getSize(new THREE.Vector3());
+ // The long handle must run along local +Y. GLBs may arrive X/Y/Z-up.
+ if(rawSize.x>rawSize.y&&rawSize.x>rawSize.z)axisFix.rotation.z=Math.PI/2;
+ else if(rawSize.z>rawSize.y&&rawSize.z>rawSize.x)axisFix.rotation.x=-Math.PI/2;
+ axisFix.updateMatrixWorld(true);
+ const orientedBox=new THREE.Box3().setFromObject(axisFix);
+ const orientedSize=orientedBox.getSize(new THREE.Vector3());
+ // Compare transverse width near each end; the wide hammer head goes on top.
+ const endBounds=()=>({minX:Infinity,maxX:-Infinity,minZ:Infinity,maxZ:-Infinity,n:0});
+ const upper=endBounds(),lower=endBounds();const vertex=new THREE.Vector3();
+ axisFix.traverse(obj=>{
+  if(!obj.isMesh||!obj.geometry?.attributes?.position)return;
+  const attr=obj.geometry.attributes.position,step=Math.max(1,Math.floor(attr.count/3000));
+  for(let i=0;i<attr.count;i+=step){
+   vertex.fromBufferAttribute(attr,i).applyMatrix4(obj.matrixWorld);
+   const side=vertex.y>orientedBox.min.y+orientedSize.y*.72?upper:
+    vertex.y<orientedBox.min.y+orientedSize.y*.28?lower:null;
+   if(!side)continue;
+   side.minX=Math.min(side.minX,vertex.x);side.maxX=Math.max(side.maxX,vertex.x);
+   side.minZ=Math.min(side.minZ,vertex.z);side.maxZ=Math.max(side.maxZ,vertex.z);side.n++;
+  }
+ });
+ const span=b=>Math.max(b.maxX-b.minX,b.maxZ-b.minZ);
+ const upright=new THREE.Group();upright.add(axisFix);
+ if(upper.n&&lower.n&&span(lower)>span(upper)*1.2)upright.rotation.z=Math.PI;
+ upright.updateMatrixWorld(true);
+ const box=new THREE.Box3().setFromObject(upright),size=box.getSize(new THREE.Vector3());
+ const center=box.getCenter(new THREE.Vector3());
+ // Center BEFORE scaling, then scale the whole centered hierarchy together.
+ upright.position.sub(center);
+ const fitted=new THREE.Group();fitted.scale.setScalar(1.85/Math.max(size.x,size.y,size.z,.001));
+ fitted.position.y=.48;fitted.add(upright);
+ fitted.traverse(obj=>{if(obj.isMesh){obj.castShadow=true;obj.frustumCulled=false;}});
+ return fitted;
+}
 function refreshMoleHammerModels(){moleHammerTemplate=null;moleHammerPromise=null;for(const a of avatars.values()){if(a.parts?.moleHammer)attachMoleHammerModel(a.parts.moleHammer);}}
 function attachMoleHammerModel(holder){if(!moleHammerRevision)return;const revision=moleHammerRevision;
- if(!moleHammerPromise){moleHammerPromise=new Promise(resolve=>moleHammerLoader.load('/api/mole-hammer-model?v='+revision,gltf=>{const model=gltf.scene;const box=new THREE.Box3().setFromObject(model),size=box.getSize(new THREE.Vector3()),center=box.getCenter(new THREE.Vector3());model.position.sub(center);model.scale.setScalar(.95/Math.max(size.x,size.y,size.z,.001));moleHammerTemplate=model;resolve(model);},()=>{},()=>resolve(null)));}
- moleHammerPromise.then(model=>{if(!model||moleHammerRevision!==revision||!holder.parent)return;holder.clear();holder.add(model.clone(true));});}
+ if(!moleHammerPromise){moleHammerPromise=new Promise(resolve=>moleHammerLoader.load('/api/mole-hammer-model?v='+revision,gltf=>{
+  try{const model=normalizeMoleHammerModel(gltf.scene);moleHammerTemplate=model;resolve(model);}
+  catch(err){console.warn('Mole hammer transform failed:',err);resolve(null);}
+ },undefined,err=>{console.warn('Mole hammer load failed:',err);resolve(null)}));}
+ moleHammerPromise.then(model=>{
+  if(!model||moleHammerRevision!==revision||!holder.parent)return;
+  const clone=model.clone(true);
+  // Avatars near the stage are rendered on layer 1. Async GLB children
+  // default to layer 0 and previously disappeared behind the stage.
+  if(stageForeground)addForegroundLayer(clone);
+  holder.clear();holder.add(clone);
+ });
+}
 function makeAvatar(p){
  const root=new THREE.Group();scene.add(root);
  const parts={}, female=p.gender==='female';
@@ -6565,9 +6616,11 @@ function makeAvatar(p){
  // Green four-character Mole King title. Multiple crowns stack vertically.
  const moleCanvas=document.createElement('canvas');moleCanvas.width=960;moleCanvas.height=160;const mc=moleCanvas.getContext('2d');mc.font='900 96px Arial,sans-serif';mc.textAlign='center';mc.textBaseline='middle';mc.lineWidth=22;mc.strokeStyle='#183b18';mc.shadowColor='#b6ff3e';mc.shadowBlur=23;mc.strokeText('두더지왕',480,82);mc.fillStyle='#b6ff54';mc.fillText('두더지왕',480,82);
  const mt=new THREE.CanvasTexture(moleCanvas);mt.colorSpace=THREE.SRGBColorSpace;const moleTitle=new THREE.Sprite(new THREE.SpriteMaterial({map:mt,transparent:true,depthTest:false}));moleTitle.scale.set(7.4,1.24,1);moleTitle.position.y=4.96;moleTitle.visible=Boolean(p.moleKing);root.add(moleTitle);parts.moleTitle=moleTitle;
- const moleHammer=new THREE.Group();moleHammer.position.set(0,-.43,.12);parts.rightElbow.add(moleHammer);parts.moleHammer=moleHammer;
- const hammerHandle=new THREE.Mesh(new THREE.CylinderGeometry(.048,.048,.83,8),new THREE.MeshStandardMaterial({color:'#8a593b'}));hammerHandle.position.y=.25;moleHammer.add(hammerHandle);
- const hammerHead=new THREE.Mesh(new THREE.BoxGeometry(.53,.22,.24),new THREE.MeshStandardMaterial({color:'#c3d1db',metalness:.5,roughness:.4}));hammerHead.position.y=.70;moleHammer.add(hammerHead);moleHammer.visible=false;
+ // v290: Larger award hammer held slightly forward of the wrist to avoid
+ // clipping into the avatar. The built-in hammer remains a visible fallback.
+ const moleHammer=new THREE.Group();moleHammer.position.set(.08,-.43,.40);parts.rightElbow.add(moleHammer);parts.moleHammer=moleHammer;
+ const hammerHandle=new THREE.Mesh(new THREE.CylinderGeometry(.065,.065,1.30,10),new THREE.MeshStandardMaterial({color:'#8a593b'}));hammerHandle.position.y=.43;moleHammer.add(hammerHandle);
+ const hammerHead=new THREE.Mesh(new THREE.BoxGeometry(.88,.34,.42),new THREE.MeshStandardMaterial({color:'#c3d1db',metalness:.5,roughness:.4}));hammerHead.position.y=1.12;moleHammer.add(hammerHead);moleHammer.visible=false;
  attachMoleHammerModel(moleHammer);
  parts.moleRainbow=[];for(let i=0;i<7;i++){const ring=new THREE.Mesh(new THREE.TorusGeometry(1,.055,7,52),new THREE.MeshBasicMaterial({color:new THREE.Color().setHSL(i/7,1,.63),transparent:true,opacity:.7,depthWrite:false}));ring.rotation.x=Math.PI/2;ring.visible=false;ring.renderOrder=50;root.add(ring);parts.moleRainbow.push(ring);}
  parts.rhythmSparkles=[];const sparkleGeo=new THREE.OctahedronGeometry(.12,0);const sparkleColors=['#ff79c5','#ffe46f','#81d9ff','#a688ff','#89ffb0'];for(let i=0;i<16;i++){const star=new THREE.Mesh(sparkleGeo,new THREE.MeshBasicMaterial({color:sparkleColors[i%sparkleColors.length],transparent:true,opacity:.94}));star.visible=false;star.renderOrder=40;root.add(star);parts.rhythmSparkles.push(star);}
