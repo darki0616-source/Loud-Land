@@ -33,6 +33,9 @@ let headbangTapTimes=[],headbangMoveTimer=null;
 // The player's BPM and phase are already transmitted with /api/move, so other
 // clients use the same shared time origin and see the same playback speed.
 const bpmDanceActions=new Set(['headbang','buriburi','groove','dougie','skanking','airguitar','headspin','freestyle']);
+// v296: Pets hop to the owner's shared dance beat. Include the B-boy freeze
+// here even though its avatar animation intentionally ignores BPM.
+const petBpmDanceActions=new Set([...bpmDanceActions,'windmill']);
 let slamMode=false,slam=null,slamCooldownUntil=0,slamMotion=null;
 let rockPlacementMode=null,rockPlay=null,rockCooldowns={circle:0,train:0,mosh:0,row:0,toast:0,surf:0,shoulder:0},rockRunningUntil=0,rockMotion=null,crowdSurfScene=null,toastSequence=null,freeTrainTrail=null,shoulderSequence=null;
 let chosenPattern='solid',chosenSash='none',chosenHairStyle='short',chosenHairColor='#4b3932';
@@ -1479,7 +1482,7 @@ function react(a,glowColor=null){
   if((a==='jump'||a==='run'||a==='buriburi'||a==='groove'||a==='windmill'||a==='skanking'||a==='airguitar'||a==='headspin'||a==='cheer'||a==='smoke'||a==='bubblegun'||a==='freestyle'||a==='beatking'||a==='powerking'||a==='moleking'||a==='marshmallow'||a==='putyourhandsup'||a==='nightfirework'||a==='heartbow'||a==='drum'||a==='electricguitar'||a==='bassguitar'||a==='vocal')&&state.pose!=='stand'){
    state.pose='stand';state.me.pose='stand';
   }
-  state.action=a;state.me.action=a;if(bpmDanceActions.has(a))applyHeadbangToSelf();if(a==='cheer')playCheer();
+  state.action=a;state.me.action=a;if(petBpmDanceActions.has(a))applyHeadbangToSelf();if(a==='cheer')playCheer();
   state.actionUntil=sustainedReactions.has(a)?Infinity:performance.now()+(a==='peace'?2200:a==='snack'?3300:a==='drink'?5400:1750);
  }
  updateActionButtons();sendMove();
@@ -1684,7 +1687,7 @@ function applyHeadbangToSelf(){
  state.me.headbangBpm=headbangConfig.bpm;
  state.me.headbangBeatAt=headbangConfig.beatAt;
 }
-function sendHeadbangConfig(){applyHeadbangToSelf();if(state.id&&bpmDanceActions.has(state.action))sendMove()}
+function sendHeadbangConfig(){applyHeadbangToSelf();if(state.id&&petBpmDanceActions.has(state.action))sendMove()}
 function sendHeadbangConfigSoon(){clearTimeout(headbangMoveTimer);headbangMoveTimer=setTimeout(sendHeadbangConfig,110)}
 function syncHeadbangSong(){
  if(headbangConfig.mode!=='music')return;
@@ -1695,7 +1698,7 @@ function syncHeadbangSong(){
  headbangConfig.source=info.source;
  headbangConfig.trackToken=song.token;
  applyHeadbangToSelf();
- if(bpmDanceActions.has(state.action))sendHeadbangConfigSoon();
+ if(petBpmDanceActions.has(state.action))sendHeadbangConfigSoon();
  updateHeadbangControls();
 }
 function setHeadbangTempo(bpm){
@@ -8527,8 +8530,23 @@ function petPreviewStart(){
  requestAnimationFrame(frame);
 }
 function foxPetDispose(entry){entry.root.parent?.remove(entry.root);entry.model?.traverse(o=>{if(o.isMesh){for(const m of Array.isArray(o.material)?o.material:[o.material])m?.dispose?.();if(o.userData.foxPetOwnGeometry)o.geometry?.dispose?.();}});}
+// A single short takeoff/landing per beat, followed by a grounded pause.
+// This uses the same server-aligned BPM and beat origin as the owner's dance,
+// so nearby visitors see the pet jump in sync rather than using local timers.
+function petDanceHopAt(player,serverNow){
+ if(!player||!petBpmDanceActions.has(player.action))return 0;
+ const beatAt=Number(player.headbangBeatAt);
+ if(!Number.isFinite(beatAt)||beatAt<=0)return 0;
+ const bpm=Math.max(40,Math.min(240,Number(player.headbangBpm)||120));
+ const period=60000/bpm;
+ const elapsed=Math.max(0,serverNow-beatAt);
+ const intoBeat=elapsed%period;
+ const jumpMs=Math.min(460,period*.76);
+ if(intoBeat>=jumpMs)return 0;
+ return Math.pow(Math.sin(Math.PI*intoBeat/jumpMs),1.15);
+}
 function animateFoxPets(t,indoor=false){
- const now=t*.001,visible=new Set(),roomId=tentRoomActive?.id;
+ const now=t*.001,beatNow=headbangServerTime(),visible=new Set(),roomId=tentRoomActive?.id;
  for(const p of state.players.values()){
   const pet=p.pet;if(!pet?.summoned)continue;
   if(indoor?(p.tentRoomId!==roomId):(!!p.tentRoomId))continue;
@@ -8552,10 +8570,15 @@ function animateFoxPets(t,indoor=false){
   entry.root.position.z+= (tz-entry.root.position.z)*factor;
   const moving=Math.hypot(tx-entry.root.position.x,tz-entry.root.position.z)>.35;
   const ground=indoor?0:Math.max(0,anchor.y*.45);
-  entry.root.position.y=ground+(moving?Math.abs(Math.sin(now*10))*.10:Math.sin(now*2.4+p.id.length)*.055);
+  // For our own pet use the immediate local action; remote pets use the
+  // owner's networked action/BPM/phase from the shared player snapshot.
+  const owner=p.id===state.id&&state.me?state.me:p;
+  const dancing=petBpmDanceActions.has(owner.action);
+  const hop=petDanceHopAt(owner,beatNow);
+  entry.root.position.y=ground+(dancing?hop*(stage===0?.29:.42):(moving?Math.abs(Math.sin(now*10))*.10:Math.sin(now*2.4+p.id.length)*.055));
   entry.root.rotation.y+=Math.atan2(Math.sin(yaw-entry.root.rotation.y),Math.cos(yaw-entry.root.rotation.y))*.09;
   entry.pivot.rotation.z=Math.sin(now*(moving?9:2.5)+p.id.length)*(moving?.095:.045);
-  entry.pivot.rotation.x=Math.sin(now*(moving?7:2)+p.id.length)*.045;
+  entry.pivot.rotation.x=Math.sin(now*(moving?7:2)+p.id.length)*.045+(dancing?hop*.075:0);
   visible.add(p.id);
  }
  for(const [id,entry] of [...foxPetNodes])if(!visible.has(id)){foxPetDispose(entry);foxPetNodes.delete(id);}
