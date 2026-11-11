@@ -772,6 +772,18 @@ const cleanFlag=s=>String(s||'').replace(/[\x00-\x1f<>]/g,'').replace(/\s+/g,' '
 const clean = (s,max=30)=>String(s||'').replace(/[\x00-\x1f<>]/g,'').trim().slice(0,max);
 const send=(res,obj)=>{res.write('data: '+JSON.stringify(obj)+'\n\n');};
 const broadcast=obj=>{for(const res of clients.values()) {try {send(res,obj);}catch{}}};
+// v292: End Pepero Day on 2026-11-12 00:00 KST regardless of Render's timezone.
+const PEPE_END_AT=Date.UTC(2026,10,11,15,0,0);
+function peperoEventActive(){return Date.now()<PEPE_END_AT;}
+function normalizePeperoEquipment(p){
+ if(p.glowColor!=='pepero'||peperoEventActive())return false;
+ p.glowEnabled=false;p.glowColor='lime';return true;
+}
+// Push the change to every connected client, even if nobody moves or refreshes.
+setInterval(()=>{
+ if(peperoEventActive())return;
+ for(const p of players.values())if(normalizePeperoEquipment(p))broadcast({type:'profile',player:p});
+},1000).unref();
 const json=(res,status,obj)=>{res.writeHead(status,{'content-type':'application/json; charset=utf-8','cache-control':'no-store','access-control-allow-origin':'*'});res.end(JSON.stringify(obj));};
 // Consent-based two-player interactions. The server owns distance, invitations and timing.
 const duoInvites=new Map(),activeDuos=new Map();
@@ -1186,7 +1198,8 @@ const server=http.createServer(async(req,res)=>{
           p.headbangBpm=clamp(d.headbangBpm||120,40,240);
           const beatAt=Number(d.headbangBeatAt);p.headbangBeatAt=Number.isFinite(beatAt)&&Math.abs(beatAt-Date.now())<86400000?beatAt:Date.now();
           p.glowEnabled=d.glowEnabled===true;
-          p.glowColor=['red','pink','blue','lime','yellow','white','rainbow','pepero'].includes(d.glowColor)?d.glowColor:'lime';
+          p.glowColor=['red','pink','blue','lime','yellow','white','rainbow',...(peperoEventActive()?['pepero']:[])].includes(d.glowColor)?d.glowColor:'lime';
+          if(d.glowColor==='pepero'&&!peperoEventActive())p.glowEnabled=false;
           broadcast({type:'tent-room',playerId:p.id,roomId:p.tentRoomId,x:p.tentRoomX,z:p.tentRoomZ,facing:p.tentRoomFacing,action:p.action,pose:p.pose,headbangBpm:p.headbangBpm,headbangBeatAt:p.headbangBeatAt,glowEnabled:p.glowEnabled,glowColor:p.glowColor});
           return json(res,200,{ok:true});
         }
@@ -1360,7 +1373,8 @@ const server=http.createServer(async(req,res)=>{
         p.x=clamp(d.x,SERVER_X_MIN,SERVER_X_MAX);p.y=clamp(d.y,SERVER_Y_MIN,SERVER_Y_MAX);p.facing=clamp(d.facing,-Math.PI,Math.PI);
         p.pose=['stand','sit','lie'].includes(d.pose)?d.pose:'stand';
         p.glowEnabled=d.glowEnabled===true;
-        p.glowColor=['red','pink','blue','lime','yellow','white','rainbow','pepero'].includes(d.glowColor)?d.glowColor:'lime';
+        p.glowColor=['red','pink','blue','lime','yellow','white','rainbow',...(peperoEventActive()?['pepero']:[])].includes(d.glowColor)?d.glowColor:'lime';
+        if(d.glowColor==='pepero'&&!peperoEventActive())p.glowEnabled=false;
         p.headbangBpm=Number.isFinite(Number(d.headbangBpm))&&Number(d.headbangBpm)>0?clamp(d.headbangBpm,40,240):120;
         const beatAt=Number(d.headbangBeatAt);
         p.headbangBeatAt=Number.isFinite(beatAt)&&Math.abs(beatAt-Date.now())<86400000?beatAt:Date.now();

@@ -1447,7 +1447,7 @@ function updateActionButtons(){
 function react(a,glowColor=null){
  if(!state.me)return;
  if(a==='glowstick'&&glowColor===null){openGlowstickPicker();return;}
- if(a==='glowstick'){state.me.glowColor=glowstickColors[glowColor]?glowColor:'rainbow';state.me.glowEnabled=true;updateActionButtons();sendMove();return;}
+ if(a==='glowstick'){if(glowColor==='pepero'&&!peperoEventActive())return toast('빼빼로데이 이벤트가 종료됐어요.');state.me.glowColor=glowstickColors[glowColor]?glowColor:'rainbow';state.me.glowEnabled=true;updateActionButtons();sendMove();return;}
  if(a==='beatking'&&!state.me.rhythmKing)return toast('전날 박자왕 1등만 사용할 수 있습니다.');
  if(a==='powerking'&&!state.me.powerKing)return toast('전날 파워왕 1등만 사용할 수 있습니다.');
  if(a==='moleking'&&!state.me.moleKing)return toast('전날 두더지왕 1등만 사용할 수 있습니다.');
@@ -1481,6 +1481,9 @@ function react(a,glowColor=null){
 }
 document.querySelectorAll('[data-action]').forEach(b=>b.onclick=()=>react(b.dataset.action));
 // The glowsticks are independent equipped accessories; putyourhandsup is a separate looping animation.
+// v292: Pepero Day ends permanently at 2026-11-12 00:00 KST (2026-11-11 15:00 UTC).
+const PEPE_END_AT=Date.UTC(2026,10,11,15,0,0);
+function peperoEventActive(){return Date.now()+(Number.isFinite(state.serverDelta)?state.serverDelta:0)<PEPE_END_AT;}
 const glowstickColors={red:'#ff294b',pink:'#ff4bda',blue:'#36a5ff',lime:'#9dff32',yellow:'#fff94b',white:'#f4fbff',rainbow:'#ffffff',pepero:'#70402c'};
 const glowstickLabels={red:'빨강',pink:'핑크',blue:'파랑',lime:'연두',yellow:'노랑',white:'흰색',rainbow:'무지개',pepero:'🍫 빼빼로'};
 const glowstickButton=document.createElement('button');
@@ -1494,21 +1497,43 @@ handsupButton.innerHTML='🙌 <span>풋쳐핸섭</span>';handsupButton.onclick=(
 $('reactionActions').append(handsupButton);
 const glowstickPicker=document.createElement('div');
 glowstickPicker.id='glowstickPicker';glowstickPicker.className='glowstick-picker hidden';
-glowstickPicker.setAttribute('role','dialog');glowstickPicker.setAttribute('aria-modal','true');glowstickPicker.setAttribute('aria-label','야광봉 및 빼빼로 선택');
-glowstickPicker.innerHTML='<div class="glowstick-panel"><h3>🌈 야광봉 · 🍫 빼빼로</h3><p>11월 11일 빼빼로데이! 양손에 장착하고 춤과 다른 리액션 중에도 계속 들고 있어요.</p><div id="glowstickColors" class="glowstick-colors"></div><button type="button" id="glowstickCancel">취소</button></div>';
+glowstickPicker.setAttribute('role','dialog');glowstickPicker.setAttribute('aria-modal','true');glowstickPicker.setAttribute('aria-label','야광봉 선택');
+glowstickPicker.innerHTML='<div class="glowstick-panel"><h3 id="glowstickPickerTitle">🌈 야광봉</h3><p id="glowstickPickerDescription">원하는 색상을 골라 양손에 장착하고 춤과 다른 리액션 중에도 계속 들고 있어요.</p><div id="glowstickColors" class="glowstick-colors"></div><button type="button" id="glowstickCancel">취소</button></div>';
 document.body.append(glowstickPicker);
 for(const [key,hex] of Object.entries(glowstickColors)){
- const b=document.createElement('button');b.type='button';b.className='glowstick-choice';
+ if(key==='pepero'&&!peperoEventActive())continue;
+ const b=document.createElement('button');b.type='button';b.className='glowstick-choice';b.dataset.glowColor=key;
  b.innerHTML='<i></i><span>'+glowstickLabels[key]+'</span>';
  const dot=b.querySelector('i');dot.style.background=key==='pepero'?'linear-gradient(90deg,#e3a967 0 26%,#60301c 26% 100%)':key==='rainbow'?'conic-gradient(#fa3751,#f8e33c,#52e6a2,#46a3ff,#bf58f5,#fa3751)':hex;if(key==='pepero')dot.classList.add('pepero-preview');
  dot.style.boxShadow=key==='pepero'?'0 1px 5px #0008':key==='rainbow'?'0 0 14px #f7f8ff':'0 0 14px '+hex;
  b.onclick=()=>{glowstickPicker.classList.add('hidden');react('glowstick',key);};
  $('glowstickColors').append(b);
 }
+// Remove the event option from already-open tabs at midnight, without removing regular glowsticks.
+function updatePeperoPicker(){
+ const active=peperoEventActive();
+ $('glowstickPickerTitle').textContent=active?'🌈 야광봉 · 🍫 빼빼로':'🌈 야광봉';
+ $('glowstickPickerDescription').textContent=active?'11월 11일 빼빼로데이! 양손에 장착하고 춤과 다른 리액션 중에도 계속 들고 있어요.':'원하는 색상을 골라 양손에 장착하고 춤과 다른 리액션 중에도 계속 들고 있어요.';
+ const button=glowstickPicker.querySelector('[data-glow-color="pepero"]');
+ if(button&&!active)button.remove();
+}
+updatePeperoPicker();
+let peperoExpiredHandled=false;
+function expirePeperoIfNeeded(){
+ if(peperoEventActive()||peperoExpiredHandled)return;
+ peperoExpiredHandled=true;
+ updatePeperoPicker();
+ refreshPeperoInstances();
+ if(state.me?.glowColor==='pepero'){
+  state.me.glowEnabled=false;state.me.glowColor='lime';updateActionButtons();sendMove();
+ }
+}
+setInterval(expirePeperoIfNeeded,1000);
 $('glowstickCancel').onclick=()=>glowstickPicker.classList.add('hidden');
 glowstickPicker.addEventListener('pointerdown',e=>{if(e.target===glowstickPicker)glowstickPicker.classList.add('hidden');});
 function openGlowstickPicker(){
  if(!state.me)return;
+ updatePeperoPicker();
  if(currentDuo())return toast('상호작용을 종료한 후 사용해 주세요.');
  if(state.me.glowEnabled){state.me.glowEnabled=false;updateActionButtons();sendMove();return;}
  glowstickPicker.classList.remove('hidden');
@@ -3054,6 +3079,12 @@ function peperoMatrixAt(place){
  d.updateMatrix();return d.matrix;
 }
 function refreshPeperoInstances(){
+ if(!peperoEventActive()){
+  // Remove the decoration meshes from both scenes at midnight, including for visitors online.
+  if(peperoOutdoorMesh){scene.remove(peperoOutdoorMesh);peperoOutdoorMesh.count=0;peperoOutdoorMesh=null;}
+  if(peperoIndoorMesh){tentRoomScene.remove(peperoIndoorMesh);peperoIndoorMesh.count=0;peperoIndoorMesh=null;}
+  return;
+ }
  if(peperoOutdoorMesh){
   const eco=perfWeakDevice||perfMode==='eco';
   let count=0;
@@ -3079,9 +3110,11 @@ function refreshPeperoInstances(){
  }
 }
 {
+ if(peperoEventActive()){
  const {outdoor,indoor}=createPeperoPlacements();
  peperoOutdoorPlaces=outdoor;peperoIndoorPlaces=indoor;
  new GLTFLoader().load('/assets/world/pepero_box.glb?v=268',gltf=>{
+  if(!peperoEventActive())return;
   gltf.scene.updateMatrixWorld(true);
   const source=gltf.scene.getObjectByProperty('isMesh',true);
   if(!source||!source.geometry){console.warn('빼빼로 상자 GLB에 메시가 없습니다.');return;}
@@ -3105,6 +3138,7 @@ function refreshPeperoInstances(){
   tentRoomScene.add(peperoIndoorMesh);
   refreshPeperoInstances();
  },undefined,error=>console.warn('빼빼로 상자 GLB를 불러오지 못했습니다.',error));
+ }
 }
 // v248: No green rug; purchased items are rendered below as tent furniture.
 const tentRoomAvatars=new Map();
@@ -7586,7 +7620,7 @@ function animateAvatar(a,p,t){
  if(P.moleRainbow)P.moleRainbow.forEach((ring,i)=>{const phase=sec%2.3-.99,active=act==='moleking'&&q.moleKing&&phase>0&&phase<.9;ring.visible=Boolean(active);if(active){const spread=phase/.9;ring.position.set(0,.09+i*.012,1.2+spread*.8);ring.scale.setScalar(.28+spread*(2.4+i*.18));ring.material.opacity=.8*(1-spread);}});
  if(P.rhythmSparkles){P.rhythmSparkles.forEach((spark,i)=>{if(!((act==='beatking'&&q.rhythmKing)||(act==='powerking'&&q.powerKing))){spark.visible=false;return}const phase=(sec*1.8+i/5)%1;const angle=phase*Math.PI*2+i*.7;const band=(i%2?1:-1);spark.visible=true;spark.position.set(Math.cos(angle)*(1.1+phase*.5),1.1+Math.sin(phase*Math.PI*2+band)*1.1+phase*.9,.45+Math.sin(angle*1.4)*.7);const sc=.55+.35*Math.sin(phase*Math.PI);spark.scale.setScalar(sc);spark.rotation.x=sec*2.2+i;spark.rotation.y=sec*3.1+i;});}
  if(P.glowsticks){
-  const enabled=Boolean(q.glowEnabled);
+  const enabled=Boolean(q.glowEnabled)&&(q.glowColor!=='pepero'||peperoEventActive());
   const key=glowstickColors[q.glowColor]?q.glowColor:'lime';
   const hue=(sec*.16)%1;
   for(let i=0;i<P.glowsticks.length;i++){
