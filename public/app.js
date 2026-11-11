@@ -2476,15 +2476,15 @@ document.body.append(petOverlay);
 const petPanelBody=petOverlay.querySelector('#petPanelBody');
 let petViewState=null,petPending=false;
 function petHtmlSafe(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-const petSpeciesLabels={fox:'일렉 여우',turtle:'드럼 거북이',cat:'피아노 고양이',rabbit:'바이올린 토끼',elephant:'트럼펫 코끼리'};
-const petSpeciesIcons={fox:'🦊',turtle:'🐢',cat:'🐱',rabbit:'🐰',elephant:'🐘'};
+const petSpeciesLabels={fox:'일렉 여우',turtle:'드럼 거북이',cat:'피아노 고양이',rabbit:'바이올린 토끼',elephant:'트럼펫 코끼리',wolf:'늑대'};
+const petSpeciesIcons={fox:'🦊',turtle:'🐢',cat:'🐱',rabbit:'🐰',elephant:'🐘',wolf:'🐺'};
 function petCountdown(ms){const h=Math.floor(Math.max(0,ms)/3600000),m=Math.floor(Math.max(0,ms)%3600000/60000);return h+'시간 '+m+'분';}
 function renderPetPanel(){
  if(!petOverlay.classList.contains('show'))return;
  const d=petViewState;if(!d){petPanelBody.textContent='펫 정보를 불러오는 중...';return;}
  const pet=d.pet,points=Number(d.points)||0;
  petPreviewSync();
- if(!pet){petPanelBody.innerHTML=`<p>🥚 알에서 시작하는 펫! 여우·거북이·고양이·토끼·코끼리 중 한 종류가 각각 20% 확률로 나와요. 색상도 무작위로 결정돼요.</p><p>입양비 <b>${d.cost.toLocaleString()}P</b> · 부화까지 6시간 · 알부터 소환 가능 · 현재 <b>${points.toLocaleString()}P</b></p><p class="pet-muted">현재 일렉 여우·드럼 거북이·피아노 고양이·바이올린 토끼·트럼펫 코끼리 5종을 입양할 수 있어요. 기존 펫은 유지되며 새 펫을 입양하려면 먼저 삭제해야 해요.</p><div class="pet-actions"><button class="pet-primary" data-pet-action="adopt" ${petPending||points<d.cost?'disabled':''}>🥚 랜덤 알 입양</button></div>`;return;}
+ if(!pet){petPanelBody.innerHTML=`<p>🥚 알에서 시작하는 펫! 여우·거북이·고양이·토끼·코끼리·늑대 중 한 종류가 각각 약 16.7% 확률로 나와요. 색상도 무작위로 결정돼요.</p><p>입양비 <b>${d.cost.toLocaleString()}P</b> · 부화까지 6시간 · 알부터 소환 가능 · 현재 <b>${points.toLocaleString()}P</b></p><p class="pet-muted">현재 일렉 여우·드럼 거북이·피아노 고양이·바이올린 토끼·트럼펫 코끼리·늑대 6종을 입양할 수 있어요. 기존 펫은 유지되며 새 펫을 입양하려면 먼저 삭제해야 해요.</p><div class="pet-actions"><button class="pet-primary" data-pet-action="adopt" ${petPending||points<d.cost?'disabled':''}>🥚 랜덤 알 입양</button></div>`;return;}
  const remain=pet.hatchAt-Date.now();
  if(!pet.hatched){petPanelBody.innerHTML=`<p>🥚 <b>${petHtmlSafe(petSpeciesLabels[pet.species]||'펫')}의 알</b> · 부화까지 <b>${remain>0?petCountdown(remain):'잠시 후'}</b></p><p>색상: <span style="display:inline-block;background:${pet.color};width:15px;height:15px;border-radius:50%;vertical-align:middle"></span> · 잔여 포인트 ${points.toLocaleString()}P</p><p class="pet-muted">알도 소환할 수 있고, 부화 전까지 주인을 따라다녀요. 브라우저를 닫아도 부화 시간이 흘러요.</p><div class="pet-actions"><button class="pet-primary" data-pet-action="${pet.summoned?'unsummon':'summon'}" ${petPending?'disabled':''}>${pet.summoned?'🥚 알 소환 해제':'🥚 알 소환'}</button>${d.testInstant?`<button data-pet-action="hatch" ${petPending?'disabled':''}>🧪 테스트 즉시 부화</button>`:''}<button data-pet-action="release" ${petPending?'disabled':''}>펫 삭제</button></div>`;return;}
  const level=pet.level,prev=level>1?40*(level-1)+8*(level-1)*level:0,next=pet.nextXp;
@@ -8025,8 +8025,61 @@ function elephantPetMakeModel(stage,color){
  });
  return mesh;
 }
+// v283: Wolf uses exactly the same artist-painted PNG swap convention as the fox.
+// Upload wolf_lv{1,10,25}_{red,blue,green,purple,white}.png to assets/pets/wolf/.
+// Wolf GLBs are lazy-loaded so fox-only visitors do not download wolf assets.
+const wolfPetTemplates=new Map(),wolfPetLoading=new Set();
+const wolfPetTextureCache=new Map();
+function wolfPetLoadStage(stage){
+ if(wolfPetTemplates.has(stage)||wolfPetLoading.has(stage))return;
+ wolfPetLoading.add(stage);
+ foxPetLoader.load('/assets/pets/wolf/lv'+stage+'.glb?v=283',g=>{
+  wolfPetTemplates.set(stage,g.scene);wolfPetLoading.delete(stage);
+ },undefined,e=>{wolfPetLoading.delete(stage);console.warn('Wolf pet model unavailable:',stage,e);});
+}
+function wolfPetGetPaintedTexture(stage,color){
+ if(![1,10,25].includes(stage))return undefined;
+ const name=foxPetColorNames.get(String(color||'').toLowerCase())||'white';
+ const key=stage+'|'+name;
+ let record=wolfPetTextureCache.get(key);
+ if(record)return record;
+ record={ready:false,failed:false,texture:null};wolfPetTextureCache.set(key,record);
+ const url='/assets/pets/wolf/wolf_lv'+stage+'_'+name+'.png?v=283';
+ record.texture=foxPetTextureLoader.load(url,texture=>{
+  texture.flipY=false;texture.colorSpace=THREE.SRGBColorSpace;
+  texture.anisotropy=Math.min(4,renderer.capabilities.getMaxAnisotropy());
+  texture.needsUpdate=true;record.ready=true;
+ },undefined,()=>{record.failed=true;}); // Missing PNG: retain the original GLB texture.
+ record.texture.flipY=false;record.texture.colorSpace=THREE.SRGBColorSpace;
+ return record;
+}
+function wolfPetMakeModel(stage,color){
+ const template=wolfPetTemplates.get(stage);
+ if(!template){wolfPetLoadStage(stage);return null;}
+ const paint=wolfPetGetPaintedTexture(stage,color);
+ if(paint&&!paint.ready&&!paint.failed)return null;
+ const mesh=template.clone(true),bounds=new THREE.Box3().setFromObject(mesh);
+ const size=bounds.getSize(new THREE.Vector3()),center=bounds.getCenter(new THREE.Vector3());
+ // Consistent height with fox stages; never alter the wolf's geometry or UVs.
+ const height=stage===25?1.65:stage===10?1.45:1.25;
+ const scale=height/Math.max(.01,size.y);mesh.scale.setScalar(scale);
+ mesh.position.set(-center.x*scale,-bounds.min.y*scale,-center.z*scale);
+ mesh.traverse(obj=>{if(!obj.isMesh)return;
+  const sourceMaterials=Array.isArray(obj.material)?obj.material:[obj.material];
+  const outputMaterials=sourceMaterials.map(base=>{
+   if(!base)return new THREE.MeshStandardMaterial({color:0xffffff,roughness:.85,metalness:0});
+   const mat=base.clone();mat.color.set(0xffffff);mat.vertexColors=false;
+   mat.metalness=0;mat.roughness=.85;mat.side=THREE.DoubleSide;
+   if(paint?.ready&&paint.texture&&base.map)mat.map=paint.texture;
+   mat.needsUpdate=true;return mat;
+  });
+  obj.material=Array.isArray(obj.material)?outputMaterials:outputMaterials[0];
+  obj.castShadow=false;obj.receiveShadow=false;
+ });
+ return mesh;
+}
 function petMakeModel(species,stage,color){
- return species==='elephant'?elephantPetMakeModel(stage,color):species==='rabbit'?rabbitPetMakeModel(stage,color):species==='cat'?catPetMakeModel(stage,color):species==='turtle'?turtlePetMakeModel(stage,color):foxPetMakeModel(stage,color);
+ return species==='wolf'?wolfPetMakeModel(stage,color):species==='elephant'?elephantPetMakeModel(stage,color):species==='rabbit'?rabbitPetMakeModel(stage,color):species==='cat'?catPetMakeModel(stage,color):species==='turtle'?turtlePetMakeModel(stage,color):foxPetMakeModel(stage,color);
 }
 // v277: Lightweight procedural egg, no extra asset or animation rig required.
 function foxPetMakeEgg(color){

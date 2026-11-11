@@ -207,14 +207,14 @@ const badgeStats=new Map();
 const shopStats=new Map();
 // v242: Paid, persistent personal campsite (MD wardrobe remains free for testing).
 
-// v282: one persistent cosmetic pet per badge identity; fox, turtle, cat, rabbit, trumpet elephant; no rigging required.
+// v283: one persistent cosmetic pet per badge identity; fox, turtle, cat, rabbit, elephant, wolf; no rigging required.
 // Pet purchases and food use the SAME authoritative points ledger as tents.
 // v277: testing keeps a manual instant-hatch button; eggs now exist and can be summoned before hatching.
 const PET_TEST_INSTANT=true;
 const PET_ADOPTION_COST=1000, PET_HATCH_MS=6*60*60*1000, PET_MAX_LEVEL=30;
 const PET_FOODS={snack:{cost:30,xp:15,name:'간식'},meal:{cost:100,xp:60,name:'식사'},feast:{cost:250,xp:170,name:'특식'}};
 const PET_COLORS=['#f16b69','#67b9f2','#75d8a0','#b68ae8','#f4eee0'];
-const PET_SPECIES=['fox','turtle','cat','rabbit','elephant']; // Equal odds; existing pet species and saved records are preserved.
+const PET_SPECIES=['fox','turtle','cat','rabbit','elephant','wolf']; // Equal odds; existing pet species and saved records are preserved.
 const petStats=new Map();
 function petLevel(xp){
  let level=1;while(level<PET_MAX_LEVEL&&xp>=40*level+8*level*(level+1))level++;
