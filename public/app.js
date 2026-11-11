@@ -8131,17 +8131,10 @@ async function sendChatMessage(message){
  try{await post('chat',{id:state.id,message:text});return true}catch(e){toast(e.message);return false}
 }
 document.querySelectorAll('[data-chat]').forEach(b=>b.onclick=()=>sendChatMessage(b.dataset.chat));
-// Return to the reaction dock only after a successful PC Enter-to-send.
-// Clicking the Send button, or submitting from a mobile keyboard, keeps chat open.
-let chatEnterSubmit=false;
-$('chatInput').addEventListener('keydown',e=>{
- if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing&&e.keyCode!==229&&
-   !('ontouchstart' in window&&navigator.maxTouchPoints>1))chatEnterSubmit=true;
-});
+// Keep the chat tab open and the input focused after sending with Enter
+// or the Send button, so players can continue chatting without reopening it.
 $('chatForm').addEventListener('submit',async e=>{
  e.preventDefault();const input=$('chatInput');const button=$('chatSend');
- const closeAfterSend=chatEnterSubmit;
- chatEnterSubmit=false;
  if(button.disabled)return;
  const message=input.value.trim();if(!message)return;
  button.disabled=true;
@@ -8149,8 +8142,7 @@ $('chatForm').addEventListener('submit',async e=>{
  button.disabled=false;
  if(sent){
   input.value='';
-  if(closeAfterSend)selectBottomMenu('reaction');
-  else input.focus();
+  input.focus();
  }
 });
 
