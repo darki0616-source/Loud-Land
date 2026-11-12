@@ -2631,8 +2631,8 @@ function renderPetPanel(){
  petPreviewSync();
  petOverlay.querySelectorAll('[data-pet-tab]').forEach(b=>b.classList.toggle('pet-primary',b.dataset.petTab===petCurrentTab));
  if(petCurrentTab==='effects'){
-  const icons={sparkle:'✨',notes:'🎵',heart:'💖',rainbow:'🌈',light:'💡'},catalog=d.effectCatalog||{};
-  const rows=Object.entries(catalog).map(([id,item])=>{const owned=!!d.effects?.owned?.[id],on=!!d.effects?.enabled?.[id];return `<div class="pet-effect-row"><div><b>${icons[id]||'✨'} ${petHtmlSafe(item.name)}</b><small>${id==='notes'?'춤출 때만 나타나요':id==='light'?'가만히 있어도 펫 주변이 빛나요':id==='rainbow'?'펫 주변 무지개빛 오라':''}</small></div><button type="button" data-pet-action="${owned?'effect-toggle':'effect-buy'}" data-effect="${id}" data-enabled="${on?'false':'true'}" ${petPending||(!owned&&points<item.cost)?'disabled':''}>${owned?(on?'사용 중 · 끄기':'켜기'):item.cost.toLocaleString()+'P 구매'}</button></div>`}).join('');
+  const icons={sparkle:'✨',notes:'🎵',heart:'💖',rainbow:'🌈',light:'💡',petals:'🌸',snow:'❄️',electric:'⚡',moonstars:'🌙',disco:'🪩'},catalog=d.effectCatalog||{};
+  const rows=Object.entries(catalog).map(([id,item])=>{const owned=!!d.effects?.owned?.[id],on=!!d.effects?.enabled?.[id];return `<div class="pet-effect-row"><div><b>${icons[id]||'✨'} ${petHtmlSafe(item.name)}</b><small>${(id==='notes'||id==='disco')?'춤출 때만 나타나요':id==='light'?'가만히 있어도 펫 주변이 빛나요':id==='rainbow'?'펫 주변 무지개빛 오라':''}</small></div><button type="button" data-pet-action="${owned?'effect-toggle':'effect-buy'}" data-effect="${id}" data-enabled="${on?'false':'true'}" ${petPending||(!owned&&points<item.cost)?'disabled':''}>${owned?(on?'사용 중 · 끄기':'켜기'):item.cost.toLocaleString()+'P 구매'}</button></div>`}).join('');
   petPanelBody.innerHTML=`<p>보유 포인트 <b>${points.toLocaleString()}P</b></p><p class="pet-muted">구매한 이펙트는 여러 개를 동시에 사용할 수 있어요. 펫을 바꿔도 보유합니다.</p>${rows}`;return;
  }
  if(!pet){petPanelBody.innerHTML=`<p>🥚 알에서 시작하는 펫! 여우·거북이·고양이·토끼·코끼리·늑대 중 한 종류가 각각 약 16.7% 확률로 나와요. 색상도 무작위로 결정돼요.</p><p>입양비 <b>${d.cost.toLocaleString()}P</b> · 부화까지 4시간 · 알부터 소환 가능 · 현재 <b>${points.toLocaleString()}P</b></p><p class="pet-muted">현재 일렉 여우·드럼 거북이·피아노 고양이·바이올린 토끼·트럼펫 코끼리·늑대 6종을 입양할 수 있어요. 기존 펫은 유지되며 새 펫을 입양하려면 먼저 삭제해야 해요.</p><div class="pet-actions"><button class="pet-primary" data-pet-action="adopt" ${petPending||points<d.cost?'disabled':''}>🥚 랜덤 알 입양</button></div>`;return;}
@@ -8955,30 +8955,43 @@ function petEffectTexture(kind){
  const canvas=document.createElement('canvas');canvas.width=128;canvas.height=128;const ctx=canvas.getContext('2d');
  if(kind==='light'){const g=ctx.createRadialGradient(64,64,1,64,64,63);g.addColorStop(0,'rgba(210,255,255,.65)');g.addColorStop(.3,'rgba(119,224,255,.30)');g.addColorStop(1,'rgba(75,155,255,0)');ctx.fillStyle=g;ctx.fillRect(0,0,128,128);}
  else if(kind==='rainbow'){const g=ctx.createRadialGradient(64,64,25,64,64,63);g.addColorStop(0,'rgba(255,255,255,0)');g.addColorStop(.38,'rgba(115,105,255,.38)');g.addColorStop(.53,'rgba(74,220,255,.42)');g.addColorStop(.67,'rgba(123,255,142,.42)');g.addColorStop(.80,'rgba(255,220,76,.38)');g.addColorStop(.91,'rgba(255,105,160,.28)');g.addColorStop(1,'rgba(255,100,150,0)');ctx.fillStyle=g;ctx.fillRect(0,0,128,128);}
- else {ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='bold 86px system-ui, sans-serif';ctx.shadowBlur=15;ctx.shadowColor=kind==='heart'?'#ff68a8':kind==='notes'?'#9ceaff':'#ffea8a';ctx.fillStyle=kind==='heart'?'#ff78a9':kind==='notes'?'#b7f5ff':'#fff1a5';ctx.fillText(kind==='heart'?'♥':kind==='notes'?'♪':'✦',64,68);}
+ else if(kind==='petals'){ctx.fillStyle='#ffb2d3';ctx.shadowBlur=12;ctx.shadowColor='#ffc4df';ctx.beginPath();ctx.ellipse(64,64,21,42,-.65,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#fff1f5';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(43,94);ctx.lineTo(85,33);ctx.stroke();}
+ else if(kind==='disco'){
+  const glow=ctx.createRadialGradient(64,50,5,64,50,62);glow.addColorStop(0,'rgba(222,247,255,.65)');glow.addColorStop(1,'rgba(120,120,255,0)');ctx.fillStyle=glow;ctx.fillRect(0,0,128,128);
+  ctx.save();ctx.beginPath();ctx.arc(64,52,30,0,Math.PI*2);ctx.clip();const colors=['#e6fbff','#83d8ff','#c6aaff','#ffb8e1','#d6d7f5'];for(let y=22;y<84;y+=10)for(let x=34;x<95;x+=10){ctx.fillStyle=colors[((x/10|0)+(y/10|0))%colors.length];ctx.fillRect(x,y,9,9)}ctx.restore();ctx.strokeStyle='#d9ecff';ctx.lineWidth=2;ctx.beginPath();ctx.arc(64,52,30,0,Math.PI*2);ctx.moveTo(64,22);ctx.lineTo(64,7);ctx.stroke();
+  for(let i=0;i<5;i++){const a=i*Math.PI*2/5+.2;ctx.strokeStyle=colors[i];ctx.globalAlpha=.8;ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(64+Math.cos(a)*35,52+Math.sin(a)*35);ctx.lineTo(64+Math.cos(a)*53,52+Math.sin(a)*53);ctx.stroke()}ctx.globalAlpha=1;
+ }
+ else if(kind==='moonstars'){ctx.fillStyle='#fff4b3';ctx.shadowColor='#ffe38a';ctx.shadowBlur=13;ctx.beginPath();ctx.arc(54,63,32,0,Math.PI*2);ctx.fill();ctx.globalCompositeOperation='destination-out';ctx.beginPath();ctx.arc(70,48,29,0,Math.PI*2);ctx.fill();ctx.globalCompositeOperation='source-over';ctx.shadowBlur=8;ctx.font='bold 28px system-ui';ctx.fillText('✦',90,29);ctx.font='bold 20px system-ui';ctx.fillText('✦',95,87);}
+ else {ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='bold 86px system-ui, sans-serif';ctx.shadowBlur=15;ctx.shadowColor=kind==='heart'?'#ff68a8':kind==='notes'||kind==='snow'?'#9ceaff':'#ffea8a';ctx.fillStyle=kind==='heart'?'#ff78a9':kind==='notes'||kind==='snow'?'#b7f5ff':'#fff1a5';ctx.fillText(kind==='heart'?'♥':kind==='notes'?'♪':kind==='snow'?'❄':kind==='electric'?'ϟ':'✦',64,68);}
  const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;petEffectTextureCache.set(kind,texture);return texture;
 }
 function petEffectsDispose(entry){if(!entry.fx)return;entry.fx.group.parent?.remove(entry.fx.group);for(const list of Object.values(entry.fx.sprites))for(const sprite of list)sprite.material.dispose();entry.fx=null;}
-function makePetEffects(entry){
+function makePetEffects(entry,effects,signature){
  const group=new THREE.Group(),sprites={};entry.root.add(group);
- for(const kind of ['sparkle','notes','heart','rainbow','light']){
-  const list=[];for(let i=0;i<(kind==='rainbow'||kind==='light'?1:3);i++){
+ for(const kind of ['sparkle','notes','heart','rainbow','light','petals','snow','electric','moonstars','disco']){
+  if(!effects[kind])continue;
+  const list=[],count=['rainbow','light','moonstars','disco'].includes(kind)?1:3;
+  for(let i=0;i<count;i++){
    const mat=new THREE.SpriteMaterial({map:petEffectTexture(kind),transparent:true,depthWrite:false,opacity:kind==='rainbow'?.7:kind==='light'?.8:.95});
    const sprite=new THREE.Sprite(mat);sprite.visible=false;group.add(sprite);list.push(sprite);
   }sprites[kind]=list;
  }
- const lamp=new THREE.PointLight(0x9bdbff,1.15,5,2);lamp.position.set(0,1.25,0);lamp.visible=false;group.add(lamp);entry.fx={group,sprites,lamp};
+ let lamp=null;if(effects.light){lamp=new THREE.PointLight(0x9bdbff,1.15,5,2);lamp.position.set(0,1.25,0);lamp.visible=false;group.add(lamp);}entry.fx={group,sprites,lamp,signature};
 }
 function updatePetEffects(entry,pet,dancing,t,allowLight){
- const effects=pet.effects||{};if(!Object.values(effects).some(Boolean)){petEffectsDispose(entry);return;}
- if(!entry.fx)makePetEffects(entry);
+ const effects=pet.effects||{},signature=Object.keys(effects).filter(k=>effects[k]).sort().join('|');
+ if(!signature){petEffectsDispose(entry);return;}
+ if(entry.fx&&entry.fx.signature!==signature)petEffectsDispose(entry);
+ if(!entry.fx)makePetEffects(entry,effects,signature);
  const sec=t*.001,height=pet.stage===25?1.65:pet.stage===10?1.45:1.25;
  for(const [kind,list] of Object.entries(entry.fx.sprites))for(let i=0;i<list.length;i++){
-  const sprite=list[i];sprite.visible=!!effects[kind]&&(kind!=='notes'||dancing);if(!sprite.visible)continue;
+  const sprite=list[i];sprite.visible=!!effects[kind]&&(!['notes','disco'].includes(kind)||dancing);if(!sprite.visible)continue;
   if(kind==='rainbow'||kind==='light'){sprite.position.set(0,height*.55,0);const size=kind==='rainbow'?2.8:3.6;sprite.scale.set(size,size,1);sprite.material.rotation=kind==='rainbow'?sec*.18:0;}
-  else {const phase=(sec*.42+i/3)%1,angle=sec*.8+i*Math.PI*2/3+(kind==='heart'?1.3:kind==='notes'?2.5:0);sprite.position.set(Math.cos(angle)*(.55+phase*.12),height*.35+phase*(height+1),Math.sin(angle)*.55);const size=(kind==='sparkle'?.31:.38)*Math.sin(Math.PI*phase);sprite.scale.set(size,size,1);}
+  else if(kind==='moonstars'){sprite.position.set(Math.cos(sec*.55)*.62,height+0.55+Math.sin(sec)*.08,Math.sin(sec*.55)*.30);sprite.scale.set(.68,.68,1);}
+  else if(kind==='disco'){sprite.position.set(0,height+1.0+Math.sin(sec*2)*.06,0);sprite.scale.set(1.0,1.0,1);sprite.material.rotation=Math.sin(sec*1.5)*.12;}
+  else {const phase=(sec*.42+i/3)%1,angle=sec*.8+i*Math.PI*2/3+(kind==='heart'?1.3:kind==='notes'?2.5:kind==='electric'?4:0),fall=kind==='petals'||kind==='snow';sprite.position.set(Math.cos(angle)*(.55+phase*.12),height*.35+(fall?1-phase:phase)*(height+1),Math.sin(angle)*.55);const size=(kind==='sparkle'?.31:kind==='electric'?.48:.38)*Math.sin(Math.PI*phase);sprite.scale.set(size,size,1);sprite.material.rotation=kind==='petals'?sec+i:0;}
  }
- entry.fx.lamp.visible=!!effects.light&&allowLight;
+ if(entry.fx.lamp)entry.fx.lamp.visible=!!effects.light&&allowLight;
 }
 function foxPetDispose(entry){petEffectsDispose(entry);entry.root.parent?.remove(entry.root);entry.model?.traverse(o=>{if(o.isMesh){for(const m of Array.isArray(o.material)?o.material:[o.material])m?.dispose?.();if(o.userData.foxPetOwnGeometry)o.geometry?.dispose?.();}});}
 // A single short takeoff/landing per beat, followed by a grounded pause.

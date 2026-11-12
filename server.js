@@ -282,7 +282,7 @@ const ONE_TIME_CREDIT_HASH='07cad1e4323da66ca647d215a5b63b5ea02519ad6bb88c3e35b7
 const recoveryHash=code=>crypto.createHash('sha256').update(code).digest('hex');
 function recoveryProfile(p){return {name:p.name,color:p.color,gender:p.gender,pattern:p.pattern,sash:p.sash,hairStyle:p.hairStyle,hairColor:p.hairColor};}
 function setRecoveryProfile(p){const r=p?.badgeIdentity&&recoveryRecords.get(p.badgeIdentity);if(r){r.profile=recoveryProfile(p);scheduleSave();}}
-const PET_EFFECTS={sparkle:{name:'반짝이',cost:500},notes:{name:'춤출 때 음표',cost:1000},heart:{name:'하트',cost:1000},rainbow:{name:'무지개',cost:2000},light:{name:'라이트',cost:3000}};
+const PET_EFFECTS={sparkle:{name:'반짝이',cost:500},notes:{name:'춤출 때 음표',cost:1000},heart:{name:'하트',cost:1000},rainbow:{name:'무지개',cost:2000},light:{name:'라이트',cost:3000},petals:{name:'꽃잎',cost:1500},snow:{name:'눈꽃',cost:1500},electric:{name:'전기',cost:2500},moonstars:{name:'달과 별',cost:2500},disco:{name:'디스코볼',cost:3000}};
 function petEffectView(record){const owned={},enabled={};for(const id of Object.keys(PET_EFFECTS)){owned[id]=record?.effectsOwned?.[id]===true;enabled[id]=owned[id]&&record?.effectsEnabled?.[id]===true;}return {owned,enabled};}
 const petStats=new Map();
 let petHatchDurationMigrated=false;
