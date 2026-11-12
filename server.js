@@ -326,6 +326,52 @@ function lotteryDraw(){
  for(const prize of LOTTERY_PRIZES){total+=prize.chance;if(n<total)return prize;}
  return LOTTERY_PRIZES[0];
 }
+// v312: Shore fishing. Every draw, timing result, purchase and payout is server-owned.
+const FISH_CATALOG=JSON.parse(fs.readFileSync(path.join(PUBLIC,'assets/fishing/catalog.json'),'utf8'));
+if(FISH_CATALOG.length!==48||FISH_CATALOG.reduce((n,f)=>n+f.weight,0)!==10000)throw Error('Invalid fishing probabilities');
+const FISH_BY_ID=new Map(FISH_CATALOG.map(f=>[f.id,f]));
+const FISH_ROD_PRICES=[0,500,650,1400,2800,5000]; // level 1 purchase, then lv2..lv5
+const FISH_LEVEL_NAMES=['','나무 낚싯대','실버 낚싯대','골드 낚싯대','플래티넘 낚싯대','레인보우 낚싯대'];
+const FISH_MAX_LEVEL=5,FISH_CAST_COOLDOWN_MS=8000,FISH_BITE_WINDOW_MS=9500;
+const fishingStats=new Map();
+function fishingNearSea(p){
+ if(!p||p.tentRoomId)return false;
+ const wx=(p.x-600)*.058,wz=(p.y-500)*.058+8;
+ return Math.abs(wx)<=51&&wz>=60&&wz<=69.5;
+}
+function fishingAccount(identity){
+ let a=fishingStats.get(identity);
+ if(!a){a={level:0,spent:0,bonus:0,fishCounts:{},totalMisses:0,lastCastAt:0,active:null,lastResult:null};fishingStats.set(identity,a);}
+ if(a.active&&Date.now()>a.active.expiresAt){
+  a.lastResult={id:a.active.id,success:false,reason:'time',at:Date.now()};a.totalMisses++;a.active=null;scheduleSave();
+ }
+ return a;
+}
+function fishPosition(session,at){return .5+.5*Math.sin((at-session.biteAt)/1000*session.speed+session.phase);}
+function fishPublicSession(s){return s?{id:s.id,biteAt:s.biteAt,expiresAt:s.expiresAt,center:s.center,width:s.width,speed:s.speed,phase:s.phase}:null;}
+function fishingView(p){
+ const a=fishingAccount(p.badgeIdentity);return {level:a.level,rodName:FISH_LEVEL_NAMES[a.level],nextPrice:a.level<FISH_MAX_LEVEL?FISH_ROD_PRICES[a.level+1]:null,
+  maxLevel:FISH_MAX_LEVEL,prices:FISH_ROD_PRICES,points:tentPointBalance(p),caught:Object.values(a.fishCounts).reduce((n,v)=>n+v,0),
+  collected:Object.keys(a.fishCounts).length,misses:a.totalMisses,fishCounts:a.fishCounts,lastResult:a.lastResult,session:fishPublicSession(a.active),
+  cooldownUntil:a.lastCastAt+FISH_CAST_COOLDOWN_MS,near:fishingNearSea(p),catalog:FISH_CATALOG,serverNow:Date.now()};
+}
+function fishingDraw(){const n=crypto.randomInt(10000);let sum=0;for(const fish of FISH_CATALOG){sum+=fish.weight;if(n<sum)return fish;}return FISH_CATALOG[FISH_CATALOG.length-1]}
+function fishingRestore(a){
+ const record={level:Math.max(0,Math.min(FISH_MAX_LEVEL,Math.floor(Number(a?.level)||0))),spent:0,bonus:0,fishCounts:{},totalMisses:0,lastCastAt:0,active:null,lastResult:null};
+ for(const key of ['spent','bonus','totalMisses','lastCastAt'])if(Number.isSafeInteger(a?.[key])&&a[key]>=0&&a[key]<=10000000000)record[key]=a[key];
+ if(a?.fishCounts&&typeof a.fishCounts==='object')for(const [id,count] of Object.entries(a.fishCounts).slice(0,48))if(FISH_BY_ID.has(id)&&Number.isSafeInteger(count)&&count>0&&count<100000000)record.fishCounts[id]=count;
+ const last=a?.lastResult;
+ if(last&&/^[a-f0-9-]{36}$/.test(last.id||'')&&typeof last.success==='boolean'){
+  const fish=last.success?FISH_BY_ID.get(last.fish?.id):null;
+  record.lastResult={id:last.id,success:!!fish&&last.success,fish:fish||undefined,points:fish?.points||0,reason:typeof last.reason==='string'?last.reason:'',at:Number(last.at)||Date.now()};
+ }
+ const ac=a?.active;
+ if(ac&&/^[a-f0-9-]{36}$/.test(ac.id||'')&&FISH_BY_ID.has(ac.fishId)&&Number.isFinite(ac.biteAt)&&Number.isFinite(ac.expiresAt)&&ac.expiresAt>Date.now()&&ac.expiresAt<Date.now()+30000&&Number.isFinite(ac.center)&&Number.isFinite(ac.width)&&Number.isFinite(ac.speed)&&Number.isFinite(ac.phase)){
+  record.active={id:ac.id,fishId:ac.fishId,biteAt:ac.biteAt,expiresAt:ac.expiresAt,center:ac.center,width:ac.width,speed:ac.speed,phase:ac.phase};
+ }
+ return record;
+}
+
 const TENT_COST=3000;
 const tentStats=new Map();
 const TENT_COLORS=['#ed9a77','#8dc3ad','#8ea8d8','#c49acb','#dfc576','#d6a3a3','#92b9ba','#d5d9e5'];
@@ -459,7 +505,7 @@ async function serveFurnitureModel(req,res,id){
 const TENT_FURNITURE_MAX_PLACED=30;
 const furnitureStats=new Map();
 function furnitureRecord(identity){if(!furnitureStats.has(identity))furnitureStats.set(identity,{spent:0,owned:{}});return furnitureStats.get(identity);}
-function tentPointBalance(p){const earned=Math.floor(badgeTotal(p)/60)+(p.badgeIdentity?rhythmAccount(p.badgeIdentity).bonus+powerAccount(p.badgeIdentity).bonus+moleAccount(p.badgeIdentity).bonus+(fieldCoinBonuses.get(p.badgeIdentity)||0)+(lotteryStats.get(p.badgeIdentity)?.bonus||0):0);return Math.max(0,earned-(lotteryStats.get(p.badgeIdentity)?.spent||0)-(tentOwnedBy(p.badgeIdentity)?TENT_COST:0)-(furnitureStats.get(p.badgeIdentity)?.spent||0)-(petStats.get(p.badgeIdentity)?.spent||0)-(tentOwnedBy(p.badgeIdentity)?.outdoorDecorSpent||0));}
+function tentPointBalance(p){const earned=Math.floor(badgeTotal(p)/60)+(p.badgeIdentity?rhythmAccount(p.badgeIdentity).bonus+powerAccount(p.badgeIdentity).bonus+moleAccount(p.badgeIdentity).bonus+(fieldCoinBonuses.get(p.badgeIdentity)||0)+(lotteryStats.get(p.badgeIdentity)?.bonus||0)+(fishingStats.get(p.badgeIdentity)?.bonus||0):0);return Math.max(0,earned-(fishingStats.get(p.badgeIdentity)?.spent||0)-(lotteryStats.get(p.badgeIdentity)?.spent||0)-(tentOwnedBy(p.badgeIdentity)?TENT_COST:0)-(furnitureStats.get(p.badgeIdentity)?.spent||0)-(petStats.get(p.badgeIdentity)?.spent||0)-(tentOwnedBy(p.badgeIdentity)?.outdoorDecorSpent||0));}
 function safeFurniturePose(item,x,z,angle){
  if(!item||!Number.isFinite(x)||!Number.isFinite(z)||!Number.isFinite(angle))return false;
  if(angle<0||angle>=360||angle%45!==0)return false;
@@ -646,7 +692,7 @@ const SB_KEY=process.env.SUPABASE_SECRET_KEY||'';
 const useSupabase=Boolean(SB_URL&&SB_KEY);
 let restored=false;
 let saveChain=Promise.resolve();
-function stateData(){return {version:17,lotteryStats:Object.fromEntries([...lotteryStats].map(([identity,a])=>[identity,{day:a.day,used:a.used,spent:a.spent,bonus:a.bonus,pending:a.pending,lastResult:a.lastResult}])),petStats:Object.fromEntries([...petStats].map(([identity,record])=>[identity,{spent:record.spent,pet:record.pet}])),fieldCoinLastSpawnAt,fieldCoins:fieldCoinPublic(),fieldCoinBonuses:Object.fromEntries(fieldCoinBonuses),moleDay,moleHammerRevision,moleReward,moleScores:Object.fromEntries(moleScores),moleAccounts:Object.fromEntries([...moleAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session,lastResult:v.lastResult}])),powerDay,powerReward,powerScores:Object.fromEntries(powerScores),powerAccounts:Object.fromEntries([...powerAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),rhythmAccounts:Object.fromEntries([...rhythmAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),furnitureCatalogEdits:Object.fromEntries(furnitureCatalogEdits),furnitureStats:Object.fromEntries([...furnitureStats].map(([id,v])=>[id,{spent:v.spent,owned:v.owned}])),tentStats:Object.fromEntries([...tentStats].map(([identity,t])=>[identity,storedTent(t)])),announcements:{entry:entranceNotices,ticker:tickerNotices,intervalMinutes:tickerIntervalMinutes,immediateHistory:immediateNoticeHistory},music,queue:[...queue],history:[...history],nextTrackToken,customMd:Object.fromEntries(customMd),shopStats:Object.fromEntries([...shopStats].map(([k,v])=>[k,{spent:0,refunded:v.refunded||0,owned:v.owned,equipped:v.equipped}])),badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),rhythm:{day:rhythmDay,reward:rhythmReward,scores:Object.fromEntries([...rhythmScores].map(([k,v])=>[k,{name:v.name,score:Math.max(0,Math.floor(Number(v.score)||0)),updatedAt:Number(v.updatedAt)||0}]))},savedAt:Date.now()}}
+function stateData(){return {version:18,fishingStats:Object.fromEntries([...fishingStats].map(([id,a])=>[id,{level:a.level,spent:a.spent,bonus:a.bonus,fishCounts:a.fishCounts,totalMisses:a.totalMisses,lastCastAt:a.lastCastAt,active:a.active,lastResult:a.lastResult}])),lotteryStats:Object.fromEntries([...lotteryStats].map(([identity,a])=>[identity,{day:a.day,used:a.used,spent:a.spent,bonus:a.bonus,pending:a.pending,lastResult:a.lastResult}])),petStats:Object.fromEntries([...petStats].map(([identity,record])=>[identity,{spent:record.spent,pet:record.pet}])),fieldCoinLastSpawnAt,fieldCoins:fieldCoinPublic(),fieldCoinBonuses:Object.fromEntries(fieldCoinBonuses),moleDay,moleHammerRevision,moleReward,moleScores:Object.fromEntries(moleScores),moleAccounts:Object.fromEntries([...moleAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session,lastResult:v.lastResult}])),powerDay,powerReward,powerScores:Object.fromEntries(powerScores),powerAccounts:Object.fromEntries([...powerAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),rhythmAccounts:Object.fromEntries([...rhythmAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),furnitureCatalogEdits:Object.fromEntries(furnitureCatalogEdits),furnitureStats:Object.fromEntries([...furnitureStats].map(([id,v])=>[id,{spent:v.spent,owned:v.owned}])),tentStats:Object.fromEntries([...tentStats].map(([identity,t])=>[identity,storedTent(t)])),announcements:{entry:entranceNotices,ticker:tickerNotices,intervalMinutes:tickerIntervalMinutes,immediateHistory:immediateNoticeHistory},music,queue:[...queue],history:[...history],nextTrackToken,customMd:Object.fromEntries(customMd),shopStats:Object.fromEntries([...shopStats].map(([k,v])=>[k,{spent:0,refunded:v.refunded||0,owned:v.owned,equipped:v.equipped}])),badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),rhythm:{day:rhythmDay,reward:rhythmReward,scores:Object.fromEntries([...rhythmScores].map(([k,v])=>[k,{name:v.name,score:Math.max(0,Math.floor(Number(v.score)||0)),updatedAt:Number(v.updatedAt)||0}]))},savedAt:Date.now()}}
 function applySaved(d){
  if(!d||typeof d!=='object')return;
  petStats.clear();petHatchDurationMigrated=false;
@@ -677,6 +723,11 @@ function applySaved(d){
   const lastResult=last&&/^[a-f0-9-]{36}$/.test(last.id||'')&&LOTTERY_PRIZES.some(t=>t.tier===last.tier)?
    {id:last.id,tier:last.tier,prize:LOTTERY_PRIZES.find(t=>t.tier===last.tier).prize,symbols:[...LOTTERY_PRIZES.find(t=>t.tier===last.tier).symbols],at:Number(last.at)||Date.now()}:null;
   lotteryStats.set(identity,{day:/^\d{4}-\d{2}-\d{2}$/.test(a.day)?a.day:kstDate(),used:Math.max(0,Math.min(LOTTERY_DAILY_LIMIT,Math.floor(Number(a.used)||0))),spent:safeMoney(a.spent),bonus:safeMoney(a.bonus),pending,lastResult});
+ }
+ fishingStats.clear();
+ if(d.fishingStats&&typeof d.fishingStats==='object')for(const [id,a] of Object.entries(d.fishingStats).slice(0,50000)){
+  if(!/^[a-zA-Z0-9_-]{20,100}$/.test(id)||!a||typeof a!=='object')continue;
+  fishingStats.set(id,fishingRestore(a));
  }
  if(d.fieldCoinBonuses&&typeof d.fieldCoinBonuses==='object')for(const [key,value] of Object.entries(d.fieldCoinBonuses).slice(0,50000))if(/^[a-zA-Z0-9_-]{20,100}$/.test(key)&&Number.isSafeInteger(value)&&value>=0)fieldCoinBonuses.set(key,value);
  if(Number.isFinite(Number(d.fieldCoinLastSpawnAt)))fieldCoinLastSpawnAt=Math.min(Date.now(),Math.max(0,Number(d.fieldCoinLastSpawnAt)));
@@ -901,7 +952,7 @@ function duoDistance(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
 setInterval(()=>{const now=Date.now();for(const duo of [...activeDuos.values()])if(duo.endAt<=now)endDuo(duo);for(const [key,invite] of duoInvites)if(invite.expiresAt<=now){duoInvites.delete(key);broadcast({type:'duo-invite-ended',id:key,to:invite.to})}},700).unref();
 const snapshot=(viewerId=null)=>({type:'snapshot',tents:allPlacedTents(),announcements:publicNoticeState(),interactions:[...activeDuos.values()].filter(x=>x.endAt>Date.now()),players:[...players.values()],chatRoomId:players.get(viewerId)?.tentRoomId||null,chat:chatForRoom(players.get(viewerId)?.tentRoomId||null),...musicState(),skipVote:publicSkipVote(),skipVoteCooldownUntil,slam:publicSlam(),slamCooldownUntil,rockPlay:publicRock(),crowdSurf:activeSurfRide&&activeSurfRide.startAt+activeSurfRide.duration>Date.now()?activeSurfRide:null,rockCooldowns:{...rockCooldowns},rockRunningUntil,rhythm:publicRhythmState(),power:publicPowerState(),mole:publicMoleState(),fieldCoins:fieldCoinPublic(),count:players.size});
 const clamp=(n,min,max)=>Math.min(max,Math.max(min,Number(n)||0));
-const SERVER_X_MIN=20,SERVER_X_MAX=1380,SERVER_Y_MIN=60,SERVER_Y_MAX=1100;
+const SERVER_X_MIN=20,SERVER_X_MAX=1380,SERVER_Y_MIN=60,SERVER_Y_MAX=1550;
 function cleanup(){const now=Date.now();for(const [id,p] of players)if(now-p.seen>180000){settleBadge(p,Math.min(now,p.seen+45000));settleBadge(p);clearDuosFor(id);players.delete(id);forgetSession(id);voterLeaves(id);if(activeSlam?.participants.delete(id))slamUpdate();rockMemberLeaves(id);pauseForEmpty();const r=clients.get(id);if(r){r.end();clients.delete(id)}broadcast({type:'leave',id,count:players.size});sendTentUpdate()}}
 setInterval(cleanup,7000).unref();
 setInterval(()=>{
@@ -1216,6 +1267,57 @@ const server=http.createServer(async(req,res)=>{
         return json(res,200,{ok:true,value:coin.value,points:tentPointBalance(p),coins:fieldCoinPublic()});
       }
 
+      if(url.pathname==='/api/fishing'){
+        if(!p.badgeIdentity||playerSessions.get(id)!==String(d.sessionKey||''))return json(res,403,{error:'본인 세션에서만 낚시할 수 있어요.'});
+        const command=String(d.command||'state'),a=fishingAccount(p.badgeIdentity);
+        if(command==='state')return json(res,200,{ok:true,fishing:fishingView(p)});
+        if(!fishingNearSea(p))return json(res,403,{error:'바다 앞 모래사장으로 이동해 주세요.'});
+        if(command==='buy'){
+          if(a.level)return json(res,409,{error:'이미 낚싯대를 가지고 있어요.'});
+          const cost=FISH_ROD_PRICES[1];if(tentPointBalance(p)<cost)return json(res,409,{error:'기본 낚싯대 구매에 500P가 필요해요.'});
+          a.level=1;a.spent+=cost;await saveNow();return json(res,200,{ok:true,fishing:fishingView(p)});
+        }
+        if(command==='upgrade'){
+          if(!a.level)return json(res,409,{error:'먼저 기본 낚싯대를 구매해 주세요.'});
+          if(a.level>=FISH_MAX_LEVEL)return json(res,409,{error:'이미 최고 레벨 낚싯대예요.'});
+          if(a.active)return json(res,409,{error:'낚시가 끝난 뒤 업그레이드할 수 있어요.'});
+          const cost=FISH_ROD_PRICES[a.level+1];if(tentPointBalance(p)<cost)return json(res,409,{error:`업그레이드에 ${cost}P가 필요해요.`});
+          a.level++;a.spent+=cost;await saveNow();return json(res,200,{ok:true,fishing:fishingView(p)});
+        }
+        if(command==='cast'){
+          if(!a.level)return json(res,409,{error:'낚싯대를 먼저 구매해 주세요.'});
+          if(a.active)return json(res,409,{error:'이미 낚시 중이에요.'});
+          const now=Date.now();if(now-a.lastCastAt<FISH_CAST_COOLDOWN_MS)return json(res,429,{error:'낚싯대를 준비하는 중이에요.',fishing:fishingView(p)});
+          const fish=fishingDraw();const biteAt=now+2600+crypto.randomInt(2900),phase=crypto.randomInt(6283)/1000;
+          // Higher difficulty -> narrower target and faster cursor. Each upgrade widens success band.
+          const width=Math.min(.30,.235-fish.difficulty*.032+(a.level-1)*.032);
+          const speed=2.65+fish.difficulty*.38;
+          a.active={id:crypto.randomUUID(),fishId:fish.id,biteAt,expiresAt:biteAt+FISH_BITE_WINDOW_MS,
+           center:.27+crypto.randomInt(4600)/10000,width,speed,phase};
+          a.lastCastAt=now;a.lastResult=null;
+          await saveNow();return json(res,200,{ok:true,fishing:fishingView(p)});
+        }
+        if(command==='reel'){
+          const castId=String(d.castId||'');
+          if(a.lastResult?.id===castId)return json(res,200,{ok:true,result:a.lastResult,fishing:fishingView(p)});
+          const session=a.active;
+          if(!session||session.id!==castId)return json(res,409,{error:'진행 중인 낚시가 없어요.',fishing:fishingView(p)});
+          const now=Date.now();if(now<session.biteAt)return json(res,409,{error:'물고기가 입질할 때까지 기다려 주세요.',fishing:fishingView(p)});
+          const fish=FISH_BY_ID.get(session.fishId);
+          const success=now<=session.expiresAt&&Math.abs(fishPosition(session,now)-session.center)<=session.width/2+.043;
+          a.active=null;
+          if(success){a.bonus+=fish.points;a.fishCounts[fish.id]=(a.fishCounts[fish.id]||0)+1;}
+          else a.totalMisses++;
+          a.lastResult={id:session.id,success,fish:success?fish:undefined,points:success?fish.points:0,
+            reason:success?'caught':now>session.expiresAt?'time':'timing',at:now};
+          await saveNow();return json(res,200,{ok:true,result:a.lastResult,fishing:fishingView(p)});
+        }
+        if(command==='cancel'){
+          if(a.active){a.totalMisses++;a.lastResult={id:a.active.id,success:false,reason:'cancel',at:Date.now()};a.active=null;await saveNow();}
+          return json(res,200,{ok:true,fishing:fishingView(p)});
+        }
+        return json(res,400,{error:'지원하지 않는 낚시 명령입니다.'});
+      }
       if(url.pathname==='/api/lottery'){
         if(!p.badgeIdentity||playerSessions.get(id)!==String(d.sessionKey||''))return json(res,403,{error:'본인 세션에서만 복권을 이용할 수 있어요.'});
         const command=String(d.command||'');
@@ -1551,7 +1653,8 @@ const server=http.createServer(async(req,res)=>{
           const kstHour=Number(new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Seoul',hour:'2-digit',hourCycle:'h23'}).format(new Date()));
           if(kstHour<1||kstHour>=4)d.action='idle';
         }
-        p.action=['idle','walk','peace','jump','run','wave','clap','sit','lie','drink','snack','headbang','buriburi','groove','dougie','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','powerking','moleking','marshmallow','putyourhandsup','nightfirework','birthday','heartbow','drum','electricguitar','bassguitar','vocal','mosh-charge','slam-charge','slam-retreat','slam-celebrate','circle-run','train-run','row-paddle','toast-clink','surf-rider','surf-support','shoulder-headbang','rock-skank'].includes(d.action)?d.action:'idle';
+        if(d.action==='fishing'&&(!fishingNearSea(p)||!fishingAccount(p.badgeIdentity).active))d.action='idle';
+        p.action=['idle','walk','peace','jump','run','wave','clap','sit','lie','drink','snack','headbang','buriburi','groove','dougie','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','powerking','moleking','marshmallow','putyourhandsup','nightfirework','birthday','fishing','heartbow','drum','electricguitar','bassguitar','vocal','mosh-charge','slam-charge','slam-retreat','slam-celebrate','circle-run','train-run','row-paddle','toast-clink','surf-rider','surf-support','shoulder-headbang','rock-skank'].includes(d.action)?d.action:'idle';
         broadcast({type:'move',player:p});
         // Only a movement packet from this player's private session may
         // award coins; publicly visible avatar IDs are not authentication.
