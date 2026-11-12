@@ -277,6 +277,8 @@ const PET_COLORS=['#f16b69','#67b9f2','#75d8a0','#b68ae8','#f4eee0'];
 const PET_SPECIES=['fox','turtle','cat','rabbit','elephant','wolf']; // Equal odds; existing pet species and saved records are preserved.
 // Only a SHA-256 digest of the high-entropy recovery code is persisted.
 const recoveryRecords=new Map(),recoveryIndex=new Map(),recoveryAttempts=new Map();
+const adminPointCredits=new Map(),adminPointLedger=new Map();let oneTimeCreditApplied=false;
+const ONE_TIME_CREDIT_HASH='07cad1e4323da66ca647d215a5b63b5ea02519ad6bb88c3e35b7f9130bd50fd1',ONE_TIME_CREDIT_ID='one-time-20261113-8700';
 const recoveryHash=code=>crypto.createHash('sha256').update(code).digest('hex');
 function recoveryProfile(p){return {name:p.name,color:p.color,gender:p.gender,pattern:p.pattern,sash:p.sash,hairStyle:p.hairStyle,hairColor:p.hairColor};}
 function setRecoveryProfile(p){const r=p?.badgeIdentity&&recoveryRecords.get(p.badgeIdentity);if(r){r.profile=recoveryProfile(p);scheduleSave();}}
@@ -522,7 +524,7 @@ async function serveFurnitureModel(req,res,id){
 const TENT_FURNITURE_MAX_PLACED=30;
 const furnitureStats=new Map();
 function furnitureRecord(identity){if(!furnitureStats.has(identity))furnitureStats.set(identity,{spent:0,owned:{}});return furnitureStats.get(identity);}
-function tentPointBalance(p){const earned=Math.floor(badgeTotal(p)/60)+tentTimeBonus(p)+(p.badgeIdentity?rhythmAccount(p.badgeIdentity).bonus+powerAccount(p.badgeIdentity).bonus+moleAccount(p.badgeIdentity).bonus+(fieldCoinBonuses.get(p.badgeIdentity)||0)+(lotteryStats.get(p.badgeIdentity)?.bonus||0)+(fishingStats.get(p.badgeIdentity)?.bonus||0):0);return Math.max(0,earned-(fishingStats.get(p.badgeIdentity)?.spent||0)-(lotteryStats.get(p.badgeIdentity)?.spent||0)-(tentOwnedBy(p.badgeIdentity)?TENT_COST:0)-(furnitureStats.get(p.badgeIdentity)?.spent||0)-(petStats.get(p.badgeIdentity)?.spent||0)-(tentOwnedBy(p.badgeIdentity)?.outdoorDecorSpent||0));}
+function tentPointBalance(p){const earned=Math.floor(badgeTotal(p)/60)+tentTimeBonus(p)+(p.badgeIdentity?rhythmAccount(p.badgeIdentity).bonus+powerAccount(p.badgeIdentity).bonus+moleAccount(p.badgeIdentity).bonus+(fieldCoinBonuses.get(p.badgeIdentity)||0)+(adminPointCredits.get(p.badgeIdentity)||0)+(lotteryStats.get(p.badgeIdentity)?.bonus||0)+(fishingStats.get(p.badgeIdentity)?.bonus||0):0);return Math.max(0,earned-(fishingStats.get(p.badgeIdentity)?.spent||0)-(lotteryStats.get(p.badgeIdentity)?.spent||0)-(tentOwnedBy(p.badgeIdentity)?TENT_COST:0)-(furnitureStats.get(p.badgeIdentity)?.spent||0)-(petStats.get(p.badgeIdentity)?.spent||0)-(tentOwnedBy(p.badgeIdentity)?.outdoorDecorSpent||0));}
 function safeFurniturePose(item,x,z,angle){
  if(!item||!Number.isFinite(x)||!Number.isFinite(z)||!Number.isFinite(angle))return false;
  if(angle<0||angle>=360||angle%45!==0)return false;
@@ -710,9 +712,12 @@ const SB_KEY=process.env.SUPABASE_SECRET_KEY||'';
 const useSupabase=Boolean(SB_URL&&SB_KEY);
 let restored=false;
 let saveChain=Promise.resolve();
-function stateData(){return {version:18,recoveryRecords:Object.fromEntries(recoveryRecords),fishingStats:Object.fromEntries([...fishingStats].map(([id,a])=>[id,{level:a.level,spent:a.spent,bonus:a.bonus,fishCounts:a.fishCounts,totalMisses:a.totalMisses,lastCastAt:a.lastCastAt,active:a.active,lastResult:a.lastResult}])),lotteryStats:Object.fromEntries([...lotteryStats].map(([identity,a])=>[identity,{day:a.day,used:a.used,spent:a.spent,bonus:a.bonus,pending:a.pending,lastResult:a.lastResult}])),petStats:Object.fromEntries([...petStats].map(([identity,record])=>[identity,{spent:record.spent,pet:record.pet}])),fieldCoinLastSpawnAt,fieldCoins:fieldCoinPublic(),fieldCoinBonuses:Object.fromEntries(fieldCoinBonuses),moleDay,moleHammerRevision,moleReward,moleScores:Object.fromEntries(moleScores),moleAccounts:Object.fromEntries([...moleAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session,lastResult:v.lastResult}])),powerDay,powerReward,powerScores:Object.fromEntries(powerScores),powerAccounts:Object.fromEntries([...powerAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),rhythmAccounts:Object.fromEntries([...rhythmAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),furnitureCatalogEdits:Object.fromEntries(furnitureCatalogEdits),furnitureStats:Object.fromEntries([...furnitureStats].map(([id,v])=>[id,{spent:v.spent,owned:v.owned}])),tentStats:Object.fromEntries([...tentStats].map(([identity,t])=>[identity,storedTent(t)])),announcements:{entry:entranceNotices,ticker:tickerNotices,intervalMinutes:tickerIntervalMinutes,immediateHistory:immediateNoticeHistory},music,queue:[...queue],history:[...history],nextTrackToken,customMd:Object.fromEntries(customMd),shopStats:Object.fromEntries([...shopStats].map(([k,v])=>[k,{spent:0,refunded:v.refunded||0,owned:v.owned,equipped:v.equipped}])),badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),rhythm:{day:rhythmDay,reward:rhythmReward,scores:Object.fromEntries([...rhythmScores].map(([k,v])=>[k,{name:v.name,score:Math.max(0,Math.floor(Number(v.score)||0)),updatedAt:Number(v.updatedAt)||0}]))},savedAt:Date.now()}}
+function stateData(){return {version:18,oneTimeCreditApplied,adminPointCredits:Object.fromEntries(adminPointCredits),adminPointLedger:Object.fromEntries(adminPointLedger),recoveryRecords:Object.fromEntries(recoveryRecords),fishingStats:Object.fromEntries([...fishingStats].map(([id,a])=>[id,{level:a.level,spent:a.spent,bonus:a.bonus,fishCounts:a.fishCounts,totalMisses:a.totalMisses,lastCastAt:a.lastCastAt,active:a.active,lastResult:a.lastResult}])),lotteryStats:Object.fromEntries([...lotteryStats].map(([identity,a])=>[identity,{day:a.day,used:a.used,spent:a.spent,bonus:a.bonus,pending:a.pending,lastResult:a.lastResult}])),petStats:Object.fromEntries([...petStats].map(([identity,record])=>[identity,{spent:record.spent,pet:record.pet}])),fieldCoinLastSpawnAt,fieldCoins:fieldCoinPublic(),fieldCoinBonuses:Object.fromEntries(fieldCoinBonuses),moleDay,moleHammerRevision,moleReward,moleScores:Object.fromEntries(moleScores),moleAccounts:Object.fromEntries([...moleAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session,lastResult:v.lastResult}])),powerDay,powerReward,powerScores:Object.fromEntries(powerScores),powerAccounts:Object.fromEntries([...powerAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),rhythmAccounts:Object.fromEntries([...rhythmAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),furnitureCatalogEdits:Object.fromEntries(furnitureCatalogEdits),furnitureStats:Object.fromEntries([...furnitureStats].map(([id,v])=>[id,{spent:v.spent,owned:v.owned}])),tentStats:Object.fromEntries([...tentStats].map(([identity,t])=>[identity,storedTent(t)])),announcements:{entry:entranceNotices,ticker:tickerNotices,intervalMinutes:tickerIntervalMinutes,immediateHistory:immediateNoticeHistory},music,queue:[...queue],history:[...history],nextTrackToken,customMd:Object.fromEntries(customMd),shopStats:Object.fromEntries([...shopStats].map(([k,v])=>[k,{spent:0,refunded:v.refunded||0,owned:v.owned,equipped:v.equipped}])),badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),rhythm:{day:rhythmDay,reward:rhythmReward,scores:Object.fromEntries([...rhythmScores].map(([k,v])=>[k,{name:v.name,score:Math.max(0,Math.floor(Number(v.score)||0)),updatedAt:Number(v.updatedAt)||0}]))},savedAt:Date.now()}}
 function applySaved(d){
  if(!d||typeof d!=='object')return;
+ oneTimeCreditApplied=d.oneTimeCreditApplied===true;adminPointCredits.clear();adminPointLedger.clear();
+ if(d.adminPointCredits&&typeof d.adminPointCredits==='object')for(const [id,value] of Object.entries(d.adminPointCredits).slice(0,50000))if(/^[a-zA-Z0-9_-]{20,100}$/.test(id)&&Number.isSafeInteger(value)&&value>=0&&value<=1000000000)adminPointCredits.set(id,value);
+ if(d.adminPointLedger&&typeof d.adminPointLedger==='object')for(const [id,row] of Object.entries(d.adminPointLedger).slice(-50000))if(/^[a-zA-Z0-9_-]{8,80}$/.test(id)&&row&&/^[a-zA-Z0-9_-]{20,100}$/.test(row.identity||'')&&Number.isSafeInteger(row.amount)&&row.amount>0&&row.amount<=1000000)adminPointLedger.set(id,{identity:row.identity,amount:row.amount,at:Number(row.at)||0,reason:String(row.reason||'').slice(0,100)});
  recoveryRecords.clear();recoveryIndex.clear();
  if(d.recoveryRecords&&typeof d.recoveryRecords==='object')for(const [identity,r] of Object.entries(d.recoveryRecords).slice(0,50000)){
   if(!/^[a-zA-Z0-9_-]{20,100}$/.test(identity)||!r||!/^[a-f0-9]{64}$/.test(r.hash||'')||recoveryIndex.has(r.hash))continue;
@@ -891,6 +896,13 @@ async function restorePlaylist(){
   try{applySaved(JSON.parse(fs.readFileSync(STATE_PATH,'utf8')));console.log('Local playlist restored (non-durable)')}catch(err){if(err.code!=='ENOENT')console.warn('Local restore failed:',err.message)}
  }
  restored=true;
+ // The requested one-time credit is matched by code hash; never store the code.
+ const specialIdentity=recoveryIndex.get(ONE_TIME_CREDIT_HASH);
+ if(specialIdentity&&!oneTimeCreditApplied&&!adminPointLedger.has(ONE_TIME_CREDIT_ID)){
+  adminPointCredits.set(specialIdentity,(adminPointCredits.get(specialIdentity)||0)+8700);
+  adminPointLedger.set(ONE_TIME_CREDIT_ID,{identity:specialIdentity,amount:8700,at:Date.now(),reason:'요청 지급'});oneTimeCreditApplied=true;
+  await strictSaveAdmin();
+ }
  resetNoticeTicker();
  maybeRotateRhythmDay();
  rotatePowerDay();
@@ -1258,6 +1270,31 @@ const server=http.createServer(async(req,res)=>{
           moleHammerRevision=revision;await strictSaveAdmin();broadcast({type:'mole-state',mole:publicMoleState()});return json(res,200,{ok:true,revision});
         }
         return json(res,400,{error:'잘못된 관리자 명령입니다.'});
+      }
+      if(url.pathname==='/api/points-admin'){
+        if(!MD_ADMIN_KEY)return json(res,503,{error:'관리자 키가 설정되지 않았어요.'});
+        if(!adminAuthorized(req))return json(res,403,{error:'관리자 키가 올바르지 않아요.'});
+        const code=String(d.code||'').trim();
+        if(!/^OS-[A-Za-z0-9_-]{32}$/.test(code))return json(res,400,{error:'복구 코드 형식을 확인해 주세요.'});
+        const identity=recoveryIndex.get(recoveryHash(code)),record=identity&&recoveryRecords.get(identity);
+        if(!record)return json(res,404,{error:'해당 코드에 연결된 유저가 없어요.'});
+        const p=[...players.values()].find(q=>q.badgeIdentity===identity)||{badgeIdentity:identity,badgeSince:Date.now()};
+        const entries=()=>[...adminPointLedger.entries()].filter(([,v])=>v.identity===identity).slice(-50).reverse().map(([id,v])=>({id,amount:v.amount,at:v.at,reason:v.reason}));
+        if(d.command==='lookup')return json(res,200,{ok:true,name:record.profile?.name||p.name||'유저',points:tentPointBalance(p),credits:adminPointCredits.get(identity)||0,history:entries()});
+        if(d.command==='grant'){
+          const amount=Number(d.amount),requestId=String(d.requestId||'');
+          if(!Number.isSafeInteger(amount)||amount<1||amount>1000000)return json(res,400,{error:'1~1,000,000P의 정수를 입력해 주세요.'});
+          if(!/^[a-zA-Z0-9_-]{8,80}$/.test(requestId))return json(res,400,{error:'지급 요청 번호가 올바르지 않아요.'});
+          const prior=adminPointLedger.get(requestId);
+          if(prior){if(prior.identity!==identity||prior.amount!==amount)return json(res,409,{error:'이미 사용된 지급 요청 번호예요.'});try{await strictSaveAdmin();}catch{return json(res,503,{error:'저장 결과를 확인하지 못했어요. 같은 요청으로 다시 확인해 주세요.'});}return json(res,200,{ok:true,duplicate:true,points:tentPointBalance(p),history:entries()});}
+          const oldCredit=adminPointCredits.get(identity)||0;if(oldCredit+amount>1000000000)return json(res,400,{error:'관리자 지급 한도를 초과했어요.'});
+          adminPointCredits.set(identity,oldCredit+amount);adminPointLedger.set(requestId,{identity,amount,at:Date.now(),reason:String(d.reason||'').trim().slice(0,100)});
+          // Never remove a ledger entry after an uncertain save: retry uses the same request ID.
+          try{await strictSaveAdmin();}catch(error){return json(res,503,{error:'저장 결과를 확인하지 못했어요. 같은 요청으로 다시 확인해 주세요.'});}
+          for(const q of players.values())if(q.badgeIdentity===identity){const client=clients.get(q.id);if(client)try{send(client,{type:'points-admin-award',amount})}catch{}}
+          return json(res,200,{ok:true,points:tentPointBalance(p),history:entries()});
+        }
+        return json(res,400,{error:'지원하지 않는 명령입니다.'});
       }
       if(url.pathname==='/api/recovery-restore'){
         const ip=req.socket.remoteAddress||'unknown',now=Date.now(),old=recoveryAttempts.get(ip),attempt=old&&now-old.start<60000?old:{start:now,count:0};
