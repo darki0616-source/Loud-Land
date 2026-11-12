@@ -1438,6 +1438,13 @@ function handleDuoEvent(d){
  if(d.type==='duo-end'){finishDuo(d.id);return}
 }
 setInterval(syncDuoStatus,250);
+// v310: The birthday calendar is fetched once; no GLB or fireworks are loaded
+// outside the scheduled event. All date comparisons use server-corrected time.
+let birthdayCalendar={events:[]};
+function activeBirthdayEvent(){
+ const now=Date.now()+(Number.isFinite(state.serverDelta)?state.serverDelta:0);
+ return birthdayCalendar.events.find(e=>Number.isFinite(Date.parse(e.start))&&now>=Date.parse(e.start)&&now<Date.parse(e.end))||null;
+}
 const sustainedReactions=new Set(['peace','jump','run','headbang','buriburi','groove','dougie','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','powerking','moleking','marshmallow','putyourhandsup','nightfirework','heartbow','drum','electricguitar','bassguitar','vocal']);
 // One shared bottom tab group: reactions / dances / chat.
 // Chat stays inside the dock instead of floating over the 3D world.
@@ -1476,6 +1483,7 @@ function react(a,glowColor=null){
  if(a==='beatking'&&!state.me.rhythmKing)return toast('전날 박자왕 1등만 사용할 수 있습니다.');
  if(a==='powerking'&&!state.me.powerKing)return toast('전날 파워왕 1등만 사용할 수 있습니다.');
  if(a==='moleking'&&!state.me.moleKing)return toast('전날 두더지왕 1등만 사용할 수 있습니다.');
+ if(a==='birthday'&&!activeBirthdayEvent())return toast('생일축하 리액션은 이벤트 당일에만 사용할 수 있어요.');
  if(a==='nightfirework'&&!nightFireworkAvailable())return toast('폭죽놀이는 새벽 1시부터 4시까지만 사용할 수 있어요.');
  if(a==='marshmallow'&&!campfireReactionAvailable())return toast('모닥불이 켜진 시간(20:00~03:00)에 화덕 가까이에서 사용할 수 있어요.');
  if(currentDuo())return toast('상호작용을 종료한 후 다른 동작을 사용해 주세요.');
@@ -1496,11 +1504,11 @@ function react(a,glowColor=null){
  if(state.action===a&&sustainedReactions.has(a)){
   state.action='idle';state.actionUntil=0;state.me.action='idle';
  }else{
-  if((a==='jump'||a==='run'||a==='buriburi'||a==='groove'||a==='windmill'||a==='skanking'||a==='airguitar'||a==='headspin'||a==='cheer'||a==='smoke'||a==='bubblegun'||a==='freestyle'||a==='beatking'||a==='powerking'||a==='moleking'||a==='marshmallow'||a==='putyourhandsup'||a==='nightfirework'||a==='heartbow'||a==='drum'||a==='electricguitar'||a==='bassguitar'||a==='vocal')&&state.pose!=='stand'){
+  if((a==='jump'||a==='run'||a==='buriburi'||a==='groove'||a==='windmill'||a==='skanking'||a==='airguitar'||a==='headspin'||a==='cheer'||a==='smoke'||a==='bubblegun'||a==='freestyle'||a==='beatking'||a==='powerking'||a==='moleking'||a==='marshmallow'||a==='putyourhandsup'||a==='nightfirework'||a==='birthday'||a==='heartbow'||a==='drum'||a==='electricguitar'||a==='bassguitar'||a==='vocal')&&state.pose!=='stand'){
    state.pose='stand';state.me.pose='stand';
   }
   state.action=a;state.me.action=a;if(petBpmDanceActions.has(a))applyHeadbangToSelf();if(a==='cheer')playCheer();
-  state.actionUntil=sustainedReactions.has(a)?Infinity:performance.now()+(a==='peace'?2200:a==='snack'?3300:a==='drink'?5400:1750);
+  state.actionUntil=sustainedReactions.has(a)?Infinity:performance.now()+(a==='peace'?2200:a==='snack'?3300:a==='drink'?5400:a==='birthday'?9200:1750);
  }
  updateActionButtons();sendMove();
 }
@@ -1593,6 +1601,22 @@ nightFireworkButton.innerHTML='🎆 <span>폭죽놀이</span>';
 nightFireworkButton.style.display='none';
 nightFireworkButton.onclick=()=>react('nightfirework');
 $('reactionActions').append(nightFireworkButton);
+// A single-use 9.2-second celebration. The name comes from birthday.json.
+const birthdayButton=document.createElement('button');birthdayButton.type='button';
+birthdayButton.dataset.action='birthday';birthdayButton.style.display='none';
+birthdayButton.innerHTML='🎂 <span>생일축하해</span>';
+birthdayButton.onclick=()=>react('birthday');$('reactionActions').append(birthdayButton);
+function syncBirthdayEvent(){
+ const event=activeBirthdayEvent();
+ birthdayButton.style.display=event?'':'none';
+ if(event)birthdayButton.querySelector('span').textContent=`${event.name} 생일축하해`;
+ if(!event&&state.me&&state.action==='birthday'){
+  state.action='idle';state.me.action='idle';state.actionUntil=0;updateActionButtons();sendMove();
+ }
+}
+setInterval(syncBirthdayEvent,1000);
+syncBirthdayEvent();
+
 const heartBowButton=document.createElement('button');
 heartBowButton.type='button';
 heartBowButton.dataset.action='heartbow';
@@ -1619,7 +1643,7 @@ syncNightFirework();
 const reactionMenuOrder=[
  'peace','wave','clap','putyourhandsup','cheer','jump','run','sit','lie',
  'drink','smoke','snack','toastStart','bubblegun','heartbow','glowstick',
- 'flagAction','beatking','powerking','moleking','nightfirework','marshmallow'
+ 'flagAction','beatking','powerking','moleking','nightfirework','birthday','marshmallow'
 ];
 const reactionMenu=$('reactionActions');
 for(const key of reactionMenuOrder){
@@ -5093,6 +5117,55 @@ for(const seat of benchSeats){
  seat.wz=expandWorldZ(seat.wz);
 }
 
+// v310: A one-day event model, loaded only while the event is active.
+// The audience floor spans z=-9..18; a 27-unit pizza fills that entire depth.
+let birthdayPizza=null,birthdayPizzaLoading=false,birthdayPizzaRequest=0,birthdayPizzaRetryAt=0;
+function removeBirthdayPizza(){
+ birthdayPizzaRequest++;
+ birthdayPizzaLoading=false;
+ if(!birthdayPizza)return;
+ scene.remove(birthdayPizza);
+ birthdayPizza.traverse(obj=>{
+  obj.geometry?.dispose();
+  for(const material of (Array.isArray(obj.material)?obj.material:[obj.material])){
+   if(!material)continue;
+   // Model-specific materials/textures are not shared with other scene objects.
+   for(const key of ['map','normalMap','metalnessMap','roughnessMap','emissiveMap','aoMap','alphaMap'])material[key]?.dispose();
+   material.dispose();
+  }
+ });
+ birthdayPizza=null;
+}
+function syncBirthdayPizza(){
+ const event=activeBirthdayEvent();
+ if(!event){if(birthdayPizza||birthdayPizzaLoading)removeBirthdayPizza();return;}
+ if(birthdayPizza||birthdayPizzaLoading||Date.now()<birthdayPizzaRetryAt)return;
+ const model=typeof event.pizzaModel==='string'&&event.pizzaModel.startsWith('/assets/')?event.pizzaModel:null;
+ if(!model)return;
+ birthdayPizzaLoading=true;const request=++birthdayPizzaRequest;
+ new GLTFLoader().load(model,glb=>{
+  if(request!==birthdayPizzaRequest||!activeBirthdayEvent())return;
+  const object=glb.scene,box=new THREE.Box3().setFromObject(object),size=box.getSize(new THREE.Vector3());
+  if(size.x<.001||size.y<.001||size.z<.001){birthdayPizzaLoading=false;birthdayPizzaRetryAt=Date.now()+60000;return;}
+  const diameter=Number(event.pizzaDiameter)||27,height=Number(event.pizzaHeight)||.72;
+  const horizontal=diameter/Math.max(size.x,size.z);
+  object.scale.set(horizontal,height/size.y,horizontal);
+  object.updateMatrixWorld(true);
+  const scaledBox=new THREE.Box3().setFromObject(object);
+  object.position.set((Number(event.pizzaX)||0)-(scaledBox.min.x+scaledBox.max.x)*.5,
+   .09-scaledBox.min.y,(Number(event.pizzaZ)||4.5)-(scaledBox.min.z+scaledBox.max.z)*.5);
+  object.traverse(node=>{if(node.isMesh){node.castShadow=false;node.receiveShadow=true;}});
+  birthdayPizza=object;scene.add(object);birthdayPizzaLoading=false;
+ },undefined,error=>{
+  if(request!==birthdayPizzaRequest)return;
+  birthdayPizzaLoading=false;birthdayPizzaRetryAt=Date.now()+60000;
+  console.warn('생일 피자 GLB 로딩 실패: 파일 위치를 확인해 주세요.',model,error);
+ });
+}
+fetch('/assets/events/birthday.json?v=310',{cache:'no-store'}).then(r=>{if(!r.ok)throw Error('birthday.json '+r.status);return r.json()})
+ .then(data=>{birthdayCalendar={events:Array.isArray(data.events)?data.events:[]};syncBirthdayEvent();syncBirthdayPizza();})
+ .catch(e=>console.warn('Birthday event calendar:',e));
+setInterval(syncBirthdayPizza,1000);
 // v162: relocate the entire campfire talk zone to audience-right (facing the stage).
 // Keep the original depth and group all stones, fire, cushions, and lighting together.
 // The right-side position is clear of the MD booth and the rhythm booth.
@@ -6978,10 +7051,100 @@ function placeHandIK(P,side,handTarget,smooth=.48){
  elbow.quaternion.slerp(elbowDesired,smooth);
 }
 // Smooth motion blending for the upgraded chibi rig. All poses share the same joints.
+// Birthday effects are created lazily so non-participants have zero extra meshes.
+function createBirthdayVfx(avatar){
+ const root=avatar.root,parts=avatar.parts,event=activeBirthdayEvent();if(!event)return;
+ const group=new THREE.Group();root.add(group);parts.birthdayVfx=group;
+ const titleCanvas=document.createElement('canvas');titleCanvas.width=1536;titleCanvas.height=420;
+ const c=titleCanvas.getContext('2d'),chars=Array.from(`${event.name} 생일축하해`);
+ c.textAlign='center';c.textBaseline='middle';c.font='900 116px system-ui, sans-serif';
+ const step=Math.min(113,1330/Math.max(1,chars.length)),start=768-step*(chars.length-1)/2;
+ for(let i=0;i<chars.length;i++){
+  const x=start+i*step,u=chars.length===1?.5:i/(chars.length-1),y=276-Math.sin(u*Math.PI)*122;
+  c.save();c.translate(x,y);c.rotate((u-.5)*.38);
+  c.lineJoin='round';c.strokeStyle='#281042';c.lineWidth=20;c.strokeText(chars[i],0,0);
+  c.shadowColor=['#ff62b5','#ffe965','#65f7d2','#73bbff','#c28bff'][i%5];c.shadowBlur=21;
+  c.fillStyle=`hsl(${(i*360/chars.length)|0} 100% 70%)`;c.fillText(chars[i],0,0);c.restore();
+ }
+ const tex=new THREE.CanvasTexture(titleCanvas);tex.colorSpace=THREE.SRGBColorSpace;
+ const title=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true,depthTest:false,depthWrite:false}));
+ title.scale.set(10.2,2.9,1);title.position.y=5.35;title.renderOrder=60;group.add(title);parts.birthdayTitle=title;
+ // Launcher attached to the same forearm grip as the existing fireworks.
+ const launcher=new THREE.Group();parts.rightElbow.add(launcher);parts.birthdayLauncher=launcher;
+ launcher.position.set(0,-.39,.065);launcher.rotation.x=-Math.PI/2;
+ const tube=new THREE.Mesh(new THREE.CylinderGeometry(.13,.12,.78,10),new THREE.MeshStandardMaterial({color:'#ff4a9d',metalness:.38,roughness:.28,emissive:'#b00d57',emissiveIntensity:.3}));
+ tube.rotation.x=Math.PI/2;tube.position.z=.33;launcher.add(tube);
+ const tip=new THREE.Mesh(new THREE.TorusGeometry(.135,.052,7,12),new THREE.MeshBasicMaterial({color:'#ffe68a'}));tip.position.z=.74;launcher.add(tip);
+ const colors=['#ff548f','#ffdc58','#69e9ff','#a778ff','#71ffad','#ff9b4c','#ffffff'];
+ const bursts=[];
+ for(let j=0;j<5;j++){
+  const n=perfMobile?95:160,pos=new Float32Array(n*3),col=new Float32Array(n*3);
+  for(let i=0;i<n;i++){const color=new THREE.Color(colors[(i+j)%colors.length]);col.set([color.r,color.g,color.b],i*3);}
+  const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.BufferAttribute(pos,3).setUsage(THREE.DynamicDrawUsage));geo.setAttribute('color',new THREE.BufferAttribute(col,3));
+  const mat=new THREE.PointsMaterial({size:perfMobile?1.6:2.1,map:fireworkDot,vertexColors:true,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending,fog:false});
+  const cloud=new THREE.Points(geo,mat);cloud.frustumCulled=false;cloud.renderOrder=55;group.add(cloud);
+  const rocket=new THREE.Sprite(new THREE.SpriteMaterial({map:fireworkDot,color:colors[j%colors.length],transparent:true,opacity:.98,depthWrite:false,blending:THREE.AdditiveBlending}));
+  rocket.scale.set(1.7,1.7,1);group.add(rocket);
+  bursts.push({cloud,rocket,pos,seed:j*1.31,originX:(j-2)*3.2,height:18+(j%3)*5,offset:j*.68});
+ }
+ parts.birthdayBursts=bursts;
+ const sparkles=[];
+ for(let i=0;i<18;i++){
+  const star=new THREE.Sprite(new THREE.SpriteMaterial({map:fireworkDot,color:colors[i%colors.length],transparent:true,opacity:.9,depthWrite:false,blending:THREE.AdditiveBlending}));
+  star.scale.set(.35,.35,1);group.add(star);sparkles.push(star);
+ }
+ parts.birthdaySparkles=sparkles;
+ if(stageForeground){addForegroundLayer(group);addForegroundLayer(launcher);}
+}
+function clearBirthdayVfx(avatar){
+ const P=avatar.parts;if(!P.birthdayVfx)return;
+ P.birthdayVfx.parent?.remove(P.birthdayVfx);P.birthdayLauncher?.parent?.remove(P.birthdayLauncher);
+ for(const obj of [P.birthdayVfx,P.birthdayLauncher])obj?.traverse(child=>{
+  child.geometry?.dispose();
+  const mats=Array.isArray(child.material)?child.material:[child.material];
+  for(const m of mats){if(!m)continue;if(m.map&&m.map!==fireworkDot)m.map.dispose();m.dispose();}
+ });
+ P.birthdayVfx=null;P.birthdayLauncher=null;P.birthdayTitle=null;P.birthdayBursts=null;P.birthdaySparkles=null;
+}
+function updateBirthdayVfx(avatar,active,t){
+ const P=avatar.parts;
+ if(!active){if(P.birthdayVfx)clearBirthdayVfx(avatar);avatar.birthdayStart=null;return;}
+ if(!P.birthdayVfx){createBirthdayVfx(avatar);avatar.birthdayStart=t;}
+ if(!P.birthdayVfx)return;
+ const sec=Math.max(0,(t-avatar.birthdayStart)*.001);
+ P.birthdayTitle.material.opacity=.76+.24*Math.sin(sec*9)**2;
+ P.birthdayTitle.material.color.setHSL((sec*.14)%1,.35,.87);
+ P.birthdayTitle.scale.x=10.2*(1+.028*Math.sin(sec*7));
+ P.birthdayLauncher.rotation.x=-Math.PI/2+.14*Math.sin(sec*6);
+ for(let i=0;i<P.birthdaySparkles.length;i++){
+  const s=P.birthdaySparkles[i],a=i*2.399963+sec*.85,r=3.6+(i%5)*.23;
+  s.position.set(Math.cos(a)*r,5.1+Math.sin(a*1.5)*.85,Math.sin(a)*.65);
+  s.material.opacity=.5+.5*Math.sin(sec*8+i)**2;
+  s.scale.setScalar(.22+.25*Math.sin(sec*5+i)**2);
+ }
+ for(const b of P.birthdayBursts){
+  const phase=(sec-b.offset+9)%5.6,flight=.62,blast=phase-flight;
+  b.rocket.visible=phase<flight;
+  if(b.rocket.visible){const u=phase/flight;b.rocket.position.set(b.originX*u,2.1+(b.height-2.1)*u*u,1.1);}
+  b.cloud.visible=blast>=0&&blast<3.7;
+  if(!b.cloud.visible)continue;
+  const fade=blast<.13?blast/.13:Math.pow(Math.max(0,1-(blast-.13)/3.57),1.2);
+  b.cloud.material.opacity=fade;
+  const drag=(1-Math.exp(-blast*.58))/.58,positions=b.pos,n=positions.length/3;
+  for(let i=0;i<n;i++){
+   const v=1-2*(i+.5)/n,theta=i*2.39996323+b.seed,ring=Math.sqrt(1-v*v),speed=9+(i*37%51)*.16,k=i*3;
+   positions[k]=b.originX+Math.cos(theta)*ring*speed*drag;
+   positions[k+1]=b.height+v*speed*drag-2.4*blast*blast;
+   positions[k+2]=1.1+Math.sin(theta)*ring*speed*drag;
+  }
+  b.cloud.geometry.attributes.position.needsUpdate=true;
+ }
+}
 function animateAvatar(a,p,t){
  const q=(p.id===state.id&&state.me)?state.me:p,wp=toWorld(q),P=a.parts;
  const duoContext=duoPose(q.id),surfPose=crowdSurfScene&&slamNow()<crowdSurfScene.startAt+crowdSurfScene.duration?surfPoseAt(crowdSurfScene,q.id):null;
  const act=surfPose?.action||duoContext?.action||(q.action||'idle'),basePose=surfPose||duoContext?'stand':(q.pose||((act==='sit'||act==='lie')?act:'stand'));
+ updateBirthdayVfx(a,act==='birthday'&&!!activeBirthdayEvent(),t);
  const surfEvent=crowdSurfScene&&slamNow()<crowdSurfScene.startAt+crowdSurfScene.duration?crowdSurfScene:null;
  const surfView=surfPose;
  const shoulderSynced=act==='shoulder-headbang'&&shoulderSequence?.participants.includes(q.id)&&slamNow()<=shoulderSequence.until;
@@ -7533,6 +7696,12 @@ function animateAvatar(a,p,t){
   set('leftElbow',-.10-.12*Math.sin(sec*5.6+.4));
   set('rightElbow',-.10-.12*Math.sin(sec*5.6+.75));
   set('upper',.035*Math.sin(sec*5.6));
+ }
+ if(act==='birthday'){
+  // Raise the birthday launcher skyward with the other arm cheering.
+  set('rightShoulder',-2.50,0,.10);set('rightElbow',-.15);
+  set('leftShoulder',-2.45,0,-.22);set('leftElbow',-.12);
+  set('upper',-.035+.07*Math.sin(sec*6));set('neck',-.05+.08*Math.sin(sec*6));
  }
  if(act==='nightfirework'){
   // Hold the launcher above the face, pointing away from the avatar.
