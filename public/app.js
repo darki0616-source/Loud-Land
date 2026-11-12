@@ -5145,6 +5145,29 @@ function removeBirthdayPizza(){
  });
  birthdayPizza=null;
 }
+// Birthday candles follow the pizza and are removed with it when the event ends.
+function addBirthdayPizzaCandles(pizza){
+ pizza.updateWorldMatrix(true,true);
+ const bounds=new THREE.Box3().setFromObject(pizza),center=bounds.getCenter(new THREE.Vector3());
+ const top=new THREE.Vector3(center.x,bounds.max.y-.025,center.z);
+ const group=new THREE.Group();group.name='ONEseasonBirthdayCandles';
+ group.position.copy(pizza.worldToLocal(top));
+ // Pizza is scaled differently horizontally and vertically; cancel that scaling
+ // for the candle shapes, which use consistent world-space dimensions.
+ group.scale.set(1/pizza.scale.x,1/pizza.scale.y,1/pizza.scale.z);pizza.add(group);
+ const bodyGeo=new THREE.CylinderGeometry(.12,.12,1,10),wickGeo=new THREE.CylinderGeometry(.018,.018,.16,6),flameGeo=new THREE.SphereGeometry(1,8,6);
+ const wickMat=new THREE.MeshBasicMaterial({color:0x352a28}),flameMat=new THREE.MeshBasicMaterial({color:0xffb92d,transparent:true,opacity:.95,depthWrite:false}),coreMat=new THREE.MeshBasicMaterial({color:0xfff1a6,transparent:true,opacity:.96,depthWrite:false});
+ const candles=[[-2.2,-.7,1.85,0xff718c],[0,-.7,1.85,0x68b8ff],[2.2,-.7,1.85,0xffd35c],[-1.1,1.15,1.03,0x77dca2],[1.1,1.15,1.03,0xba95f1]],flames=[];
+ for(const [x,z,h,color] of candles){
+  const c=new THREE.Group();c.position.set(x,0,z);group.add(c);
+  const body=new THREE.Mesh(bodyGeo,new THREE.MeshStandardMaterial({color,roughness:.65}));body.scale.y=h;body.position.y=h/2;c.add(body);
+  const wick=new THREE.Mesh(wickGeo,wickMat);wick.position.y=h+.07;c.add(wick);
+  const flame=new THREE.Mesh(flameGeo,flameMat);flame.position.y=h+.25;flame.scale.set(.105,.24,.105);c.add(flame);
+  const core=new THREE.Mesh(flameGeo,coreMat);core.scale.set(.48,.58,.48);flame.add(core);flames.push(flame);
+ }
+ function animateCandles(t){if(!group.parent||!pizza.parent)return;flames.forEach((f,i)=>{f.scale.y=.24*(1+.10*Math.sin(t*.006+i*1.7));f.position.x=.018*Math.sin(t*.004+i)});requestAnimationFrame(animateCandles)}
+ requestAnimationFrame(animateCandles);
+}
 function syncBirthdayPizza(){
  const event=activeBirthdayEvent();
  if(!event){if(birthdayPizza||birthdayPizzaLoading)removeBirthdayPizza();return;}
@@ -5164,7 +5187,7 @@ function syncBirthdayPizza(){
   object.position.set((Number(event.pizzaX)||0)-(scaledBox.min.x+scaledBox.max.x)*.5,
    .09-scaledBox.min.y,(Number(event.pizzaZ)||4.5)-(scaledBox.min.z+scaledBox.max.z)*.5);
   object.traverse(node=>{if(node.isMesh){node.castShadow=false;node.receiveShadow=true;}});
-  birthdayPizza=object;scene.add(object);birthdayPizzaLoading=false;
+  birthdayPizza=object;scene.add(object);addBirthdayPizzaCandles(object);birthdayPizzaLoading=false;
  },undefined,error=>{
   if(request!==birthdayPizzaRequest)return;
   birthdayPizzaLoading=false;birthdayPizzaRetryAt=Date.now()+60000;
