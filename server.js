@@ -385,6 +385,7 @@ function fishingRestore(a){
 
 const TENT_COST=3000;
 const tentStats=new Map();
+let tentPointBonusMigrated=false;
 const TENT_COLORS=['#ed9a77','#8dc3ad','#8ea8d8','#c49acb','#dfc576','#d6a3a3','#92b9ba','#d5d9e5'];
 const TENT_MAX_OCCUPANCY=4;
 // v293: Exterior decorations are one-time purchases per tent owner.
@@ -516,7 +517,7 @@ async function serveFurnitureModel(req,res,id){
 const TENT_FURNITURE_MAX_PLACED=30;
 const furnitureStats=new Map();
 function furnitureRecord(identity){if(!furnitureStats.has(identity))furnitureStats.set(identity,{spent:0,owned:{}});return furnitureStats.get(identity);}
-function tentPointBalance(p){const earned=Math.floor(badgeTotal(p)/60)+(p.badgeIdentity?rhythmAccount(p.badgeIdentity).bonus+powerAccount(p.badgeIdentity).bonus+moleAccount(p.badgeIdentity).bonus+(fieldCoinBonuses.get(p.badgeIdentity)||0)+(lotteryStats.get(p.badgeIdentity)?.bonus||0)+(fishingStats.get(p.badgeIdentity)?.bonus||0):0);return Math.max(0,earned-(fishingStats.get(p.badgeIdentity)?.spent||0)-(lotteryStats.get(p.badgeIdentity)?.spent||0)-(tentOwnedBy(p.badgeIdentity)?TENT_COST:0)-(furnitureStats.get(p.badgeIdentity)?.spent||0)-(petStats.get(p.badgeIdentity)?.spent||0)-(tentOwnedBy(p.badgeIdentity)?.outdoorDecorSpent||0));}
+function tentPointBalance(p){const earned=Math.floor(badgeTotal(p)/60)+tentTimeBonus(p)+(p.badgeIdentity?rhythmAccount(p.badgeIdentity).bonus+powerAccount(p.badgeIdentity).bonus+moleAccount(p.badgeIdentity).bonus+(fieldCoinBonuses.get(p.badgeIdentity)||0)+(lotteryStats.get(p.badgeIdentity)?.bonus||0)+(fishingStats.get(p.badgeIdentity)?.bonus||0):0);return Math.max(0,earned-(fishingStats.get(p.badgeIdentity)?.spent||0)-(lotteryStats.get(p.badgeIdentity)?.spent||0)-(tentOwnedBy(p.badgeIdentity)?TENT_COST:0)-(furnitureStats.get(p.badgeIdentity)?.spent||0)-(petStats.get(p.badgeIdentity)?.spent||0)-(tentOwnedBy(p.badgeIdentity)?.outdoorDecorSpent||0));}
 function safeFurniturePose(item,x,z,angle){
  if(!item||!Number.isFinite(x)||!Number.isFinite(z)||!Number.isFinite(angle))return false;
  if(angle<0||angle>=360||angle%45!==0)return false;
@@ -573,7 +574,7 @@ function tentExteriorImageId(record){
  if(!match)return '';
  return crypto.createHash('sha256').update(Buffer.from(match[2],'base64')).digest('hex').slice(0,32);
 }
-function storedTent(record){return {...publicTent(record),outdoorDecorSpent:record.outdoorDecorSpent||0,exteriorImage:record.exteriorImage||''};}
+function storedTent(record){return {...publicTent(record),outdoorDecorSpent:record.outdoorDecorSpent||0,exteriorImage:record.exteriorImage||'',pointBonusStartMinute:record.pointBonusStartMinute};}
 
 // v245: Entrance interaction requires walking to within five real world units.
 const TENT_ENTER_DISTANCE=5.0;
@@ -583,9 +584,10 @@ function tentOccupancy(roomId){let count=0;for(const p of players.values())if(p.
 function publicTent(record){return {id:record.id,name:record.name,color:record.color,placed:!!record.placed,x:record.placed?record.x:null,z:record.placed?record.z:null,occupancy:tentOccupancy(record.id),capacity:TENT_MAX_OCCUPANCY,wallColor:record.wallColor||'default',floorColor:record.floorColor||'default',roomLightOn:record.roomLightOn!==false,exteriorType:record.exteriorType||'none',exteriorText:record.exteriorType==='text'?(record.exteriorText||''):'',exteriorImageId:record.exteriorType==='image'?tentExteriorImageId(record):'',outdoorDecor:outdoorDecorState(record),furnishings:(record.furnishings||[]).map(x=>({...x}))};}
 function allPlacedTents(){return [...tentStats.values()].filter(t=>t.placed).map(publicTent)}
 function tentOwnedBy(identity){return identity?tentStats.get(identity)||null:null}
+function tentTimeBonus(p,now=Date.now()){const t=tentOwnedBy(p?.badgeIdentity);if(!t||!Number.isSafeInteger(t.pointBonusStartMinute))return 0;return Math.max(0,Math.floor(badgeTotal(p,now)/60)-t.pointBonusStartMinute);}
 function tentView(player){
  const t=tentOwnedBy(player.badgeIdentity);
- const earned=Math.floor(badgeTotal(player)/60);
+ const earned=Math.floor(badgeTotal(player)/60)+tentTimeBonus(player);
  return {cost:TENT_COST,points:tentPointBalance(player),earned,owned:!!t,tent:t?publicTent(t):null,outdoorDecorCatalog:TENT_OUTDOOR_DECOR,tents:allPlacedTents()};
 }
 function tentIsValidPlace(x,z,ignoreId){
@@ -671,7 +673,7 @@ function shopRecord(identity){
 }
 function getShopView(p,now=Date.now()){
  const record=shopRecord(p.badgeIdentity);
- const earned=Math.floor(badgeTotal(p,now)/60)+(p.badgeIdentity?rhythmAccount(p.badgeIdentity).bonus+powerAccount(p.badgeIdentity).bonus+moleAccount(p.badgeIdentity).bonus+(fieldCoinBonuses.get(p.badgeIdentity)||0):0); // time points + game and field coin rewards
+ const earned=Math.floor(badgeTotal(p,now)/60)+tentTimeBonus(p,now)+(p.badgeIdentity?rhythmAccount(p.badgeIdentity).bonus+powerAccount(p.badgeIdentity).bonus+moleAccount(p.badgeIdentity).bonus+(fieldCoinBonuses.get(p.badgeIdentity)||0):0); // time points + game and field coin rewards
  return {points:tentPointBalance(p),earned,spent:(tentOwnedBy(p.badgeIdentity)?TENT_COST:0)+(furnitureStats.get(p.badgeIdentity)?.spent||0)+(petStats.get(p.badgeIdentity)?.spent||0)+(tentOwnedBy(p.badgeIdentity)?.outdoorDecorSpent||0),refunded:record.refunded||0,testing:true,owned:Object.keys(publicMdItems()),equipped:{...record.equipped},items:publicMdItems()};
 }
 function setShopAppearance(p){
@@ -774,7 +776,7 @@ function applySaved(d){
   const artImage=decodeTentExteriorImage(t.exteriorImage);
   const artType=['none','text','image'].includes(t.exteriorType)?t.exteriorType:'none';
   const artText=clean(t.exteriorText,TENT_EXTERIOR_MAX_TEXT);
-  const record={outdoorDecorOwned:Object.fromEntries(Object.keys(TENT_OUTDOOR_DECOR).map(k=>[k,t.outdoorDecor?.owned?.[k]===true])),outdoorDecorEnabled:Object.fromEntries(Object.keys(TENT_OUTDOOR_DECOR).map(k=>[k,t.outdoorDecor?.owned?.[k]===true&&t.outdoorDecor?.enabled?.[k]===true])),outdoorDecorSpent:Math.max(0,Math.min(1000,Math.floor(Number(t.outdoorDecorSpent)||0))),id:t.id,name:clean(t.name,22)||'나의 텐트',color:TENT_COLORS.includes(t.color)?t.color:TENT_COLORS[0],wallColor:Object.hasOwn(TENT_PAINTS,t.wallColor)?t.wallColor:'default',floorColor:Object.hasOwn(TENT_PAINTS,t.floorColor)?t.floorColor:'default',roomLightOn:t.roomLightOn!==false,exteriorType:artType==='image'&&!artImage?'none':artType==='text'&&!artText?'none':artType,exteriorText:artText,exteriorImage:artImage?.source||'',furnishings:[],placed:false,x:null,z:null};
+  const record={pointBonusStartMinute:Number.isSafeInteger(t.pointBonusStartMinute)&&t.pointBonusStartMinute>=0?t.pointBonusStartMinute:null,outdoorDecorOwned:Object.fromEntries(Object.keys(TENT_OUTDOOR_DECOR).map(k=>[k,t.outdoorDecor?.owned?.[k]===true])),outdoorDecorEnabled:Object.fromEntries(Object.keys(TENT_OUTDOOR_DECOR).map(k=>[k,t.outdoorDecor?.owned?.[k]===true&&t.outdoorDecor?.enabled?.[k]===true])),outdoorDecorSpent:Math.max(0,Math.min(1000,Math.floor(Number(t.outdoorDecorSpent)||0))),id:t.id,name:clean(t.name,22)||'나의 텐트',color:TENT_COLORS.includes(t.color)?t.color:TENT_COLORS[0],wallColor:Object.hasOwn(TENT_PAINTS,t.wallColor)?t.wallColor:'default',floorColor:Object.hasOwn(TENT_PAINTS,t.floorColor)?t.floorColor:'default',roomLightOn:t.roomLightOn!==false,exteriorType:artType==='image'&&!artImage?'none':artType==='text'&&!artText?'none':artType,exteriorText:artText,exteriorImage:artImage?.source||'',furnishings:[],placed:false,x:null,z:null};
   if(Array.isArray(t.furnishings))for(const f of t.furnishings.slice(0,TENT_FURNITURE_MAX_PLACED)){
    const x=Number(f.x),z=Number(f.z),rotation=Number(f.rotation);
    if(!TENT_FURNITURE_CATALOG[f.itemId]||!/^[-a-f0-9]{36}$/.test(f.instanceId||'')||record.furnishings.some(x=>x.instanceId===f.instanceId))continue;
@@ -803,6 +805,7 @@ function applySaved(d){
  if(d.badgeStats&&typeof d.badgeStats==='object')for(const [k,v] of Object.entries(d.badgeStats).slice(0,30000)){
   if(/^[a-zA-Z0-9_-]{20,100}$/.test(k)&&Number.isFinite(v)&&v>=0)badgeStats.set(k,{seconds:Math.min(v,315360000)});
  }
+ for(const [identity,t] of tentStats)if(t.pointBonusStartMinute===null){t.pointBonusStartMinute=Math.floor((badgeStats.get(identity)?.seconds||0)/60);tentPointBonusMigrated=true;}
  if(typeof d.moleHammerRevision==='string'&&/^[a-f0-9]{16}$/.test(d.moleHammerRevision))moleHammerRevision=d.moleHammerRevision;
  if(typeof d.moleDay==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(d.moleDay))moleDay=d.moleDay;
  if(d.moleScores&&typeof d.moleScores==='object'&&(moleDay===kstDate()||moleDay===previousKstDate()))for(const [identity,row] of Object.entries(d.moleScores).slice(0,50000)){if(!/^[a-zA-Z0-9_-]{20,100}$/.test(identity)||!row)continue;moleScores.set(identity,{name:clean(row.name,18)||'ROCKER',score:Math.max(0,Math.min(10000,Math.floor(Number(row.score)||0))),at:Number(row.at)||Date.now()});}
@@ -884,7 +887,7 @@ async function restorePlaylist(){
  maintainFieldCoins();
  // One-time v114 migration: legacy spent points were converted into refunded credits.
  // Persist the zero-spend records immediately so restarts never re-deduct them.
- if(petHatchDurationMigrated||[...shopStats.values()].some(r=>r.refunded>0))scheduleSave();
+ if(tentPointBonusMigrated||petHatchDurationMigrated||[...shopStats.values()].some(r=>r.refunded>0))scheduleSave();
 }
 function saveNow(){
  if(!restored)return Promise.resolve();
@@ -1427,6 +1430,7 @@ const server=http.createServer(async(req,res)=>{
           const earned=tentPointBalance(p);
           if(earned<TENT_COST)return json(res,400,{error:`포인트가 부족해요. (${earned.toLocaleString()}/${TENT_COST.toLocaleString()}P)`});
           record={id:crypto.randomUUID(),name:clean(p.name+'의 텐트',22),color:TENT_COLORS[0],wallColor:'default',floorColor:'default',roomLightOn:true,exteriorType:'none',exteriorText:'',exteriorImage:'',furnishings:[],placed:false,x:null,z:null};
+          record.pointBonusStartMinute=Math.floor(badgeTotal(p)/60);
           tentStats.set(p.badgeIdentity,record);
           await saveNow();
           return json(res,200,{ok:true,...tentView(p)});

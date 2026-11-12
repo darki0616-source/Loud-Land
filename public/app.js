@@ -2153,7 +2153,8 @@ function showTentState(data){
  $('tentPurchaseArea').hidden=Boolean(data.owned);
  $('tentManageArea').hidden=!data.owned;
  $('tentBuyBtn').disabled=Boolean(data.owned)||Number(data.points)<3000;
- $('tentPurchaseHint').textContent=`${(data.points||0).toLocaleString()} / 3,000P · 접속 1분당 1P 적립`;
+ $('tentPurchaseHint').textContent=`${(data.points||0).toLocaleString()} / 3,000P · 구매 시 접속 1분당 2P 적립`;
+ let rate=document.getElementById('tentPointRate');if(!rate){rate=document.createElement('small');rate.id='tentPointRate';rate.style.cssText='display:block;color:#b9ebdc;margin:5px 0;font-weight:700';$('tentPoints').insertAdjacentElement('afterend',rate)}rate.textContent=data.owned?'🏕️ 텐트 보유 혜택 · 접속 1분당 2P 적립':'';
  if(!data.owned)return;
  $('tentNameInput').value=data.tent.name;
  tentPickedColor=data.tent.color;
