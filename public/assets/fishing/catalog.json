@@ -1,0 +1,434 @@
+[
+  {
+    "id": "common01",
+    "name": "멸치",
+    "icon": "🐟",
+    "rarity": "common",
+    "difficulty": 0.8,
+    "points": 4,
+    "weight": 750
+  },
+  {
+    "id": "common02",
+    "name": "정어리",
+    "icon": "🐟",
+    "rarity": "common",
+    "difficulty": 0.804,
+    "points": 5,
+    "weight": 620
+  },
+  {
+    "id": "common03",
+    "name": "망둑어",
+    "icon": "🐟",
+    "rarity": "common",
+    "difficulty": 0.808,
+    "points": 6,
+    "weight": 590
+  },
+  {
+    "id": "common04",
+    "name": "전갱이",
+    "icon": "🐟",
+    "rarity": "common",
+    "difficulty": 1.812,
+    "points": 7,
+    "weight": 530
+  },
+  {
+    "id": "common05",
+    "name": "고등어",
+    "icon": "🐟",
+    "rarity": "common",
+    "difficulty": 1.816,
+    "points": 8,
+    "weight": 495
+  },
+  {
+    "id": "common06",
+    "name": "숭어",
+    "icon": "🐟",
+    "rarity": "common",
+    "difficulty": 1.82,
+    "points": 9,
+    "weight": 460
+  },
+  {
+    "id": "common07",
+    "name": "볼락",
+    "icon": "🐟",
+    "rarity": "common",
+    "difficulty": 1.824,
+    "points": 10,
+    "weight": 430
+  },
+  {
+    "id": "common08",
+    "name": "가자미",
+    "icon": "🐠",
+    "rarity": "common",
+    "difficulty": 1.828,
+    "points": 11,
+    "weight": 400
+  },
+  {
+    "id": "common09",
+    "name": "쥐치",
+    "icon": "🐠",
+    "rarity": "common",
+    "difficulty": 1.832,
+    "points": 12,
+    "weight": 360
+  },
+  {
+    "id": "common10",
+    "name": "학꽁치",
+    "icon": "🐟",
+    "rarity": "common",
+    "difficulty": 1.836,
+    "points": 13,
+    "weight": 330
+  },
+  {
+    "id": "common11",
+    "name": "도다리",
+    "icon": "🐠",
+    "rarity": "common",
+    "difficulty": 1.84,
+    "points": 14,
+    "weight": 300
+  },
+  {
+    "id": "common12",
+    "name": "전어",
+    "icon": "🐟",
+    "rarity": "common",
+    "difficulty": 1.844,
+    "points": 15,
+    "weight": 270
+  },
+  {
+    "id": "common13",
+    "name": "놀래미",
+    "icon": "🐟",
+    "rarity": "common",
+    "difficulty": 1.848,
+    "points": 16,
+    "weight": 240
+  },
+  {
+    "id": "common14",
+    "name": "복어",
+    "icon": "🐡",
+    "rarity": "common",
+    "difficulty": 2.852,
+    "points": 18,
+    "weight": 210
+  },
+  {
+    "id": "common15",
+    "name": "갑오징어",
+    "icon": "🦑",
+    "rarity": "common",
+    "difficulty": 2.856,
+    "points": 20,
+    "weight": 160
+  },
+  {
+    "id": "common16",
+    "name": "게",
+    "icon": "🦀",
+    "rarity": "common",
+    "difficulty": 2.86,
+    "points": 22,
+    "weight": 85
+  },
+  {
+    "id": "common17",
+    "name": "새우",
+    "icon": "🦐",
+    "rarity": "common",
+    "difficulty": 1.864,
+    "points": 16,
+    "weight": 55
+  },
+  {
+    "id": "common18",
+    "name": "불가사리",
+    "icon": "⭐",
+    "rarity": "common",
+    "difficulty": 2.868,
+    "points": 24,
+    "weight": 15
+  },
+  {
+    "id": "uncommon01",
+    "name": "참돔",
+    "icon": "🐠",
+    "rarity": "uncommon",
+    "difficulty": 2.872,
+    "points": 28,
+    "weight": 385
+  },
+  {
+    "id": "uncommon02",
+    "name": "농어",
+    "icon": "🐟",
+    "rarity": "uncommon",
+    "difficulty": 2.876,
+    "points": 30,
+    "weight": 350
+  },
+  {
+    "id": "uncommon03",
+    "name": "연어",
+    "icon": "🐟",
+    "rarity": "uncommon",
+    "difficulty": 2.88,
+    "points": 32,
+    "weight": 310
+  },
+  {
+    "id": "uncommon04",
+    "name": "광어",
+    "icon": "🐠",
+    "rarity": "uncommon",
+    "difficulty": 2.884,
+    "points": 35,
+    "weight": 280
+  },
+  {
+    "id": "uncommon05",
+    "name": "우럭",
+    "icon": "🐟",
+    "rarity": "uncommon",
+    "difficulty": 2.888,
+    "points": 38,
+    "weight": 243
+  },
+  {
+    "id": "uncommon06",
+    "name": "방어",
+    "icon": "🐟",
+    "rarity": "uncommon",
+    "difficulty": 2.892,
+    "points": 40,
+    "weight": 212
+  },
+  {
+    "id": "uncommon07",
+    "name": "한치",
+    "icon": "🦑",
+    "rarity": "uncommon",
+    "difficulty": 2.896,
+    "points": 42,
+    "weight": 180
+  },
+  {
+    "id": "uncommon08",
+    "name": "오징어",
+    "icon": "🦑",
+    "rarity": "uncommon",
+    "difficulty": 2.9,
+    "points": 45,
+    "weight": 162
+  },
+  {
+    "id": "uncommon09",
+    "name": "문어",
+    "icon": "🐙",
+    "rarity": "uncommon",
+    "difficulty": 3.904,
+    "points": 48,
+    "weight": 135
+  },
+  {
+    "id": "uncommon10",
+    "name": "가오리",
+    "icon": "🐟",
+    "rarity": "uncommon",
+    "difficulty": 3.908,
+    "points": 52,
+    "weight": 115
+  },
+  {
+    "id": "uncommon11",
+    "name": "줄돔",
+    "icon": "🐠",
+    "rarity": "uncommon",
+    "difficulty": 3.912,
+    "points": 54,
+    "weight": 80
+  },
+  {
+    "id": "uncommon12",
+    "name": "황금붕어",
+    "icon": "🐠",
+    "rarity": "uncommon",
+    "difficulty": 3.916,
+    "points": 60,
+    "weight": 48
+  },
+  {
+    "id": "rare01",
+    "name": "참치",
+    "icon": "🐟",
+    "rarity": "rare",
+    "difficulty": 3.92,
+    "points": 75,
+    "weight": 200
+  },
+  {
+    "id": "rare02",
+    "name": "삼치",
+    "icon": "🐟",
+    "rarity": "rare",
+    "difficulty": 3.924,
+    "points": 85,
+    "weight": 175
+  },
+  {
+    "id": "rare03",
+    "name": "넙치",
+    "icon": "🐠",
+    "rarity": "rare",
+    "difficulty": 3.928,
+    "points": 90,
+    "weight": 140
+  },
+  {
+    "id": "rare04",
+    "name": "킹크랩",
+    "icon": "🦀",
+    "rarity": "rare",
+    "difficulty": 3.932,
+    "points": 110,
+    "weight": 110
+  },
+  {
+    "id": "rare05",
+    "name": "청새치",
+    "icon": "🐟",
+    "rarity": "rare",
+    "difficulty": 4.936,
+    "points": 125,
+    "weight": 90
+  },
+  {
+    "id": "rare06",
+    "name": "해파리",
+    "icon": "🪼",
+    "rarity": "rare",
+    "difficulty": 3.94,
+    "points": 135,
+    "weight": 70
+  },
+  {
+    "id": "rare07",
+    "name": "바다거북",
+    "icon": "🐢",
+    "rarity": "rare",
+    "difficulty": 4.944,
+    "points": 155,
+    "weight": 50
+  },
+  {
+    "id": "rare08",
+    "name": "돛새치",
+    "icon": "🐟",
+    "rarity": "rare",
+    "difficulty": 4.948,
+    "points": 175,
+    "weight": 35
+  },
+  {
+    "id": "rare09",
+    "name": "심해아귀",
+    "icon": "🐡",
+    "rarity": "rare",
+    "difficulty": 4.952,
+    "points": 190,
+    "weight": 30
+  },
+  {
+    "id": "epic01",
+    "name": "황금참치",
+    "icon": "🐟",
+    "rarity": "epic",
+    "difficulty": 4.956,
+    "points": 260,
+    "weight": 94
+  },
+  {
+    "id": "epic02",
+    "name": "대왕문어",
+    "icon": "🐙",
+    "rarity": "epic",
+    "difficulty": 4.96,
+    "points": 310,
+    "weight": 60
+  },
+  {
+    "id": "epic03",
+    "name": "고래상어",
+    "icon": "🦈",
+    "rarity": "epic",
+    "difficulty": 4.964,
+    "points": 370,
+    "weight": 45
+  },
+  {
+    "id": "epic04",
+    "name": "백상아리",
+    "icon": "🦈",
+    "rarity": "epic",
+    "difficulty": 4.968,
+    "points": 440,
+    "weight": 34
+  },
+  {
+    "id": "epic05",
+    "name": "황금해마",
+    "icon": "🐉",
+    "rarity": "epic",
+    "difficulty": 4.972,
+    "points": 550,
+    "weight": 25
+  },
+  {
+    "id": "epic06",
+    "name": "유령가오리",
+    "icon": "👻",
+    "rarity": "epic",
+    "difficulty": 4.976,
+    "points": 650,
+    "weight": 12
+  },
+  {
+    "id": "legendary01",
+    "name": "무지개고래",
+    "icon": "🐋",
+    "rarity": "legendary",
+    "difficulty": 4.98,
+    "points": 1200,
+    "weight": 16
+  },
+  {
+    "id": "legendary02",
+    "name": "용궁의 용",
+    "icon": "🐉",
+    "rarity": "legendary",
+    "difficulty": 4.984,
+    "points": 1800,
+    "weight": 10
+  },
+  {
+    "id": "legendary03",
+    "name": "바다의 왕",
+    "icon": "👑",
+    "rarity": "legendary",
+    "difficulty": 4.988,
+    "points": 3000,
+    "weight": 4
+  }
+]
