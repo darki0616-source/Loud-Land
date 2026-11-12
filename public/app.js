@@ -9664,7 +9664,7 @@ function renderFishingUi(){
  }
  // Do not display a stale target/cursor after a completed cast or before a bite.
  const meterActive=!!d.session?.startAt&&fishingTime()<=d.session.expiresAt;
- u.hook.hidden=!d.session?.fish;u.hookIcon.innerHTML=d.session?.fish?fishArt(d.session.fish):'';u.reelDisplay.hidden=!d.session?.startAt;u.hookName.textContent=d.session?.fish?.name||'';
+ const caughtFish=!d.session&&d.lastResult?.success?d.lastResult.fish:null;u.hook.hidden=!caughtFish;u.hookIcon.innerHTML=caughtFish?fishArt(caughtFish):'';u.reelDisplay.hidden=!d.session?.startAt;u.hookName.textContent=caughtFish?`${caughtFish.name} 획득!`:'';
  u.meter.classList.toggle('is-inactive',!meterActive);
  if(!meterActive){u.cursor.style.left='0%';if(!d.session){u.time.textContent='READY';u.target.style.left='40%';u.target.style.width='20%';}}
  u.bobber.classList.toggle('bite',meterActive);

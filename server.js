@@ -348,7 +348,7 @@ function fishingAccount(identity){
  return a;
 }
 function fishPosition(session,at){return .5+.5*Math.sin((at-session.startAt)/1000*session.speed+session.phase);}
-function fishPublicSession(s){return s?{id:s.id,biteAt:s.biteAt,expiresAt:s.expiresAt,center:s.center,width:s.width,speed:s.speed,phase:s.phase,startAt:s.startAt||null,fish:s.startAt?FISH_BY_ID.get(s.fishId):null,progress:s.progress||0,tension:s.tension||0,held:!!s.held,updatedAt:s.updatedAt||s.startAt,rates:s.rates||null}:null;}
+function fishPublicSession(s){return s?{id:s.id,biteAt:s.biteAt,expiresAt:s.expiresAt,center:s.center,width:s.width,speed:s.speed,phase:s.phase,startAt:s.startAt||null,progress:s.progress||0,tension:s.tension||0,held:!!s.held,updatedAt:s.updatedAt||s.startAt,rates:s.rates||null}:null;}
 function fishingView(p){
  const a=fishingAccount(p.badgeIdentity);return {level:a.level,rodName:FISH_LEVEL_NAMES[a.level],nextPrice:a.level<FISH_MAX_LEVEL?FISH_ROD_PRICES[a.level+1]:null,
   maxLevel:FISH_MAX_LEVEL,prices:FISH_ROD_PRICES,points:tentPointBalance(p),caught:Object.values(a.fishCounts).reduce((n,v)=>n+v,0),
