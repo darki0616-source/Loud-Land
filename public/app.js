@@ -8718,8 +8718,12 @@ function petDanceHopAt(player,serverNow){
 }
 function animateFoxPets(t,indoor=false){
  const now=t*.001,beatNow=headbangServerTime(),visible=new Set(),roomId=tentRoomActive?.id;
- // Load our own pet first. On mobile, avoid downloading/instantiating distant
- // strangers' multi-megabyte pet models until their owners are nearby.
+ // v309: Measure pet distance from our avatar, not the moving/zooming camera.
+ // Enter/exit hysteresis and a short grace period prevent remote pets popping
+ // in and out near the mobile lazy-loading boundary.
+ const localPetAvatar=indoor?tentRoomAvatars.get(state.id):avatars.get(state.id);
+ const petCullOrigin=localPetAvatar?.root?.position||camera.position;
+ // Load our own pet first. Keep distant strangers' large GLBs lazy-loaded.
  const petPlayers=[...state.players.values()];
  const selfIndex=petPlayers.findIndex(p=>p.id===state.id);
  if(selfIndex>0)petPlayers.unshift(...petPlayers.splice(selfIndex,1));
@@ -8727,10 +8731,24 @@ function animateFoxPets(t,indoor=false){
   const pet=p.pet;if(!pet?.summoned)continue;
   if(indoor?(p.tentRoomId!==roomId):(!!p.tentRoomId))continue;
   const avatar=indoor?tentRoomAvatars.get(p.id):avatars.get(p.id);if(!avatar)continue;
-  if(perfWeakDevice&&p.id!==state.id&&avatar.root.position.distanceToSquared(camera.position)>42*42)continue;
   const stage=pet.hatched?pet.stage:0,color=pet.color,signature=(pet.species||'fox')+'|'+stage+'|'+color;
   let entry=foxPetNodes.get(p.id);
   if(entry&&entry.signature!==signature){foxPetDispose(entry);foxPetNodes.delete(p.id);entry=null;}
+  if(perfWeakDevice&&p.id!==state.id){
+   const distanceSq=avatar.root.position.distanceToSquared(petCullOrigin);
+   // New remote models only load within 50 world units. Existing ones remain
+   // until 70 units away for 3.5 seconds, so camera/position jitter cannot
+   // repeatedly destroy and recreate their mesh and painted texture.
+   const maxDistance=entry?70:50;
+   if(distanceSq>maxDistance*maxDistance){
+    if(entry){
+     if(!entry.outOfRangeSince)entry.outOfRangeSince=t;
+     if(t-entry.outOfRangeSince<3500){visible.add(p.id);continue;}
+    }
+    continue;
+   }
+   if(entry)entry.outOfRangeSince=0;
+  }
   if(!entry){
    const model=stage===0?foxPetMakeEgg(color):petMakeModel(pet.species,stage,color);if(!model)continue;
    const root=new THREE.Group(),pivot=new THREE.Group();root.add(pivot);pivot.add(model);
