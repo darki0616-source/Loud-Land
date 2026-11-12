@@ -342,13 +342,13 @@ function fishingNearSea(p){
 function fishingAccount(identity){
  let a=fishingStats.get(identity);
  if(!a){a={level:0,spent:0,bonus:0,fishCounts:{},totalMisses:0,lastCastAt:0,active:null,lastResult:null};fishingStats.set(identity,a);}
- if(a.active&&Date.now()>a.active.expiresAt){
+ if(a.active&&Date.now()>a.active.expiresAt+1000){
   a.lastResult={id:a.active.id,success:false,reason:'time',at:Date.now()};a.totalMisses++;a.active=null;scheduleSave();
  }
  return a;
 }
-function fishPosition(session,at){return .5+.5*Math.sin((at-session.biteAt)/1000*session.speed+session.phase);}
-function fishPublicSession(s){return s?{id:s.id,biteAt:s.biteAt,expiresAt:s.expiresAt,center:s.center,width:s.width,speed:s.speed,phase:s.phase}:null;}
+function fishPosition(session,at){return .5+.5*Math.sin((at-session.startAt)/1000*session.speed+session.phase);}
+function fishPublicSession(s){return s?{id:s.id,biteAt:s.biteAt,expiresAt:s.expiresAt,center:s.center,width:s.width,speed:s.speed,phase:s.phase,startAt:s.startAt||null,fish:s.startAt?FISH_BY_ID.get(s.fishId):null}:null;}
 function fishingView(p){
  const a=fishingAccount(p.badgeIdentity);return {level:a.level,rodName:FISH_LEVEL_NAMES[a.level],nextPrice:a.level<FISH_MAX_LEVEL?FISH_ROD_PRICES[a.level+1]:null,
   maxLevel:FISH_MAX_LEVEL,prices:FISH_ROD_PRICES,points:tentPointBalance(p),caught:Object.values(a.fishCounts).reduce((n,v)=>n+v,0),
@@ -366,8 +366,8 @@ function fishingRestore(a){
   record.lastResult={id:last.id,success:!!fish&&last.success,fish:fish||undefined,points:fish?.points||0,reason:typeof last.reason==='string'?last.reason:'',at:Number(last.at)||Date.now()};
  }
  const ac=a?.active;
- if(ac&&/^[a-f0-9-]{36}$/.test(ac.id||'')&&FISH_BY_ID.has(ac.fishId)&&Number.isFinite(ac.biteAt)&&Number.isFinite(ac.expiresAt)&&ac.expiresAt>Date.now()&&ac.expiresAt<Date.now()+30000&&Number.isFinite(ac.center)&&Number.isFinite(ac.width)&&Number.isFinite(ac.speed)&&Number.isFinite(ac.phase)){
-  record.active={id:ac.id,fishId:ac.fishId,biteAt:ac.biteAt,expiresAt:ac.expiresAt,center:ac.center,width:ac.width,speed:ac.speed,phase:ac.phase};
+ if(ac&&/^[a-f0-9-]{36}$/.test(ac.id||'')&&FISH_BY_ID.has(ac.fishId)&&Number.isFinite(ac.biteAt)&&Number.isFinite(ac.expiresAt)&&ac.expiresAt>Date.now()&&ac.expiresAt<Date.now()+40000&&Number.isFinite(ac.center)&&Number.isFinite(ac.width)&&Number.isFinite(ac.speed)&&Number.isFinite(ac.phase)){
+  record.active={id:ac.id,fishId:ac.fishId,biteAt:ac.biteAt,expiresAt:ac.expiresAt,center:ac.center,width:ac.width,speed:ac.speed,phase:ac.phase,startAt:Number(ac.startAt)||null};
  }
  return record;
 }
@@ -1288,14 +1288,21 @@ const server=http.createServer(async(req,res)=>{
           if(!a.level)return json(res,409,{error:'낚싯대를 먼저 구매해 주세요.'});
           if(a.active)return json(res,409,{error:'이미 낚시 중이에요.'});
           const now=Date.now();if(now-a.lastCastAt<FISH_CAST_COOLDOWN_MS)return json(res,429,{error:'낚싯대를 준비하는 중이에요.',fishing:fishingView(p)});
-          const fish=fishingDraw();const biteAt=now+2600+crypto.randomInt(2900),phase=crypto.randomInt(6283)/1000;
+          const fish=fishingDraw();const biteAt=now+3000+crypto.randomInt(17001),phase=crypto.randomInt(6283)/1000;
           // Higher difficulty -> narrower target and faster cursor. Each upgrade widens success band.
           const width=Math.min(.30,.235-fish.difficulty*.032+(a.level-1)*.032);
           const speed=2.65+fish.difficulty*.38;
-          a.active={id:crypto.randomUUID(),fishId:fish.id,biteAt,expiresAt:biteAt+FISH_BITE_WINDOW_MS,
+          a.active={id:crypto.randomUUID(),fishId:fish.id,biteAt,expiresAt:biteAt+15000,startAt:null,
            center:.27+crypto.randomInt(4600)/10000,width,speed,phase};
           a.lastCastAt=now;a.lastResult=null;
           await saveNow();return json(res,200,{ok:true,fishing:fishingView(p)});
+        }
+        if(command==='get'){
+          const session=a.active, now=Date.now();
+          if(!session||session.id!==String(d.castId||''))return json(res,409,{error:'진행 중인 낚시가 없어요.',fishing:fishingView(p)});
+          if(now<session.biteAt||now>session.expiresAt)return json(res,409,{error:'입질 시간이 아니에요.',fishing:fishingView(p)});
+          if(!session.startAt){session.startAt=now;session.expiresAt=now+FISH_BITE_WINDOW_MS;await saveNow();}
+          return json(res,200,{ok:true,fishing:fishingView(p)});
         }
         if(command==='reel'){
           const castId=String(d.castId||'');
@@ -1304,7 +1311,10 @@ const server=http.createServer(async(req,res)=>{
           if(!session||session.id!==castId)return json(res,409,{error:'진행 중인 낚시가 없어요.',fishing:fishingView(p)});
           const now=Date.now();if(now<session.biteAt)return json(res,409,{error:'물고기가 입질할 때까지 기다려 주세요.',fishing:fishingView(p)});
           const fish=FISH_BY_ID.get(session.fishId);
-          const success=now<=session.expiresAt&&Math.abs(fishPosition(session,now)-session.center)<=session.width/2+.043;
+          if(!session.startAt)return json(res,409,{error:'먼저 GET 버튼을 눌러 주세요.',fishing:fishingView(p)});
+          const pressed=Number(d.pressedAt);
+          const judged=Number.isFinite(pressed)?Math.max(now-1000,Math.min(now,pressed)):now;
+          const success=judged>=session.startAt&&judged<=session.expiresAt&&Math.abs(fishPosition(session,judged)-session.center)<=session.width/2;
           a.active=null;
           if(success){a.bonus+=fish.points;a.fishCounts[fish.id]=(a.fishCounts[fish.id]||0)+1;}
           else a.totalMisses++;

@@ -9563,7 +9563,7 @@ async function revealLotteryTicket(){
 
 
 // v312: shoreline fishing; all payouts, random fish and catches verified server-side.
-const fishingCss=document.createElement('link');fishingCss.rel='stylesheet';fishingCss.href='/fishing.css?v=312';document.head.append(fishingCss);
+const fishingCss=document.createElement('link');fishingCss.rel='stylesheet';fishingCss.href='/fishing.css?v=314';document.head.append(fishingCss);
 let fishingUi=null,fishingData=null,fishingBusy=false,fishingClockDelta=0,fishingViewTab='play',fishingFilter='all',fishingLastExpireCheck='',fishingLastToastAt=0;
 const fishRarityKorean={common:'일반',uncommon:'고급',rare:'희귀',epic:'영웅',legendary:'전설'};
 const fishingRods=['','나무','실버','골드','플래티넘','레인보우'];
@@ -9577,7 +9577,7 @@ function ensureFishingUi(){
  const overlay=document.createElement('div');overlay.id='fishingOverlay';overlay.innerHTML=`<div class="fish-window" role="dialog" aria-modal="true" aria-labelledby="fishTitle">
   <header class="fish-head"><div><small>ONESEASON · OCEAN ADVENTURE</small><h2 id="fishTitle">🎣 낚시 · FISHING</h2></div><div class="fish-head-info"><span class="fish-pill" id="fishWallet">🪙 0P</span><span class="fish-pill" id="fishCollected">🐠 0/48종</span><button class="fish-close" id="fishClose" aria-label="닫기">×</button></div></header>
   <div class="fish-content"><nav class="fish-tabs" aria-label="낚시 메뉴"><button class="fish-tab active" data-fish-tab="play">🌊 낚시</button><button class="fish-tab" data-fish-tab="guide">🪝 낚싯대</button><button class="fish-tab" data-fish-tab="catalog">📖 물고기 도감</button></nav>
-   <div id="fishPlay"><div class="fish-main"><section class="fish-card"><div class="fish-poster"><div><strong>바다에서 만나는 48종의 물고기</strong><p>낚싯대를 던지고 입질을 기다리세요. 타이밍을 맞춰 특별한 물고기를 잡아보세요!</p></div></div><div class="fish-game"><h3 class="fish-title" id="fishCurrentStatus">🎣 낚싯대를 준비하세요</h3><div class="fish-stage"><span class="fish-stage-rod" id="fishStageRod">🎣</span><span class="fish-bobber" id="fishBobber"></span></div><div class="fish-meter-wrap"><div class="fish-meter-label"><span>🎯 초록색 안에서 당기기</span><span id="fishTimeLabel">READY</span></div><div class="fish-meter"><div id="fishTarget" class="fish-target" style="left:40%;width:20%"></div><div id="fishCursor" class="fish-cursor" style="left:0%"></div></div><p class="fish-meter-help">입질 후 움직이는 하얀 바늘이 초록 영역에 들어왔을 때 <b>당기기!</b>를 누르세요. 모바일은 터치, PC는 스페이스도 가능해요.</p></div><div class="fish-message" id="fishMessage" aria-live="polite">낚싯대는 500P에 구매할 수 있어요.</div><button class="fish-action" id="fishAction" type="button">🪝 낚싯대 구매 · 500P</button></div></section>
+   <div id="fishPlay"><div class="fish-main"><section class="fish-card"><div class="fish-poster"><div><strong>바다에서 만나는 48종의 물고기</strong><p>낚싯대를 던지고 입질을 기다리세요. 타이밍을 맞춰 특별한 물고기를 잡아보세요!</p></div></div><div class="fish-game"><h3 class="fish-title" id="fishCurrentStatus">🎣 낚싯대를 준비하세요</h3><div class="fish-stage"><span class="fish-stage-rod" id="fishStageRod">🎣</span><span class="fish-bobber" id="fishBobber"></span><div id="fishHook" class="fish-hook" hidden><span class="fish-hook-line">🪝</span><span id="fishHookIcon"></span><b id="fishHookName"></b></div></div><div class="fish-meter-wrap"><div class="fish-meter-label"><span>🎯 초록색 안에서 당기기</span><span id="fishTimeLabel">READY</span></div><div class="fish-meter"><div id="fishTarget" class="fish-target" style="left:40%;width:20%"></div><div id="fishCursor" class="fish-cursor" style="left:0%"></div></div><p class="fish-meter-help">입질 후 GET을 누르고, 움직이는 하얀 바늘이 초록 영역에 들어왔을 때 <b>당기기!</b>를 누르세요. 모바일은 터치, PC는 스페이스도 가능해요.</p></div><div class="fish-message" id="fishMessage" aria-live="polite">낚싯대는 500P에 구매할 수 있어요.</div><button class="fish-action" id="fishAction" type="button">🪝 낚싯대 구매 · 500P</button></div></section>
     <aside class="fish-side"><section class="fish-card fish-sidecard"><h3>🎣 내 낚싯대</h3><div class="fish-rodview"><img src="/assets/fishing/rod.svg" alt="낚싯대"><div><strong id="fishRodName">미보유</strong><small id="fishRodEffect">낚싯대 구입 후 낚시 가능</small></div></div><button id="fishUpgrade" type="button" class="fish-upgrade">✨ 낚싯대 강화</button></section>
       <section class="fish-card fish-sidecard"><h3>🐠 물고기 수집 현황</h3><p id="fishStats">0종 발견 · 0마리 잡음</p><div class="fish-rarity"><span class="common">일반</span><span class="uncommon">고급</span><span class="rare">희귀</span><span class="epic">영웅</span><span class="legendary">전설</span></div><p>물고기마다 <b>등장 확률 · 난이도 · 포인트</b>가 달라요. 잡은 물고기는 자동으로 도감에 기록돼요.</p></section>
       <section class="fish-card fish-sidecard"><h3>💡 낚시 방법</h3><div class="fish-steps"><span>1. 낚싯대 구매</span><span>2. 던지기</span><span>3. 입질 기다리기</span><span>4. 타이밍 당기기</span></div><p>낚싯대가 강해질수록 초록색 성공 구간이 넓어져요. 포인트는 낚시에 성공했을 때 자동 지급돼요.</p></section></aside></div></div>
@@ -9586,7 +9586,7 @@ function ensureFishingUi(){
    </div><div class="fish-footer">ONEseason 게임 포인트 전용 · 물고기 출현과 낚시 성공 판정 및 보상은 서버에서 관리합니다.</div></div>`;
  document.body.append(overlay);
  const q=id=>overlay.querySelector('#'+id);
- fishingUi={btn,overlay,close:q('fishClose'),wallet:q('fishWallet'),collected:q('fishCollected'),status:q('fishCurrentStatus'),stageRod:q('fishStageRod'),bobber:q('fishBobber'),target:q('fishTarget'),cursor:q('fishCursor'),time:q('fishTimeLabel'),message:q('fishMessage'),action:q('fishAction'),upgrade:q('fishUpgrade'),rodName:q('fishRodName'),rodEffect:q('fishRodEffect'),stats:q('fishStats'),guide:q('fishRodProgress'),guideAction:q('fishGuideAction'),catalogHeading:q('fishCatalogHeading'),filters:q('fishFilters'),grid:q('fishSpeciesGrid')};
+ fishingUi={btn,overlay,meter:q('fishCursor').parentElement,close:q('fishClose'),wallet:q('fishWallet'),collected:q('fishCollected'),status:q('fishCurrentStatus'),stageRod:q('fishStageRod'),bobber:q('fishBobber'),hook:q('fishHook'),hookIcon:q('fishHookIcon'),hookName:q('fishHookName'),target:q('fishTarget'),cursor:q('fishCursor'),time:q('fishTimeLabel'),message:q('fishMessage'),action:q('fishAction'),upgrade:q('fishUpgrade'),rodName:q('fishRodName'),rodEffect:q('fishRodEffect'),stats:q('fishStats'),guide:q('fishRodProgress'),guideAction:q('fishGuideAction'),catalogHeading:q('fishCatalogHeading'),filters:q('fishFilters'),grid:q('fishSpeciesGrid')};
  btn.addEventListener('click',openFishingUi);fishingUi.close.addEventListener('click',closeFishingUi);
  overlay.addEventListener('pointerdown',e=>{if(e.target===overlay)closeFishingUi()});
  overlay.querySelectorAll('[data-fish-tab]').forEach(b=>b.onclick=()=>{fishingViewTab=b.dataset.fishTab;renderFishingUi()});
@@ -9638,7 +9638,12 @@ function renderFishingUi(){
  }else{
   const cd=Math.max(0,d.cooldownUntil-fishingTime());u.status.textContent='🎣 '+d.rodName+' 준비 완료';u.message.textContent=fishingStatusText(d.lastResult);a.textContent=cd>0?'⏳ 낚싯대 준비 중…':'🎣 낚싯대 던지기';a.disabled=fishingBusy||cd>0;
  }
- u.bobber.classList.toggle('bite',!!d.session&&fishingTime()>=d.session.biteAt);
+ // Do not display a stale target/cursor after a completed cast or before a bite.
+ const meterActive=!!d.session?.startAt&&fishingTime()<=d.session.expiresAt;
+ u.hook.hidden=!d.session?.fish;u.hookIcon.textContent=d.session?.fish?.icon||'';u.hookName.textContent=d.session?.fish?.name||'';
+ u.meter.classList.toggle('is-inactive',!meterActive);
+ if(!meterActive){u.cursor.style.left='0%';if(!d.session){u.time.textContent='READY';u.target.style.left='40%';u.target.style.width='20%';}}
+ u.bobber.classList.toggle('bite',meterActive);
  if(fishingViewTab==='catalog')renderFishingCatalog();
 }
 function renderFishingCatalog(){
@@ -9662,7 +9667,7 @@ function renderFishingCatalog(){
 }
 async function fishingRequest(command){
  if(!state.id||fishingBusy)return;fishingBusy=true;const a=fishingUi.action;a.disabled=true;let requestError=null;
- try{const r=await post('fishing',{id:state.id,sessionKey,command,castId:fishingData?.session?.id});fishingSetData(r.fishing);if(command==='cast'){
+ try{const started=Date.now();const r=await post('fishing',{id:state.id,sessionKey,command,castId:fishingData?.session?.id,pressedAt:command==='reel'?Number(fishingUi.cursor.dataset.renderedAt)||fishingTime():undefined});const ended=Date.now();fishingSetData(r.fishing);if(r.fishing?.serverNow)fishingClockDelta=r.fishing.serverNow-(started+ended)/2;if(command==='cast'){
   fishingStartAvatar();fishingUi.stageRod.classList.remove('cast');void fishingUi.stageRod.offsetWidth;fishingUi.stageRod.classList.add('cast');
  }else if(command==='reel'){fishingStopAvatar();if(r.result?.success){toast(`🎣 ${r.result.fish.name} +${r.result.points.toLocaleString()}P!`);void refreshTentStatus();}else toast('물고기를 놓쳤어요!');}
  else if(command==='buy'||command==='upgrade'){toast(command==='buy'?'낚싯대 구매 완료!':'낚싯대 업그레이드 완료!');void refreshTentStatus();}
@@ -9670,20 +9675,25 @@ async function fishingRequest(command){
  }catch(e){requestError=e.message;if(command==='reel'&&!fishingData?.session)fishingStopAvatar();}
  finally{fishingBusy=false;renderFishingUi();if(requestError&&fishingUi)fishingUi.message.textContent=requestError;}
 }
-function fishingPrimaryAction(){const d=fishingData;if(!d||fishingBusy)return;if(!d.level)return fishingRequest('buy');if(d.session)return fishingRequest('reel');if(fishingTime()<d.cooldownUntil)return;return fishingRequest('cast');}
+function fishingPrimaryAction(){const d=fishingData;if(!d||fishingBusy)return;if(!d.level)return fishingRequest('buy');if(d.session){if(fishingTime()<d.session.biteAt)return;return fishingRequest(d.session.startAt?'reel':'get');}if(fishingTime()<d.cooldownUntil)return;return fishingRequest('cast');}
 function fishingUpgrade(){if(!fishingData?.level)return fishingPrimaryAction();return fishingRequest('upgrade');}
 function fishingUiFrame(){
  const u=fishingUi,d=fishingData;if(!u||!u.overlay.classList.contains('show')||!d)return;
- if(!d.session){if(d.level&&fishingTime()>=d.cooldownUntil&&u.action.textContent.includes('준비 중')){u.action.textContent='🎣 낚싯대 던지기';u.action.disabled=fishingBusy;}return;}
+ if(!d.session){
+  u.meter.classList.add('is-inactive');u.cursor.style.left='0%';u.time.textContent='READY';u.bobber.classList.remove('bite');
+  if(d.level&&fishingTime()>=d.cooldownUntil&&u.action.textContent.includes('준비 중')){u.action.textContent='🎣 낚싯대 던지기';u.action.disabled=fishingBusy;}
+  return;
+ }
  const s=d.session,now=fishingTime();
- if(now<s.biteAt){u.status.textContent='🌊 물고기가 올 때까지 기다리는 중';u.time.textContent=((s.biteAt-now)/1000).toFixed(1)+'초';u.action.textContent='🌊 찌를 바라보는 중…';u.action.disabled=true;u.cursor.style.left='0%';}
+ if(now<s.biteAt){u.meter.classList.add('is-inactive');u.status.textContent='🌊 물고기가 올 때까지 기다리는 중';u.time.textContent='WAIT';u.action.textContent='🌊 찌를 바라보는 중…';u.action.disabled=true;u.cursor.style.left='0%';}
+ else if(now<=s.expiresAt&&!s.startAt){u.meter.classList.add('is-inactive');u.status.textContent='❗ 입질이 왔어요!';u.time.textContent='GET!';u.bobber.classList.add('bite');u.action.textContent='🐟 GET';u.action.disabled=fishingBusy;u.action.classList.add('pulse');}
  else if(now<=s.expiresAt){
-  const position=.5+.5*Math.sin((now-s.biteAt)/1000*s.speed+s.phase);
+  u.meter.classList.remove('is-inactive');const position=.5+.5*Math.sin((now-s.startAt)/1000*s.speed+s.phase);u.cursor.dataset.renderedAt=String(now);
   u.status.textContent='❗ 입질이 왔어요!';u.time.textContent=((s.expiresAt-now)/1000).toFixed(1)+'초';u.bobber.classList.add('bite');
   u.target.style.left=Math.max(0,(s.center-s.width/2)*100)+'%';u.target.style.width=(s.width*100)+'%';u.cursor.style.left=(position*100)+'%';
   u.action.textContent='🎯 지금 당기기!';u.action.disabled=fishingBusy;u.action.classList.add('pulse');
  }else if(fishingLastExpireCheck!==s.id){
-  fishingLastExpireCheck=s.id;u.action.disabled=true;u.action.textContent='⌛ 물고기가 도망갔어요';
+  fishingLastExpireCheck=s.id;u.meter.classList.add('is-inactive');u.action.disabled=true;u.action.textContent='⌛ 물고기가 도망갔어요';
   void fishingRefresh().then(()=>fishingStopAvatar());
  }
 }
