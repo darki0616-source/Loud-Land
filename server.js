@@ -282,23 +282,25 @@ const ONE_TIME_CREDIT_HASH='07cad1e4323da66ca647d215a5b63b5ea02519ad6bb88c3e35b7
 const recoveryHash=code=>crypto.createHash('sha256').update(code).digest('hex');
 function recoveryProfile(p){return {name:p.name,color:p.color,gender:p.gender,pattern:p.pattern,sash:p.sash,hairStyle:p.hairStyle,hairColor:p.hairColor};}
 function setRecoveryProfile(p){const r=p?.badgeIdentity&&recoveryRecords.get(p.badgeIdentity);if(r){r.profile=recoveryProfile(p);scheduleSave();}}
+const PET_EFFECTS={sparkle:{name:'반짝이',cost:500},notes:{name:'춤출 때 음표',cost:1000},heart:{name:'하트',cost:1000},rainbow:{name:'무지개',cost:2000},light:{name:'라이트',cost:3000}};
+function petEffectView(record){const owned={},enabled={};for(const id of Object.keys(PET_EFFECTS)){owned[id]=record?.effectsOwned?.[id]===true;enabled[id]=owned[id]&&record?.effectsEnabled?.[id]===true;}return {owned,enabled};}
 const petStats=new Map();
 let petHatchDurationMigrated=false;
 function petLevel(xp){
  let level=1;while(level<PET_MAX_LEVEL&&xp>=40*level+8*level*(level+1))level++;
  return level;
 }
-function petPublic(pet){
+function petPublic(pet,record){
  if(!pet)return null;
  const level=petLevel(pet.xp),hatched=Date.now()>=pet.hatchAt;
  return {species:hatched?(PET_SPECIES.includes(pet.species)?pet.species:'fox'):null,color:pet.color,adoptedAt:pet.adoptedAt,hatchAt:pet.hatchAt,
   hatched,level:hatched?level:0,xp:pet.xp,nextXp:level<PET_MAX_LEVEL?40*level+8*level*(level+1):null,
-  stage:hatched?(level>=25?25:level>=10?10:1):0,summoned:!!pet.summoned};
+  stage:hatched?(level>=25?25:level>=10?10:1):0,summoned:!!pet.summoned,effects:petEffectView(record).enabled};
 }
-function petAccount(identity){if(!petStats.has(identity))petStats.set(identity,{spent:0,pet:null});return petStats.get(identity);}
-function petView(p){const record=petAccount(p.badgeIdentity);return {pet:petPublic(record.pet),points:tentPointBalance(p),cost:PET_ADOPTION_COST,hatchMs:PET_HATCH_MS,foods:PET_FOODS,availableSpecies:PET_SPECIES,maxLevel:PET_MAX_LEVEL};}
+function petAccount(identity){if(!petStats.has(identity))petStats.set(identity,{spent:0,pet:null,effectsOwned:{},effectsEnabled:{}});return petStats.get(identity);}
+function petView(p){const record=petAccount(p.badgeIdentity);return {pet:petPublic(record.pet,record),effects:petEffectView(record),effectCatalog:PET_EFFECTS,points:tentPointBalance(p),cost:PET_ADOPTION_COST,hatchMs:PET_HATCH_MS,foods:PET_FOODS,availableSpecies:PET_SPECIES,maxLevel:PET_MAX_LEVEL};}
 function syncPetPlayers(identity){
- const record=petStats.get(identity);for(const other of players.values())if(other.badgeIdentity===identity){other.pet=petPublic(record?.pet);broadcast({type:'pet-update',id:other.id,pet:other.pet});}
+ const record=petStats.get(identity);for(const other of players.values())if(other.badgeIdentity===identity){other.pet=petPublic(record?.pet,record);broadcast({type:'pet-update',id:other.id,pet:other.pet});}
 }
 // Notify everyone when a summoned egg finishes hatching, even if its owner is offline.
 const petHatchNotified=new Set();
@@ -718,7 +720,7 @@ const SB_KEY=process.env.SUPABASE_SECRET_KEY||'';
 const useSupabase=Boolean(SB_URL&&SB_KEY);
 let restored=false;
 let saveChain=Promise.resolve();
-function stateData(){return {version:18,oneTimeCreditApplied,adminPointCredits:Object.fromEntries(adminPointCredits),adminPointLedger:Object.fromEntries(adminPointLedger),recoveryRecords:Object.fromEntries(recoveryRecords),fishingStats:Object.fromEntries([...fishingStats].map(([id,a])=>[id,{level:a.level,spent:a.spent,bonus:a.bonus,fishCounts:a.fishCounts,totalMisses:a.totalMisses,lastCastAt:a.lastCastAt,active:a.active,lastResult:a.lastResult}])),lotteryStats:Object.fromEntries([...lotteryStats].map(([identity,a])=>[identity,{day:a.day,used:a.used,spent:a.spent,bonus:a.bonus,pending:a.pending,lastResult:a.lastResult}])),petStats:Object.fromEntries([...petStats].map(([identity,record])=>[identity,{spent:record.spent,pet:record.pet}])),fieldCoinLastSpawnAt,fieldCoins:fieldCoinPublic(),fieldCoinBonuses:Object.fromEntries(fieldCoinBonuses),moleDay,moleHammerRevision,moleReward,moleScores:Object.fromEntries(moleScores),moleAccounts:Object.fromEntries([...moleAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session,lastResult:v.lastResult}])),powerDay,powerReward,powerScores:Object.fromEntries(powerScores),powerAccounts:Object.fromEntries([...powerAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),rhythmAccounts:Object.fromEntries([...rhythmAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),furnitureCatalogEdits:Object.fromEntries(furnitureCatalogEdits),furnitureStats:Object.fromEntries([...furnitureStats].map(([id,v])=>[id,{spent:v.spent,owned:v.owned}])),tentStats:Object.fromEntries([...tentStats].map(([identity,t])=>[identity,storedTent(t)])),announcements:{entry:entranceNotices,ticker:tickerNotices,intervalMinutes:tickerIntervalMinutes,immediateHistory:immediateNoticeHistory},music,queue:[...queue],history:[...history],nextTrackToken,customMd:Object.fromEntries(customMd),shopStats:Object.fromEntries([...shopStats].map(([k,v])=>[k,{spent:0,refunded:v.refunded||0,owned:v.owned,equipped:v.equipped}])),badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),rhythm:{day:rhythmDay,reward:rhythmReward,scores:Object.fromEntries([...rhythmScores].map(([k,v])=>[k,{name:v.name,score:Math.max(0,Math.floor(Number(v.score)||0)),updatedAt:Number(v.updatedAt)||0}]))},savedAt:Date.now()}}
+function stateData(){return {version:18,oneTimeCreditApplied,adminPointCredits:Object.fromEntries(adminPointCredits),adminPointLedger:Object.fromEntries(adminPointLedger),recoveryRecords:Object.fromEntries(recoveryRecords),fishingStats:Object.fromEntries([...fishingStats].map(([id,a])=>[id,{level:a.level,spent:a.spent,bonus:a.bonus,fishCounts:a.fishCounts,totalMisses:a.totalMisses,lastCastAt:a.lastCastAt,active:a.active,lastResult:a.lastResult}])),lotteryStats:Object.fromEntries([...lotteryStats].map(([identity,a])=>[identity,{day:a.day,used:a.used,spent:a.spent,bonus:a.bonus,pending:a.pending,lastResult:a.lastResult}])),petStats:Object.fromEntries([...petStats].map(([identity,record])=>[identity,{spent:record.spent,pet:record.pet,effectsOwned:record.effectsOwned||{},effectsEnabled:record.effectsEnabled||{}}])),fieldCoinLastSpawnAt,fieldCoins:fieldCoinPublic(),fieldCoinBonuses:Object.fromEntries(fieldCoinBonuses),moleDay,moleHammerRevision,moleReward,moleScores:Object.fromEntries(moleScores),moleAccounts:Object.fromEntries([...moleAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session,lastResult:v.lastResult}])),powerDay,powerReward,powerScores:Object.fromEntries(powerScores),powerAccounts:Object.fromEntries([...powerAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),rhythmAccounts:Object.fromEntries([...rhythmAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),furnitureCatalogEdits:Object.fromEntries(furnitureCatalogEdits),furnitureStats:Object.fromEntries([...furnitureStats].map(([id,v])=>[id,{spent:v.spent,owned:v.owned}])),tentStats:Object.fromEntries([...tentStats].map(([identity,t])=>[identity,storedTent(t)])),announcements:{entry:entranceNotices,ticker:tickerNotices,intervalMinutes:tickerIntervalMinutes,immediateHistory:immediateNoticeHistory},music,queue:[...queue],history:[...history],nextTrackToken,customMd:Object.fromEntries(customMd),shopStats:Object.fromEntries([...shopStats].map(([k,v])=>[k,{spent:0,refunded:v.refunded||0,owned:v.owned,equipped:v.equipped}])),badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),rhythm:{day:rhythmDay,reward:rhythmReward,scores:Object.fromEntries([...rhythmScores].map(([k,v])=>[k,{name:v.name,score:Math.max(0,Math.floor(Number(v.score)||0)),updatedAt:Number(v.updatedAt)||0}]))},savedAt:Date.now()}}
 function applySaved(d){
  if(!d||typeof d!=='object')return;
  oneTimeCreditApplied=d.oneTimeCreditApplied===true;adminPointCredits.clear();adminPointLedger.clear();
@@ -741,7 +743,8 @@ function applySaved(d){
    if(hatchAt!==x.hatchAt)petHatchDurationMigrated=true;
    pet={species:x.species,color:x.color,adoptedAt:x.adoptedAt,hatchAt,xp:x.xp,summoned:!!x.summoned};
   }
-  petStats.set(identity,{spent,pet});
+  const effectsOwned={},effectsEnabled={};for(const id of Object.keys(PET_EFFECTS)){effectsOwned[id]=r.effectsOwned?.[id]===true;effectsEnabled[id]=effectsOwned[id]&&r.effectsEnabled?.[id]===true;}
+  petStats.set(identity,{spent,pet,effectsOwned,effectsEnabled});
  }
  fieldCoins.clear();fieldCoinBonuses.clear();
  // Preserve lifetime spend/bonuses across KST day changes and Render restarts.
@@ -1322,7 +1325,7 @@ const server=http.createServer(async(req,res)=>{
           if(existing){
             maybeRotateRhythmDay();
             existing.seen=Date.now();
-            syncPlayerRhythmKing(existing);syncPlayerPowerKing(existing);syncPlayerMoleKing(existing);existing.pet=petPublic(petStats.get(existing.badgeIdentity)?.pet);
+            syncPlayerRhythmKing(existing);syncPlayerPowerKing(existing);syncPlayerMoleKing(existing);existing.pet=petPublic(petStats.get(existing.badgeIdentity)?.pet,petStats.get(existing.badgeIdentity));
             if(pageId)pageOwners.set(existingId,pageId);
             return json(res,200,{id:existingId,reused:true,...snapshot(existingId)});
           }
@@ -1330,7 +1333,7 @@ const server=http.createServer(async(req,res)=>{
         }
         maybeRotateRhythmDay();
         const id=crypto.randomUUID(),p={id,badgeSince:Date.now(),badgeTier:'bronze',badgeSeconds:0,name:clean(d.name,18)||'ROCKER',flagText:cleanFlag(d.flagText),flagImage:d.flagImage?storeFlagImage(d.flagImage)||'':'',color:colors.includes(d.color)?d.color:colors[0],...apparel(d),gender:d.gender==='female'?'female':'male',x:clamp(190+Math.random()*880,SERVER_X_MIN,SERVER_X_MAX),y:clamp(390+Math.random()*420,SERVER_Y_MIN,SERVER_Y_MAX),facing:0,action:'idle',pose:'stand',glowColor:'lime',glowEnabled:false,headbangBpm:120,headbangBeatAt:Date.now(),seen:Date.now(),rhythmKing:false,powerKing:false,moleKing:false};
-        Object.defineProperty(p,'badgeIdentity',{value:badgeIdentity,writable:true,enumerable:false});updateBadge(p);syncPlayerRhythmKing(p);syncPlayerPowerKing(p);syncPlayerMoleKing(p);setShopAppearance(p);p.pet=petPublic(petStats.get(p.badgeIdentity)?.pet);players.set(id,p);
+        Object.defineProperty(p,'badgeIdentity',{value:badgeIdentity,writable:true,enumerable:false});updateBadge(p);syncPlayerRhythmKing(p);syncPlayerPowerKing(p);syncPlayerMoleKing(p);setShopAppearance(p);p.pet=petPublic(petStats.get(p.badgeIdentity)?.pet,petStats.get(p.badgeIdentity));players.set(id,p);
         if(sessionKey){sessionPlayers.set(sessionKey,id);playerSessions.set(id,sessionKey)}
         if(pageId)pageOwners.set(id,pageId);
         resumeForFirst();broadcast({type:'join',player:p,count:players.size});return json(res,200,{id,reused:false,...snapshot(id)});
@@ -1464,6 +1467,21 @@ const server=http.createServer(async(req,res)=>{
         if(command==='status')return json(res,200,{ok:true,...petView(p)});
         const record=petAccount(p.badgeIdentity);
         const pet=record.pet;
+        if(command==='effect-buy'||command==='effect-toggle'){
+          const effectId=String(d.effect||''),item=PET_EFFECTS[effectId];
+          if(!Object.hasOwn(PET_EFFECTS,effectId))return json(res,400,{error:'존재하지 않는 이펙트예요.'});
+          record.effectsOwned||={};record.effectsEnabled||={};
+          if(command==='effect-buy'){
+            if(record.effectsOwned[effectId])return json(res,409,{error:'이미 구매한 이펙트예요.'});
+            if(tentPointBalance(p)<item.cost)return json(res,400,{error:'포인트가 부족해요.'});
+            record.spent+=item.cost;record.effectsOwned[effectId]=true;record.effectsEnabled[effectId]=true;
+          }else{
+            if(!record.effectsOwned[effectId])return json(res,400,{error:'먼저 이펙트를 구매해 주세요.'});
+            if(typeof d.enabled!=='boolean')return json(res,400,{error:'이펙트 상태가 올바르지 않아요.'});
+            record.effectsEnabled[effectId]=d.enabled;
+          }
+          syncPetPlayers(p.badgeIdentity);await saveNow();return json(res,200,{ok:true,...petView(p)});
+        }
         if(command==='adopt'){
           if(pet)return json(res,409,{error:'이미 펫이 있어요. 기존 펫을 삭제한 후 새 알을 입양할 수 있어요.'});
           if(tentPointBalance(p)<PET_ADOPTION_COST)return json(res,400,{error:`입양 포인트가 부족해요. (${tentPointBalance(p)}/${PET_ADOPTION_COST}P)`});
