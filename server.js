@@ -5,6 +5,17 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const PORT = Number(process.env.PORT || 3000);
 const PUBLIC = path.join(__dirname, 'public');
+// v310: One editable JSON calendar for all birthday reactions; server validates
+// the date independently of the browser so expired actions cannot be replayed.
+let birthdayCalendar={events:[]};
+try{birthdayCalendar=JSON.parse(fs.readFileSync(path.join(PUBLIC,'assets/events/birthday.json'),'utf8'));}catch(error){console.warn('Birthday calendar unavailable:',error.message);}
+function birthdayActive(now=Date.now()){
+ return (Array.isArray(birthdayCalendar.events)?birthdayCalendar.events:[]).some(e=>{
+  const start=Date.parse(e.start),end=Date.parse(e.end);
+  return Number.isFinite(start)&&Number.isFinite(end)&&now>=start&&now<end;
+ });
+}
+
 const clients = new Map();
 const players = new Map();
 // A browser tab keeps one stable session key across refresh/reconnect attempts.
@@ -1230,6 +1241,13 @@ const server=http.createServer(async(req,res)=>{
           a.lastResult={id:ticket.id,tier:ticket.tier,prize:ticket.prize,symbols:[...ticket.symbols],at:Date.now()};
           a.pending=null; // One-way settlement, safe against double requests.
           await saveNow();
+          // v304: Announce only settled ultra/jackpot wins. A duplicate reveal
+          // returns above, so it cannot replay the public celebration.
+          if(ticket.tier==='ultra'||ticket.tier==='jackpot'){
+            const winLabel=ticket.tier==='ultra'?'초고액':'대박';
+            broadcast({type:'festival-notice',kind:'lottery-win',id:noticeId(),
+              tier:ticket.tier,text:noticeText(`🎆 ${p.name}님이 ${winLabel}에 당첨되셨습니다!`),at:Date.now()});
+          }
           return json(res,200,{ok:true,result:a.lastResult,lottery:lotteryAccountView(p)});
         }
         return json(res,400,{error:'지원하지 않는 복권 명령입니다.'});
@@ -1314,9 +1332,9 @@ const server=http.createServer(async(req,res)=>{
         }
         if(command==='room-action'){
           if(!p.tentRoomId)return json(res,400,{error:'먼저 텐트에 입장해 주세요.'});
-          const allowed=['idle','peace','jump','run','wave','clap','sit','lie','drink','snack','headbang','buriburi','groove','dougie','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','powerking','moleking','putyourhandsup','heartbow','drum','electricguitar','bassguitar','vocal'];
+          const allowed=['idle','peace','jump','run','wave','clap','sit','lie','drink','snack','headbang','buriburi','groove','dougie','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','powerking','moleking','putyourhandsup','birthday','heartbow','drum','electricguitar','bassguitar','vocal'];
           const action=String(d.action||'idle');
-          p.action=allowed.includes(action)&&!(action==='beatking'&&!playerIsRhythmKing(p))&&!(action==='powerking'&&!playerIsPowerKing(p))&&!(action==='moleking'&&!playerIsMoleKing(p))?action:'idle';
+          p.action=allowed.includes(action)&&!(action==='birthday'&&!birthdayActive())&&!(action==='beatking'&&!playerIsRhythmKing(p))&&!(action==='powerking'&&!playerIsPowerKing(p))&&!(action==='moleking'&&!playerIsMoleKing(p))?action:'idle';
           p.pose=['stand','sit','lie'].includes(d.pose)?d.pose:'stand';
           p.headbangBpm=clamp(d.headbangBpm||120,40,240);
           const beatAt=Number(d.headbangBeatAt);p.headbangBeatAt=Number.isFinite(beatAt)&&Math.abs(beatAt-Date.now())<86400000?beatAt:Date.now();
@@ -1527,12 +1545,13 @@ const server=http.createServer(async(req,res)=>{
           if(!((kstHour>=20||kstHour<3)&&Math.hypot(wx-34,wz-10.5)<=8.8))d.action='idle';
         }
 
+        if(d.action==='birthday'&&!birthdayActive())d.action='idle';
         // The fireworks reaction is available only from 01:00 to 04:00 in Korea.
         if(d.action==='nightfirework'){
           const kstHour=Number(new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Seoul',hour:'2-digit',hourCycle:'h23'}).format(new Date()));
           if(kstHour<1||kstHour>=4)d.action='idle';
         }
-        p.action=['idle','walk','peace','jump','run','wave','clap','sit','lie','drink','snack','headbang','buriburi','groove','dougie','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','powerking','moleking','marshmallow','putyourhandsup','nightfirework','heartbow','drum','electricguitar','bassguitar','vocal','mosh-charge','slam-charge','slam-retreat','slam-celebrate','circle-run','train-run','row-paddle','toast-clink','surf-rider','surf-support','shoulder-headbang','rock-skank'].includes(d.action)?d.action:'idle';
+        p.action=['idle','walk','peace','jump','run','wave','clap','sit','lie','drink','snack','headbang','buriburi','groove','dougie','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','powerking','moleking','marshmallow','putyourhandsup','nightfirework','birthday','heartbow','drum','electricguitar','bassguitar','vocal','mosh-charge','slam-charge','slam-retreat','slam-celebrate','circle-run','train-run','row-paddle','toast-clink','surf-rider','surf-support','shoulder-headbang','rock-skank'].includes(d.action)?d.action:'idle';
         broadcast({type:'move',player:p});
         // Only a movement packet from this player's private session may
         // award coins; publicly visible avatar IDs are not authentication.
