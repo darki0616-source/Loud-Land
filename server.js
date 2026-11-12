@@ -373,6 +373,12 @@ function fishingView(p){
   collected:Object.keys(a.fishCounts).length,misses:a.totalMisses,fishCounts:a.fishCounts,lastResult:a.lastResult,session:fishPublicSession(a.active),
   cooldownUntil:a.lastCastAt+FISH_CAST_COOLDOWN_MS,near:fishingNearSea(p),catalog:FISH_CATALOG,serverNow:Date.now()};
 }
+// Difficulty rises with rarity while rod upgrades still improve control.
+function fishReelRates(fish,level){
+ const boost={common:1.10,uncommon:1.18,rare:1.27,epic:1.35,legendary:1.42}[fish.rarity]||1.10;
+ const d=fish.difficulty;
+ return {reel:.12+level*.007,escape:(.012+d*.003)*(1+(boost-1)*.8),tension:(.13+d*.017-level*.008)*boost,cool:(.24+level*.006)*(1-(boost-1)*.20)};
+}
 function fishingDraw(){const n=crypto.randomInt(10000);let sum=0;for(const fish of FISH_CATALOG){sum+=fish.weight;if(n<sum)return fish;}return FISH_CATALOG[FISH_CATALOG.length-1]}
 function fishingRestore(a){
  const record={level:Math.max(0,Math.min(FISH_MAX_LEVEL,Math.floor(Number(a?.level)||0))),spent:0,bonus:0,fishCounts:{},totalMisses:0,lastCastAt:0,active:null,lastResult:null};
@@ -1390,7 +1396,7 @@ const server=http.createServer(async(req,res)=>{
           const session=a.active, now=Date.now();
           if(!session||session.id!==String(d.castId||''))return json(res,409,{error:'진행 중인 낚시가 없어요.',fishing:fishingView(p)});
           if(now<session.biteAt||now>session.expiresAt)return json(res,409,{error:'입질 시간이 아니에요.',fishing:fishingView(p)});
-          if(!session.startAt){session.startAt=now;session.expiresAt=now+60000;session.progress=0;session.tension=0;session.held=false;session.updatedAt=now;const difficulty=FISH_BY_ID.get(session.fishId).difficulty;session.rates={reel:.12+a.level*.007,escape:.012+difficulty*.003,tension:.13+difficulty*.017-a.level*.008,cool:.24+a.level*.006};await saveNow();}
+          if(!session.startAt){session.startAt=now;session.expiresAt=now+60000;session.progress=0;session.tension=0;session.held=false;session.updatedAt=now;session.rates=fishReelRates(FISH_BY_ID.get(session.fishId),a.level);await saveNow();}
           return json(res,200,{ok:true,fishing:fishingView(p)});
         }
         if(command==='reel_state'){
@@ -1398,7 +1404,7 @@ const server=http.createServer(async(req,res)=>{
           if(a.lastResult?.id===castId)return json(res,200,{ok:true,result:a.lastResult,fishing:fishingView(p)});
           const session=a.active,now=Date.now();
           if(!session||session.id!==castId||!session.startAt)return json(res,409,{error:'진행 중인 낚시가 없어요.',fishing:fishingView(p)});
-          const difficulty=FISH_BY_ID.get(session.fishId).difficulty;const rates=session.rates||(session.rates={reel:.12+a.level*.007,escape:.012+difficulty*.003,tension:.13+difficulty*.017-a.level*.008,cool:.24+a.level*.006}), elapsed=Math.max(0,Math.min((now-session.updatedAt)/1000,2));
+          const rates=session.rates||(session.rates=fishReelRates(FISH_BY_ID.get(session.fishId),a.level)), elapsed=Math.max(0,Math.min((now-session.updatedAt)/1000,2));
           if(session.held){session.progress=Math.min(1,session.progress+rates.reel*elapsed);session.tension=Math.min(1,session.tension+rates.tension*elapsed);}
           else {session.progress=Math.max(0,session.progress-rates.escape*elapsed);session.tension=Math.max(0,session.tension-rates.cool*elapsed);}
           session.updatedAt=now;session.held=d.held===true;
