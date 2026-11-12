@@ -1298,7 +1298,7 @@ function updateSkipVoteUI(){
 async function castSkipVote(choice){const vote=state.skipVote;if(!vote||!state.id)return;try{await post('music',{id:state.id,command:'vote-cast',voteId:vote.id,choice})}catch(e){toast(e.message)}}
 function showSkipVoteResult(d){applySkipVote(null,state.skipVoteCooldownUntil);let msg=d.passed?'✅ 과반수 찬성! 요청한 곡으로 이동합니다':d.reason==='timeout'?'투표 시간이 종료되어 현재 곡을 유지합니다':'투표가 부결되어 현재 곡을 유지합니다';notice(msg)}
 setInterval(()=>{updateSkipVoteUI();updateSharedMusicButtons()},500);
-let joining=false;async function join(options={}){const auto=Boolean(options?.auto);if(editingProfile)return updateProfile();if(joining)return;joining=true;manualExit=false;try{let d=await post('join',{sessionKey,pageId,badgeIdentity,flagText:currentFlagText,flagImage:currentFlagImageData,name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender,pattern:chosenPattern,sash:chosenSash,hairStyle:chosenHairStyle,hairColor:chosenHairColor});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);applyHeadbangToSelf();currentFlagImageId=state.me?.flagImage||'';state.pose=state.me?.pose||'stand';cameraFollowInitialized=false;state.players=new Map(d.players.map(p=>[p.id,p]));renderOnlinePlayers();refreshPunkShop();$('joinModal').classList.add('hidden');$('reopenJoin').hidden=true;$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='페스티벌 참가 중';$('avatarPreview').querySelector('b').style.background=chosenColor;saveProfile(state.me);applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);applyPowerState(d.power);if(d.crowdSurf)syncCrowdSurf(d.crowdSurf);syncTents(d.tents);listen();refreshTentStatus();refreshPetStatus();$('audioModal').classList.add('hidden');setPersonalAudio(true);showMovementGuide();showEntryAnnouncements(d.announcements?.entry);if(!auto)toast('ONEseason에 오신 것을 환영합니다!')}catch(e){if(auto)$('joinModal').classList.remove('hidden');$('joinError').textContent='입장 실패: '+(e?.message||'연결을 확인해주세요');console.error('ONEseason join error:',e)}finally{joining=false}}
+let joining=false;async function join(options={}){const auto=Boolean(options?.auto);if(editingProfile)return updateProfile();if(joining)return;joining=true;manualExit=false;try{let d=await post('join',{sessionKey,pageId,badgeIdentity,flagText:currentFlagText,flagImage:currentFlagImageData,name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender,pattern:chosenPattern,sash:chosenSash,hairStyle:chosenHairStyle,hairColor:chosenHairColor});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);applyHeadbangToSelf();currentFlagImageId=state.me?.flagImage||'';state.pose=state.me?.pose||'stand';cameraFollowInitialized=false;state.players=new Map(d.players.map(p=>[p.id,p]));renderOnlinePlayers();refreshPunkShop();$('joinModal').classList.add('hidden');$('reopenJoin').hidden=true;$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='페스티벌 참가 중';$('avatarPreview').querySelector('b').style.background=chosenColor;saveProfile(state.me);applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);applyPowerState(d.power);if(d.crowdSurf)syncCrowdSurf(d.crowdSurf);syncTents(d.tents);listen();refreshTentStatus();refreshPetStatus();void ensureRecoveryCode();$('audioModal').classList.add('hidden');setPersonalAudio(true);showMovementGuide();showEntryAnnouncements(d.announcements?.entry);if(!auto)toast('ONEseason에 오신 것을 환영합니다!')}catch(e){if(auto)$('joinModal').classList.remove('hidden');$('joinError').textContent='입장 실패: '+(e?.message||'연결을 확인해주세요');console.error('ONEseason join error:',e)}finally{joining=false}}
 $('audioYes').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(true);toast(state.music.id?'음악 재생을 허용했어요':'음악이 등록되면 바로 재생돼요')};$('audioNo').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(false);toast('내 소리를 끈 상태로 입장했어요')};// First tap must save even if the nickname field currently has keyboard focus.
 // A pointerdown listener runs BEFORE Safari's keyboard dismissal can consume
 // the subsequent click. De-duplicate that click and block duplicate requests.
@@ -1323,11 +1323,49 @@ function closeWardrobe(){
 $('wardrobeClose').onclick=closeWardrobe;
 $('reopenJoin').onclick=()=>{$('reopenJoin').hidden=true;$('wardrobeScrollBody').scrollTop=0;$('joinModal').classList.remove('hidden')};
 async function updateProfile(){if(!state.id||!state.me)return;const button=$('joinBtn');if(button.disabled)return;button.disabled=true;button.textContent='저장 중…';try{
- const d=await post('profile',{id:state.id,name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender,pattern:chosenPattern,sash:chosenSash,hairStyle:chosenHairStyle,hairColor:chosenHairColor});
+ const d=await post('profile',{id:state.id,sessionKey,name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender,pattern:chosenPattern,sash:chosenSash,hairStyle:chosenHairStyle,hairColor:chosenHairColor});
  state.me=d.player;state.players.set(state.id,d.player);saveProfile(d.player);refreshProfilePreview();renderOnlinePlayers();closeProfileEditor();toast('캐릭터 설정을 변경했어요');
  }catch(e){$('joinError').textContent='변경 실패: '+e.message}finally{button.disabled=false;if(editingProfile)button.textContent='변경 사항 저장'}}
 $('editAvatar').onclick=()=>{if(!state.me)return;editingProfile=true;$('nick').value=state.me.name;chosenColor=state.me.color;chosenPattern=state.me.pattern||'solid';chosenSash=state.me.sash||'none';chosenHairStyle=normalizeHairStyle(state.me.hairStyle);chosenHairColor=state.me.hairColor||'#4b3932';selectGender(state.me.gender);colorPicker();renderApparelPicker();renderHairPicker();$('joinError').textContent='';$('joinBtn').textContent='변경 사항 저장';$('hairWardrobeSection').open=false;$('shirtWardrobeSection').open=false;$('reopenJoin').hidden=true;$('joinModal').classList.add('profile-edit');$('joinModal').classList.remove('hidden');$('wardrobeScrollBody').scrollTop=0;$('mdWardrobe').hidden=false;$('mdWardrobePanel').hidden=true;$('mdWardrobeToggle').setAttribute('aria-expanded','false');drawMdWardrobe();if(!matchMedia('(pointer:coarse)').matches)$('nick').focus()};
 
+// The code is only revealed locally; never put it in chat or a public snapshot.
+const RECOVERY_CODE_KEY='oneseason-recovery-code-v1';
+let recoveryRequest=null,recoveryStatus='';
+function readRecoveryCode(){try{return localStorage.getItem(RECOVERY_CODE_KEY)||''}catch{return ''}}
+async function ensureRecoveryCode(){
+ if(!state.id)return null;if(recoveryRequest)return recoveryRequest;
+ recoveryRequest=(async()=>{try{
+  const known=readRecoveryCode();const result=await post('recovery-code',{id:state.id,sessionKey,code:known});
+  if(result.code){try{localStorage.setItem(RECOVERY_CODE_KEY,result.code)}catch{recoveryStatus='코드를 자동 저장하지 못했어요. 지금 코드를 복사해 보관해 주세요.';}return result.code;}
+  if(result.valid&&known)return known;
+  recoveryStatus='이 기록에는 이미 복구 코드가 있어요. 보관한 코드를 입력해 복구해 주세요.';return null;
+ }catch(error){recoveryStatus='복구 코드 준비 실패: '+error.message;return null}finally{recoveryRequest=null}})();return recoveryRequest;
+}
+const recoveryStyle=document.createElement('style');recoveryStyle.textContent=`.recovery-box{margin:12px 0;padding:13px;border:1px solid #7ad8df88;border-radius:14px;background:#102b3ce8;color:#effcff;font-size:13px;line-height:1.5}.recovery-box strong{font-size:15px}.recovery-row{display:flex;gap:7px;flex-wrap:wrap;margin-top:8px}.recovery-box button{border:1px solid #a7e8e3;border-radius:9px;padding:8px 11px;background:#1b6170;color:white;font-weight:700}.recovery-box input{width:100%;min-width:0;border:1px solid #6ebfcf;border-radius:9px;padding:9px;background:#071b2c;color:white;font-size:16px}.recovery-code{display:block;overflow-wrap:anywhere;user-select:all;background:#051a27;border-radius:8px;padding:8px;margin-top:6px;color:#baffed}.recovery-box p{margin:6px 0}.recovery-box [hidden]{display:none}`;document.head.append(recoveryStyle);
+const recoveryBox=document.createElement('section');recoveryBox.className='recovery-box';recoveryBox.innerHTML=`<strong>🔑 게임 기록 복구</strong><p>복구 코드는 다른 사람에게 알려주지 말고 안전하게 보관해 주세요.</p><div class="recovery-row"><button type="button" id="showRecovery">내 복구 코드 확인</button><button type="button" id="openRecovery">기존 기록 복구</button></div><div id="recoveryView" hidden><span class="recovery-code" id="recoveryText"></span><div class="recovery-row"><button type="button" id="copyRecovery">코드 복사</button></div></div><div id="recoveryRestore" hidden><p>기존에 보관한 코드를 입력해 주세요.</p><input id="recoveryInput" type="text" placeholder="OS-로 시작하는 복구 코드" autocomplete="off" autocapitalize="none" spellcheck="false"><div class="recovery-row"><button type="button" id="doRecovery">기록 복구하기</button></div></div><p id="recoveryMessage" role="status"></p>`;
+$('wardrobeScrollBody').prepend(recoveryBox);
+const recoveryEl=id=>recoveryBox.querySelector('#'+id);
+recoveryEl('showRecovery').onclick=async()=>{
+ if(!state.id){recoveryEl('recoveryMessage').textContent='입장 후 꾸미기에서 코드를 확인할 수 있어요.';return;}
+ recoveryEl('recoveryMessage').textContent='코드 확인 중…';recoveryStatus='';const code=await ensureRecoveryCode();
+ if(!code){recoveryEl('recoveryMessage').textContent=recoveryStatus||'코드를 확인하지 못했어요.';return;}
+ recoveryEl('recoveryText').textContent=code;recoveryEl('recoveryView').hidden=false;recoveryEl('recoveryMessage').textContent=recoveryStatus||'코드를 복사하거나 안전한 곳에 저장하세요.';
+};
+recoveryEl('copyRecovery').onclick=async()=>{try{await navigator.clipboard.writeText(recoveryEl('recoveryText').textContent);recoveryEl('recoveryMessage').textContent='복구 코드를 복사했어요.';}catch{recoveryEl('recoveryMessage').textContent='코드를 길게 눌러 복사해 주세요.';}};
+recoveryEl('openRecovery').onclick=()=>{recoveryEl('recoveryRestore').hidden=!recoveryEl('recoveryRestore').hidden;};
+recoveryEl('doRecovery').onclick=async()=>{
+ const button=recoveryEl('doRecovery'),code=recoveryEl('recoveryInput').value.trim();if(button.disabled||!code)return;
+ if(state.id&&!confirm('기존 기록으로 전환하고 게임을 다시 불러올까요? 현재 기록은 서버에 남지만, 돌아오려면 현재 복구 코드가 필요해요.'))return;
+ button.disabled=true;recoveryEl('recoveryMessage').textContent='코드를 확인 중…';
+ try{
+  const result=await post('recovery-restore',{code});
+  // Test storage first, before disconnecting the current session.
+  localStorage.setItem(BADGE_ID_STORAGE,result.badgeIdentity);localStorage.setItem(RECOVERY_CODE_KEY,code);
+  if(result.profile)saveProfile(result.profile);
+  if(state.id){manualExit=true;try{await post('leave',{id:state.id,sessionKey,pageId})}catch{}}
+  sessionStorage.removeItem(SESSION_STORAGE_KEY);location.reload();
+ }catch(e){recoveryEl('recoveryMessage').textContent=e.message||'복구하지 못했어요. 다시 시도해 주세요.';}finally{button.disabled=false}
+};
 $('profileToggle').onclick=()=>{if(!state.me)return toast('입장 후 변경할 수 있어요');$('editAvatar').click()};
 ;$('helpBtn').onclick=()=>toast('WASD 이동 · 클릭/터치 이동 · 드래그 시점 회전 · 춤: B/G/V/K · 환호성: H · 담배: C');
 // Real-time paired interactions: invitations are opt-in, synced by server timestamp.
