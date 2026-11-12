@@ -1,0 +1,15 @@
+{
+  "events": [
+    {
+      "id": "yujuyoung-2026-11-13",
+      "name": "유주영",
+      "start": "2026-11-13T00:00:00+09:00",
+      "end": "2026-11-14T00:00:00+09:00",
+      "pizzaModel": "/assets/events/birthday_pizza.glb",
+      "pizzaDiameter": 27,
+      "pizzaHeight": 0.72,
+      "pizzaX": 0,
+      "pizzaZ": 4.5
+    }
+  ]
+}
