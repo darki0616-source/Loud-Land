@@ -135,17 +135,28 @@ setInterval(()=>{if(restored)maintainFieldCoins()},15000).unref();
 // v294: Automatically pick up a field coin when the player's SERVER-reported
 // position enters its pickup radius. The server removes the coin first, so
 // simultaneous arrivals can never receive the same reward twice.
-const FIELD_COIN_PICKUP_RADIUS=1.65; // world units (server coords use 0.058 units/pixel)
+const FIELD_COIN_PICKUP_RADIUS=1.65, PET_COIN_PICKUP_RADIUS=5;
+function activePetCoinLevel(p){
+ const pet=p?.badgeIdentity?petStats.get(p.badgeIdentity)?.pet:null;
+ return pet?.summoned&&Date.now()>=pet.hatchAt?petLevel(pet.xp):0;
+}
+// Coins are removed before awarding, so concurrent pickups cannot pay twice.
+function awardFieldCoin(p,coin,automaticPet=false){
+ if(!coin||!fieldCoins.has(coin.id))return null;
+ fieldCoins.delete(coin.id);
+ const base=coin.value,bonus=activePetCoinLevel(p)>=10?Math.floor(base*.2):0,value=base+bonus;
+ fieldCoinBonuses.set(p.badgeIdentity,(fieldCoinBonuses.get(p.badgeIdentity)||0)+value);
+ broadcast({type:'field-coins',coins:fieldCoinPublic()});
+ broadcast({type:'field-coin-collected',playerId:p.id,value,base,bonus,petPickup:automaticPet});
+ scheduleSave();return {value,base,bonus};
+}
 function collectNearbyFieldCoin(p){
  if(!p||!p.badgeIdentity||p.tentRoomId||!fieldCoins.size)return false;
+ const petLevel=activePetCoinLevel(p),radius=petLevel>=25?PET_COIN_PICKUP_RADIUS:FIELD_COIN_PICKUP_RADIUS;
  for(const coin of fieldCoins.values()){
-  if(Math.hypot((p.x-coin.x)*.058,(p.y-coin.y)*.058)>FIELD_COIN_PICKUP_RADIUS)continue;
-  fieldCoins.delete(coin.id);
-  fieldCoinBonuses.set(p.badgeIdentity,(fieldCoinBonuses.get(p.badgeIdentity)||0)+coin.value);
-  broadcast({type:'field-coins',coins:fieldCoinPublic()});
-  broadcast({type:'field-coin-collected',playerId:p.id,value:coin.value});
-  scheduleSave();
-  return true;
+  const distance=Math.hypot((p.x-coin.x)*.058,(p.y-coin.y)*.058);
+  if(distance>radius)continue;
+  return !!awardFieldCoin(p,coin,petLevel>=25&&distance>FIELD_COIN_PICKUP_RADIUS);
  }
  return false;
 }
@@ -955,6 +966,13 @@ const clamp=(n,min,max)=>Math.min(max,Math.max(min,Number(n)||0));
 const SERVER_X_MIN=20,SERVER_X_MAX=1380,SERVER_Y_MIN=60,SERVER_Y_MAX=1550;
 function cleanup(){const now=Date.now();for(const [id,p] of players)if(now-p.seen>180000){settleBadge(p,Math.min(now,p.seen+45000));settleBadge(p);clearDuosFor(id);players.delete(id);forgetSession(id);voterLeaves(id);if(activeSlam?.participants.delete(id))slamUpdate();rockMemberLeaves(id);pauseForEmpty();const r=clients.get(id);if(r){r.end();clients.delete(id)}broadcast({type:'leave',id,count:players.size});sendTentUpdate()}}
 setInterval(cleanup,7000).unref();
+// Check connected, fresh players even while standing still; each coin has one winner.
+setInterval(()=>{
+ if(!restored||!fieldCoins.size)return;
+ const now=Date.now();
+ for(const p of players.values())if(clients.has(p.id)&&playerSessions.has(p.id)&&now-p.seen<=45000&&activePetCoinLevel(p)>=25)collectNearbyFieldCoin(p);
+},1000).unref();
+
 setInterval(()=>{
  const now=Date.now();let changed=false;
  for(const p of players.values()){
@@ -1260,11 +1278,10 @@ const server=http.createServer(async(req,res)=>{
         const coin=fieldCoins.get(String(d.coinId||''));
         if(!coin)return json(res,404,{error:'이미 다른 유저가 주운 동전이에요.'});
         if(Math.hypot((p.x-coin.x)*.058,(p.y-coin.y)*.058)>2.8)return json(res,400,{error:'동전에 더 가까이 가서 클릭해 주세요.'});
-        fieldCoins.delete(coin.id); // consume atomically before asynchronous persistence
-        fieldCoinBonuses.set(p.badgeIdentity,(fieldCoinBonuses.get(p.badgeIdentity)||0)+coin.value);
-        broadcast({type:'field-coins',coins:fieldCoinPublic()});
+        const awarded=awardFieldCoin(p,coin,false);
+        if(!awarded)return json(res,404,{error:'이미 다른 유저가 주운 동전이에요.'});
         await saveNow();
-        return json(res,200,{ok:true,value:coin.value,points:tentPointBalance(p),coins:fieldCoinPublic()});
+        return json(res,200,{ok:true,...awarded,points:tentPointBalance(p),coins:fieldCoinPublic()});
       }
 
       if(url.pathname==='/api/fishing'){
