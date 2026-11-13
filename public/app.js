@@ -8986,7 +8986,7 @@ function petEffectTexture(kind){
  else {ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='bold 86px system-ui, sans-serif';ctx.shadowBlur=15;ctx.shadowColor=kind==='heart'?'#ff68a8':kind==='notes'||kind==='snow'?'#9ceaff':'#ffea8a';ctx.fillStyle=kind==='heart'?'#ff78a9':kind==='notes'||kind==='snow'?'#b7f5ff':'#fff1a5';ctx.fillText(kind==='heart'?'♥':kind==='notes'?'♪':kind==='snow'?'❄':kind==='electric'?'ϟ':'✦',64,68);}
  const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;petEffectTextureCache.set(kind,texture);return texture;
 }
-function petEffectsDispose(entry){if(!entry.fx)return;entry.fx.group.parent?.remove(entry.fx.group);for(const list of Object.values(entry.fx.sprites))for(const sprite of list)sprite.material.dispose();entry.fx=null;}
+function petEffectsDispose(entry){if(!entry.fx)return;entry.fx.group.parent?.remove(entry.fx.group);for(const list of Object.values(entry.fx.sprites))for(const sprite of list)sprite.material.dispose();for(const sprite of entry.fx.discoRays||[])sprite.material.dispose();entry.fx.discoHalo?.material.dispose();entry.fx=null;}
 function makePetEffects(entry,effects,signature){
  const group=new THREE.Group(),sprites={};entry.root.add(group);
  for(const kind of ['sparkle','notes','heart','rainbow','light','petals','snow','electric','moonstars','disco']){
@@ -8997,7 +8997,14 @@ function makePetEffects(entry,effects,signature){
    const sprite=new THREE.Sprite(mat);sprite.visible=false;group.add(sprite);list.push(sprite);
   }sprites[kind]=list;
  }
- let lamp=null;if(effects.light){lamp=new THREE.PointLight(0x9bdbff,1.15,5,2);lamp.position.set(0,1.25,0);lamp.visible=false;group.add(lamp);}entry.fx={group,sprites,lamp,signature};
+ // Decorative billboards use no extra scene lights and are shared across model types.
+ const discoRays=[];let discoHalo=null;
+ if(effects.disco){
+  discoHalo=new THREE.Sprite(new THREE.SpriteMaterial({map:petEffectTexture('rainbow'),transparent:true,depthWrite:false,opacity:.8,blending:THREE.AdditiveBlending}));discoHalo.visible=false;group.add(discoHalo);
+  const count=perfWeakDevice?4:8;
+  for(let i=0;i<count;i++){const material=new THREE.SpriteMaterial({map:petEffectTexture('sparkle'),transparent:true,depthWrite:false,opacity:.9,blending:THREE.AdditiveBlending});const star=new THREE.Sprite(material);star.visible=false;group.add(star);discoRays.push(star);}
+ }
+ let lamp=null;if(effects.light){lamp=new THREE.PointLight(0x9bdbff,1.15,5,2);lamp.position.set(0,1.25,0);lamp.visible=false;group.add(lamp);}entry.fx={group,sprites,lamp,signature,discoRays,discoHalo};
 }
 function updatePetEffects(entry,pet,dancing,t,allowLight){
  const effects=pet.effects||{},signature=Object.keys(effects).filter(k=>effects[k]).sort().join('|');
@@ -9009,8 +9016,16 @@ function updatePetEffects(entry,pet,dancing,t,allowLight){
   const sprite=list[i];sprite.visible=!!effects[kind]&&(!['notes','disco'].includes(kind)||dancing);if(!sprite.visible)continue;
   if(kind==='rainbow'||kind==='light'){sprite.position.set(0,height*.55,0);const size=kind==='rainbow'?2.8:3.6;sprite.scale.set(size,size,1);sprite.material.rotation=kind==='rainbow'?sec*.18:0;}
   else if(kind==='moonstars'){sprite.position.set(Math.cos(sec*.55)*.62,height+0.55+Math.sin(sec)*.08,Math.sin(sec*.55)*.30);sprite.scale.set(.68,.68,1);}
-  else if(kind==='disco'){sprite.position.set(0,height+1.0+Math.sin(sec*2)*.06,0);sprite.scale.set(1.0,1.0,1);sprite.material.rotation=Math.sin(sec*1.5)*.12;}
+  else if(kind==='disco'){sprite.position.set(0,height+1.85+Math.sin(sec*2)*.10,0);sprite.scale.set(2.8,2.8,1);sprite.material.rotation=Math.sin(sec*1.8)*.18;}
   else {const phase=(sec*.42+i/3)%1,angle=sec*.8+i*Math.PI*2/3+(kind==='heart'?1.3:kind==='notes'?2.5:kind==='electric'?4:0),fall=kind==='petals'||kind==='snow';sprite.position.set(Math.cos(angle)*(.55+phase*.12),height*.35+(fall?1-phase:phase)*(height+1),Math.sin(angle)*.55);const size=(kind==='sparkle'?.31:kind==='electric'?.48:.38)*Math.sin(Math.PI*phase);sprite.scale.set(size,size,1);sprite.material.rotation=kind==='petals'?sec+i:0;}
+ }
+ const showDisco=!!effects.disco&&dancing;
+ if(entry.fx.discoHalo){const halo=entry.fx.discoHalo;halo.visible=showDisco;if(showDisco){halo.position.set(0,height+1.8,0);const size=4.4+Math.sin(sec*3)*.16;halo.scale.set(size,size,1);halo.material.rotation=sec*.7;}}
+ for(let i=0;i<entry.fx.discoRays.length;i++){
+  const star=entry.fx.discoRays[i];star.visible=showDisco;if(!showDisco)continue;
+  const angle=sec*1.9+i*Math.PI*2/entry.fx.discoRays.length,rad=1.65+.22*Math.sin(sec*3+i);
+  star.position.set(Math.cos(angle)*rad,height+1.8+Math.sin(angle*1.7+sec)*.95,Math.sin(angle)*rad*.45);
+  const size=.35+.22*(.5+.5*Math.sin(sec*7+i*2));star.scale.set(size,size,1);star.material.color.setHSL((i/entry.fx.discoRays.length+sec*.24)%1,1,.68);star.material.opacity=.55+.4*(.5+.5*Math.sin(sec*6+i));
  }
  if(entry.fx.lamp)entry.fx.lamp.visible=!!effects.light&&allowLight;
 }
