@@ -274,6 +274,9 @@ const shopStats=new Map();
 const PET_ADOPTION_COST=1000, PET_HATCH_MS=4*60*60*1000, PET_MAX_LEVEL=30;
 const PET_FOODS={snack:{cost:30,xp:15,name:'간식'},meal:{cost:100,xp:60,name:'식사'},feast:{cost:250,xp:170,name:'특식'}};
 const PET_COLORS=['#f16b69','#67b9f2','#75d8a0','#b68ae8','#f4eee0'];
+const PET_COLOR_CHANGE_COST=1000;
+const PET_COLOR_NAMES={'#f16b69':'red','#67b9f2':'blue','#75d8a0':'green','#b68ae8':'purple','#f4eee0':'white'};
+function petColorAvailable(species,color){const name=PET_COLOR_NAMES[color];return PET_SPECIES.includes(species)&&!!name&&[1,10,25].every(stage=>fs.existsSync(path.join(PUBLIC,'assets','pets',species,`${species}_lv${stage}_${name}.png`)));}
 const PET_SPECIES=['fox','turtle','cat','rabbit','elephant','wolf']; // Equal odds; existing pet species and saved records are preserved.
 // Only a SHA-256 digest of the high-entropy recovery code is persisted.
 const recoveryRecords=new Map(),recoveryIndex=new Map(),recoveryAttempts=new Map();
@@ -298,7 +301,7 @@ function petPublic(pet,record){
   stage:hatched?(level>=25?25:level>=10?10:1):0,summoned:!!pet.summoned,effects:petEffectView(record).enabled};
 }
 function petAccount(identity){if(!petStats.has(identity))petStats.set(identity,{spent:0,pet:null,effectsOwned:{},effectsEnabled:{}});return petStats.get(identity);}
-function petView(p){const record=petAccount(p.badgeIdentity);return {pet:petPublic(record.pet,record),effects:petEffectView(record),effectCatalog:PET_EFFECTS,points:tentPointBalance(p),cost:PET_ADOPTION_COST,hatchMs:PET_HATCH_MS,foods:PET_FOODS,availableSpecies:PET_SPECIES,maxLevel:PET_MAX_LEVEL};}
+function petView(p){const record=petAccount(p.badgeIdentity);return {pet:petPublic(record.pet,record),effects:petEffectView(record),effectCatalog:PET_EFFECTS,colorChangeCost:PET_COLOR_CHANGE_COST,colorOptions:record.pet&&Date.now()>=record.pet.hatchAt?PET_COLORS.map(color=>({color,available:petColorAvailable(record.pet.species,color)})):[],points:tentPointBalance(p),cost:PET_ADOPTION_COST,hatchMs:PET_HATCH_MS,foods:PET_FOODS,availableSpecies:PET_SPECIES,maxLevel:PET_MAX_LEVEL};}
 function syncPetPlayers(identity){
  const record=petStats.get(identity);for(const other of players.values())if(other.badgeIdentity===identity){other.pet=petPublic(record?.pet,record);broadcast({type:'pet-update',id:other.id,pet:other.pet});}
 }
@@ -1487,6 +1490,15 @@ const server=http.createServer(async(req,res)=>{
           if(tentPointBalance(p)<PET_ADOPTION_COST)return json(res,400,{error:`입양 포인트가 부족해요. (${tentPointBalance(p)}/${PET_ADOPTION_COST}P)`});
           const now=Date.now();record.spent+=PET_ADOPTION_COST;
           record.pet={species:PET_SPECIES[crypto.randomInt(PET_SPECIES.length)],color:PET_COLORS[crypto.randomInt(PET_COLORS.length)],adoptedAt:now,hatchAt:now+PET_HATCH_MS,xp:0,summoned:true};
+        }else if(command==='recolor'){
+          if(!pet)return json(res,400,{error:'먼저 펫을 입양해 주세요.'});
+          if(Date.now()<pet.hatchAt)return json(res,400,{error:'펫이 부화한 뒤 색상을 변경할 수 있어요.'});
+          const color=String(d.color||'').toLowerCase();
+          if(!PET_COLORS.includes(color))return json(res,400,{error:'지원하지 않는 색상이에요.'});
+          if(pet.color===color)return json(res,409,{error:'현재 사용 중인 색상이에요.'});
+          if(!petColorAvailable(pet.species,color))return json(res,409,{error:'이 색상의 진화 단계별 텍스처가 준비되지 않았어요.'});
+          if(tentPointBalance(p)<PET_COLOR_CHANGE_COST)return json(res,400,{error:'색상 변경에 1,000P가 필요해요.'});
+          record.spent+=PET_COLOR_CHANGE_COST;pet.color=color;
         }else if(command==='feed'){
           if(!pet)return json(res,400,{error:'먼저 펫 알을 입양해 주세요.'});
           if(Date.now()<pet.hatchAt)return json(res,400,{error:'알이 부화한 다음 먹이를 줄 수 있어요.'});
