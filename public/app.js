@@ -2612,11 +2612,11 @@ const petUIStyle=document.createElement('style');petUIStyle.textContent=`
 #petOverlay{position:fixed;inset:0;z-index:6000;background:rgba(0,0,0,.63);display:none;align-items:center;justify-content:center;padding:14px}
 #petOverlay.show{display:flex}#petPanel{width:min(420px,100%);max-height:85dvh;overflow-y:auto;background:linear-gradient(155deg,#24223c,#131828);color:#fff;border:1px solid #55536e;border-radius:22px;padding:20px;box-shadow:0 16px 60px #0009}
 #petPanel h2{margin:0 0 10px;font-size:23px}#petPreviewWrap{display:none;position:relative;margin:8px 0 14px;border:1px solid #77738b66;border-radius:16px;background:radial-gradient(ellipse at 50% 65%,#4b456c 0%,#282942 58%,#1a1d32 100%);overflow:hidden;height:208px}#petPreviewWrap.show{display:block}#petPreviewCanvas{display:block;width:100%;height:100%}#petPreviewLabel{position:absolute;left:12px;top:10px;font-size:12px;font-weight:800;color:#eee9ff;pointer-events:none}#petPreviewLoading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#ccc8dc;font-size:12px;pointer-events:none}#petPreviewLoading[hidden]{display:none}#petPanel p{margin:8px 0;color:#d9d9e7;line-height:1.6}#petPanel button{border:1px solid #6b6880;border-radius:12px;padding:11px 13px;background:#353650;color:#fff;font-weight:800;cursor:pointer}#petPanel button:disabled{opacity:.45;cursor:not-allowed}#petPanel button.pet-primary{background:#b267ff;border-color:#b267ff;color:#14101c}#petPanel .pet-actions{display:flex;flex-wrap:wrap;gap:7px;margin:12px 0}#petPanel .pet-progress{height:10px;background:#48465b;border-radius:99px;overflow:hidden}#petPanel .pet-progress>span{display:block;height:100%;background:#b79cff}#petPanel .pet-muted{font-size:12px;color:#c0baca}#petPanel .pet-close{float:right;background:none;border:0;font-size:24px;padding:0 4px}
- .pet-effect-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 4px;border-bottom:1px solid #ffffff22}.pet-effect-row>div{min-width:0}.pet-effect-row small{display:block;color:#bdbbd0;font-size:11px}.pet-effect-row button{white-space:nowrap;font-size:12px} .pet-tabs{margin-bottom:4px}
+ .pet-color-swatch{display:inline-block;width:20px;height:20px;border-radius:50%;vertical-align:middle;border:1px solid #ffffff99}.pet-effect-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 4px;border-bottom:1px solid #ffffff22}.pet-effect-row>div{min-width:0}.pet-effect-row small{display:block;color:#bdbbd0;font-size:11px}.pet-effect-row button{white-space:nowrap;font-size:12px} .pet-tabs{margin-bottom:4px}
 `;document.head.append(petUIStyle);
 const petMenuButton=document.createElement('button');petMenuButton.id='petMenuButton';petMenuButton.type='button';petMenuButton.textContent='🐾 펫';
 (document.querySelector('.hudright')||document.body).insertBefore(petMenuButton,$('playersToggle')||null);
-const petOverlay=document.createElement('div');petOverlay.id='petOverlay';petOverlay.innerHTML=`<section id="petPanel" role="dialog" aria-modal="true" aria-label="펫 관리"><button class="pet-close" type="button" aria-label="닫기">×</button><h2>🐾 ONEseason 펫</h2><div id="petPreviewWrap"><canvas id="petPreviewCanvas" aria-label="내 펫 3D 미리보기"></canvas><span id="petPreviewLabel">내 펫</span><span id="petPreviewLoading">3D 모델 불러오는 중...</span></div><div class="pet-actions pet-tabs"><button type="button" data-pet-tab="pet" class="pet-primary">🐾 내 펫</button><button type="button" data-pet-tab="effects">✨ 이펙트</button></div><div id="petPanelBody">불러오는 중...</div></section>`;
+const petOverlay=document.createElement('div');petOverlay.id='petOverlay';petOverlay.innerHTML=`<section id="petPanel" role="dialog" aria-modal="true" aria-label="펫 관리"><button class="pet-close" type="button" aria-label="닫기">×</button><h2>🐾 ONEseason 펫</h2><div id="petPreviewWrap"><canvas id="petPreviewCanvas" aria-label="내 펫 3D 미리보기"></canvas><span id="petPreviewLabel">내 펫</span><span id="petPreviewLoading">3D 모델 불러오는 중...</span></div><div class="pet-actions pet-tabs"><button type="button" data-pet-tab="pet" class="pet-primary">🐾 내 펫</button><button type="button" data-pet-tab="effects">✨ 이펙트</button><button type="button" data-pet-tab="colors">🎨 색상 변경</button></div><div id="petPanelBody">불러오는 중...</div></section>`;
 document.body.append(petOverlay);
 const petPanelBody=petOverlay.querySelector('#petPanelBody');
 let petViewState=null,petPending=false,petCurrentTab="pet";
@@ -2630,6 +2630,12 @@ function renderPetPanel(){
  const pet=d.pet,points=Number(d.points)||0;
  petPreviewSync();
  petOverlay.querySelectorAll('[data-pet-tab]').forEach(b=>b.classList.toggle('pet-primary',b.dataset.petTab===petCurrentTab));
+ if(petCurrentTab==='colors'){
+  if(!pet||!pet.hatched){petPanelBody.innerHTML='<p>🎨 펫이 부화한 뒤 색상을 변경할 수 있어요.</p>';return;}
+  const labels={'#f16b69':'빨강','#67b9f2':'파랑','#75d8a0':'초록','#b68ae8':'보라','#f4eee0':'흰색'};
+  const rows=(d.colorOptions||[]).map(({color,available})=>{const current=pet.color===color;return `<div class="pet-effect-row"><div><span class="pet-color-swatch" style="background:${color}"></span> <b>${labels[color]||'색상'}</b><small>${current?'현재 색상':available?'전체 진화 단계에 적용':'텍스처 준비 중'}</small></div><button type="button" data-pet-action="recolor" data-pet-color="${color}" ${petPending||current||!available||points<d.colorChangeCost?'disabled':''}>${current?'사용 중':available?Number(d.colorChangeCost).toLocaleString()+'P 변경':'준비 중'}</button></div>`}).join('');
+  petPanelBody.innerHTML=`<p>🎨 <b>펫 색상 변경 · ${Number(d.colorChangeCost||1000).toLocaleString()}P</b></p><p>보유 포인트 <b>${points.toLocaleString()}P</b></p><p class="pet-muted">색상을 선택하면 포인트가 차감되고 즉시 변경돼요. 펫의 레벨과 이펙트는 그대로 유지됩니다.</p>${rows}`;return;
+ }
  if(petCurrentTab==='effects'){
   const icons={sparkle:'✨',notes:'🎵',heart:'💖',rainbow:'🌈',light:'💡',petals:'🌸',snow:'❄️',electric:'⚡',moonstars:'🌙',disco:'🪩'},catalog=d.effectCatalog||{};
   const rows=Object.entries(catalog).map(([id,item])=>{const owned=!!d.effects?.owned?.[id],on=!!d.effects?.enabled?.[id];return `<div class="pet-effect-row"><div><b>${icons[id]||'✨'} ${petHtmlSafe(item.name)}</b><small>${(id==='notes'||id==='disco')?'춤출 때만 나타나요':id==='light'?'가만히 있어도 펫 주변이 빛나요':id==='rainbow'?'펫 주변 무지개빛 오라':''}</small></div><button type="button" data-pet-action="${owned?'effect-toggle':'effect-buy'}" data-effect="${id}" data-enabled="${on?'false':'true'}" ${petPending||(!owned&&points<item.cost)?'disabled':''}>${owned?(on?'사용 중 · 끄기':'켜기'):item.cost.toLocaleString()+'P 구매'}</button></div>`}).join('');
@@ -2644,7 +2650,7 @@ function renderPetPanel(){
 }
 async function petRequest(command,extra={}){
  if(petPending||!state.id)return;petPending=true;renderPetPanel();
- try{const d=await post('pet',{id:state.id,sessionKey,command,...extra});petViewState=d;renderPetPanel();if(command!=='status'){void refreshTentStatus();toast(command==='adopt'?'🥚 알을 입양하고 소환했어요!':command==='feed'?'🍖 먹이를 줬어요!':command==='release'?'펫을 삭제했어요.':'펫 설정을 변경했어요.');}}
+ try{const d=await post('pet',{id:state.id,sessionKey,command,...extra});petViewState=d;renderPetPanel();if(command!=='status'){void refreshTentStatus();toast(command==='recolor'?'🎨 펫 색상이 변경됐어요!':command==='adopt'?'🥚 알을 입양하고 소환했어요!':command==='feed'?'🍖 먹이를 줬어요!':command==='release'?'펫을 삭제했어요.':'펫 설정을 변경했어요.');}}
  catch(e){toast(e.message);}finally{petPending=false;renderPetPanel();}
 }
 function refreshPetStatus(){if(state.id)void petRequest('status');}
@@ -2656,7 +2662,8 @@ petPanelBody.onclick=e=>{
  const b=e.target.closest('button[data-pet-action]');if(!b||petPending)return;
  const command=b.dataset.petAction;
  if(command==='release'&&!confirm('펫을 영구 삭제할까요? 레벨과 사용한 포인트는 복구되지 않습니다.'))return;
- void petRequest(command,command==='feed'?{food:b.dataset.petFood}:command==='release'?{confirm:'DELETE'}:command==='effect-buy'?{effect:b.dataset.effect}:command==='effect-toggle'?{effect:b.dataset.effect,enabled:b.dataset.enabled==='true'}:{});
+ if(command==='recolor'&&!confirm('1,000P를 사용해 펫 색상을 변경할까요?'))return;
+ void petRequest(command,command==='feed'?{food:b.dataset.petFood}:command==='release'?{confirm:'DELETE'}:command==='effect-buy'?{effect:b.dataset.effect}:command==='effect-toggle'?{effect:b.dataset.effect,enabled:b.dataset.enabled==='true'}:command==='recolor'?{color:b.dataset.petColor}:{});
 };
 setInterval(()=>{if(petOverlay.classList.contains('show')){renderPetPanel();if(petViewState?.pet&&!petViewState.pet.hatched&&Date.now()>=petViewState.pet.hatchAt&&!petPending)refreshPetStatus();}},10000);
 
