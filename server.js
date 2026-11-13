@@ -371,7 +371,27 @@ function fishingAccount(identity){
  return a;
 }
 function fishPosition(session,at){return .5+.5*Math.sin((at-session.startAt)/1000*session.speed+session.phase);}
-function fishPublicSession(s){return s?{id:s.id,biteAt:s.biteAt,expiresAt:s.expiresAt,center:s.center,width:s.width,speed:s.speed,phase:s.phase,startAt:s.startAt||null,progress:s.progress||0,tension:s.tension||0,held:!!s.held,updatedAt:s.updatedAt||s.startAt,rates:s.rates||null}:null;}
+// Deterministic resistance phases are shared by the server and the display.
+function fishStrugglePhase(s,at){
+ const r=s.struggle;if(!r||!Number.isFinite(r.firstAt)||!Number.isFinite(r.periodMs)||!Number.isFinite(r.durationMs)||r.periodMs<=0)return 'calm';
+ const elapsed=at-r.firstAt;
+ if(elapsed<0)return elapsed>=-1300?'warning':'calm';
+ const pos=elapsed%r.periodMs;
+ if(pos<r.durationMs)return 'struggle';
+ return pos>=r.periodMs-1300?'warning':'calm';
+}
+function fishIntegrate(s,until,held,maxMs=2000){
+ const rates=s.rates;if(!rates)return {progress:s.progress||0,tension:s.tension||0};
+ let progress=Number(s.progress)||0,tension=Number(s.tension)||0;
+ let at=Math.max(Number(s.updatedAt)||until,until-maxMs);const strength=Math.max(1,Number(s.struggle?.strength)||1);
+ while(at<until){const next=Math.min(until,at+50),dt=(next-at)/1000,active=fishStrugglePhase(s,(at+next)/2)==='struggle';
+  if(held){progress=Math.min(1,progress+rates.reel*(active?.67:1)*dt);tension=Math.min(1,tension+rates.tension*(active?strength:1)*dt);}
+  else {progress=Math.max(0,progress-rates.escape*(active?1.55:1)*dt);tension=Math.max(0,tension-rates.cool*(active?.75:1)*dt);}
+  at=next;if(progress>=1||tension>=1)break;
+ }
+ return {progress,tension};
+}
+function fishPublicSession(s){return s?{id:s.id,biteAt:s.biteAt,expiresAt:s.expiresAt,center:s.center,width:s.width,speed:s.speed,phase:s.phase,startAt:s.startAt||null,progress:s.progress||0,tension:s.tension||0,held:!!s.held,updatedAt:s.updatedAt||s.startAt,rates:s.rates||null,struggle:s.struggle||null}:null;}
 function fishingView(p){
  const a=fishingAccount(p.badgeIdentity);return {level:a.level,rodName:FISH_LEVEL_NAMES[a.level],nextPrice:a.level<FISH_MAX_LEVEL?FISH_ROD_PRICES[a.level+1]:null,
   maxLevel:FISH_MAX_LEVEL,prices:FISH_ROD_PRICES,points:tentPointBalance(p),caught:Object.values(a.fishCounts).reduce((n,v)=>n+v,0),
@@ -382,7 +402,11 @@ function fishingView(p){
 function fishReelRates(fish,level){
  const boost={common:1.10,uncommon:1.18,rare:1.27,epic:1.35,legendary:1.42}[fish.rarity]||1.10;
  const d=fish.difficulty;
- return {reel:.12+level*.007,escape:(.012+d*.003)*(1+(boost-1)*.8),tension:(.13+d*.017-level*.008)*boost,cool:(.24+level*.006)*(1-(boost-1)*.20)};
+ return {reel:.115+level*.014,escape:(.012+d*.003)*(1+(boost-1)*.8),tension:(.14+d*.018-level*.014)*boost,cool:(.235+level*.009)*(1-(boost-1)*.18)};
+}
+function fishStruggleSetup(fish,level,startAt){
+ const spec={common:[8800,900,1.25],uncommon:[7800,1100,1.4],rare:[6900,1300,1.6],epic:[6200,1550,1.85],legendary:[5600,1750,2.05]}[fish.rarity]||[8800,900,1.25];
+ return {firstAt:startAt+4500+crypto.randomInt(1201),periodMs:spec[0],durationMs:spec[1],strength:Math.max(1.05,spec[2]-(level-1)*.10)};
 }
 function fishingDraw(){const n=crypto.randomInt(10000);let sum=0;for(const fish of FISH_CATALOG){sum+=fish.weight;if(n<sum)return fish;}return FISH_CATALOG[FISH_CATALOG.length-1]}
 function fishingRestore(a){
@@ -396,7 +420,7 @@ function fishingRestore(a){
  }
  const ac=a?.active;
  if(ac&&/^[a-f0-9-]{36}$/.test(ac.id||'')&&FISH_BY_ID.has(ac.fishId)&&Number.isFinite(ac.biteAt)&&Number.isFinite(ac.expiresAt)&&ac.expiresAt>Date.now()&&ac.expiresAt<Date.now()+70000&&Number.isFinite(ac.center)&&Number.isFinite(ac.width)&&Number.isFinite(ac.speed)&&Number.isFinite(ac.phase)){
-  record.active={id:ac.id,fishId:ac.fishId,biteAt:ac.biteAt,expiresAt:ac.expiresAt,center:ac.center,width:ac.width,speed:ac.speed,phase:ac.phase,startAt:Number(ac.startAt)||null,progress:Number(ac.progress)||0,tension:Number(ac.tension)||0,held:false,updatedAt:Date.now(),rates:ac.rates||null};
+  record.active={id:ac.id,fishId:ac.fishId,biteAt:ac.biteAt,expiresAt:ac.expiresAt,center:ac.center,width:ac.width,speed:ac.speed,phase:ac.phase,startAt:Number(ac.startAt)||null,progress:Number(ac.progress)||0,tension:Number(ac.tension)||0,held:false,updatedAt:Date.now(),rates:ac.rates||null,struggle:ac.struggle&&Number.isFinite(ac.struggle.firstAt)&&Number.isFinite(ac.struggle.periodMs)&&Number.isFinite(ac.struggle.durationMs)&&Number.isFinite(ac.struggle.strength)?ac.struggle:null};
  }
  return record;
 }
@@ -1402,7 +1426,7 @@ const server=http.createServer(async(req,res)=>{
           const session=a.active, now=Date.now();
           if(!session||session.id!==String(d.castId||''))return json(res,409,{error:'진행 중인 낚시가 없어요.',fishing:fishingView(p)});
           if(now<session.biteAt||now>session.expiresAt)return json(res,409,{error:'입질 시간이 아니에요.',fishing:fishingView(p)});
-          if(!session.startAt){session.startAt=now;session.expiresAt=now+60000;session.progress=0;session.tension=0;session.held=false;session.updatedAt=now;session.rates=fishReelRates(FISH_BY_ID.get(session.fishId),a.level);await saveNow();}
+          if(!session.startAt){session.startAt=now;session.expiresAt=now+60000;session.progress=0;session.tension=0;session.held=false;session.updatedAt=now;const hooked=FISH_BY_ID.get(session.fishId);session.rates=fishReelRates(hooked,a.level);session.struggle=fishStruggleSetup(hooked,a.level,now);await saveNow();}
           return json(res,200,{ok:true,fishing:fishingView(p)});
         }
         if(command==='reel_state'){
@@ -1410,9 +1434,8 @@ const server=http.createServer(async(req,res)=>{
           if(a.lastResult?.id===castId)return json(res,200,{ok:true,result:a.lastResult,fishing:fishingView(p)});
           const session=a.active,now=Date.now();
           if(!session||session.id!==castId||!session.startAt)return json(res,409,{error:'진행 중인 낚시가 없어요.',fishing:fishingView(p)});
-          const rates=session.rates||(session.rates=fishReelRates(FISH_BY_ID.get(session.fishId),a.level)), elapsed=Math.max(0,Math.min((now-session.updatedAt)/1000,2));
-          if(session.held){session.progress=Math.min(1,session.progress+rates.reel*elapsed);session.tension=Math.min(1,session.tension+rates.tension*elapsed);}
-          else {session.progress=Math.max(0,session.progress-rates.escape*elapsed);session.tension=Math.max(0,session.tension-rates.cool*elapsed);}
+          if(!session.rates)session.rates=fishReelRates(FISH_BY_ID.get(session.fishId),a.level);
+          const result=fishIntegrate(session,now,session.held);session.progress=result.progress;session.tension=result.tension;
           session.updatedAt=now;session.held=d.held===true;
           if(session.progress>=1||session.tension>=1){
             const success=session.progress>=1&&session.tension<1, fish=FISH_BY_ID.get(session.fishId);a.active=null;
