@@ -2619,7 +2619,7 @@ const petMenuButton=document.createElement('button');petMenuButton.id='petMenuBu
 const petOverlay=document.createElement('div');petOverlay.id='petOverlay';petOverlay.innerHTML=`<section id="petPanel" role="dialog" aria-modal="true" aria-label="펫 관리"><button class="pet-close" type="button" aria-label="닫기">×</button><h2>🐾 ONEseason 펫</h2><div id="petPreviewWrap"><canvas id="petPreviewCanvas" aria-label="내 펫 3D 미리보기"></canvas><span id="petPreviewLabel">내 펫</span><span id="petPreviewLoading">3D 모델 불러오는 중...</span></div><div class="pet-actions pet-tabs"><button type="button" data-pet-tab="pet" class="pet-primary">🐾 내 펫</button><button type="button" data-pet-tab="effects">✨ 이펙트</button><button type="button" data-pet-tab="colors">🎨 색상 변경</button></div><div id="petPanelBody">불러오는 중...</div></section>`;
 document.body.append(petOverlay);
 const petPanelBody=petOverlay.querySelector('#petPanelBody');
-let petViewState=null,petPending=false,petCurrentTab="pet";
+let petViewState=null,petPending=false,petCurrentTab="pet",petPreviewColor=null;
 function petHtmlSafe(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 const petSpeciesLabels={fox:'일렉 여우',turtle:'드럼 거북이',cat:'피아노 고양이',rabbit:'바이올린 토끼',elephant:'트럼펫 코끼리',wolf:'늑대'};
 const petSpeciesIcons={fox:'🦊',turtle:'🐢',cat:'🐱',rabbit:'🐰',elephant:'🐘',wolf:'🐺'};
@@ -2631,10 +2631,13 @@ function renderPetPanel(){
  petPreviewSync();
  petOverlay.querySelectorAll('[data-pet-tab]').forEach(b=>b.classList.toggle('pet-primary',b.dataset.petTab===petCurrentTab));
  if(petCurrentTab==='colors'){
-  if(!pet||!pet.hatched){petPanelBody.innerHTML='<p>🎨 펫이 부화한 뒤 색상을 변경할 수 있어요.</p>';return;}
+  if(!pet||!pet.hatched){petPreviewColor=null;petPanelBody.innerHTML='<p>🎨 펫이 부화한 뒤 색상을 변경할 수 있어요.</p>';return;}
   const labels={'#f16b69':'빨강','#67b9f2':'파랑','#75d8a0':'초록','#b68ae8':'보라','#f4eee0':'흰색'};
-  const rows=(d.colorOptions||[]).map(({color,available})=>{const current=pet.color===color;return `<div class="pet-effect-row"><div><span class="pet-color-swatch" style="background:${color}"></span> <b>${labels[color]||'색상'}</b><small>${current?'현재 색상':available?'전체 진화 단계에 적용':'텍스처 준비 중'}</small></div><button type="button" data-pet-action="recolor" data-pet-color="${color}" ${petPending||current||!available||points<d.colorChangeCost?'disabled':''}>${current?'사용 중':available?Number(d.colorChangeCost).toLocaleString()+'P 변경':'준비 중'}</button></div>`}).join('');
-  petPanelBody.innerHTML=`<p>🎨 <b>펫 색상 변경 · ${Number(d.colorChangeCost||1000).toLocaleString()}P</b></p><p>보유 포인트 <b>${points.toLocaleString()}P</b></p><p class="pet-muted">색상을 선택하면 포인트가 차감되고 즉시 변경돼요. 펫의 레벨과 이펙트는 그대로 유지됩니다.</p>${rows}`;return;
+  const selected=petPreviewColor||pet.color;
+  const rows=(d.colorOptions||[]).map(({color,available})=>{const current=pet.color===color,chosen=selected===color;return `<div class="pet-effect-row"><div><span class="pet-color-swatch" style="background:${color}"></span> <b>${labels[color]||'색상'}</b><small>${current?'현재 색상':available?'전체 진화 단계에 적용':'텍스처 준비 중'}</small></div><button type="button" data-pet-action="preview-color" data-pet-color="${color}" class="${chosen?'pet-primary':''}" aria-pressed="${chosen}" ${petPending||(!current&&!available)?'disabled':''}>${chosen?'미리보기 중':current?'현재 색 보기':available?'미리보기':'준비 중'}</button></div>`}).join('');
+  const cost=Number(d.colorChangeCost||1000),canApply=selected!==pet.color&&(d.colorOptions||[]).some(x=>x.color===selected&&x.available)&&points>=cost&&!petPending;
+  petPanelBody.innerHTML=`<p>🎨 <b>펫 색상 변경 · ${cost.toLocaleString()}P</b></p><p>보유 포인트 <b>${points.toLocaleString()}P</b></p><p class="pet-muted">색상을 눌러 위에서 미리 볼 수 있어요. 적용 버튼을 눌러야 포인트가 차감됩니다.</p>${rows}<div class="pet-actions"><button class="pet-primary" type="button" data-pet-action="recolor" data-pet-color="${selected}" ${canApply?'':'disabled'}>선택한 색상 적용 · ${cost.toLocaleString()}P</button></div><p class="pet-muted" id="petColorPreviewStatus"></p>`;
+  petPreviewSync();return;
  }
  if(petCurrentTab==='effects'){
   const icons={sparkle:'✨',notes:'🎵',heart:'💖',rainbow:'🌈',light:'💡',petals:'🌸',snow:'❄️',electric:'⚡',moonstars:'🌙',disco:'🪩'},catalog=d.effectCatalog||{};
@@ -2650,17 +2653,18 @@ function renderPetPanel(){
 }
 async function petRequest(command,extra={}){
  if(petPending||!state.id)return;petPending=true;renderPetPanel();
- try{const d=await post('pet',{id:state.id,sessionKey,command,...extra});petViewState=d;renderPetPanel();if(command!=='status'){void refreshTentStatus();toast(command==='recolor'?'🎨 펫 색상이 변경됐어요!':command==='adopt'?'🥚 알을 입양하고 소환했어요!':command==='feed'?'🍖 먹이를 줬어요!':command==='release'?'펫을 삭제했어요.':'펫 설정을 변경했어요.');}}
+ try{const d=await post('pet',{id:state.id,sessionKey,command,...extra});petViewState=d;if(command==='recolor')petPreviewColor=null;renderPetPanel();if(command!=='status'){void refreshTentStatus();toast(command==='recolor'?'🎨 펫 색상이 변경됐어요!':command==='adopt'?'🥚 알을 입양하고 소환했어요!':command==='feed'?'🍖 먹이를 줬어요!':command==='release'?'펫을 삭제했어요.':'펫 설정을 변경했어요.');}}
  catch(e){toast(e.message);}finally{petPending=false;renderPetPanel();}
 }
 function refreshPetStatus(){if(state.id)void petRequest('status');}
-petMenuButton.onclick=()=>{if(!state.id)return toast('페스티벌에 입장한 뒤 이용해 주세요.');petOverlay.classList.add('show');renderPetPanel();refreshPetStatus();petPreviewStart();};
-petOverlay.querySelector('.pet-close').onclick=()=>petOverlay.classList.remove('show');
-petOverlay.onclick=e=>{if(e.target===petOverlay)petOverlay.classList.remove('show');};
-petOverlay.querySelectorAll('[data-pet-tab]').forEach(b=>b.addEventListener('click',()=>{petCurrentTab=b.dataset.petTab;renderPetPanel()}));
+petMenuButton.onclick=()=>{if(!state.id)return toast('페스티벌에 입장한 뒤 이용해 주세요.');petPreviewColor=null;petOverlay.classList.add('show');renderPetPanel();refreshPetStatus();petPreviewStart();};
+petOverlay.querySelector('.pet-close').onclick=()=>{petPreviewColor=null;petOverlay.classList.remove('show')};
+petOverlay.onclick=e=>{if(e.target===petOverlay){petPreviewColor=null;petOverlay.classList.remove('show')}};
+petOverlay.querySelectorAll('[data-pet-tab]').forEach(b=>b.addEventListener('click',()=>{petPreviewColor=null;petCurrentTab=b.dataset.petTab;renderPetPanel()}));
 petPanelBody.onclick=e=>{
  const b=e.target.closest('button[data-pet-action]');if(!b||petPending)return;
  const command=b.dataset.petAction;
+ if(command==='preview-color'){petPreviewColor=b.dataset.petColor;renderPetPanel();petPreviewWrap.scrollIntoView({behavior:'smooth',block:'nearest'});return;}
  if(command==='release'&&!confirm('펫을 영구 삭제할까요? 레벨과 사용한 포인트는 복구되지 않습니다.'))return;
  if(command==='recolor'&&!confirm('1,000P를 사용해 펫 색상을 변경할까요?'))return;
  void petRequest(command,command==='feed'?{food:b.dataset.petFood}:command==='release'?{confirm:'DELETE'}:command==='effect-buy'?{effect:b.dataset.effect}:command==='effect-toggle'?{effect:b.dataset.effect,enabled:b.dataset.enabled==='true'}:command==='recolor'?{color:b.dataset.petColor}:{});
@@ -8925,17 +8929,27 @@ function petPreviewInit(){
 function petPreviewSync(){
  const pet=petViewState?.pet;
  if(!pet){petPreviewWrap.classList.remove('show');if(petPreviewEntry){foxPetDispose(petPreviewEntry);petPreviewEntry=null;}return;}
+ const selected=petCurrentTab==='colors'&&pet.hatched&&petPreviewColor?petPreviewColor:pet.color;
+ const isPreview=selected!==pet.color;
  petPreviewWrap.classList.add('show');
- petPreviewWrap.querySelector('#petPreviewLabel').textContent=pet.hatched?`${petSpeciesLabels[pet.species]||'내 펫'} · Lv.${pet.level}`:'미확인 알 · 부화 대기';
- petPreviewInit();if(!petPreviewRenderer)return;
- const signature=(pet.species||'fox')+'|'+(pet.hatched?pet.stage:0)+'|'+pet.color;
- if(petPreviewEntry?.signature===signature)return;
- const model=pet.hatched?petMakeModel(pet.species,pet.stage,pet.color):foxPetMakeEgg(pet.color);
- if(!model){petPreviewLoading.hidden=false;return;}
+ petPreviewWrap.querySelector('#petPreviewLabel').textContent=pet.hatched?`${petSpeciesLabels[pet.species]||'내 펫'} · Lv.${pet.level}${isPreview?' · 색상 미리보기':''}`:'미확인 알 · 부화 대기';
+ const signature=(pet.species||'fox')+'|'+(pet.hatched?pet.stage:0)+'|'+selected;
+ const apply=petPanelBody.querySelector('[data-pet-action="recolor"]'),status=petPanelBody.querySelector('#petColorPreviewStatus');
+ const setStatus=(ready,text)=>{if(apply){const option=(petViewState?.colorOptions||[]).find(x=>x.color===selected);apply.disabled=!ready||!isPreview||!option?.available||petPending||(Number(petViewState?.points)||0)<Number(petViewState?.colorChangeCost||1000);}if(status)status.textContent=text||'';};
+ petPreviewInit();if(!petPreviewRenderer){setStatus(false,'3D 미리보기를 불러오지 못했어요.');return;}
+ if(petPreviewEntry?.signature===signature){petPreviewLoading.hidden=true;setStatus(true,isPreview?'미리보기 중 · 적용 전에는 포인트가 차감되지 않아요.':'현재 펫 색상입니다.');return;}
+ petPreviewLoading.textContent='3D 모델 불러오는 중...';petPreviewLoading.hidden=false;setStatus(false,'미리보기를 불러오는 중이에요.');
+ if(isPreview){const caches={fox:foxPetTextureCache,turtle:turtlePetTextureCache,cat:catPetTextureCache,rabbit:rabbitPetTextureCache,elephant:elephantPetTextureCache,wolf:wolfPetTextureCache};const name=foxPetColorNames.get(String(selected).toLowerCase())||'white';if(caches[pet.species]?.get(pet.stage+'|'+name)?.failed){petPreviewLoading.textContent='색상 이미지를 불러오지 못했어요.';setStatus(false,'색상 이미지를 확인한 뒤 다시 시도해 주세요.');return;}}
+ const model=pet.hatched?petMakeModel(pet.species,pet.stage,selected):foxPetMakeEgg(selected);
+ if(!model)return;
+ // The model loader normally falls back to the original texture on errors.
+ // For a paid preview, never present that fallback as the selected color.
+ if(isPreview){const caches={fox:foxPetTextureCache,turtle:turtlePetTextureCache,cat:catPetTextureCache,rabbit:rabbitPetTextureCache,elephant:elephantPetTextureCache,wolf:wolfPetTextureCache};const name=foxPetColorNames.get(String(selected).toLowerCase())||'white';const paint=caches[pet.species]?.get(pet.stage+'|'+name);if(!paint?.ready||paint.failed){model.traverse(o=>{if(o.isMesh)for(const mat of Array.isArray(o.material)?o.material:[o.material])mat?.dispose?.()});if(paint?.failed){petPreviewLoading.textContent='색상 이미지를 불러오지 못했어요.';setStatus(false,'색상 이미지를 확인한 뒤 다시 시도해 주세요.');}return;}}
  if(petPreviewEntry)foxPetDispose(petPreviewEntry);
  const root=new THREE.Group();root.add(model);petPreviewScene.add(root);
- petPreviewEntry={root,model,signature};petPreviewLoading.hidden=true;
+ petPreviewEntry={root,model,signature};petPreviewLoading.hidden=true;setStatus(true,isPreview?'미리보기 중 · 적용 전에는 포인트가 차감되지 않아요.':'현재 펫 색상입니다.');
 }
+
 function petPreviewStart(){
  if(petPreviewLoopActive)return;petPreviewLoopActive=true;
  const frame=t=>{
