@@ -2817,7 +2817,8 @@ let PUNK_SHOP_ITEMS=[
  ['star-glasses','⭐','별모양 선글라스',120,'eyes'],
  ['angel-halo','😇','천사 링',130,'head'],
  ['butterfly-wings','🦋','나비 날개',260,'back'],
- ['bunny-ears','🐰','토끼 귀',125,'head']
+ ['bunny-ears','🐰','토끼 귀',125,'head'],
+ ['balloon-hat','🎈','블루 블랙 풍선 모자',0,'head']
 ];
 let mdCatalog={}, mdCatalogSignature='';
 function syncMdCatalog(items){
@@ -2878,6 +2879,7 @@ function mdPreviewTarget(id,slot,emoji,name){
    const hairStyle=normalizeHairStyle(p.hairStyle||chosenHairStyle||'basic-short');
    if(!['basic-short','basic-bob'].includes(hairStyle))await getHairAsset(hairStyle).catch(()=>{});
    if(id==='angel-wings')await getAngelWingsModel().catch(()=>{});
+   if(id==='balloon-hat')await getBalloonHatModel();
    if(!canvas.isConnected)return;
    if(!mdPreviewRenderer){
     mdPreviewRenderer=new THREE.WebGLRenderer({alpha:true,antialias:!perfWeakDevice,powerPreference:'low-power'});
@@ -2890,6 +2892,8 @@ function mdPreviewTarget(id,slot,emoji,name){
     mdPreviewCamera.position.set(0,2.3,8.3);mdPreviewCamera.lookAt(0,1.77,0);
     mdPreviewCamera.layers.enable(1);
    }
+   if(id==='balloon-hat'){mdPreviewCamera.position.set(0,2.7,10.2);mdPreviewCamera.lookAt(0,2.45,0);}
+   else{mdPreviewCamera.position.set(0,2.3,8.3);mdPreviewCamera.lookAt(0,1.77,0);}
    // Preview only the selected item, without equipping or purchasing it.
    const person={...p,id:'md-preview',name:'',gender:p.gender||chosenGender,
      color:p.color||chosenColor,hairStyle:hairStyle,hairColor:p.hairColor||chosenHairColor,
@@ -5570,6 +5574,40 @@ const hairLoader=new GLTFLoader(),hairAssetCache=new Map();
 // entering the festival never depends on an external accessory GLB download.
 const importedWingLoader=new GLTFLoader();
 const sharedWingResources=new WeakSet();
+// Load the original textured bouquet once and share its GPU resources between avatars.
+let balloonHatPromise=null;
+function getBalloonHatModel(){
+ if(!balloonHatPromise){
+  balloonHatPromise=new Promise((resolve,reject)=>new GLTFLoader().load('/assets/md/balloon_hat.glb?v=332',g=>{
+   g.scene.traverse(obj=>{
+    if(!obj.isMesh)return;
+    obj.castShadow=false;obj.receiveShadow=false;
+    if(obj.geometry)sharedWingResources.add(obj.geometry);
+    for(const material of (Array.isArray(obj.material)?obj.material:[obj.material])){
+     if(!material)continue;
+     sharedWingResources.add(material);
+     for(const value of Object.values(material))if(value?.isTexture)sharedWingResources.add(value);
+    }
+   });
+   resolve(g.scene);
+  },undefined,reject)).catch(err=>{balloonHatPromise=null;throw err;});
+ }
+ return balloonHatPromise;
+}
+function attachBalloonHat(neck,root){
+ const holder=new THREE.Group();neck.add(holder);
+ getBalloonHatModel().then(template=>{
+  if(!root.parent||!holder.parent)return;
+  const model=template.clone(true),box=new THREE.Box3().setFromObject(model);
+  const size=box.getSize(new THREE.Vector3()),center=box.getCenter(new THREE.Vector3());
+  if(!size.y)return;
+  const scale=2.5/size.y;model.scale.setScalar(scale);
+  // The lower part is the ribbon: overlap it with the head so the balloons sit on top.
+  model.position.set(-center.x*scale,-.10-box.min.y*scale,-center.z*scale);
+  holder.add(model);if(stageForeground)addForegroundLayer(model);
+ }).catch(err=>console.warn('풍선 모자를 불러오지 못했습니다:',err));
+}
+
 const importedWingTemplatePromises=new Map();
 const importedWingTypes={
  angel:{url:'/assets/md/angel_wings_optimized.glb?v=201',scale:[1.43,1.36,.67],offset:[0,0,-.07]},
@@ -6426,6 +6464,7 @@ function makeAvatar(p){
    support.rotation.z=side*.10;
   }
  }
+ if(look.head==='balloon-hat')attachBalloonHat(neck,root);
  if(look.head==='bunny-ears'){
   const band=child(neck,new THREE.TorusGeometry(.73,.055,8,32,Math.PI),mat('#f6f1f6',.88),[0,.29,.25]);
   const innerMat=mat('#f7b4cc',.80),outerMat=mat('#fff8fb',.94);
@@ -6991,7 +7030,7 @@ function makeAvatar(p){
  const beginning=(768-(84+textWidth))/2;
  ctx.fillStyle='#fff';ctx.fillText(nickname,beginning+84,65,560);
  const texture=new THREE.CanvasTexture(cv);
- const tag=new THREE.Sprite(new THREE.SpriteMaterial({map:texture,transparent:true,depthTest:false}));tag.scale.set(6,1.04,1);tag.position.y=3.66;root.add(tag);parts.tag=tag;
+ const tag=new THREE.Sprite(new THREE.SpriteMaterial({map:texture,transparent:true,depthTest:false}));tag.scale.set(6,1.04,1);tag.position.y=look.head==='balloon-hat'?5.06:3.66;root.add(tag);parts.tag=tag;
  const kingCanvas=document.createElement('canvas');kingCanvas.width=960;kingCanvas.height=160;const kctx=kingCanvas.getContext('2d');const kingGrad=kctx.createLinearGradient(80,0,880,0);kingGrad.addColorStop(0,'#ff6eb7');kingGrad.addColorStop(.25,'#ffcf6a');kingGrad.addColorStop(.5,'#7bf0ff');kingGrad.addColorStop(.75,'#9c83ff');kingGrad.addColorStop(1,'#7dff99');kctx.font='900 86px Arial, sans-serif';kctx.textAlign='center';kctx.textBaseline='middle';kctx.strokeStyle='rgba(25,13,45,.92)';kctx.lineWidth=18;kctx.strokeText('내가 박자왕',480,82);kctx.fillStyle=kingGrad;kctx.fillText('내가 박자왕',480,82);const kingTexture=new THREE.CanvasTexture(kingCanvas);kingTexture.colorSpace=THREE.SRGBColorSpace;const kingTitle=new THREE.Sprite(new THREE.SpriteMaterial({map:kingTexture,transparent:true,depthTest:false}));kingTitle.scale.set(7.4,1.24,1);kingTitle.position.y=4.96;kingTitle.visible=Boolean(p.rhythmKing);root.add(kingTitle);parts.rhythmTitle=kingTitle;
  // v255: red, luminous Power King crown. When both prizes belong to one player, stack titles.
  const powerCanvas=document.createElement('canvas');powerCanvas.width=960;powerCanvas.height=160;
@@ -8064,9 +8103,9 @@ function animateAvatar(a,p,t){
   bubble.material.opacity=.56*(1-THREE.MathUtils.smoothstep(phase,.72,1));
   bubble.visible=true;
  });
- if(P.rhythmTitle){P.rhythmTitle.visible=Boolean(q.rhythmKing);P.rhythmTitle.position.y=4.96+(Number(Boolean(q.powerKing))+Number(Boolean(q.moleKing)))*1.12+Math.sin(sec*3.5)*.05;}
- if(P.powerTitle){P.powerTitle.visible=Boolean(q.powerKing);P.powerTitle.position.y=4.96+Number(Boolean(q.moleKing))*1.12+Math.sin(sec*3.5+1.5)*.05;}
- if(P.moleTitle){P.moleTitle.visible=Boolean(q.moleKing);P.moleTitle.position.y=4.96+Math.sin(sec*3.5+2)*.05;}
+ if(P.rhythmTitle){P.rhythmTitle.visible=Boolean(q.rhythmKing);P.rhythmTitle.position.y=4.96+(q.equipped?.head==='balloon-hat'?1.4:0)+(Number(Boolean(q.powerKing))+Number(Boolean(q.moleKing)))*1.12+Math.sin(sec*3.5)*.05;}
+ if(P.powerTitle){P.powerTitle.visible=Boolean(q.powerKing);P.powerTitle.position.y=4.96+(q.equipped?.head==='balloon-hat'?1.4:0)+Number(Boolean(q.moleKing))*1.12+Math.sin(sec*3.5+1.5)*.05;}
+ if(P.moleTitle){P.moleTitle.visible=Boolean(q.moleKing);P.moleTitle.position.y=4.96+(q.equipped?.head==='balloon-hat'?1.4:0)+Math.sin(sec*3.5+2)*.05;}
  if(P.moleHammer)P.moleHammer.visible=act==='moleking'&&Boolean(q.moleKing);
  if(P.moleRainbow)P.moleRainbow.forEach((ring,i)=>{const phase=sec%2.3-.99,active=act==='moleking'&&q.moleKing&&phase>0&&phase<.9;ring.visible=Boolean(active);if(active){const spread=phase/.9;ring.position.set(0,.09+i*.012,1.2+spread*.8);ring.scale.setScalar(.28+spread*(2.4+i*.18));ring.material.opacity=.8*(1-spread);}});
  if(P.rhythmSparkles){P.rhythmSparkles.forEach((spark,i)=>{if(!((act==='beatking'&&q.rhythmKing)||(act==='powerking'&&q.powerKing))){spark.visible=false;return}const phase=(sec*1.8+i/5)%1;const angle=phase*Math.PI*2+i*.7;const band=(i%2?1:-1);spark.visible=true;spark.position.set(Math.cos(angle)*(1.1+phase*.5),1.1+Math.sin(phase*Math.PI*2+band)*1.1+phase*.9,.45+Math.sin(angle*1.4)*.7);const sc=.55+.35*Math.sin(phase*Math.PI);spark.scale.setScalar(sc);spark.rotation.x=sec*2.2+i;spark.rotation.y=sec*3.1+i;});}
