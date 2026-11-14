@@ -328,6 +328,39 @@ const LOTTERY_PRIZES=[
  {tier:'ultra',chance:400,prize:1000,symbols:['gem','gem','gem']},
  {tier:'jackpot',chance:100,prize:5000,symbols:['crown','crown','crown']}
 ]; // 10,000 tickets: 30/25/25/15/4/1 percent. Total = 10,000.
+const FORTUNE_CARDS=[
+ ['별의 속삭임','작은 가능성이 반짝이는 날','은빛'],['태양의 무대','자신 있게 빛나는 날','황금빛'],['달의 정원','마음의 소리를 듣는 날','보랏빛'],['행운의 열쇠','새로운 문을 여는 날','민트빛'],
+ ['바람의 편지','기다리던 소식이 다가오는 날','하늘빛'],['꽃의 축제','소소한 기쁨이 피어나는 날','분홍빛'],['파도의 리듬','흐름에 몸을 맡기기 좋은 날','푸른빛'],['불꽃의 용기','망설임을 넘어설 힘이 생기는 날','붉은빛'],
+ ['구름 위 여행','시야를 넓혀볼 수 있는 날','하얀빛'],['무지개 다리','다른 마음이 이어지는 날','무지갯빛'],['시간의 모래','천천히 쌓은 것이 빛나는 날','모래빛'],['반짝이는 동전','가치를 발견하기 좋은 날','초록빛'],
+ ['음악의 요정','일상에 리듬이 생기는 날','남색'],['숲의 수호자','잠시 쉬어가도 괜찮은 날','연두빛'],['운명의 나침반','나만의 방향을 찾는 날','청록빛'],['별빛 친구','인연의 온기가 찾아오는 날','라벤더빛']
+];
+const FORTUNE_MESSAGES=[
+ ['작은 아이디어를 흘려보내지 마세요. 오늘 적어 둔 메모가 다음 기회의 실마리가 될 수 있어요.','오래 고민하던 일에서 예상하지 못한 단서를 발견할 수 있어요.','주변의 반짝이는 장점을 찾아 칭찬해 보세요. 좋은 기운이 서로에게 전해집니다.','결과를 서두르기보다 지금 할 수 있는 한 걸음에 집중해 보세요.'],
+ ['사람들 앞에서 당신의 생각을 자신 있게 이야기해 보세요.','밝은 인사 하나가 어색했던 분위기를 바꿀 수 있어요.','하고 싶었던 일을 미루지 말고 가볍게 시작해 보세요.','기분 좋은 에너지가 넘치는 날이에요. 좋아하는 음악과 함께 하루를 열어보세요.'],
+ ['잠들기 전 마음속 생각을 정리해 보세요. 복잡했던 마음이 한결 편해질 거예요.','감정이 앞설 때에는 잠시 쉬었다가 대답해도 괜찮아요.','조용한 시간 속에서 자신이 정말 원하는 것을 발견할 수 있어요.','누군가의 말보다 내 마음의 속도에 귀를 기울여 보세요.'],
+ ['새로운 일을 시작하기에 좋은 날이에요. 작은 시도부터 문을 열어보세요.','막혀 있다고 느꼈던 문제에 다른 접근법을 시도해 보세요.','한 번쯤 가보고 싶었던 장소나 새로운 취미를 찾아보세요.','망설이던 연락을 보내면 반가운 대화가 시작될 수 있어요.'],
+ ['기다리던 대답이 늦어져도 너무 조급해하지 마세요.','오랜만에 생각난 사람에게 안부를 물어보는 건 어떨까요?','우연히 듣게 된 이야기에서 새로운 아이디어를 얻을 수 있어요.','지나가는 말 속에서도 따뜻한 진심을 발견할 수 있는 날이에요.'],
+ ['평범한 순간에서 기쁨을 찾아보세요. 좋아하는 간식도 좋은 시작이에요.','주변을 조금 꾸미면 기분까지 화사해질 수 있어요.','당신을 웃게 하는 사람과 짧게라도 시간을 나눠보세요.','오늘 자신에게 작은 칭찬을 선물해 주세요. 충분히 잘하고 있어요.'],
+ ['계획이 조금 달라져도 괜찮아요. 새로운 흐름 속에서 즐거움을 찾아보세요.','바쁜 일정 사이에 잠깐 숨을 고르면 다시 나아갈 힘이 생겨요.','모든 일을 혼자 해결하려 하지 말고 편하게 도움을 청해 보세요.','반복되는 일에 작은 변화를 주면 새로운 리듬이 생길 거예요.'],
+ ['두려움 때문에 미뤘던 일에 조금씩 다가가 보세요.','완벽하지 않아도 괜찮아요. 첫 시도가 다음 용기를 만들어 줍니다.','당신의 의견이 필요할 때 솔직하고 부드럽게 표현해 보세요.','작은 도전 하나가 오늘을 기억에 남게 만들 수 있어요.'],
+ ['익숙한 길 대신 새로운 길을 걸으며 주변을 살펴보세요.','다른 사람의 관점을 들어보면 답이 더 넓어질 수 있어요.','가보고 싶은 곳을 기록하며 다음 여행을 상상해 보세요.','멀리 바라보되 오늘 해야 할 일은 하나씩 차분히 해보세요.'],
+ ['서로 다른 의견 사이에 공통점을 찾아보세요. 대화가 한결 부드러워질 거예요.','누군가와 함께하면 혼자서는 떠올리지 못한 즐거움을 찾을 수 있어요.','고마웠던 마음을 전하면 관계에 따뜻한 색이 더해집니다.','새로운 만남에서 상대의 이야기를 천천히 들어보세요.'],
+ ['당장 결과가 보이지 않아도 쌓아온 노력은 사라지지 않아요.','미뤄 둔 일을 짧은 시간만 정해 시작해 보세요.','지난 시간의 경험을 돌아보면 지금 필요한 답이 보일 수 있어요.','급하게 결정하기보다 충분히 살펴볼 시간을 가져보세요.'],
+ ['사고 싶은 것이 있다면 필요한 이유를 한 번 더 생각해 보세요.','이미 가지고 있던 물건에서 새로운 쓸모를 발견할 수 있어요.','작은 절약이나 정리가 기분 좋은 여유로 이어질 수 있어요.','가치 있는 것은 숫자뿐 아니라 함께 보낸 시간일 수도 있어요.'],
+ ['좋아하는 노래 한 곡이 오늘의 분위기를 바꿔줄 거예요.','일할 때와 쉴 때의 리듬을 나누면 집중하기 한결 편해집니다.','새로운 음악을 들어보며 낯선 취향을 발견해 보세요.','친구에게 오늘 어울리는 노래를 추천해 보는 건 어떨까요?'],
+ ['잠깐의 휴식은 게으름이 아니라 다시 움직이기 위한 준비예요.','주변을 정리하고 편안한 자리에서 깊게 숨을 쉬어보세요.','자연을 바라보거나 가볍게 걸으며 머리를 식혀보세요.','힘든 일을 혼자 품기보다 믿을 만한 사람과 나눠보세요.'],
+ ['다른 사람의 속도와 비교하지 말고 내 방향을 살펴보세요.','여러 선택지 중 지금 가장 마음이 가는 것을 적어보세요.','작은 목표를 정하고 끝냈을 때의 기쁨을 느껴보세요.','방향을 바꾸는 것도 앞으로 나아가는 한 가지 방법이에요.'],
+ ['반가운 사람과 함께 웃을 일이 생길 수 있어요.','먼저 손을 내밀면 뜻밖의 공통점을 발견할 수 있어요.','오래 알고 지낸 사람에게 고마운 마음을 전해 보세요.','누군가의 작은 배려를 알아봐 주면 서로의 하루가 따뜻해집니다.']
+];
+const fortuneStats=new Map();
+function fortuneView(identity){
+ const entry=fortuneStats.get(identity),today=kstDate();
+ if(!entry||entry.day!==today)return {day:today,result:null};
+ const card=FORTUNE_CARDS[entry.card],message=FORTUNE_MESSAGES[entry.card]?.[entry.message];
+ if(!card||!message)return {day:today,result:null};
+ return {day:today,result:{title:card[0],summary:card[1],color:card[2],message,cardIndex:entry.card,selected:entry.selected}};
+}
+
 const lotteryStats=new Map();
 function lotteryAccount(identity){
  const today=kstDate();let a=lotteryStats.get(identity);
@@ -748,9 +781,11 @@ const SB_KEY=process.env.SUPABASE_SECRET_KEY||'';
 const useSupabase=Boolean(SB_URL&&SB_KEY);
 let restored=false;
 let saveChain=Promise.resolve();
-function stateData(){return {version:18,oneTimeCreditApplied,adminPointCredits:Object.fromEntries(adminPointCredits),adminPointLedger:Object.fromEntries(adminPointLedger),recoveryRecords:Object.fromEntries(recoveryRecords),fishingStats:Object.fromEntries([...fishingStats].map(([id,a])=>[id,{level:a.level,spent:a.spent,bonus:a.bonus,fishCounts:a.fishCounts,totalMisses:a.totalMisses,lastCastAt:a.lastCastAt,active:a.active,lastResult:a.lastResult}])),lotteryStats:Object.fromEntries([...lotteryStats].map(([identity,a])=>[identity,{day:a.day,used:a.used,spent:a.spent,bonus:a.bonus,pending:a.pending,lastResult:a.lastResult}])),petStats:Object.fromEntries([...petStats].map(([identity,record])=>[identity,{spent:record.spent,pet:record.pet,effectsOwned:record.effectsOwned||{},effectsEnabled:record.effectsEnabled||{}}])),fieldCoinLastSpawnAt,fieldCoins:fieldCoinPublic(),fieldCoinBonuses:Object.fromEntries(fieldCoinBonuses),moleDay,moleHammerRevision,moleReward,moleScores:Object.fromEntries(moleScores),moleAccounts:Object.fromEntries([...moleAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session,lastResult:v.lastResult}])),powerDay,powerReward,powerScores:Object.fromEntries(powerScores),powerAccounts:Object.fromEntries([...powerAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),rhythmAccounts:Object.fromEntries([...rhythmAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),furnitureCatalogEdits:Object.fromEntries(furnitureCatalogEdits),furnitureStats:Object.fromEntries([...furnitureStats].map(([id,v])=>[id,{spent:v.spent,owned:v.owned}])),tentStats:Object.fromEntries([...tentStats].map(([identity,t])=>[identity,storedTent(t)])),announcements:{entry:entranceNotices,ticker:tickerNotices,intervalMinutes:tickerIntervalMinutes,immediateHistory:immediateNoticeHistory},music,queue:[...queue],history:[...history],nextTrackToken,customMd:Object.fromEntries(customMd),shopStats:Object.fromEntries([...shopStats].map(([k,v])=>[k,{spent:0,refunded:v.refunded||0,owned:v.owned,equipped:v.equipped}])),badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),rhythm:{day:rhythmDay,reward:rhythmReward,scores:Object.fromEntries([...rhythmScores].map(([k,v])=>[k,{name:v.name,score:Math.max(0,Math.floor(Number(v.score)||0)),updatedAt:Number(v.updatedAt)||0}]))},savedAt:Date.now()}}
+function stateData(){return {version:18,fortuneStats:Object.fromEntries(fortuneStats),oneTimeCreditApplied,adminPointCredits:Object.fromEntries(adminPointCredits),adminPointLedger:Object.fromEntries(adminPointLedger),recoveryRecords:Object.fromEntries(recoveryRecords),fishingStats:Object.fromEntries([...fishingStats].map(([id,a])=>[id,{level:a.level,spent:a.spent,bonus:a.bonus,fishCounts:a.fishCounts,totalMisses:a.totalMisses,lastCastAt:a.lastCastAt,active:a.active,lastResult:a.lastResult}])),lotteryStats:Object.fromEntries([...lotteryStats].map(([identity,a])=>[identity,{day:a.day,used:a.used,spent:a.spent,bonus:a.bonus,pending:a.pending,lastResult:a.lastResult}])),petStats:Object.fromEntries([...petStats].map(([identity,record])=>[identity,{spent:record.spent,pet:record.pet,effectsOwned:record.effectsOwned||{},effectsEnabled:record.effectsEnabled||{}}])),fieldCoinLastSpawnAt,fieldCoins:fieldCoinPublic(),fieldCoinBonuses:Object.fromEntries(fieldCoinBonuses),moleDay,moleHammerRevision,moleReward,moleScores:Object.fromEntries(moleScores),moleAccounts:Object.fromEntries([...moleAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session,lastResult:v.lastResult}])),powerDay,powerReward,powerScores:Object.fromEntries(powerScores),powerAccounts:Object.fromEntries([...powerAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),rhythmAccounts:Object.fromEntries([...rhythmAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),furnitureCatalogEdits:Object.fromEntries(furnitureCatalogEdits),furnitureStats:Object.fromEntries([...furnitureStats].map(([id,v])=>[id,{spent:v.spent,owned:v.owned}])),tentStats:Object.fromEntries([...tentStats].map(([identity,t])=>[identity,storedTent(t)])),announcements:{entry:entranceNotices,ticker:tickerNotices,intervalMinutes:tickerIntervalMinutes,immediateHistory:immediateNoticeHistory},music,queue:[...queue],history:[...history],nextTrackToken,customMd:Object.fromEntries(customMd),shopStats:Object.fromEntries([...shopStats].map(([k,v])=>[k,{spent:0,refunded:v.refunded||0,owned:v.owned,equipped:v.equipped}])),badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),rhythm:{day:rhythmDay,reward:rhythmReward,scores:Object.fromEntries([...rhythmScores].map(([k,v])=>[k,{name:v.name,score:Math.max(0,Math.floor(Number(v.score)||0)),updatedAt:Number(v.updatedAt)||0}]))},savedAt:Date.now()}}
 function applySaved(d){
  if(!d||typeof d!=='object')return;
+ fortuneStats.clear();
+ if(d.fortuneStats&&typeof d.fortuneStats==='object')for(const [id,v] of Object.entries(d.fortuneStats).slice(0,50000)){if(/^[a-zA-Z0-9_-]{20,100}$/.test(id)&&v&&/^\d{4}-\d{2}-\d{2}$/.test(v.day)&&Number.isInteger(v.card)&&v.card>=0&&v.card<FORTUNE_CARDS.length&&Number.isInteger(v.message)&&v.message>=0&&v.message<FORTUNE_MESSAGES[v.card].length&&Number.isInteger(v.selected)&&v.selected>=0&&v.selected<7)fortuneStats.set(id,v);}
  oneTimeCreditApplied=d.oneTimeCreditApplied===true;adminPointCredits.clear();adminPointLedger.clear();
  if(d.adminPointCredits&&typeof d.adminPointCredits==='object')for(const [id,value] of Object.entries(d.adminPointCredits).slice(0,50000))if(/^[a-zA-Z0-9_-]{20,100}$/.test(id)&&Number.isSafeInteger(value)&&value>=0&&value<=1000000000)adminPointCredits.set(id,value);
  if(d.adminPointLedger&&typeof d.adminPointLedger==='object')for(const [id,row] of Object.entries(d.adminPointLedger).slice(-50000))if(/^[a-zA-Z0-9_-]{8,80}$/.test(id)&&row&&/^[a-zA-Z0-9_-]{20,100}$/.test(row.identity||'')&&Number.isSafeInteger(row.amount)&&row.amount>0&&row.amount<=1000000)adminPointLedger.set(id,{identity:row.identity,amount:row.amount,at:Number(row.at)||0,reason:String(row.reason||'').slice(0,100)});
@@ -1451,6 +1486,17 @@ const server=http.createServer(async(req,res)=>{
           return json(res,200,{ok:true,fishing:fishingView(p)});
         }
         return json(res,400,{error:'지원하지 않는 낚시 명령입니다.'});
+      }
+      if(url.pathname==='/api/fortune'){
+        if(!p.badgeIdentity||playerSessions.get(id)!==String(d.sessionKey||''))return json(res,403,{error:'본인 세션에서 이용해 주세요.'});
+        const command=String(d.command||'');
+        if(command==='state')return json(res,200,{ok:true,fortune:fortuneView(p.badgeIdentity)});
+        if(command!=='draw')return json(res,400,{error:'지원하지 않는 요청입니다.'});
+        if(p.tentRoomId||Math.hypot((p.x-600)*.058-27,(p.y-500)*.058+8-(-7.2))>8)return json(res,403,{error:'운세 부스 근처에서 카드를 뽑아주세요.'});
+        const selected=Number(d.selected);
+        if(!Number.isInteger(selected)||selected<0||selected>=7)return json(res,400,{error:'카드를 선택해 주세요.'});
+        if(!fortuneView(p.badgeIdentity).result){fortuneStats.set(p.badgeIdentity,{day:kstDate(),card:crypto.randomInt(FORTUNE_CARDS.length),message:crypto.randomInt(4),selected});scheduleSave();}
+        return json(res,200,{ok:true,fortune:fortuneView(p.badgeIdentity)});
       }
       if(url.pathname==='/api/lottery'){
         if(!p.badgeIdentity||playerSessions.get(id)!==String(d.sessionKey||''))return json(res,403,{error:'본인 세션에서만 복권을 이용할 수 있어요.'});
