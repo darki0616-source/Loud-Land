@@ -660,7 +660,8 @@ const PUNK_ITEMS={
  'star-glasses':{name:'별모양 선글라스',slot:'eyes',cost:120},
  'angel-halo':{name:'천사 링',slot:'head',cost:130},
  'butterfly-wings':{name:'나비 날개',slot:'back',cost:260},
- 'bunny-ears':{name:'토끼 귀',slot:'head',cost:125}
+ 'bunny-ears':{name:'토끼 귀',slot:'head',cost:125},
+ 'balloon-hat':{name:'블루 블랙 풍선 모자',slot:'head',cost:0}
 };
 const SHOP_SLOTS=['shirt','head','neck','eyes','back','tail','ears'];
 const customMd=new Map();
