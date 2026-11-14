@@ -2879,7 +2879,7 @@ function mdPreviewTarget(id,slot,emoji,name){
    const hairStyle=normalizeHairStyle(p.hairStyle||chosenHairStyle||'basic-short');
    if(!['basic-short','basic-bob'].includes(hairStyle))await getHairAsset(hairStyle).catch(()=>{});
    if(id==='angel-wings')await getAngelWingsModel().catch(()=>{});
-   if(id==='balloon-hat')await getBalloonHatModel();
+   if(id==='balloon-hat')await Promise.race([getBalloonHatModel().catch(()=>{}),new Promise(resolve=>setTimeout(resolve,1000))]);
    if(!canvas.isConnected)return;
    if(!mdPreviewRenderer){
     mdPreviewRenderer=new THREE.WebGLRenderer({alpha:true,antialias:!perfWeakDevice,powerPreference:'low-power'});
@@ -5594,18 +5594,46 @@ function getBalloonHatModel(){
  }
  return balloonHatPromise;
 }
+function makeBalloonHatFallback(){
+ // A lightweight visible stand-in while the original model is loading (or offline).
+ const group=new THREE.Group();
+ const blue=new THREE.MeshStandardMaterial({color:'#438bc0',roughness:.3,metalness:.05});
+ const black=new THREE.MeshStandardMaterial({color:'#101522',roughness:.26,metalness:.12});
+ const white=new THREE.MeshStandardMaterial({color:'#e9edf0',roughness:.7});
+ const sphere=new THREE.SphereGeometry(1,16,12);
+ for(const [x,y,z,r,c] of [
+  [-.59,.94,0,.34,black],[0,.93,-.18,.37,black],[.59,.94,0,.34,black],
+  [-.43,1.50,.04,.34,blue],[.02,1.55,.10,.35,blue],[.47,1.50,.02,.34,blue],
+  [-.26,1.98,-.05,.27,black],[.26,1.98,-.05,.27,black],[0,2.37,0,.20,blue]
+ ]){
+  const ball=new THREE.Mesh(sphere,c);ball.position.set(x,y,z);ball.scale.set(r,r*1.07,r);group.add(ball);
+ }
+ for(const side of [-1,1]){
+  const bow=new THREE.Mesh(new THREE.TorusGeometry(.12,.025,7,20),white);
+  bow.position.set(side*.12,.86,.34);bow.scale.set(1.3,.52,1);bow.rotation.z=side*.32;group.add(bow);
+  const tail=new THREE.Mesh(new THREE.BoxGeometry(.045,.73,.018),white);
+  tail.position.set(side*.13,.49,.36);tail.rotation.z=side*.13;group.add(tail);
+ }
+ return group;
+}
+function disposeBalloonHatFallback(group){
+ const geometries=new Set(),materials=new Set();
+ group.traverse(obj=>{if(obj.geometry)geometries.add(obj.geometry);if(obj.material)materials.add(obj.material)});
+ geometries.forEach(g=>g.dispose());materials.forEach(m=>m.dispose());
+}
 function attachBalloonHat(neck,root){
- const holder=new THREE.Group();neck.add(holder);
+ const holder=new THREE.Group(),fallback=makeBalloonHatFallback();
+ neck.add(holder);holder.add(fallback);
  getBalloonHatModel().then(template=>{
   if(!root.parent||!holder.parent)return;
   const model=template.clone(true),box=new THREE.Box3().setFromObject(model);
   const size=box.getSize(new THREE.Vector3()),center=box.getCenter(new THREE.Vector3());
-  if(!size.y)return;
+  if(!Number.isFinite(size.y)||size.y<=0)return;
   const scale=2.5/size.y;model.scale.setScalar(scale);
-  // The lower part is the ribbon: overlap it with the head so the balloons sit on top.
   model.position.set(-center.x*scale,-.10-box.min.y*scale,-center.z*scale);
-  holder.add(model);if(stageForeground)addForegroundLayer(model);
- }).catch(err=>console.warn('풍선 모자를 불러오지 못했습니다:',err));
+  if(stageForeground)addForegroundLayer(model);
+  holder.add(model);holder.remove(fallback);disposeBalloonHatFallback(fallback);
+ }).catch(err=>console.warn('풍선 원본 모델을 불러오지 못해 기본 풍선으로 표시합니다:',err));
 }
 
 const importedWingTemplatePromises=new Map();
