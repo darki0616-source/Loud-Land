@@ -3193,6 +3193,7 @@ function peperoClearStatic(x,z){
  // Leave room for the main stage entrance, festival booths, campfire and picnic mats.
  if(Math.hypot(x+38,z+7.2)<8.5)return false; // merch booth
  if(Math.hypot(x-38,z+7.2)<8.5)return false; // lottery booth
+ if(Math.hypot(x-27,z+7.2)<7.5)return false; // fortune booth
  if(Math.hypot(x-40,z-39)<8.0)return false; // rhythm/arcade booth
  if(Math.hypot(x-34,z-10.5)<10.5)return false; // fire and seating
  if(Math.abs(x)<8&&z<-7&&z>-33)return false; // stage entrance and centre
@@ -4838,6 +4839,60 @@ new GLTFLoader().load('/assets/world/market_tent_optimized.glb?v=202',gltf=>{
   star.position.set(side*2.4,4.33,frontZ+.02);lotteryBoothGroup.add(star);
  }
 },undefined,e=>console.warn('Lottery booth model fallback:',e));
+// v334: Daily tarot booth beside the lottery.
+const fortuneBoothTargets=[];
+const fortuneBooth=new THREE.Group();fortuneBooth.position.set(27,0,-7.2);scene.add(fortuneBooth);
+{
+ const wall=new THREE.Mesh(new THREE.BoxGeometry(7.1,4.0,4.6),mat('#21113e',.8));wall.position.y=2;fortuneBooth.add(wall);fortuneBoothTargets.push(wall);
+ const roof=new THREE.Mesh(new THREE.ConeGeometry(5.8,2.2,4),mat('#702c98',.7));roof.position.y=5.05;roof.rotation.y=Math.PI/4;fortuneBooth.add(roof);fortuneBoothTargets.push(roof);
+ const sign=new THREE.Mesh(new THREE.PlaneGeometry(6.2,1),label('FORTUNE TAROT',52,'#ffe5a7','#4c1c71'));sign.position.set(0,3.45,2.36);fortuneBooth.add(sign);fortuneBoothTargets.push(sign);
+ const hint=new THREE.Mesh(new THREE.PlaneGeometry(4.4,.75),label('TODAY\'S FORTUNE',43,'#fff4c2','#4f217b'));hint.position.set(0,2.15,2.36);fortuneBooth.add(hint);fortuneBoothTargets.push(hint);
+ const starMaterial=new THREE.MeshBasicMaterial({color:'#ffe295'});
+ for(const side of [-1,1]){const star=new THREE.Mesh(new THREE.OctahedronGeometry(.29,0),starMaterial);star.position.set(side*2.7,4.4,2.5);fortuneBooth.add(star);}
+}
+let fortuneUi=null,fortuneData=null,fortuneBusy=false,fortuneWalk=false;
+function nearFortuneBooth(){return !!state.me&&!tentRoomActive&&Math.hypot((state.me.x-600)*.058-27,(state.me.y-500)*.058+15.2)<=8;}
+function ensureFortuneUi(){
+ if(fortuneUi)return;
+ const style=document.createElement('link');style.rel='stylesheet';style.href='/fortune.css?v=334';document.head.append(style);
+ const btn=document.createElement('button');btn.type='button';btn.className='fortune-near';btn.textContent='🔮 오늘의 운세';btn.hidden=true;document.body.append(btn);
+ const overlay=document.createElement('div');overlay.className='fortune-overlay';overlay.hidden=true;
+ overlay.innerHTML=`<section class="fortune-window" role="dialog" aria-modal="true" aria-labelledby="fortune-title"><button class="fortune-close" type="button" aria-label="닫기">×</button><div class="fortune-brand">✦ ONESEASON TAROT ✦</div><h2 id="fortune-title">오늘의 운세</h2><p class="fortune-sub">별빛이 들려주는 오늘의 이야기</p><div class="fortune-instructions">마음에 드는 카드 한 장을 골라주세요</div><div class="fortune-cards" aria-label="타로 카드 선택"></div><div class="fortune-result" aria-live="polite" hidden><div class="fortune-result-art"><span>✦</span></div><div><small>YOUR CARD</small><h3></h3><strong></strong><p></p><div class="fortune-color"></div></div></div><div class="fortune-message" aria-live="polite">하루 한 번 무료 · 한국 시간 자정 초기화</div><div class="fortune-disclaimer">운세는 재미로만 즐겨주세요 ✨</div></section>`;
+ document.body.append(overlay);
+ fortuneUi={btn,overlay,cards:overlay.querySelector('.fortune-cards'),instructions:overlay.querySelector('.fortune-instructions'),result:overlay.querySelector('.fortune-result'),message:overlay.querySelector('.fortune-message')};
+ btn.onclick=openFortune;overlay.querySelector('.fortune-close').onclick=closeFortune;overlay.onclick=e=>{if(e.target===overlay)closeFortune()};
+ document.addEventListener('keydown',e=>{if(!overlay.hidden&&e.key==='Escape'){e.preventDefault();e.stopImmediatePropagation();closeFortune()}},true);
+}
+function updateFortuneBoothButton(){
+ if(!state.id)return;ensureFortuneUi();const near=nearFortuneBooth();
+ const lottoDistance=state.me?Math.hypot((state.me.x-600)*.058-38,(state.me.y-500)*.058+15.2):Infinity;
+ const fortuneDistance=state.me?Math.hypot((state.me.x-600)*.058-27,(state.me.y-500)*.058+15.2):Infinity;
+ const show=near&&fortuneDistance<lottoDistance&&fortuneUi.overlay.hidden;
+ fortuneUi.btn.hidden=!show;
+ if(show&&lotteryUi)lotteryUi.btn.classList.remove('show');
+ if(fortuneWalk&&near){fortuneWalk=false;state.walkTarget=null;openFortune()}
+}
+async function openFortune(){
+ if(!state.id||!nearFortuneBooth())return toast('운세 부스 가까이에서 이용해 주세요.');
+ ensureFortuneUi();fortuneWalk=false;state.walkTarget=null;state.keys.clear();fortuneUi.btn.hidden=true;fortuneUi.overlay.hidden=false;
+ fortuneUi.message.textContent='별빛을 불러오는 중…';fortuneUi.cards.replaceChildren();fortuneUi.result.hidden=true;
+ try{const r=await post('fortune',{id:state.id,sessionKey,command:'state'});fortuneData=r.fortune;renderFortune();}catch(e){fortuneUi.message.textContent=e.message||'운세를 불러오지 못했어요.';}
+}
+function closeFortune(){if(fortuneUi)fortuneUi.overlay.hidden=true;state.keys.clear()}
+function renderFortune(){
+ const ui=fortuneUi,result=fortuneData?.result;ui.cards.replaceChildren();ui.result.hidden=!result;
+ ui.instructions.textContent=result?'오늘 뽑은 카드':'마음에 드는 카드 한 장을 골라주세요';
+ if(result){ui.result.querySelector('h3').textContent=result.title;ui.result.querySelector('strong').textContent=result.summary;ui.result.querySelector('p').textContent=result.message;ui.result.querySelector('.fortune-color').textContent='오늘의 행운 색상 · '+result.color;ui.message.textContent='내일 새로운 카드가 기다리고 있어요 · 한국 시간 자정 초기화';return;}
+ ui.message.textContent='하루 한 번 무료 · 한국 시간 자정 초기화';
+ for(let i=0;i<7;i++){const card=document.createElement('button');card.type='button';card.className='fortune-card';card.setAttribute('aria-label',(i+1)+'번째 카드 선택');card.disabled=fortuneBusy;card.onclick=()=>drawFortune(i,card);ui.cards.append(card);}
+}
+async function drawFortune(selected,card){
+ if(fortuneBusy)return;fortuneBusy=true;for(const b of fortuneUi.cards.children)b.disabled=true;card.classList.add('chosen');fortuneUi.message.textContent='카드가 당신의 이야기를 들려줍니다…';
+ try{const r=await post('fortune',{id:state.id,sessionKey,command:'draw',selected});fortuneData=r.fortune;await new Promise(resolve=>setTimeout(resolve,650));if(!fortuneUi.overlay.hidden)renderFortune();}
+ catch(e){fortuneUi.message.textContent=e.message||'다시 시도해 주세요.';for(const b of fortuneUi.cards.children)b.disabled=false;card.classList.remove('chosen');}
+ finally{fortuneBusy=false;}
+}
+
 // Crowd barrier
 // Keep the front fence, but open the centre so the new stage stairs are usable.
 for(let x=-34;x<=34;x+=3){
@@ -8464,6 +8519,9 @@ gameTouchSurface.addEventListener('pointerup',e=>{
  if(!$('chatPanel').classList.contains('hidden'))selectBottomMenu('reaction');
  const bounds=renderer.domElement.getBoundingClientRect();pointer.set(((e.clientX-bounds.left)/bounds.width)*2-1,-((e.clientY-bounds.top)/bounds.height)*2+1);
  groundRay.setFromCamera(pointer,camera);
+ if(!rockPlacementMode&&!slamMode&&groundRay.intersectObjects(fortuneBoothTargets,false).length){
+  if(nearFortuneBooth())openFortune();else{fortuneWalk=true;state.walkTarget={x:clampServerX(27/.058+600),y:clampServerY((.3-8)/.058+500)};const spot=toWorld(state.walkTarget);moveMarker.position.set(spot.x,.065,spot.z);moveMarker.visible=true;moveMarkerUntil=performance.now()+1150;toast('운세 부스 앞으로 이동합니다.');}return;
+ }
  if(!rockPlacementMode&&!slamMode&&groundRay.intersectObjects(lotteryBoothTargets,false).length){
   if(nearLotteryBooth())openLotteryShop();
   else{
@@ -9455,7 +9513,7 @@ function tick(t){
  if(!minimalScenery)updateHourlyFireworks(t);
  animateToastSparks(t);
  if(state.id)fishingUpdateShoreButton();fishingUiFrame();
- if(state.id)updateLotteryBoothButton(); if(state.id)updateRhythmBoothButton();if(rhythmGame.open)drawRhythmGame();if(state.id)updatePowerBoothButton();updatePowerGame();updateMoleGame();
+ if(state.id)updateLotteryBoothButton(); if(state.id)updateFortuneBoothButton(); if(state.id)updateRhythmBoothButton();if(rhythmGame.open)drawRhythmGame();if(state.id)updatePowerBoothButton();updatePowerGame();updateMoleGame();
  {
   if(povEnabled){updatePovCamera();}else{followLocalAvatar();controls.update();keepCameraInFrontOfStage();}
   // Visitors who entered an indoor room are no longer standing outside.
