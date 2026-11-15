@@ -2974,6 +2974,55 @@ bootstrapMdCatalog();
 function openPunkShop(){if(!state.id)return toast('입장 후 MD샵을 이용할 수 있어요');$('punkShop').classList.remove('hidden');refreshPunkShop()}
 $('punkShopClose').onclick=()=>$('punkShop').classList.add('hidden');
 $('punkShop').addEventListener('click',e=>{if(e.target===$('punkShop'))$('punkShop').classList.add('hidden')});
+// Wardrobe decorations: previews are local and never purchase or equip items.
+const decorationCss=document.createElement('style');decorationCss.textContent=`
+#decorationWardrobe{margin:14px 0;display:grid;gap:10px}#decorationWardrobe[hidden]{display:none}#decorationWardrobe details{border:1px solid #80d7e388;background:#12253af0;border-radius:14px;padding:11px;color:#eff9ff}#decorationWardrobe summary{font-weight:900;cursor:pointer;font-size:15px}#decorationWardrobe p{font-size:12px;color:#c6dce8;line-height:1.5}#decorationWardrobe canvas{display:block;width:100%;height:auto;border-radius:12px;background:radial-gradient(circle at 50% 50%,#354968,#111a2d);margin:9px 0}#decorationWardrobe .dc-row{padding:9px 0;border-bottom:1px solid #ffffff22;display:flex;align-items:center;justify-content:space-between;gap:6px}#decorationWardrobe .dc-actions{display:flex;gap:5px;flex-wrap:wrap;justify-content:end}#decorationWardrobe button{border:1px solid #8cc5d4;border-radius:9px;background:#254a64;color:white;padding:8px;font-size:12px;font-weight:800}#decorationWardrobe button:disabled{opacity:.5}#decorationWardrobe .dc-previewing{background:#b7f8ef;color:#153848}#decorationWardrobe .dc-name{font-size:13px;font-weight:bold}#decorationWardrobe .dc-balance{color:#ffe5a0;font-weight:bold}
+`;document.head.append(decorationCss);
+const decorationBox=document.createElement('section');decorationBox.id='decorationWardrobe';decorationBox.hidden=true;
+decorationBox.innerHTML=`<details data-kind="bubble"><summary>💬 말풍선 꾸미기</summary><p>하나를 선택해 사용할 수 있어요. 미리보기는 포인트가 차감되지 않습니다.</p><canvas width="600" height="260" aria-label="말풍선 미리보기"></canvas><div class="dc-rows"></div></details><details data-kind="trail"><summary>✨ 잔상 이펙트</summary><p>이동할 때 캐릭터 뒤에 나타납니다. 미리보기는 포인트가 차감되지 않습니다.</p><canvas width="600" height="260" aria-label="이동 잔상 미리보기"></canvas><div class="dc-rows"></div></details><div class="dc-balance" aria-live="polite"></div>`;
+$('mdWardrobe').after(decorationBox);
+let decorationData=null,decorationPending=false,decorationPreview={bubble:null,trail:null},decorationPreviewFrame=0;
+const originalEditAvatar=$('editAvatar').onclick;
+$('editAvatar').onclick=function(e){originalEditAvatar.call(this,e);if(!editingProfile)return;decorationBox.hidden=false;void loadDecorations();};
+const originalCloseProfileEditor=closeProfileEditor;
+closeProfileEditor=function(){decorationBox.hidden=true;originalCloseProfileEditor();};
+async function loadDecorations(){if(!state.id)return;try{const r=await post('decoration',{id:state.id,sessionKey,command:'status'});decorationData=r.decoration;renderDecorations();}catch(e){decorationBox.querySelector('.dc-balance').textContent=e.message||'꾸미기 정보를 불러오지 못했어요.';}}
+function renderDecorations(){
+ if(!decorationData)return;decorationBox.querySelector('.dc-balance').textContent=`보유 포인트 ${Number(decorationData.points).toLocaleString()}P`;
+ for(const kind of ['bubble','trail']){
+  const section=decorationBox.querySelector(`[data-kind="${kind}"]`),list=section.querySelector('.dc-rows');list.replaceChildren();
+  for(const [id,item] of Object.entries(decorationData.catalog[kind])){
+   const owned=Boolean(decorationData.owned[kind]?.[id]),on=decorationData.equipped[kind]===id,row=document.createElement('div');row.className='dc-row';
+   const name=document.createElement('span');name.className='dc-name';name.textContent=item.name;row.append(name);
+   const actions=document.createElement('div');actions.className='dc-actions';
+   const preview=document.createElement('button');preview.type='button';preview.textContent=decorationPreview[kind]===id?'미리보기 중':'미리보기';preview.classList.toggle('dc-previewing',decorationPreview[kind]===id);preview.onclick=()=>{decorationPreview[kind]=id;renderDecorations();};actions.append(preview);
+   const purchase=document.createElement('button');purchase.type='button';purchase.textContent=owned?(on?'사용 중 · 해제':'사용하기'):`${item.cost.toLocaleString()}P 구매`;purchase.disabled=decorationPending||(!owned&&decorationData.points<item.cost);purchase.onclick=()=>decorationRequest(owned?(on?'unequip':'equip'):'buy',kind,id);actions.append(purchase);row.append(actions);list.append(row);
+  }
+ }
+ drawDecorationBubblePreview();if(!decorationPreviewFrame)decorationPreviewFrame=requestAnimationFrame(drawDecorationTrailPreview);
+}
+async function decorationRequest(command,kind,item){
+ if(decorationPending||!state.id)return;decorationPending=true;renderDecorations();
+ try{const r=await post('decoration',{id:state.id,sessionKey,command,kind,item});decorationData=r.decoration;toast(command==='buy'?'꾸미기 아이템을 구매하고 적용했어요.':command==='equip'?'꾸미기 아이템을 적용했어요.':'꾸미기를 해제했어요.');void refreshTentStatus();}
+ catch(e){toast(e.message||'다시 시도해 주세요.');await loadDecorations();}
+ finally{decorationPending=false;renderDecorations();}
+}
+function drawDecorationBubblePreview(){
+ const canvas=decorationBox.querySelector('[data-kind="bubble"] canvas'),ctx=canvas.getContext('2d');ctx.clearRect(0,0,canvas.width,canvas.height);
+ const texture=bubbleTexture('안녕하세요! 오늘도 즐거운 하루 ✨',decorationPreview.bubble||decorationData?.equipped?.bubble);ctx.drawImage(texture.image,18,3,564,253);texture.dispose();
+}
+const trailIcons={rainbow:'✦',star:'★',snow:'❄',petal:'❀',flame:'🔥',dark:'●',heart:'♥'};
+function drawDecorationTrailPreview(t){
+ decorationPreviewFrame=0;if(decorationBox.hidden||$('joinModal').classList.contains('hidden'))return;
+ const section=decorationBox.querySelector('[data-kind="trail"]'),canvas=section.querySelector('canvas');
+ if(section.open){const ctx=canvas.getContext('2d'),kind=decorationPreview.trail||decorationData?.equipped?.trail;ctx.clearRect(0,0,600,260);
+  if(kind){for(let i=0;i<15;i++){const phase=((t*.00042+i/15)%1),x=415-phase*350,y=132+Math.sin(i*2.4+t*.003)*35;ctx.globalAlpha=(1-phase)*.85;const size=kind==='rainbow'?60:40+(i%4)*7;ctx.drawImage(characterTrailTexture(kind).image,x-size/2,y-size/2,size,size);}}
+  ctx.globalAlpha=1;ctx.shadowBlur=0;ctx.fillStyle='#d7dff6';ctx.beginPath();ctx.arc(455,76,32,0,Math.PI*2);ctx.fill();ctx.fillStyle='#7d6cca';ctx.beginPath();ctx.roundRect(429,112,53,75,18);ctx.fill();ctx.strokeStyle='#d7dff6';ctx.lineWidth=13;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(440,180);ctx.lineTo(425,216);ctx.moveTo(470,180);ctx.lineTo(490,212);ctx.stroke();ctx.fillStyle='#d9e8fc';ctx.font='16px system-ui';ctx.fillText(kind?'이동 중 미리보기':'이펙트를 선택해 주세요',20,236);
+ }
+ decorationPreviewFrame=requestAnimationFrame(drawDecorationTrailPreview);
+}
+decorationBox.addEventListener('toggle',e=>{if(e.target.open){if(!decorationData)void loadDecorations();if(!decorationPreviewFrame)decorationPreviewFrame=requestAnimationFrame(drawDecorationTrailPreview)}},true);
+
 $('mdWardrobeToggle').onclick=()=>{const panel=$('mdWardrobePanel');panel.hidden=!panel.hidden;$('mdWardrobeToggle').setAttribute('aria-expanded',String(!panel.hidden));if(!panel.hidden)refreshPunkShop()};
 $('povToggle').onclick=()=>{
  povEnabled=!povEnabled;povYaw=0;povPitch=0;
@@ -4175,7 +4224,7 @@ function updateTentInterior(frameDelta,t){
   const fake={...p,id:'room-'+p.id,x:600+rx/.058,y:500+(rz-8)/.058,
    action:localAction==='idle'&&walking?'walk':localAction,pose:targetPose,facing:p.id===state.id?local.facing:(p.tentRoomFacing||0)};
   a.root.userData.tentBedPose=bedPose; // Read by animateAvatar before position smoothing.
-  animateAvatar(a,fake,t);
+  animateAvatar(a,fake,t);updateCharacterTrail(a,p,t,tentRoomScene);
   if(bedPose){
    a.root.scale.setScalar(THREE.MathUtils.lerp(a.root.scale.x,bedPose.scale,.35));
    const delta=Math.atan2(Math.sin(bedPose.facing-a.root.rotation.y),Math.cos(bedPose.facing-a.root.rotation.y));
@@ -7192,16 +7241,56 @@ function makeAvatar(p){
  return {root,parts,color:p.color,lastAction:'idle',beatkingYaw:0,powerkingYaw:0};
 }
 
+// World-space particles linger behind the moving avatar for a short time.
+const characterTrailTextures=new Map(),characterTrailParticles=[];
+function characterTrailTexture(kind){
+ if(characterTrailTextures.has(kind))return characterTrailTextures.get(kind);
+ const canvas=document.createElement('canvas');canvas.width=128;canvas.height=128;const c=canvas.getContext('2d');
+ c.textAlign='center';c.textBaseline='middle';c.shadowBlur=18;
+ if(kind==='rainbow'){
+  const grad=c.createLinearGradient(0,8,110,118);for(const [n,col] of [[0,'#ff6db4'],[.23,'#ffcf67'],[.48,'#85ffb2'],[.7,'#75d5ff'],[1,'#c18cff']])grad.addColorStop(n,col);
+  c.fillStyle=grad;c.shadowColor='#a3f5ff';c.beginPath();c.arc(64,30,19,0,Math.PI*2);c.fill();c.beginPath();c.roundRect(42,50,44,49,14);c.fill();c.lineCap='round';c.lineWidth=12;c.strokeStyle=grad;c.beginPath();c.moveTo(49,92);c.lineTo(35,117);c.moveTo(79,92);c.lineTo(94,117);c.stroke();
+ }else if(kind==='flame'){
+  const g=c.createLinearGradient(0,12,0,120);g.addColorStop(0,'#fff7a1');g.addColorStop(.35,'#ffd234');g.addColorStop(.75,'#ff7117');g.addColorStop(1,'#e52619');c.shadowColor='#ff7d19';c.shadowBlur=22;c.fillStyle=g;c.beginPath();c.moveTo(64,9);c.bezierCurveTo(55,36,24,46,28,83);c.bezierCurveTo(31,111,47,121,64,121);c.bezierCurveTo(91,121,108,100,99,75);c.bezierCurveTo(94,59,81,50,81,33);c.bezierCurveTo(70,45,70,59,64,66);c.bezierCurveTo(55,53,63,32,64,9);c.fill();
+ }else if(kind==='dark'){
+  const g=c.createRadialGradient(64,64,4,64,64,60);g.addColorStop(0,'rgba(72,65,92,.8)');g.addColorStop(.45,'rgba(42,37,55,.65)');g.addColorStop(1,'rgba(20,17,29,0)');c.fillStyle=g;c.fillRect(0,0,128,128);
+ }else{
+  const glyph={star:'★',snow:'❄',petal:'✿',flame:'🔥',heart:'♥'}[kind]||'✦';
+  const color={star:'#ffe782',snow:'#c9f8ff',petal:'#ff9fcf',flame:'#ffb54d',heart:'#ff72b6'}[kind]||'#fff';
+  c.fillStyle=color;c.shadowColor=color;c.font='bold 96px system-ui, sans-serif';c.fillText(glyph,64,66);
+ }
+ const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;characterTrailTextures.set(kind,texture);return texture;
+}
+function updateCharacterTrail(avatar,player,t,parent){
+ const kind=player.cosmetics?.trail,pos=avatar.root.position,previous=avatar.trailLastPos;
+ if(!previous){avatar.trailLastPos={x:pos.x,z:pos.z,time:t,spawn:0};return;}
+ const dx=pos.x-previous.x,dz=pos.z-previous.z,dt=Math.max(1,t-previous.time),speed=Math.hypot(dx,dz)/dt;
+ previous.x=pos.x;previous.z=pos.z;previous.time=t;
+ if(!kind||!['rainbow','star','snow','petal','flame','dark','heart'].includes(kind)||speed<.00035||t-previous.spawn<100||characterTrailParticles.length>=160)return;
+ previous.spawn=t;const behind=Math.hypot(dx,dz)||1;
+ for(let i=0;i<(perfWeakDevice?1:2);i++){
+  const mat=new THREE.SpriteMaterial({map:characterTrailTexture(kind),transparent:true,opacity:.86,depthWrite:false,blending:kind==='dark'?THREE.NormalBlending:THREE.AdditiveBlending});
+  const sprite=new THREE.Sprite(mat),side=(i-.5)*.45;sprite.position.set(pos.x-dx/behind*(.5+i*.14)+dz/behind*side,pos.y+.45+i*.64,pos.z-dz/behind*(.5+i*.14)-dx/behind*side);
+  const size=kind==='rainbow'?1.7:kind==='dark'?1.3:.8;sprite.scale.set(size,size,1);sprite.renderOrder=30;parent.add(sprite);if(parent===scene&&stageForeground)sprite.layers.set(1);
+  characterTrailParticles.push({sprite,parent,start:t,life:kind==='dark'?1100:900,size,kind});
+ }
+}
+function animateCharacterTrails(t){for(let i=characterTrailParticles.length-1;i>=0;i--){const p=characterTrailParticles[i],v=(t-p.start)/p.life;if(v>=1){p.parent.remove(p.sprite);p.sprite.material.dispose();characterTrailParticles.splice(i,1);continue}p.sprite.material.opacity=.85*(1-v);p.sprite.position.y+=p.kind==='dark'?.012:.004;const size=p.size*(1+v*(p.kind==='dark'?.8:.15));p.sprite.scale.set(size,size,1);p.sprite.material.rotation+=p.kind==='petal'?.025:p.kind==='snow'?.012:0;}}
+
 // Chat bubbles are true 3D sprites anchored in world coordinates, independent of avatar pose.
-function bubbleTexture(message){
+function bubbleTexture(message,style=null){
  // v158: much larger glyphs, proportionally larger bubble and a fourth
  // line when needed. Fit text by measured pixel width, not character count.
  const canvas=document.createElement('canvas');canvas.width=1024;canvas.height=460;
  const ctx=canvas.getContext('2d');ctx.clearRect(0,0,1024,460);
- ctx.fillStyle='rgba(255,255,255,.98)';ctx.strokeStyle='#283044';ctx.lineWidth=9;
+ const colors={heart:'#f067a5',star:'#e6b340',neon:'#46f4f1',music:'#a66be9'};
+ ctx.fillStyle=style==='neon'?'rgba(13,20,50,.98)':'rgba(255,255,255,.98)';ctx.strokeStyle=colors[style]||'#283044';ctx.lineWidth=style?12:9;
+ if(style==='neon'){ctx.shadowColor='#24f8ff';ctx.shadowBlur=30;}
  ctx.beginPath();ctx.roundRect(18,18,988,375,46);ctx.fill();ctx.stroke();
- ctx.beginPath();ctx.moveTo(468,394);ctx.lineTo(512,440);ctx.lineTo(556,394);ctx.closePath();ctx.fill();ctx.stroke();
- ctx.fillStyle='#171d31';ctx.textAlign='center';ctx.textBaseline='middle';
+ ctx.beginPath();ctx.moveTo(468,394);ctx.lineTo(512,440);ctx.lineTo(556,394);ctx.closePath();ctx.fill();ctx.stroke();ctx.shadowBlur=0;
+ if(style&&style!=='neon'){const glyph={heart:'♥',star:'★',music:'♫'}[style];if(glyph){ctx.fillStyle=colors[style];ctx.font='bold 50px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';ctx.shadowColor=colors[style];ctx.shadowBlur=12;for(const [x,y] of [[66,60],[958,60],[68,349],[954,349]])ctx.fillText(glyph,x,y);ctx.shadowBlur=0;}}
+
+ ctx.fillStyle=style==='neon'?'#eaffff':'#171d31';ctx.textAlign='center';ctx.textBaseline='middle';
  const chars=Array.from(String(message||''));
  const wrap=(size)=>{
   ctx.font=`900 ${size}px system-ui, sans-serif`;
@@ -7228,11 +7317,11 @@ function bubbleTexture(message){
 }
 function showBubble(entry){
  if(!entry||!entry.playerId||!state.players.has(entry.playerId))return;
- if(tentRoomActive){if(entry.roomId!==tentRoomActive.id)return;const old=tentRoomBubbles.get(entry.playerId);if(old){tentRoomScene.remove(old.sprite);old.sprite.material.map?.dispose();old.sprite.material.dispose()}const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:bubbleTexture(entry.message),transparent:true,depthTest:false,depthWrite:false}));sprite.scale.set(6.8,3.05,1);sprite.renderOrder=150;tentRoomScene.add(sprite);tentRoomBubbles.set(entry.playerId,{sprite,expires:performance.now()+3800});return;}
+ if(tentRoomActive){if(entry.roomId!==tentRoomActive.id)return;const old=tentRoomBubbles.get(entry.playerId);if(old){tentRoomScene.remove(old.sprite);old.sprite.material.map?.dispose();old.sprite.material.dispose()}const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:bubbleTexture(entry.message,entry.bubbleStyle||state.players.get(entry.playerId)?.cosmetics?.bubble),transparent:true,depthTest:false,depthWrite:false}));sprite.scale.set(6.8,3.05,1);sprite.renderOrder=150;tentRoomScene.add(sprite);tentRoomBubbles.set(entry.playerId,{sprite,expires:performance.now()+3800});return;}
  if(entry.roomId)return;
  const old=activeBubbles.get(entry.playerId);
  if(old){scene.remove(old.sprite);old.sprite.material.map.dispose();old.sprite.material.dispose()}
- const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:bubbleTexture(entry.message),transparent:true,depthTest:false,depthWrite:false}));
+ const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:bubbleTexture(entry.message,entry.bubbleStyle||state.players.get(entry.playerId)?.cosmetics?.bubble),transparent:true,depthTest:false,depthWrite:false}));
  // v158: keep the physical speech bubble proportional to the larger glyphs.
  sprite.scale.set(6.8,3.05,1);sprite.renderOrder=150;scene.add(sprite);if(stageForeground)sprite.layers.set(1);
  activeBubbles.set(entry.playerId,{sprite,expires:performance.now()+3800});
@@ -9369,6 +9458,7 @@ function tick(t){
  if(elapsed+1.4<targetFrame)return;
  perfLastFrameTime=t;
  const frameDelta=Math.min(50,Math.max(0,t-(tick.lastFrame??t)));tick.lastFrame=t;
+ animateCharacterTrails(t);
  if(tentRoomActive){
   updateTentInterior(frameDelta,t);
   animateFoxPets(t,true);
@@ -9601,7 +9691,7 @@ function tick(t){
   }
   if(!avatars.has(id)){let a=makeAvatar(p),pos=toWorld(p);a.root.position.set(pos.x,0,pos.z);a.name=p.name;a.badgeTier=p.badgeTier||'bronze';a.gender=p.gender;a.pattern=p.pattern||'solid';a.sash=p.sash||'none';a.hairStyle=p.hairStyle||'short';a.hairColor=p.hairColor||'#4b3932';a.flagText=p.flagText||'';a.flagImage=p.flagImage||'';a.rhythmKing=Boolean(p.rhythmKing);a.powerKing=Boolean(p.powerKing);a.moleKing=Boolean(p.moleKing);a.fishKing=Boolean(p.fishKing);a.equipped={...(p.equipped||{})};avatars.set(id,a)}
   const avatar=avatars.get(id);
-  animateAvatar(avatar,p,t);
+  animateAvatar(avatar,p,t);updateCharacterTrail(avatar,p,t,scene);
   if(avatar.parts.flagPivot?.parent?.visible){
    // Keep the tall pole upright in world space even when the avatar root
    // tilts 180 degrees (headspin) or sideways (B-boy/windmill).
@@ -10063,7 +10153,8 @@ function renderFishingCatalog(){
  u.filters.replaceChildren();for(const [id,name] of [['all','전체'],...Object.entries(fishRarityKorean)]){
   const b=document.createElement('button');b.className='fish-filter'+(fishingFilter===id?' active':'');b.type='button';b.textContent=name;b.onclick=()=>{fishingFilter=id;renderFishingCatalog()};u.filters.append(b);
  }
- const entries=fishingFilter==='all'?d.catalog:d.catalog.filter(f=>f.rarity===fishingFilter);
+ const rarityOrder={common:0,uncommon:1,rare:2,epic:3,legendary:4};
+ const entries=(fishingFilter==='all'?[...d.catalog]:d.catalog.filter(f=>f.rarity===fishingFilter)).sort((a,b)=>(rarityOrder[a.rarity]??99)-(rarityOrder[b.rarity]??99)||String(a.id).localeCompare(String(b.id),undefined,{numeric:true}));
  u.catalogHeading.textContent=`🐠 ${fishingFilter==='all'?'전체':fishRarityKorean[fishingFilter]} 물고기 ${entries.length}종`;
  u.grid.replaceChildren();const fragment=document.createDocumentFragment();for(const f of entries){
   const count=d.fishCounts?.[f.id]||0;

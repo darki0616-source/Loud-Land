@@ -285,6 +285,13 @@ const ONE_TIME_CREDIT_HASH='07cad1e4323da66ca647d215a5b63b5ea02519ad6bb88c3e35b7
 const recoveryHash=code=>crypto.createHash('sha256').update(code).digest('hex');
 function recoveryProfile(p){return {name:p.name,color:p.color,gender:p.gender,pattern:p.pattern,sash:p.sash,hairStyle:p.hairStyle,hairColor:p.hairColor};}
 function setRecoveryProfile(p){const r=p?.badgeIdentity&&recoveryRecords.get(p.badgeIdentity);if(r){r.profile=recoveryProfile(p);scheduleSave();}}
+const DECORATIONS={bubble:{heart:{name:'하트 말풍선',cost:3000},star:{name:'별 말풍선',cost:3000},neon:{name:'네온 말풍선',cost:2000},music:{name:'음표 말풍선',cost:3000}},trail:{rainbow:{name:'무지개 잔상',cost:3000},star:{name:'별 잔상',cost:3000},snow:{name:'눈꽃 잔상',cost:3000},petal:{name:'꽃잎 잔상',cost:3000},flame:{name:'불꽃 잔상',cost:3000},dark:{name:'어둠 잔상',cost:3000},heart:{name:'하트 잔상',cost:3000}}};
+const decorationStats=new Map();
+function decorationRecord(identity){if(!decorationStats.has(identity))decorationStats.set(identity,{spent:0,owned:{bubble:{},trail:{}},equipped:{bubble:null,trail:null}});return decorationStats.get(identity)}
+function decorationAppearance(identity){const r=identity&&decorationStats.get(identity);return {bubble:r?.equipped?.bubble||null,trail:r?.equipped?.trail||null};}
+function syncDecoration(p){p.cosmetics=decorationAppearance(p.badgeIdentity)}
+function decorationView(p){const r=decorationRecord(p.badgeIdentity);return {catalog:DECORATIONS,owned:r.owned,equipped:r.equipped,points:tentPointBalance(p)};}
+
 const PET_EFFECTS={sparkle:{name:'반짝이',cost:500},notes:{name:'춤출 때 음표',cost:1000},heart:{name:'하트',cost:1000},rainbow:{name:'무지개',cost:2000},light:{name:'라이트',cost:3000},petals:{name:'꽃잎',cost:1500},snow:{name:'눈꽃',cost:1500},electric:{name:'전기',cost:2500},moonstars:{name:'달과 별',cost:2500},disco:{name:'디스코볼',cost:3000}};
 function petEffectView(record){const owned={},enabled={};for(const id of Object.keys(PET_EFFECTS)){owned[id]=record?.effectsOwned?.[id]===true;enabled[id]=owned[id]&&record?.effectsEnabled?.[id]===true;}return {owned,enabled};}
 const petStats=new Map();
@@ -623,7 +630,7 @@ async function serveFurnitureModel(req,res,id){
 const TENT_FURNITURE_MAX_PLACED=30;
 const furnitureStats=new Map();
 function furnitureRecord(identity){if(!furnitureStats.has(identity))furnitureStats.set(identity,{spent:0,owned:{}});return furnitureStats.get(identity);}
-function tentPointBalance(p){const earned=Math.floor(badgeTotal(p)/60)+tentTimeBonus(p)+(p.badgeIdentity?rhythmAccount(p.badgeIdentity).bonus+powerAccount(p.badgeIdentity).bonus+moleAccount(p.badgeIdentity).bonus+(fieldCoinBonuses.get(p.badgeIdentity)||0)+(adminPointCredits.get(p.badgeIdentity)||0)+(lotteryStats.get(p.badgeIdentity)?.bonus||0)+(fishingStats.get(p.badgeIdentity)?.bonus||0):0);return Math.max(0,earned-(fishingStats.get(p.badgeIdentity)?.spent||0)-(lotteryStats.get(p.badgeIdentity)?.spent||0)-(tentOwnedBy(p.badgeIdentity)?TENT_COST:0)-(furnitureStats.get(p.badgeIdentity)?.spent||0)-(petStats.get(p.badgeIdentity)?.spent||0)-(tentOwnedBy(p.badgeIdentity)?.outdoorDecorSpent||0));}
+function tentPointBalance(p){const earned=Math.floor(badgeTotal(p)/60)+tentTimeBonus(p)+(p.badgeIdentity?rhythmAccount(p.badgeIdentity).bonus+powerAccount(p.badgeIdentity).bonus+moleAccount(p.badgeIdentity).bonus+(fieldCoinBonuses.get(p.badgeIdentity)||0)+(adminPointCredits.get(p.badgeIdentity)||0)+(lotteryStats.get(p.badgeIdentity)?.bonus||0)+(fishingStats.get(p.badgeIdentity)?.bonus||0):0);return Math.max(0,earned-(fishingStats.get(p.badgeIdentity)?.spent||0)-(lotteryStats.get(p.badgeIdentity)?.spent||0)-(tentOwnedBy(p.badgeIdentity)?TENT_COST:0)-(furnitureStats.get(p.badgeIdentity)?.spent||0)-(petStats.get(p.badgeIdentity)?.spent||0)-(decorationStats.get(p.badgeIdentity)?.spent||0)-(tentOwnedBy(p.badgeIdentity)?.outdoorDecorSpent||0));}
 function safeFurniturePose(item,x,z,angle){
  if(!item||!Number.isFinite(x)||!Number.isFinite(z)||!Number.isFinite(angle))return false;
  if(angle<0||angle>=360||angle%45!==0)return false;
@@ -812,7 +819,7 @@ const SB_KEY=process.env.SUPABASE_SECRET_KEY||'';
 const useSupabase=Boolean(SB_URL&&SB_KEY);
 let restored=false;
 let saveChain=Promise.resolve();
-function stateData(){return {version:18,fishKingDay,fishKingReward,fishKingScores:Object.fromEntries(fishKingScores),fortuneStats:Object.fromEntries(fortuneStats),oneTimeCreditApplied,adminPointCredits:Object.fromEntries(adminPointCredits),adminPointLedger:Object.fromEntries(adminPointLedger),recoveryRecords:Object.fromEntries(recoveryRecords),fishingStats:Object.fromEntries([...fishingStats].map(([id,a])=>[id,{level:a.level,spent:a.spent,bonus:a.bonus,fishCounts:a.fishCounts,totalMisses:a.totalMisses,lastCastAt:a.lastCastAt,active:a.active,lastResult:a.lastResult}])),lotteryStats:Object.fromEntries([...lotteryStats].map(([identity,a])=>[identity,{day:a.day,used:a.used,spent:a.spent,bonus:a.bonus,pending:a.pending,lastResult:a.lastResult}])),petStats:Object.fromEntries([...petStats].map(([identity,record])=>[identity,{spent:record.spent,pet:record.pet,effectsOwned:record.effectsOwned||{},effectsEnabled:record.effectsEnabled||{}}])),fieldCoinLastSpawnAt,fieldCoins:fieldCoinPublic(),fieldCoinBonuses:Object.fromEntries(fieldCoinBonuses),moleDay,moleHammerRevision,moleReward,moleScores:Object.fromEntries(moleScores),moleAccounts:Object.fromEntries([...moleAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session,lastResult:v.lastResult}])),powerDay,powerReward,powerScores:Object.fromEntries(powerScores),powerAccounts:Object.fromEntries([...powerAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),rhythmAccounts:Object.fromEntries([...rhythmAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),furnitureCatalogEdits:Object.fromEntries(furnitureCatalogEdits),furnitureStats:Object.fromEntries([...furnitureStats].map(([id,v])=>[id,{spent:v.spent,owned:v.owned}])),tentStats:Object.fromEntries([...tentStats].map(([identity,t])=>[identity,storedTent(t)])),announcements:{entry:entranceNotices,ticker:tickerNotices,intervalMinutes:tickerIntervalMinutes,immediateHistory:immediateNoticeHistory},music,queue:[...queue],history:[...history],nextTrackToken,customMd:Object.fromEntries(customMd),shopStats:Object.fromEntries([...shopStats].map(([k,v])=>[k,{spent:0,refunded:v.refunded||0,owned:v.owned,equipped:v.equipped}])),badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),rhythm:{day:rhythmDay,reward:rhythmReward,scores:Object.fromEntries([...rhythmScores].map(([k,v])=>[k,{name:v.name,score:Math.max(0,Math.floor(Number(v.score)||0)),updatedAt:Number(v.updatedAt)||0}]))},savedAt:Date.now()}}
+function stateData(){return {version:18,decorationStats:Object.fromEntries(decorationStats),fishKingDay,fishKingReward,fishKingScores:Object.fromEntries(fishKingScores),fortuneStats:Object.fromEntries(fortuneStats),oneTimeCreditApplied,adminPointCredits:Object.fromEntries(adminPointCredits),adminPointLedger:Object.fromEntries(adminPointLedger),recoveryRecords:Object.fromEntries(recoveryRecords),fishingStats:Object.fromEntries([...fishingStats].map(([id,a])=>[id,{level:a.level,spent:a.spent,bonus:a.bonus,fishCounts:a.fishCounts,totalMisses:a.totalMisses,lastCastAt:a.lastCastAt,active:a.active,lastResult:a.lastResult}])),lotteryStats:Object.fromEntries([...lotteryStats].map(([identity,a])=>[identity,{day:a.day,used:a.used,spent:a.spent,bonus:a.bonus,pending:a.pending,lastResult:a.lastResult}])),petStats:Object.fromEntries([...petStats].map(([identity,record])=>[identity,{spent:record.spent,pet:record.pet,effectsOwned:record.effectsOwned||{},effectsEnabled:record.effectsEnabled||{}}])),fieldCoinLastSpawnAt,fieldCoins:fieldCoinPublic(),fieldCoinBonuses:Object.fromEntries(fieldCoinBonuses),moleDay,moleHammerRevision,moleReward,moleScores:Object.fromEntries(moleScores),moleAccounts:Object.fromEntries([...moleAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session,lastResult:v.lastResult}])),powerDay,powerReward,powerScores:Object.fromEntries(powerScores),powerAccounts:Object.fromEntries([...powerAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),rhythmAccounts:Object.fromEntries([...rhythmAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),furnitureCatalogEdits:Object.fromEntries(furnitureCatalogEdits),furnitureStats:Object.fromEntries([...furnitureStats].map(([id,v])=>[id,{spent:v.spent,owned:v.owned}])),tentStats:Object.fromEntries([...tentStats].map(([identity,t])=>[identity,storedTent(t)])),announcements:{entry:entranceNotices,ticker:tickerNotices,intervalMinutes:tickerIntervalMinutes,immediateHistory:immediateNoticeHistory},music,queue:[...queue],history:[...history],nextTrackToken,customMd:Object.fromEntries(customMd),shopStats:Object.fromEntries([...shopStats].map(([k,v])=>[k,{spent:0,refunded:v.refunded||0,owned:v.owned,equipped:v.equipped}])),badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),rhythm:{day:rhythmDay,reward:rhythmReward,scores:Object.fromEntries([...rhythmScores].map(([k,v])=>[k,{name:v.name,score:Math.max(0,Math.floor(Number(v.score)||0)),updatedAt:Number(v.updatedAt)||0}]))},savedAt:Date.now()}}
 function applySaved(d){
  if(!d||typeof d!=='object')return;
  fortuneStats.clear();
@@ -825,6 +832,13 @@ function applySaved(d){
   if(!/^[a-zA-Z0-9_-]{20,100}$/.test(identity)||!r||!/^[a-f0-9]{64}$/.test(r.hash||'')||recoveryIndex.has(r.hash))continue;
   const profile=r.profile&&typeof r.profile==='object'?r.profile:null;
   recoveryRecords.set(identity,{hash:r.hash,profile});recoveryIndex.set(r.hash,identity);
+ }
+ decorationStats.clear();
+ if(d.decorationStats&&typeof d.decorationStats==='object')for(const [id,row] of Object.entries(d.decorationStats).slice(0,50000)){
+  if(!/^[a-zA-Z0-9_-]{20,100}$/.test(id)||!row||typeof row!=='object')continue;
+  const record={spent:Number.isSafeInteger(row.spent)&&row.spent>=0?row.spent:0,owned:{bubble:{},trail:{}},equipped:{bubble:null,trail:null}};
+  for(const kind of ['bubble','trail']){for(const key of Object.keys(DECORATIONS[kind]))if(row.owned?.[kind]?.[key]===true)record.owned[kind][key]=true;const active=row.equipped?.[kind];if(active&&record.owned[kind][active])record.equipped[kind]=active;}
+  decorationStats.set(id,record);
  }
  petStats.clear();petHatchDurationMigrated=false;
  if(d.petStats&&typeof d.petStats==='object')for(const [identity,r] of Object.entries(d.petStats).slice(0,30000)){
@@ -1424,7 +1438,7 @@ const server=http.createServer(async(req,res)=>{
           if(existing){
             maybeRotateRhythmDay();
             existing.seen=Date.now();
-            syncPlayerRhythmKing(existing);syncPlayerPowerKing(existing);syncPlayerMoleKing(existing);syncPlayerFishKing(existing);existing.pet=petPublic(petStats.get(existing.badgeIdentity)?.pet,petStats.get(existing.badgeIdentity));
+            syncPlayerRhythmKing(existing);syncPlayerPowerKing(existing);syncPlayerMoleKing(existing);syncPlayerFishKing(existing);syncDecoration(existing);existing.pet=petPublic(petStats.get(existing.badgeIdentity)?.pet,petStats.get(existing.badgeIdentity));
             if(pageId)pageOwners.set(existingId,pageId);
             return json(res,200,{id:existingId,reused:true,...snapshot(existingId)});
           }
@@ -1432,7 +1446,7 @@ const server=http.createServer(async(req,res)=>{
         }
         maybeRotateRhythmDay();
         const id=crypto.randomUUID(),p={id,badgeSince:Date.now(),badgeTier:'bronze',badgeSeconds:0,name:clean(d.name,18)||'ROCKER',flagText:cleanFlag(d.flagText),flagImage:d.flagImage?storeFlagImage(d.flagImage)||'':'',color:colors.includes(d.color)?d.color:colors[0],...apparel(d),gender:d.gender==='female'?'female':'male',x:clamp(190+Math.random()*880,SERVER_X_MIN,SERVER_X_MAX),y:clamp(390+Math.random()*420,SERVER_Y_MIN,SERVER_Y_MAX),facing:0,action:'idle',pose:'stand',glowColor:'lime',glowEnabled:false,headbangBpm:120,headbangBeatAt:Date.now(),seen:Date.now(),rhythmKing:false,powerKing:false,moleKing:false};
-        Object.defineProperty(p,'badgeIdentity',{value:badgeIdentity,writable:true,enumerable:false});updateBadge(p);syncPlayerRhythmKing(p);syncPlayerPowerKing(p);syncPlayerMoleKing(p);rotateFishKingDay();syncPlayerFishKing(p);setShopAppearance(p);p.pet=petPublic(petStats.get(p.badgeIdentity)?.pet,petStats.get(p.badgeIdentity));players.set(id,p);
+        Object.defineProperty(p,'badgeIdentity',{value:badgeIdentity,writable:true,enumerable:false});updateBadge(p);syncPlayerRhythmKing(p);syncPlayerPowerKing(p);syncPlayerMoleKing(p);rotateFishKingDay();syncPlayerFishKing(p);syncDecoration(p);setShopAppearance(p);p.pet=petPublic(petStats.get(p.badgeIdentity)?.pet,petStats.get(p.badgeIdentity));players.set(id,p);
         if(sessionKey){sessionPlayers.set(sessionKey,id);playerSessions.set(id,sessionKey)}
         if(pageId)pageOwners.set(id,pageId);
         resumeForFirst();broadcast({type:'join',player:p,count:players.size});return json(res,200,{id,reused:false,...snapshot(id)});
@@ -1533,6 +1547,25 @@ const server=http.createServer(async(req,res)=>{
         if(!Number.isInteger(selected)||selected<0||selected>=7)return json(res,400,{error:'카드를 선택해 주세요.'});
         if(!fortuneView(p.badgeIdentity).result){const card=crypto.randomInt(FORTUNE_CARDS.length);fortuneStats.set(p.badgeIdentity,{day:kstDate(),card,message:crypto.randomInt(FORTUNE_MESSAGES[card].length),selected});scheduleSave();}
         return json(res,200,{ok:true,fortune:fortuneView(p.badgeIdentity)});
+      }
+      if(url.pathname==='/api/decoration'){
+       if(!p.badgeIdentity||playerSessions.get(id)!==String(d.sessionKey||''))return json(res,403,{error:'본인 세션에서 이용해 주세요.'});
+       const command=String(d.command||'status');
+       if(command==='status')return json(res,200,{ok:true,decoration:decorationView(p)});
+       const kind=String(d.kind||''),item=String(d.item||'');
+       if(!Object.prototype.hasOwnProperty.call(DECORATIONS,kind)||!Object.prototype.hasOwnProperty.call(DECORATIONS[kind],item))return json(res,400,{error:'존재하지 않는 꾸미기 아이템이에요.'});
+       const r=decorationRecord(p.badgeIdentity),spec=DECORATIONS[kind][item];
+       if(command==='buy'){
+        if(r.owned[kind][item])return json(res,409,{error:'이미 구매한 아이템이에요.'});
+        if(tentPointBalance(p)<spec.cost)return json(res,409,{error:'포인트가 부족해요.'});
+        r.owned[kind][item]=true;r.equipped[kind]=item;r.spent+=spec.cost;
+       }else if(command==='equip'){
+        if(!r.owned[kind][item])return json(res,403,{error:'먼저 구매해 주세요.'});r.equipped[kind]=item;
+       }else if(command==='unequip'){
+        if(r.equipped[kind]===item)r.equipped[kind]=null;
+       }else return json(res,400,{error:'지원하지 않는 꾸미기 요청이에요.'});
+       for(const other of players.values())if(other.badgeIdentity===p.badgeIdentity){syncDecoration(other);broadcast({type:'profile',player:other});}
+       await saveNow();return json(res,200,{ok:true,decoration:decorationView(p)});
       }
       if(url.pathname==='/api/lottery'){
         if(!p.badgeIdentity||playerSessions.get(id)!==String(d.sessionKey||''))return json(res,403,{error:'본인 세션에서만 복권을 이용할 수 있어요.'});
@@ -1916,7 +1949,7 @@ const server=http.createServer(async(req,res)=>{
         if(p.lastChat&&Date.now()-p.lastChat<900)return json(res,429,{error:'잠시 후 다시 보내주세요.'});
         p.lastChat=Date.now();
         const roomId=p.tentRoomId||null;
-        const entry={id:crypto.randomUUID(),playerId:p.id,name:p.name,message,at:Date.now(),roomId};
+        const entry={id:crypto.randomUUID(),playerId:p.id,name:p.name,message,at:Date.now(),roomId,bubbleStyle:p.cosmetics?.bubble||null};
         retainChat(entry);
         for(const [viewerId,stream] of clients){if((players.get(viewerId)?.tentRoomId||null)!==roomId)continue;try{send(stream,{type:'chat',entry})}catch{}}
         return json(res,200,{ok:true});
