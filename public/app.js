@@ -10412,10 +10412,11 @@ new GLTFLoader().load('/assets/mining/amethyst_rock.glb?v=357',g=>{
 },undefined,e=>console.warn('광맥 모델을 불러오지 못했어요:',e));
 const miningCss=document.createElement('link');miningCss.rel='stylesheet';miningCss.href='/mining.css?v=357';document.head.append(miningCss);
 const miningNearButton=document.createElement('button');miningNearButton.id='miningNear';miningNearButton.type='button';miningNearButton.textContent='⛏ 광 캐기';miningNearButton.hidden=true;document.body.append(miningNearButton);
-const miningHud=document.createElement('section');miningHud.id='miningHud';miningHud.hidden=true;miningHud.innerHTML=`<div class="mining-top"><strong>⛏ 해변 광질</strong><button type="button" data-mining="book">📖 도감</button><button type="button" data-mining="ranking">🏆 순위</button><button type="button" data-mining="stop">광질 종료</button></div><div class="mining-meter"><i></i></div><div class="mining-info"><span class="mining-status">동그라미를 터치해 광물을 캐세요!</span><b class="mining-count">0 / 20</b></div>`;document.body.append(miningHud);
+const miningHud=document.createElement('section');miningHud.id='miningHud';miningHud.hidden=true;miningHud.innerHTML=`<div class="mining-top"><strong>⛏ 해변 광질</strong><button type="button" data-mining="book">📖 도감</button><button type="button" data-mining="ranking">🏆 순위</button><button type="button" data-mining="stop">광질 종료</button></div><div class="mining-auto-row"><button type="button" data-mining="auto" aria-pressed="false">⛏ 자동 채굴 OFF</button><span>자동 채굴 약 10초</span></div><div class="mining-meter"><i></i></div><div class="mining-info"><span class="mining-status">동그라미를 터치해 광물을 캐세요!</span><b class="mining-count">0 / 20</b></div>`;document.body.append(miningHud);
+const miningAutoStyle=document.createElement('style');miningAutoStyle.textContent=`#miningHud .mining-auto-row{display:flex;align-items:center;gap:9px;margin-top:8px;color:#d9c6eb;font-size:11px}#miningHud .mining-auto-row button{border:1px solid #c89be9;border-radius:9px;background:#51406c;color:#fff;font:800 12px system-ui;padding:6px 10px}#miningHud .mining-auto-row button[aria-pressed="true"]{background:linear-gradient(120deg,#794ac6,#d466ac);border-color:#f4ccff;box-shadow:0 0 12px #c071ee88}`;document.head.append(miningAutoStyle);
 const miningGuide=document.createElement('button');miningGuide.id='miningGuide';miningGuide.type='button';miningGuide.hidden=true;miningGuide.setAttribute('aria-label','광맥 두드리기');document.body.append(miningGuide);
 const miningBook=document.createElement('section');miningBook.id='miningBook';miningBook.hidden=true;miningBook.setAttribute('role','dialog');miningBook.setAttribute('aria-label','광물 도감');miningBook.innerHTML=`<header><h2>💎 광물 도감</h2><button type="button" data-mining="close-book">닫기</button></header><p class="mining-collection"></p><div class="mining-filters"></div><div class="mining-grid"></div>`;document.body.append(miningBook);
-let miningData=null,miningActive=false,miningBusy=false,miningLastHit=0,miningFilter='all',miningStatusUntil=0,miningPanelMode='book';
+let miningData=null,miningActive=false,miningBusy=false,miningLastHit=0,miningFilter='all',miningStatusUntil=0,miningPanelMode='book',miningAuto=false,miningAutoTimer=0;
 const miningTierNames={common:'일반',uncommon:'고급',rare:'희귀',epic:'영웅',legendary:'전설'};
 function nearestMiningRock(){if(!state.me||tentRoomActive)return null;const at=toWorld(state.me);let nearest=null,best=3.5;for(const rock of miningRockDefs){const d=Math.hypot(at.x-rock.x,at.z-rock.z);if(d<best){best=d;nearest=rock;}}return nearest;}
 function miningAsset(id){return /^(common|uncommon|rare|epic|legendary)\d{2}$/.test(String(id))?'/assets/mining/species/'+id+'.png?v=357':'';}
@@ -10427,17 +10428,24 @@ async function startMining(){
  miningBusy=true;try{const r=await miningRequest('start',{rockId:rock.id});miningData=r.mining;miningActive=!!miningData.active;if(!miningActive)return;state.walkTarget=null;state.keys.clear();state.action='mining';state.me.action='mining';state.me.pose='stand';state.pose='stand';state.actionUntil=Infinity;sendMove();miningNearButton.hidden=true;miningHud.hidden=false;miningGuide.hidden=false;renderMiningHud();}catch(e){toast(e.message||'광질을 시작하지 못했어요.');}finally{miningBusy=false;}
 }
 async function stopMining(){
- if(!miningActive)return;miningActive=false;miningGuide.hidden=true;miningHud.hidden=true;miningBook.hidden=true;miningNearButton.hidden=true;
+ setMiningAuto(false);if(!miningActive)return;miningActive=false;miningGuide.hidden=true;miningHud.hidden=true;miningBook.hidden=true;miningNearButton.hidden=true;
  if(state.me?.action==='mining'){state.action='idle';state.me.action='idle';state.actionUntil=0;sendMove();}
  try{const r=await miningRequest('stop');miningData=r.mining;}catch(e){console.warn('광질 종료:',e.message);}
 }
+function setMiningAuto(enabled){
+ miningAuto=Boolean(enabled&&miningActive);clearInterval(miningAutoTimer);miningAutoTimer=0;
+ const button=miningHud.querySelector('[data-mining="auto"]');button.setAttribute('aria-pressed',String(miningAuto));button.textContent=miningAuto?'⛏ 자동 채굴 ON':'⛏ 자동 채굴 OFF';
+ miningStatusUntil=0;miningHud.querySelector('.mining-status').textContent=miningAuto?'자동으로 광물을 캐고 있어요!':'동그라미를 터치해 광물을 캐세요!';
+ if(miningAuto)miningAutoTimer=setInterval(()=>{if(miningActive&&miningAuto)void miningHit(true);},500);
+}
+miningHud.querySelector('[data-mining="auto"]').onclick=()=>setMiningAuto(!miningAuto);
 miningNearButton.onclick=startMining;miningHud.querySelector('[data-mining="stop"]').onclick=stopMining;
 async function openMiningPanel(mode){miningPanelMode=mode;miningBook.hidden=false;miningBook.setAttribute('aria-label',mode==='ranking'?'광물왕 순위':'광물 도감');miningBook.querySelector('h2').textContent=mode==='ranking'?'🏆 오늘의 광물왕 순위':'💎 광물 도감';if(miningData)renderMiningBook();try{const r=await miningRequest('state');miningData=r.mining;renderMiningBook();}catch(e){toast(e.message||'정보를 불러오지 못했어요.')}}
 miningHud.querySelector('[data-mining="book"]').onclick=()=>openMiningPanel('book');
 miningHud.querySelector('[data-mining="ranking"]').onclick=()=>openMiningPanel('ranking');
 miningBook.querySelector('[data-mining="close-book"]').onclick=()=>{miningBook.hidden=true;};
-async function miningHit(){
- if(!miningActive||miningBusy||!miningData?.active||!miningBook.hidden)return;
+async function miningHit(automatic=false){
+ if(!miningActive||miningBusy||!miningData?.active||(automatic?!miningAuto:(miningAuto||!miningBook.hidden)))return;
  const now=performance.now();if(now-miningLastHit<220)return;miningLastHit=now;miningBusy=true;
  try{const active=miningData.active,r=await miningRequest('hit',{sessionId:active.id,seq:active.hits+1});miningData=r.mining;renderMiningHud();
   if(r.result){const status=miningHud.querySelector('.mining-status');status.textContent=`${r.result.name} +${r.result.points}P 획득!`;miningStatusUntil=performance.now()+2500;void refreshTentStatus();}
@@ -10458,14 +10466,14 @@ function renderMiningBook(){
  const grid=miningBook.querySelector('.mining-grid');grid.replaceChildren();for(const item of all){if(miningFilter!=='all'&&item.rarity!==miningFilter)continue;const count=Number(counts[item.id])||0,card=document.createElement('div');card.className='mining-card '+item.rarity+(count?'':' unknown');const img=document.createElement('img');img.src=miningAsset(item.id);img.alt='';img.loading='lazy';const name=document.createElement('b');name.textContent=item.name;const detail=document.createElement('small');detail.textContent=`${miningTierNames[item.rarity]} · ${item.points}P · ${(item.weight/100).toFixed(2)}%`;const found=document.createElement('small');found.textContent=count?`${count}개 획득`:'아직 발견하지 못했어요';card.append(img,name,detail,found);grid.append(card);}
 }
 function updateMiningUI(t){
- if(!state.id){miningNearButton.hidden=true;miningHud.hidden=true;miningGuide.hidden=true;miningBook.hidden=true;miningActive=false;return;}
+ if(!state.id){if(miningAuto)setMiningAuto(false);miningNearButton.hidden=true;miningHud.hidden=true;miningGuide.hidden=true;miningBook.hidden=true;miningActive=false;return;}
  const near=nearestMiningRock();miningNearButton.hidden=miningActive||!near||!$('joinModal').classList.contains('hidden')||!!tentRoomActive;
  if(!miningActive)return;
  const active=miningData?.active,rock=active&&miningRockDefs.find(x=>x.id===active.rockId),at=state.me&&toWorld(state.me);
  if(!rock||!at||tentRoomActive||state.me.action!=='mining'||Math.hypot(at.x-rock.x,at.z-rock.z)>4.1){void stopMining();return;}
- if(miningStatusUntil&&t>miningStatusUntil){miningHud.querySelector('.mining-status').textContent='동그라미를 터치해 광물을 캐세요!';miningStatusUntil=0;}
+ if(miningStatusUntil&&t>miningStatusUntil){miningHud.querySelector('.mining-status').textContent=miningAuto?'자동으로 광물을 캐고 있어요!':'동그라미를 터치해 광물을 캐세요!';miningStatusUntil=0;}
  const rect=renderer.domElement.getBoundingClientRect(),pos=new THREE.Vector3(rock.x,1.45,rock.z).project(camera);const x=rect.left+(pos.x+1)*rect.width*.5,y=rect.top+(1-pos.y)*rect.height*.5;
- const shown=miningBook.hidden&&pos.z>-1&&pos.z<1&&x>=rect.left&&x<=rect.right&&y>=rect.top&&y<=rect.bottom;miningGuide.hidden=!shown;if(shown){miningGuide.style.left=x+'px';miningGuide.style.top=y+'px';}
+ const shown=!miningAuto&&miningBook.hidden&&pos.z>-1&&pos.z<1&&x>=rect.left&&x<=rect.right&&y>=rect.top&&y<=rect.bottom;miningGuide.hidden=!shown;if(shown){miningGuide.style.left=x+'px';miningGuide.style.top=y+'px';}
 }
 const miningPopupNodes=[],miningSparkNodes=[];
 function showMiningFind(event){
