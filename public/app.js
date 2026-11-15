@@ -2198,7 +2198,7 @@ function tentRequest(command,values={}){return post('tent',{id:state.id,sessionK
 function syncTents(tents){
  if(!Array.isArray(tents))return;
  tentList=tents;
- if(tentRoomActive){const current=tents.find(t=>t.id===tentRoomActive.id);if(!current)leaveTentInterior(false);else{tentRoomActive={...tentRoomActive,...current};syncRoomCaption();applyTentRoomColors(current);applyTentRoomLighting(current);syncTentFurniturePlaced(tentRoomActive)}}
+ if(tentRoomActive){const current=tents.find(t=>t.id===tentRoomActive.id);if(!current)leaveTentInterior(false);else{tentRoomActive={...tentRoomActive,...current};applyTentRoomSize(tentRoomActive);syncRoomCaption();applyTentRoomColors(current);applyTentRoomLighting(current);syncTentFurniturePlaced(tentRoomActive)}}
  updateTentModels();
  refreshPeperoInstances(); // v267: keep decorative boxes clear of newly placed tents
 }
@@ -2216,6 +2216,8 @@ function showTentState(data){
  $('tentPurchaseHint').textContent=`${(data.points||0).toLocaleString()} / 3,000P · 구매 시 접속 1분당 2P 적립`;
  let rate=document.getElementById('tentPointRate');if(!rate){rate=document.createElement('small');rate.id='tentPointRate';rate.style.cssText='display:block;color:#b9ebdc;margin:5px 0;font-weight:700';$('tentPoints').insertAdjacentElement('afterend',rate)}rate.textContent=data.owned?'🏕️ 텐트 보유 혜택 · 접속 1분당 2P 적립':'';
  if(!data.owned)return;
+ let upgrade=document.getElementById('tentUpgradeButton');if(!upgrade){upgrade=document.createElement('button');upgrade.id='tentUpgradeButton';upgrade.type='button';upgrade.style.cssText='display:block;width:100%;margin:10px 0;padding:11px;border-radius:10px;font-weight:800;cursor:pointer;background:linear-gradient(100deg,#9860d0,#db92d1);color:white;border:1px solid #eac5ff';$('tentManageHint').insertAdjacentElement('beforebegin',upgrade);upgrade.onclick=async()=>{if(upgrade.disabled)return;if(!confirm('10,000P로 텐트 실내를 확장하시겠어요?'))return;upgrade.disabled=true;try{const result=await tentRequest('upgrade');showTentState(result);syncTents(result.tents);toast('⛺ 텐트 실내 확장 완료!');}catch(e){toast(e.message);void refreshTentStatus();}};}
+ const upgraded=data.tent.upgradeLevel===1;upgrade.textContent=upgraded?'✅ 1차 텐트 확장 완료 · 실내 16 × 14':'⬆️ 텐트 1차 확장 · 10,000P (실내 16 × 14)';upgrade.disabled=upgraded||Number(data.points)<10000;upgrade.style.opacity=upgrade.disabled?'.65':'1';
  $('tentNameInput').value=data.tent.name;
  tentPickedColor=data.tent.color;
  renderTentColors();
@@ -3270,6 +3272,9 @@ for(const x of [-5,-3,-1,1,3,5]){
  const seam=new THREE.Mesh(new THREE.BoxGeometry(.022,.01,9.6),new THREE.MeshStandardMaterial({color:'#b99066'}));
  seam.position.set(x,.015,0);tentRoomScene.add(seam);tentRoomFloorSeams.push(seam);
 }
+function tentRoomExtra(room=tentRoomActive){return room?.upgradeLevel===1?2:0;}
+function applyTentRoomSize(room){const extra=tentRoomExtra(room),sx=(12+extra*2)/12,sz=(10+extra*2)/10;roomFloor.scale.set(sx,1,sz);tentRoomWalls[0].scale.x=sx;tentRoomWalls[0].position.z=-5-extra;tentRoomWalls[1].scale.z=sz;tentRoomWalls[1].position.x=-6-extra;tentRoomWalls[2].scale.z=sz;tentRoomWalls[2].position.x=6+extra;for(const seam of tentRoomFloorSeams){seam.scale.z=sz;seam.position.x=seam.userData.baseX*sx;}}
+for(const seam of tentRoomFloorSeams)seam.userData.baseX=seam.position.x;
 // v267 Pepero Day: decorative boxes throughout the outdoor festival AND every tent interior.
 // The supplied Meshy GLB is loaded once. Instanced meshes reuse its geometry/material,
 // so hundreds of boxes require only one draw call per scene rather than hundreds.
@@ -3739,8 +3744,8 @@ function tentFurniturePolygonsOverlap(a,b){
 }
 function tentFurniturePlacementInfo(itemId,x,z,rotation,supportId=''){
  const item=tentFurnitureData?.catalog?.[itemId];if(!item||!Number.isFinite(x)||!Number.isFinite(z)||![0,45,90,135,180,225,270,315].includes(rotation))return null;
- const c=Math.cos(rotation*Math.PI/180),si=Math.sin(rotation*Math.PI/180),hw=item.width/2+.14,hd=item.depth/2+.14;
- if(![[-hw,-hd],[-hw,hd],[hw,-hd],[hw,hd]].every(([u,v])=>Math.abs(x+u*c+v*si)<=5.52&&Math.abs(z-u*si+v*c)<=4.52)||Math.hypot(x-TENT_FURNITURE_ENTRANCE_X,z-TENT_FURNITURE_ENTRANCE_Z)<=1.28)return null;
+ const c=Math.cos(rotation*Math.PI/180),si=Math.sin(rotation*Math.PI/180),hw=item.width/2+.14,hd=item.depth/2+.14,extra=tentRoomExtra();
+ if(![[-hw,-hd],[-hw,hd],[hw,-hd],[hw,hd]].every(([u,v])=>Math.abs(x+u*c+v*si)<=5.52+extra&&Math.abs(z-u*si+v*c)<=4.52+extra)||Math.hypot(x-TENT_FURNITURE_ENTRANCE_X,z-TENT_FURNITURE_ENTRANCE_Z)<=1.28)return null;
  const list=tentRoomActive?.furnishings||[],parent=supportId?list.find(f=>f.instanceId===supportId):null;if(supportId&&!parent)return null;let y=0;
  if(parent){const spec=tentFurnitureData.catalog[parent.itemId];if(!spec)return null;y=(Number(parent.y)||0)+spec.height;const a=(Number(parent.rotation)||0)*Math.PI/180,pc=Math.cos(a),ps=Math.sin(a);for(const [u,v] of [[-item.width/2,-item.depth/2],[item.width/2,-item.depth/2],[item.width/2,item.depth/2],[-item.width/2,item.depth/2]]){const dx=x+u*c+v*si-parent.x,dz=z-u*si+v*c-parent.z;if(Math.abs(dx*pc-dz*ps)>spec.width/2+.001||Math.abs(dx*ps+dz*pc)>spec.depth/2+.001)return null;}}
  if(y+item.height>8)return null;const footprint=tentFurnitureFootprint(item,x,z,rotation);
@@ -3812,8 +3817,8 @@ function moveTentFurnitureGhost(x,z,lock=false,supportId=''){
  // After that, the preview is anchored; only an intentional new floor click
  // may move it. Rotation uses the same fixed x/z coordinates.
  if(tentFurniturePlacement.locked&&!lock)return;
- tentFurniturePlacement.x=Math.round(THREE.MathUtils.clamp(x,-5.2,5.2)*10)/10;
- tentFurniturePlacement.z=Math.round(THREE.MathUtils.clamp(z,-4.2,4.2)*10)/10;
+ tentFurniturePlacement.x=Math.round(THREE.MathUtils.clamp(x,-5.2-tentRoomExtra(),5.2+tentRoomExtra())*10)/10;
+ tentFurniturePlacement.z=Math.round(THREE.MathUtils.clamp(z,-4.2-tentRoomExtra(),4.2+tentRoomExtra())*10)/10;
  tentFurniturePlacement.supportId=supportId;if(lock)tentFurniturePlacement.locked=true;
  repaintTentFurnitureGhost();
 }
@@ -4187,9 +4192,9 @@ async function enterTent(tentId){
   state.action='idle';state.pose='stand';state.actionUntil=0;if(state.me){state.me.action='idle';state.me.pose='stand'}
   tentRoomActive={...data.room,furnitureCatalog:data.furnitureCatalog||{}};tentCanDecorate=Boolean(data.canDecorate);tentPaintWall=data.room.wallColor||'default';tentPaintFloor=data.room.floorColor||'default';
   tentRoomWalkTarget=null;tentRoomLocal={x:0,z:2,facing:0};tentRoomLastSend=0;tentRoomWasMoving=false;tentRoomMoveQueued=null;
-  applyTentRoomColors(data.room);applyTentRoomLighting(tentRoomActive);closeTentDecorate();closeFurnitureShop();cancelTentFurniturePlacement();syncTents(data.tents);renderRoomChat(data.room.id,data.chat);selectBottomMenu('reaction');
+  applyTentRoomSize(tentRoomActive);applyTentRoomColors(data.room);applyTentRoomLighting(tentRoomActive);closeTentDecorate();closeFurnitureShop();cancelTentFurniturePlacement();syncTents(data.tents);renderRoomChat(data.room.id,data.chat);selectBottomMenu('reaction');
   tentRoomSavedCamera={position:camera.position.clone(),target:controls.target.clone(),minDistance:controls.minDistance,maxDistance:controls.maxDistance,enabled:controls.enabled};
-  camera.position.set(0,8.1,13.6);controls.target.set(0,1,0);controls.minDistance=5;controls.maxDistance=19;controls.enabled=true;
+  camera.position.set(0,8.1+tentRoomExtra(),13.6+tentRoomExtra()*1.6);controls.target.set(0,1,0);controls.minDistance=5;controls.maxDistance=19+tentRoomExtra()*2;controls.enabled=true;
   controls.update();cameraFollowInitialized=false;
   syncRoomCaption();
   $('tentRoomOverlay').classList.remove('hidden');document.body.classList.add('tent-interior-open');
@@ -4239,8 +4244,8 @@ function updateTentInterior(frameDelta,t){
  // Standing up is required before walking away from a mattress or the floor.
  if(moving&&state.pose!=='stand'){state.pose='stand';state.me.pose='stand';state.action='idle';state.me.action='idle';state.actionUntil=0;updateActionButtons();sendMove();}
  if(moving){
-  local.x=THREE.MathUtils.clamp(local.x+dx/distance*step,-4.6,4.6);
-  local.z=THREE.MathUtils.clamp(local.z+dz/distance*step,-3.6,3.6);
+  local.x=THREE.MathUtils.clamp(local.x+dx/distance*step,-4.6-tentRoomExtra(),4.6+tentRoomExtra());
+  local.z=THREE.MathUtils.clamp(local.z+dz/distance*step,-3.6-tentRoomExtra(),3.6+tentRoomExtra());
   local.facing=Math.atan2(dx,dz);
  }
  // A release/touch-arrival packet ensures other guests receive the final
@@ -4256,8 +4261,8 @@ function updateTentInterior(frameDelta,t){
   if(p.id!==state.id&&p.tentRoomId!==tentRoomActive.id)continue;
   activeIds.add(p.id);
   let a=tentRoomAvatars.get(p.id);
-  const rx=THREE.MathUtils.clamp(p.id===state.id?local.x:(Number(p.tentRoomX)||0),-4.6,4.6);
-  const rz=THREE.MathUtils.clamp(p.id===state.id?local.z:(Number(p.tentRoomZ)||0),-3.6,3.6);
+  const rx=THREE.MathUtils.clamp(p.id===state.id?local.x:(Number(p.tentRoomX)||0),-4.6-tentRoomExtra(),4.6+tentRoomExtra());
+  const rz=THREE.MathUtils.clamp(p.id===state.id?local.z:(Number(p.tentRoomZ)||0),-3.6-tentRoomExtra(),3.6+tentRoomExtra());
   if(!a){
    a=makeAvatar({...p,id:'room-'+p.id});
    scene.remove(a.root);
@@ -8738,7 +8743,7 @@ gameTouchSurface.addEventListener('pointerup',e=>{
   if(selectedBed&&lieOnTentBed(selectedBed))return;
   const target=groundRay.intersectObject(roomFloor,false)[0];
   if(target){if(tentFurniturePlacement)moveTentFurnitureGhost(target.point.x,target.point.z,true);
-    else tentRoomWalkTarget={x:THREE.MathUtils.clamp(target.point.x,-4.6,4.6),z:THREE.MathUtils.clamp(target.point.z,-3.6,3.6)};}
+    else tentRoomWalkTarget={x:THREE.MathUtils.clamp(target.point.x,-4.6-tentRoomExtra(),4.6+tentRoomExtra()),z:THREE.MathUtils.clamp(target.point.z,-3.6-tentRoomExtra(),3.6+tentRoomExtra())};}
   return;
  }
  // Tapping a coin is a WALK destination, not a second collect action.

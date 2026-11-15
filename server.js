@@ -663,14 +663,14 @@ async function serveFurnitureModel(req,res,id){
 const TENT_FURNITURE_MAX_PLACED=30;
 const furnitureStats=new Map();
 function furnitureRecord(identity){if(!furnitureStats.has(identity))furnitureStats.set(identity,{spent:0,owned:{}});return furnitureStats.get(identity);}
-function tentPointBalance(p){const earned=Math.floor(badgeTotal(p)/60)+tentTimeBonus(p)+(p.badgeIdentity?rhythmAccount(p.badgeIdentity).bonus+powerAccount(p.badgeIdentity).bonus+moleAccount(p.badgeIdentity).bonus+(fieldCoinBonuses.get(p.badgeIdentity)||0)+(adminPointCredits.get(p.badgeIdentity)||0)+(lotteryStats.get(p.badgeIdentity)?.bonus||0)+(fishingStats.get(p.badgeIdentity)?.bonus||0)+(miningStats.get(p.badgeIdentity)?.bonus||0):0);return Math.max(0,earned-(fishingStats.get(p.badgeIdentity)?.spent||0)-(lotteryStats.get(p.badgeIdentity)?.spent||0)-(tentOwnedBy(p.badgeIdentity)?TENT_COST:0)-(furnitureStats.get(p.badgeIdentity)?.spent||0)-(petStats.get(p.badgeIdentity)?.spent||0)-(decorationStats.get(p.badgeIdentity)?.spent||0)-(tentOwnedBy(p.badgeIdentity)?.outdoorDecorSpent||0));}
-function safeFurniturePose(item,x,z,angle){
+function tentPointBalance(p){const earned=Math.floor(badgeTotal(p)/60)+tentTimeBonus(p)+(p.badgeIdentity?rhythmAccount(p.badgeIdentity).bonus+powerAccount(p.badgeIdentity).bonus+moleAccount(p.badgeIdentity).bonus+(fieldCoinBonuses.get(p.badgeIdentity)||0)+(adminPointCredits.get(p.badgeIdentity)||0)+(lotteryStats.get(p.badgeIdentity)?.bonus||0)+(fishingStats.get(p.badgeIdentity)?.bonus||0)+(miningStats.get(p.badgeIdentity)?.bonus||0):0);return Math.max(0,earned-(fishingStats.get(p.badgeIdentity)?.spent||0)-(lotteryStats.get(p.badgeIdentity)?.spent||0)-(tentOwnedBy(p.badgeIdentity)?TENT_COST:0)-(tentOwnedBy(p.badgeIdentity)?.upgradeLevel===1?10000:0)-(furnitureStats.get(p.badgeIdentity)?.spent||0)-(petStats.get(p.badgeIdentity)?.spent||0)-(decorationStats.get(p.badgeIdentity)?.spent||0)-(tentOwnedBy(p.badgeIdentity)?.outdoorDecorSpent||0));}
+function safeFurniturePose(item,x,z,angle,record){
  if(!item||!Number.isFinite(x)||!Number.isFinite(z)||!Number.isFinite(angle))return false;
  if(angle<0||angle>=360||angle%45!==0)return false;
  const c=Math.cos(angle*Math.PI/180),sn=Math.sin(angle*Math.PI/180);
  const hw=item.width/2+.14,hd=item.depth/2+.14;
  const corners=[[-hw,-hd],[-hw,hd],[hw,-hd],[hw,hd]].map(([px,pz])=>[x+px*c+pz*sn,z-px*sn+pz*c]);
- return corners.every(([px,pz])=>Math.abs(px)<=5.52&&Math.abs(pz)<=4.52)&&Math.hypot(x,z-2.5)>1.28;
+ const extra=record?.upgradeLevel===1?2:0;return corners.every(([px,pz])=>Math.abs(px)<=5.52+extra&&Math.abs(pz)<=4.52+extra)&&Math.hypot(x,z-2.5)>1.28;
 }
 function furnitureCorners(item,placement){
  const a=placement.rotation*Math.PI/180,c=Math.cos(a),sn=Math.sin(a),hw=item.width/2+.20,hd=item.depth/2+.20;
@@ -685,7 +685,7 @@ function polygonsOverlap(a,b){
  return true;
 }
 function furniturePlacement(record,itemId,x,z,rotation,supportId=''){
- const item=TENT_FURNITURE_CATALOG[itemId];if(!safeFurniturePose(item,x,z,rotation))return null;
+ const item=TENT_FURNITURE_CATALOG[itemId];if(!safeFurniturePose(item,x,z,rotation,record))return null;
  const all=record.furnishings||[],support=supportId?all.find(f=>f.instanceId===supportId):null;if(supportId&&!support)return null;
  const parent=support&&TENT_FURNITURE_CATALOG[support.itemId];if(support&&!parent)return null;
  let y=0;
@@ -746,7 +746,7 @@ const TENT_ENTER_DISTANCE=5.0;
 function tentEntranceDistance(player,tent){return Math.hypot((player.x-600)*.058-tent.x,(player.y-500)*.058+8-tent.z);}
 const TENT_PAINTS={default:null,red:'#ef615a',orange:'#f59b42',yellow:'#f4dd63',green:'#78bd89',blue:'#709bda',black:'#292d38',white:'#f5f5f1'};
 function tentOccupancy(roomId){let count=0;for(const p of players.values())if(p.tentRoomId===roomId)count++;return count;}
-function publicTent(record){return {id:record.id,name:record.name,color:record.color,placed:!!record.placed,x:record.placed?record.x:null,z:record.placed?record.z:null,occupancy:tentOccupancy(record.id),capacity:TENT_MAX_OCCUPANCY,wallColor:record.wallColor||'default',floorColor:record.floorColor||'default',roomLightOn:record.roomLightOn!==false,exteriorType:record.exteriorType||'none',exteriorText:record.exteriorType==='text'?(record.exteriorText||''):'',exteriorImageId:record.exteriorType==='image'?tentExteriorImageId(record):'',outdoorDecor:outdoorDecorState(record),furnishings:(record.furnishings||[]).map(x=>({...x}))};}
+function publicTent(record){return {id:record.id,name:record.name,color:record.color,upgradeLevel:record.upgradeLevel===1?1:0,placed:!!record.placed,x:record.placed?record.x:null,z:record.placed?record.z:null,occupancy:tentOccupancy(record.id),capacity:TENT_MAX_OCCUPANCY,wallColor:record.wallColor||'default',floorColor:record.floorColor||'default',roomLightOn:record.roomLightOn!==false,exteriorType:record.exteriorType||'none',exteriorText:record.exteriorType==='text'?(record.exteriorText||''):'',exteriorImageId:record.exteriorType==='image'?tentExteriorImageId(record):'',outdoorDecor:outdoorDecorState(record),furnishings:(record.furnishings||[]).map(x=>({...x}))};}
 function allPlacedTents(){return [...tentStats.values()].filter(t=>t.placed).map(publicTent)}
 function tentOwnedBy(identity){return identity?tentStats.get(identity)||null:null}
 function tentTimeBonus(p,now=Date.now()){const t=tentOwnedBy(p?.badgeIdentity);if(!t||!Number.isSafeInteger(t.pointBonusStartMinute))return 0;return Math.max(0,Math.floor(badgeTotal(p,now)/60)-t.pointBonusStartMinute);}
@@ -977,7 +977,7 @@ function applySaved(d){
   const artImage=decodeTentExteriorImage(t.exteriorImage);
   const artType=['none','text','image'].includes(t.exteriorType)?t.exteriorType:'none';
   const artText=clean(t.exteriorText,TENT_EXTERIOR_MAX_TEXT);
-  const record={pointBonusStartMinute:Number.isSafeInteger(t.pointBonusStartMinute)&&t.pointBonusStartMinute>=0?t.pointBonusStartMinute:null,outdoorDecorOwned:Object.fromEntries(Object.keys(TENT_OUTDOOR_DECOR).map(k=>[k,t.outdoorDecor?.owned?.[k]===true])),outdoorDecorEnabled:Object.fromEntries(Object.keys(TENT_OUTDOOR_DECOR).map(k=>[k,t.outdoorDecor?.owned?.[k]===true&&t.outdoorDecor?.enabled?.[k]===true])),outdoorDecorSpent:Math.max(0,Math.min(1000,Math.floor(Number(t.outdoorDecorSpent)||0))),id:t.id,name:clean(t.name,22)||'나의 텐트',color:TENT_COLORS.includes(t.color)?t.color:TENT_COLORS[0],wallColor:Object.hasOwn(TENT_PAINTS,t.wallColor)?t.wallColor:'default',floorColor:Object.hasOwn(TENT_PAINTS,t.floorColor)?t.floorColor:'default',roomLightOn:t.roomLightOn!==false,exteriorType:artType==='image'&&!artImage?'none':artType==='text'&&!artText?'none':artType,exteriorText:artText,exteriorImage:artImage?.source||'',furnishings:[],placed:false,x:null,z:null};
+  const record={pointBonusStartMinute:Number.isSafeInteger(t.pointBonusStartMinute)&&t.pointBonusStartMinute>=0?t.pointBonusStartMinute:null,outdoorDecorOwned:Object.fromEntries(Object.keys(TENT_OUTDOOR_DECOR).map(k=>[k,t.outdoorDecor?.owned?.[k]===true])),outdoorDecorEnabled:Object.fromEntries(Object.keys(TENT_OUTDOOR_DECOR).map(k=>[k,t.outdoorDecor?.owned?.[k]===true&&t.outdoorDecor?.enabled?.[k]===true])),outdoorDecorSpent:Math.max(0,Math.min(1000,Math.floor(Number(t.outdoorDecorSpent)||0))),id:t.id,upgradeLevel:t.upgradeLevel===1?1:0,name:clean(t.name,22)||'나의 텐트',color:TENT_COLORS.includes(t.color)?t.color:TENT_COLORS[0],wallColor:Object.hasOwn(TENT_PAINTS,t.wallColor)?t.wallColor:'default',floorColor:Object.hasOwn(TENT_PAINTS,t.floorColor)?t.floorColor:'default',roomLightOn:t.roomLightOn!==false,exteriorType:artType==='image'&&!artImage?'none':artType==='text'&&!artText?'none':artType,exteriorText:artText,exteriorImage:artImage?.source||'',furnishings:[],placed:false,x:null,z:null};
   if(Array.isArray(t.furnishings))for(const f of t.furnishings.slice(0,TENT_FURNITURE_MAX_PLACED)){
    const x=Number(f.x),z=Number(f.z),rotation=Number(f.rotation);
    if(!TENT_FURNITURE_CATALOG[f.itemId]||!/^[-a-f0-9]{36}$/.test(f.instanceId||'')||record.furnishings.some(x=>x.instanceId===f.instanceId))continue;
@@ -1790,6 +1790,12 @@ const server=http.createServer(async(req,res)=>{
           await saveNow();
           return json(res,200,{ok:true,...tentView(p)});
         }
+        if(command==='upgrade'){
+          if(!record)return json(res,403,{error:'먼저 텐트를 구매해 주세요.'});
+          if(record.upgradeLevel===1)return json(res,409,{error:'이미 첫 번째 확장을 완료했어요.',...tentView(p)});
+          if(tentPointBalance(p)<10000)return json(res,400,{error:'포인트가 부족해요. 텐트 확장에는 10,000P가 필요해요.'});
+          record.upgradeLevel=1;await saveNow();sendTentUpdate();return json(res,200,{ok:true,...tentView(p)});
+        }
         if(command==='enter'){
           const selected=[...tentStats.values()].find(t=>t.id===String(d.tentId||'')&&t.placed);
           if(!selected)return json(res,404,{error:'설치된 텐트를 찾을 수 없어요.'});
@@ -1813,7 +1819,7 @@ const server=http.createServer(async(req,res)=>{
         }
         if(command==='room-move'){
           if(!p.tentRoomId)return json(res,400,{error:'먼저 텐트에 입장해 주세요.'});
-          p.tentRoomX=clamp(d.x,-4.6,4.6);p.tentRoomZ=clamp(d.z,-3.6,3.6);p.tentRoomFacing=clamp(d.facing,-Math.PI,Math.PI);
+          const room=[...tentStats.values()].find(t=>t.id===p.tentRoomId),extra=room?.upgradeLevel===1?2:0;p.tentRoomX=clamp(d.x,-4.6-extra,4.6+extra);p.tentRoomZ=clamp(d.z,-3.6-extra,3.6+extra);p.tentRoomFacing=clamp(d.facing,-Math.PI,Math.PI);
           broadcast({type:'tent-room',playerId:p.id,roomId:p.tentRoomId,x:p.tentRoomX,z:p.tentRoomZ,facing:p.tentRoomFacing});
           return json(res,200,{ok:true});
         }
