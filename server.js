@@ -447,7 +447,7 @@ function recordMiningPoints(p,points){rotateMineKingDay();if(!p.badgeIdentity||!
 function mineKingPublic(){rotateMineKingDay();return {day:mineKingDay,leaderboard:mineKingRows().slice(0,5).map((r,i)=>({rank:i+1,name:r.name,score:r.score})),reward:mineKingReward&&mineKingReward.date===kstDate()?{name:mineKingReward.name,score:mineKingReward.score}:null};}
 
 const MINING_CATALOG=JSON.parse(fs.readFileSync(path.join(PUBLIC,'assets/mining/catalog.json'),'utf8'));
-if(MINING_CATALOG.length!==40||MINING_CATALOG.reduce((n,x)=>n+x.weight,0)!==10000)throw Error('Invalid mining catalog');
+if(MINING_CATALOG.length!==60||MINING_CATALOG.reduce((n,x)=>n+x.weight,0)!==10000)throw Error('Invalid mining catalog');
 const MINING_BY_ID=new Map(MINING_CATALOG.map(x=>[x.id,x]));
 const MINING_ROCKS=[{id:'rock1',x:-28,z:48},{id:'rock2',x:-19,z:54},{id:'rock3',x:-9,z:48},{id:'rock4',x:2,z:54},{id:'rock5',x:13,z:48},{id:'rock6',x:24,z:54},{id:'rock7',x:35,z:48},{id:'rock8',x:42,z:54}];
 const MINING_HITS=20,MINING_HIT_MS=200;
