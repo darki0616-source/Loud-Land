@@ -3493,6 +3493,9 @@ const tentFurniturePlaced=new Map(),tentFurnitureModels=new Map(),tentFurnitureT
 let tentFurnitureData=null,tentFurnitureMode='shop',tentFurnitureSelected='jack',tentFurnitureBusy=false;
 let tentFurnitureGhost=null,tentFurnitureCurrentSignature='',tentFurniturePlacement=null;
 let tentFurniturePreviewRenderer=null,tentFurniturePreviewScene=null,tentFurniturePreviewCamera=null;
+const furnitureColorOptions={black:['블랙','#27282e'],white:['화이트','#f1eee9'],gray:['그레이','#80848a'],beige:['베이지','#cfbca0'],burgundy:['버건디','#702f43'],navy:['남색','#283a62'],wood:['우드','#a57043']};let tentFurnitureSelectedColor='black',furnitureWoodTexture=null;
+function getFurnitureWoodTexture(){if(furnitureWoodTexture)return furnitureWoodTexture;const canvas=document.createElement('canvas');canvas.width=256;canvas.height=256;const ctx=canvas.getContext('2d');ctx.fillStyle='#bb8859';ctx.fillRect(0,0,256,256);for(let i=0;i<110;i++){const x=(i*71)%256,alpha=.06+((i*31)%12)/100;ctx.strokeStyle=`rgba(76,40,16,${alpha})`;ctx.lineWidth=.4+(i%4)*.3;ctx.beginPath();ctx.moveTo(x,0);ctx.bezierCurveTo(x+Math.sin(i)*9,80,x-Math.cos(i)*8,180,x+Math.sin(i*4)*5,256);ctx.stroke();}furnitureWoodTexture=new THREE.CanvasTexture(canvas);furnitureWoodTexture.colorSpace=THREE.SRGBColorSpace;furnitureWoodTexture.wrapS=furnitureWoodTexture.wrapT=THREE.RepeatWrapping;return furnitureWoodTexture;}
+function colorFurnitureModel(original,kind){const choice=furnitureColorOptions[kind];if(!choice)return;original.traverse(obj=>{if(!obj.isMesh)return;const paint=()=>new THREE.MeshStandardMaterial({color:kind==='wood'&&obj.geometry?.attributes?.uv?'#ffffff':choice[1],map:kind==='wood'&&obj.geometry?.attributes?.uv?getFurnitureWoodTexture():null,roughness:.86,metalness:0,side:THREE.DoubleSide});obj.material=Array.isArray(obj.material)?obj.material.map(paint):paint();});}
 const furnitureAssetLoader=new GLTFLoader();
 const TENT_FURNITURE_ENTRANCE_X=0,TENT_FURNITURE_ENTRANCE_Z=2.5;
 // v252: Each placed luminous item has a soft lens halo, a warm floor pool,
@@ -3680,7 +3683,7 @@ async function getTentFurnitureModel(itemId){
     // v251: Width (X), height (Y) AND depth (Z) are real visible GLB
     // dimensions, not just a collision footprint. Preserve glTF's own
     // transform by scaling an outer group rather than replacing root.scale.
-    const original=gltf.scene;
+    const original=gltf.scene;if(item.variantColor)colorFurnitureModel(original,item.variantColor);
     // v287: Hearth stove GLB is already Y-up. Do NOT rotate it on X:
     // the previous -90-degree correction tipped the stove onto its side.
     // Keep its original glTF orientation before floor alignment and fitting.
@@ -3914,7 +3917,7 @@ function renderTentFurnitureShopList(){
  if(!tentFurnitureData)return;
  let entries=Object.entries(tentFurnitureData.catalog);
  if(tentFurnitureMode==='mine')entries=entries.filter(([key])=>(tentFurnitureData.owned[key]||0)>0);
- else entries=entries.filter(([,item])=>item.enabled!==false);
+ else entries=entries.filter(([,item])=>item.enabled!==false&&!item.baseId);
  if(!entries.length){host.textContent=tentFurnitureMode==='mine'?'구매한 아이템이 없거나 모두 배치했어요.':'판매 중인 아이템이 없어요.';return;}
  for(const [key,item] of entries){
   const button=document.createElement('button');button.type='button';button.classList.toggle('selected',key===tentFurnitureSelected);
@@ -3923,13 +3926,14 @@ function renderTentFurnitureShopList(){
   else{const ico=document.createElement('span');ico.className='tent-furniture-icon';ico.textContent='🪑';button.append(ico)}
   const name=document.createElement('strong');name.textContent=item.name;button.append(name);
   const cost=document.createElement('small');cost.textContent=tentFurnitureMode==='shop'?`${item.cost.toLocaleString()}P · 보유 ${tentFurnitureData.owned[key]||0}개`:`남은 ${tentFurnitureAvailable(key)}개`;button.append(cost);
-  button.onclick=()=>{tentFurnitureSelected=key;renderTentFurnitureShop();};
+  button.onclick=()=>{tentFurnitureSelected=key;tentFurnitureSelectedColor='black';renderTentFurnitureShop();};
   host.append(button);
  }
 }
 function renderTentFurnitureShop(){
  if(!tentFurnitureData)return;
  const isMine=tentFurnitureMode==='mine';
+ if(!isMine&&tentFurnitureData.catalog[tentFurnitureSelected]?.baseId)tentFurnitureSelected=tentFurnitureData.catalog[tentFurnitureSelected].baseId;
  if(!isMine&&tentFurnitureData.catalog[tentFurnitureSelected]?.enabled===false)tentFurnitureSelected=Object.keys(tentFurnitureData.catalog).find(id=>tentFurnitureData.catalog[id].enabled!==false)||'';
  $('tentFurniturePanelTitle').textContent=isMine?'📦 내 인테리어 아이템':'🛍 아이템 상점';
  $('tentFurnitureTabShop').classList.toggle('selected',!isMine);$('tentFurnitureTabMine').classList.toggle('selected',isMine);
@@ -3937,7 +3941,9 @@ function renderTentFurnitureShop(){
  if(isMine&&!(tentFurnitureData.owned[tentFurnitureSelected]>0))tentFurnitureSelected=Object.keys(tentFurnitureData.owned).find(k=>tentFurnitureData.owned[k]>0)||'';
  renderTentFurnitureShopList();
  const item=tentFurnitureData.catalog[tentFurnitureSelected];
- $('tentFurnitureSelection').textContent=item?.name||'아이템을 선택해 주세요.';
+ const colorId=!isMine&&item?.colorEnabled?tentFurnitureSelected+'~'+tentFurnitureSelectedColor:'';const shown=colorId?tentFurnitureData.catalog[colorId]:item;
+ $('tentFurnitureSelection').textContent=shown?.name||'아이템을 선택해 주세요.';
+ let palette=document.getElementById('tentFurnitureColors');if(!palette){palette=document.createElement('div');palette.id='tentFurnitureColors';palette.style.cssText='display:flex;gap:6px;flex-wrap:wrap;margin:9px 0';$('tentFurnitureDetails').insertAdjacentElement('afterend',palette);}palette.replaceChildren();palette.hidden=!(item?.colorEnabled&&!isMine);if(!palette.hidden){for(const [key,[label,color]] of Object.entries(furnitureColorOptions)){const button=document.createElement('button');button.type='button';button.textContent=label;button.style.cssText='padding:6px 9px;border-radius:8px;font-weight:700;border:2px solid '+(key===tentFurnitureSelectedColor?'#aaf6da':'#ffffff66')+';color:#fff;background:'+color+';text-shadow:0 1px 3px #000';button.setAttribute('aria-pressed',String(key===tentFurnitureSelectedColor));button.onclick=()=>{tentFurnitureSelectedColor=key;renderTentFurnitureShop()};palette.append(button);}}
  $('tentFurnitureDetails').textContent=item?(item.description+' · 크기 '+item.width+'×'+item.depth+'×'+item.height+' (가로×깊이×높이) · '+(isMine?'배치 가능 '+tentFurnitureAvailable(tentFurnitureSelected)+'개':item.cost.toLocaleString()+'P')):'';
  $('tentFurniturePrimary').textContent=isMine?'📍 배치하기':item?`🛍 ${item.cost.toLocaleString()}P 구매하기`:'아이템을 선택해 주세요';
  $('tentFurniturePrimary').disabled=!item||tentFurnitureBusy||(isMine?tentFurnitureAvailable(tentFurnitureSelected)<=0:(item.enabled===false||Number(tentFurnitureData.points)<item.cost));
@@ -3955,7 +3961,7 @@ function renderTentFurnitureShop(){
    };row.append(button);placed.append(row);
   });
  }
- showTentFurniturePreview(tentFurnitureSelected);
+ showTentFurniturePreview(colorId||tentFurnitureSelected);
 }
 $('tentFurnitureShopButton').onclick=()=>openTentFurnitureShop('shop');
 $('tentFurnitureOwnedButton').onclick=()=>openTentFurnitureShop('mine');
@@ -3964,8 +3970,9 @@ $('tentFurnitureTabMine').onclick=()=>{tentFurnitureMode='mine';renderTentFurnit
 $('tentFurnitureClose').onclick=closeFurnitureShop;
 $('tentFurniturePrimary').onclick=async()=>{
  if(tentFurnitureBusy||!tentFurnitureSelected||!tentFurnitureData)return;
- const itemId=tentFurnitureSelected,item=tentFurnitureData.catalog[itemId];if(!item)return;
+ let itemId=tentFurnitureSelected,item=tentFurnitureData.catalog[itemId];if(!item)return;
  if(tentFurnitureMode==='mine'){startTentFurniturePlacement(itemId);return;}
+ if(item.colorEnabled){itemId+='~'+tentFurnitureSelectedColor;item=tentFurnitureData.catalog[itemId];if(!item)return toast('색상을 선택해 주세요.');}
  if(!confirm(`${item.name}을(를) ${item.cost.toLocaleString()}P에 구매할까요? 구매 후 포인트는 반환되지 않습니다.`))return;
  tentFurnitureBusy=true;$('tentFurniturePrimary').disabled=true;
  try{tentFurnitureData=await tentRequest('furniture-buy',{itemId});renderTentFurnitureShop();toast(item.name+' 구매 완료! 내 아이템에서 배치할 수 있어요.');}

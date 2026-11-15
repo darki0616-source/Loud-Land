@@ -594,9 +594,10 @@ function cleanFurnitureSpec(id,raw,revision){
  if(surfaceProvided&&(!Number.isFinite(bedSurfaceHeight)||bedSurfaceHeight<.05||bedSurfaceHeight>height))return null;
  const seatProvided=raw.chairSeatHeight!==null&&raw.chairSeatHeight!==undefined&&raw.chairSeatHeight!=='';const seatHeight=seatProvided?Number(raw.chairSeatHeight):null;
  if(seatProvided&&(!Number.isFinite(seatHeight)||seatHeight<.05||seatHeight>height))return null;
- return {name,cost,width,depth,height,description:String(raw.description||'').trim().slice(0,150),enabled:raw.enabled!==false,bedEnabled:typeof raw.bedEnabled==='boolean'?raw.bedEnabled:/(침대|매트리스|mattress|(^|[-_ ])bed($|[-_ ])|^bed|(^|[-_ ])cot($|[-_ ]))/i.test(id+' '+name),bedSurfaceHeight,chairEnabled:raw.chairEnabled===true,chairSeatHeight:seatHeight,lightEnabled:typeof raw.lightEnabled==='boolean'?raw.lightEnabled:/(lantern|랜턴|등불|호롱|lamp|램프)/i.test(id+' '+name),
+ return {name,cost,width,depth,height,description:String(raw.description||'').trim().slice(0,150),enabled:raw.enabled!==false,bedEnabled:typeof raw.bedEnabled==='boolean'?raw.bedEnabled:/(침대|매트리스|mattress|(^|[-_ ])bed($|[-_ ])|^bed|(^|[-_ ])cot($|[-_ ]))/i.test(id+' '+name),bedSurfaceHeight,colorEnabled:raw.colorEnabled===true,chairEnabled:raw.chairEnabled===true,chairSeatHeight:seatHeight,lightEnabled:typeof raw.lightEnabled==='boolean'?raw.lightEnabled:/(lantern|랜턴|등불|호롱|lamp|램프)/i.test(id+' '+name),
     ...(modelRevision?{modelRevision}:{})};
 }
+const FURNITURE_COLORS={black:'블랙',white:'화이트',gray:'그레이',beige:'베이지',burgundy:'버건디',navy:'남색',wood:'우드'};
 function refreshFurnitureCatalog(){
  for(const key of Object.keys(TENT_FURNITURE_CATALOG))delete TENT_FURNITURE_CATALOG[key];
  Object.assign(TENT_FURNITURE_CATALOG,BUNDLED_TENT_FURNITURE);
@@ -605,8 +606,13 @@ function refreshFurnitureCatalog(){
   TENT_FURNITURE_CATALOG[id]={...base,...spec,asset:spec.modelRevision
    ?'/api/tent-item-model/'+id+'?v='+spec.modelRevision:(base?.asset||'')};
  }
+ // Variants remain addressable if an admin later disables color choices.
+ for(const [id,item] of Object.entries({...TENT_FURNITURE_CATALOG}))for(const [color,label] of Object.entries(FURNITURE_COLORS)){
+  TENT_FURNITURE_CATALOG[id+'~'+color]={...item,name:item.name+' ('+label+')',baseId:id,variantColor:color,enabled:item.enabled!==false&&item.colorEnabled===true};
+ }
 }
-function furnitureAdminCatalog(){return Object.fromEntries(Object.entries(TENT_FURNITURE_CATALOG).map(([id,item])=>[id,{...item,bundled:!!BUNDLED_TENT_FURNITURE[id],custom:!BUNDLED_TENT_FURNITURE[id]}]));}
+refreshFurnitureCatalog();
+function furnitureAdminCatalog(){return Object.fromEntries(Object.entries(TENT_FURNITURE_CATALOG).filter(([,item])=>!item.baseId).map(([id,item])=>[id,{...item,bundled:!!BUNDLED_TENT_FURNITURE[id],custom:!BUNDLED_TENT_FURNITURE[id]}]));}
 function furnitureCatalogChanged(){broadcast({type:'tent-furniture-catalog',catalog:TENT_FURNITURE_CATALOG});}
 async function rawBody(req,maxBytes){
  const chunks=[];let count=0;
@@ -1404,9 +1410,9 @@ const server=http.createServer(async(req,res)=>{
         const spec=cleanFurnitureSpec(id,d,revision);
         if(!spec)return json(res,400,{error:'상품명·가격(0~50,000P)·가로/깊이/높이(0.1~8)를 확인해 주세요.'});
         if(!revision&&!BUNDLED_TENT_FURNITURE[id])return json(res,400,{error:'새 상품은 GLB 파일을 먼저 업로드해야 해요.'});
-        if(!previous&&Object.keys(TENT_FURNITURE_CATALOG).length>=60)return json(res,409,{error:'등록 한도는 60개예요.'});
+        if(!previous&&Object.values(TENT_FURNITURE_CATALOG).filter(item=>!item.baseId).length>=60)return json(res,409,{error:'등록 한도는 60개예요.'});
         if(revision&&revision!==previous?.modelRevision&&!await storageExists(id,revision))return json(res,400,{error:'업로드한 GLB 파일을 찾지 못했어요. 다시 업로드해 주세요.'});
-        const placed=[...tentStats.values()].some(t=>(t.furnishings||[]).some(f=>f.itemId===id));
+        const placed=[...tentStats.values()].some(t=>(t.furnishings||[]).some(f=>f.itemId===id||f.itemId.startsWith(id+'~')));
         if(placed&&previous&&(spec.width!==previous.width||spec.depth!==previous.depth||spec.height!==previous.height))return json(res,409,{error:'배치 중인 아이템의 가로·깊이·높이는 변경할 수 없어요. 먼저 회수한 뒤 수정해 주세요.'});
         furnitureCatalogEdits.set(id,spec);refreshFurnitureCatalog();await strictSaveAdmin();furnitureCatalogChanged();sendTentUpdate();
         return json(res,200,{ok:true,items:furnitureAdminCatalog()});
@@ -1414,7 +1420,7 @@ const server=http.createServer(async(req,res)=>{
        if(command==='delete'){
         const id=String(d.id||'');if(!TENT_ITEM_ID.test(id)||!TENT_FURNITURE_CATALOG[id])return json(res,404,{error:'상품이 없어요.'});
         if(BUNDLED_TENT_FURNITURE[id])return json(res,409,{error:'기본 제공 상품은 삭제할 수 없어요. 판매 중지로 설정해 주세요.'});
-        if([...furnitureStats.values()].some(v=>Number(v.owned?.[id])>0)||[...tentStats.values()].some(v=>(v.furnishings||[]).some(f=>f.itemId===id)))return json(res,409,{error:'구매하거나 배치한 사람이 있어 삭제할 수 없어요. 판매 중지로 바꿔 주세요.'});
+        if([...furnitureStats.values()].some(v=>Object.entries(v.owned||{}).some(([key,count])=>(key===id||key.startsWith(id+'~'))&&Number(count)>0))||[...tentStats.values()].some(v=>(v.furnishings||[]).some(f=>f.itemId===id||f.itemId.startsWith(id+'~'))))return json(res,409,{error:'구매하거나 배치한 사람이 있어 삭제할 수 없어요. 판매 중지로 바꿔 주세요.'});
         furnitureCatalogEdits.delete(id);refreshFurnitureCatalog();await strictSaveAdmin();furnitureCatalogChanged();sendTentUpdate();
         return json(res,200,{ok:true,items:furnitureAdminCatalog()});
        }
@@ -1844,7 +1850,7 @@ const server=http.createServer(async(req,res)=>{
         if(command==='furniture-buy'){
           if(!record||p.tentRoomId!==record.id)return json(res,403,{error:'자신의 텐트 안에서만 아이템을 구매할 수 있어요.'});
           const itemId=String(d.itemId||''),item=TENT_FURNITURE_CATALOG[itemId];
-          if(!item||item.enabled===false)return json(res,400,{error:'현재 판매하지 않는 인테리어 아이템이에요.'});
+          if(!item||item.enabled===false||(item.colorEnabled===true&&!item.variantColor))return json(res,400,{error:'판매 중인 색상을 선택해 주세요.'});
           if(tentPointBalance(p)<item.cost)return json(res,409,{error:'구매할 포인트가 부족해요.'});
           const inv=furnitureRecord(p.badgeIdentity);
           if((inv.owned[itemId]||0)>=100)return json(res,409,{error:'같은 아이템은 최대 100개까지 구매할 수 있어요.'});
@@ -2329,7 +2335,7 @@ const server=http.createServer(async(req,res)=>{
   if(req.method!=='GET')return json(res,405,{error:'Method not allowed'});
   let pathname;try{pathname=decodeURIComponent(url.pathname)}catch{return json(res,400,{error:'Invalid path'})}
   const f=path.resolve(PUBLIC,'.'+(pathname==='/'?'/index.html':pathname));if(!f.startsWith(PUBLIC+path.sep))return json(res,403,{error:'Forbidden'});
-  if(pathname==='/md-admin.html'){try{const html=fs.readFileSync(f,'utf8').replace('</head>','<script src="/chair-admin.js?v=369"></script></head>');res.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-cache'});return res.end(html);}catch{}}
+  if(pathname==='/md-admin.html'){try{const html=fs.readFileSync(f,'utf8').replace('</head>','<script src="/chair-admin.js?v=371"></script></head>');res.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-cache'});return res.end(html);}catch{}}
   fs.stat(f,(err,stat)=>{if(err||!stat.isFile()){res.writeHead(404);res.end('Not found');return}res.writeHead(200,{'content-type':types[path.extname(f)]||'application/octet-stream','cache-control':'no-cache'});fs.createReadStream(f).pipe(res)})
 });
 restorePlaylist().then(()=>server.listen(PORT,'0.0.0.0',()=>console.log(`ONEseason running at http://localhost:${PORT} | storage: ${useSupabase?'Supabase':'local only'}`))).catch(err=>{console.error('Startup stopped to prevent playlist data loss:',err.message);process.exitCode=1});
