@@ -3011,12 +3011,16 @@ function drawDecorationBubblePreview(){
  const canvas=decorationBox.querySelector('[data-kind="bubble"] canvas'),ctx=canvas.getContext('2d');ctx.clearRect(0,0,canvas.width,canvas.height);
  const texture=bubbleTexture('안녕하세요! 오늘도 즐거운 하루 ✨',decorationPreview.bubble||decorationData?.equipped?.bubble);ctx.drawImage(texture.image,18,3,564,253);texture.dispose();
 }
-const trailIcons={rainbow:'✦',star:'★',snow:'❄',petal:'❀',flame:'🔥',dark:'●',heart:'♥'};
 function drawDecorationTrailPreview(t){
  decorationPreviewFrame=0;if(decorationBox.hidden||$('joinModal').classList.contains('hidden'))return;
  const section=decorationBox.querySelector('[data-kind="trail"]'),canvas=section.querySelector('canvas');
  if(section.open){const ctx=canvas.getContext('2d'),kind=decorationPreview.trail||decorationData?.equipped?.trail;ctx.clearRect(0,0,600,260);
-  if(kind){for(let i=0;i<15;i++){const phase=((t*.00042+i/15)%1),x=415-phase*350,y=132+Math.sin(i*2.4+t*.003)*35;ctx.globalAlpha=(1-phase)*.85;const size=kind==='rainbow'?60:40+(i%4)*7;ctx.drawImage(characterTrailTexture(kind).image,x-size/2,y-size/2,size,size);}}
+  if(kind==='rainbow'){
+   const colors=['#ff5c9f','#ff984e','#ffe86b','#80f8a3','#64dbff','#858cff','#e086ff'];
+   for(let i=0;i<colors.length;i++){const g=ctx.createLinearGradient(30,0,425,0);g.addColorStop(0,'transparent');g.addColorStop(.55,colors[i]+'aa');g.addColorStop(1,colors[i]);ctx.strokeStyle=g;ctx.lineWidth=8;ctx.shadowColor=colors[i];ctx.shadowBlur=12;ctx.beginPath();ctx.moveTo(30,83+i*12+Math.sin(t*.003)*5);ctx.bezierCurveTo(170,63+i*12,300,94+i*12,425,83+i*12);ctx.stroke();}ctx.shadowBlur=0;
+  }else if(kind==='flame'){
+   for(let i=0;i<22;i++){const phase=(t*.00085+i/22)%1,x=425-phase*290,y=155-phase*65+Math.sin(i*4+t*.007)*16;ctx.globalAlpha=(1-phase)*.75;const size=55+(i%5)*8;ctx.drawImage(characterTrailTexture('flame').image,x-size/2,y-size/2,size,size*1.3);}
+  }else if(kind){for(let i=0;i<15;i++){const phase=((t*.00042+i/15)%1),x=415-phase*350,y=132+Math.sin(i*2.4+t*.003)*35;ctx.globalAlpha=(1-phase)*.85;const size=40+(i%4)*7;ctx.drawImage(characterTrailTexture(kind).image,x-size/2,y-size/2,size,size);}}
   ctx.globalAlpha=1;ctx.shadowBlur=0;ctx.fillStyle='#d7dff6';ctx.beginPath();ctx.arc(455,76,32,0,Math.PI*2);ctx.fill();ctx.fillStyle='#7d6cca';ctx.beginPath();ctx.roundRect(429,112,53,75,18);ctx.fill();ctx.strokeStyle='#d7dff6';ctx.lineWidth=13;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(440,180);ctx.lineTo(425,216);ctx.moveTo(470,180);ctx.lineTo(490,212);ctx.stroke();ctx.fillStyle='#d9e8fc';ctx.font='16px system-ui';ctx.fillText(kind?'이동 중 미리보기':'이펙트를 선택해 주세요',20,236);
  }
  decorationPreviewFrame=requestAnimationFrame(drawDecorationTrailPreview);
@@ -7248,34 +7252,44 @@ function characterTrailTexture(kind){
  const canvas=document.createElement('canvas');canvas.width=128;canvas.height=128;const c=canvas.getContext('2d');
  c.textAlign='center';c.textBaseline='middle';c.shadowBlur=18;
  if(kind==='rainbow'){
-  const grad=c.createLinearGradient(0,8,110,118);for(const [n,col] of [[0,'#ff6db4'],[.23,'#ffcf67'],[.48,'#85ffb2'],[.7,'#75d5ff'],[1,'#c18cff']])grad.addColorStop(n,col);
-  c.fillStyle=grad;c.shadowColor='#a3f5ff';c.beginPath();c.arc(64,30,19,0,Math.PI*2);c.fill();c.beginPath();c.roundRect(42,50,44,49,14);c.fill();c.lineCap='round';c.lineWidth=12;c.strokeStyle=grad;c.beginPath();c.moveTo(49,92);c.lineTo(35,117);c.moveTo(79,92);c.lineTo(94,117);c.stroke();
+  // Horizontal translucent ribbon, made from seven luminous bands.
+  const colors=['#ff5c9f','#ff984e','#ffe86b','#80f8a3','#64dbff','#858cff','#e086ff'];
+  for(let i=0;i<colors.length;i++){const y=12+i*15,g=c.createLinearGradient(0,0,128,0);g.addColorStop(0,'rgba(0,0,0,0)');g.addColorStop(.2,colors[i]);g.addColorStop(.8,colors[i]);g.addColorStop(1,'rgba(0,0,0,0)');c.globalAlpha=.60;c.fillStyle=g;c.shadowColor=colors[i];c.shadowBlur=8;c.fillRect(0,y,128,13);}c.globalAlpha=1;
  }else if(kind==='flame'){
-  const g=c.createLinearGradient(0,12,0,120);g.addColorStop(0,'#fff7a1');g.addColorStop(.35,'#ffd234');g.addColorStop(.75,'#ff7117');g.addColorStop(1,'#e52619');c.shadowColor='#ff7d19';c.shadowBlur=22;c.fillStyle=g;c.beginPath();c.moveTo(64,9);c.bezierCurveTo(55,36,24,46,28,83);c.bezierCurveTo(31,111,47,121,64,121);c.bezierCurveTo(91,121,108,100,99,75);c.bezierCurveTo(94,59,81,50,81,33);c.bezierCurveTo(70,45,70,59,64,66);c.bezierCurveTo(55,53,63,32,64,9);c.fill();
+  // Soft irregular plasma glow: particles overlap to form actual flowing fire.
+  const g=c.createRadialGradient(64,85,1,64,70,55);g.addColorStop(0,'rgba(255,255,191,.95)');g.addColorStop(.16,'rgba(255,210,75,.9)');g.addColorStop(.4,'rgba(255,105,19,.7)');g.addColorStop(.7,'rgba(224,35,6,.35)');g.addColorStop(1,'rgba(100,0,0,0)');c.fillStyle=g;c.fillRect(0,0,128,128);
  }else if(kind==='dark'){
   const g=c.createRadialGradient(64,64,4,64,64,60);g.addColorStop(0,'rgba(72,65,92,.8)');g.addColorStop(.45,'rgba(42,37,55,.65)');g.addColorStop(1,'rgba(20,17,29,0)');c.fillStyle=g;c.fillRect(0,0,128,128);
  }else{
-  const glyph={star:'★',snow:'❄',petal:'✿',flame:'🔥',heart:'♥'}[kind]||'✦';
+  const glyph={star:'★',snow:'❄',petal:'✿',heart:'♥'}[kind]||'✦';
   const color={star:'#ffe782',snow:'#c9f8ff',petal:'#ff9fcf',flame:'#ffb54d',heart:'#ff72b6'}[kind]||'#fff';
   c.fillStyle=color;c.shadowColor=color;c.font='bold 96px system-ui, sans-serif';c.fillText(glyph,64,66);
  }
  const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;characterTrailTextures.set(kind,texture);return texture;
 }
+const rainbowTrailGeometry=new THREE.PlaneGeometry(1,1);
 function updateCharacterTrail(avatar,player,t,parent){
  const kind=player.cosmetics?.trail,pos=avatar.root.position,previous=avatar.trailLastPos;
  if(!previous){avatar.trailLastPos={x:pos.x,z:pos.z,time:t,spawn:0};return;}
  const dx=pos.x-previous.x,dz=pos.z-previous.z,dt=Math.max(1,t-previous.time),speed=Math.hypot(dx,dz)/dt;
  previous.x=pos.x;previous.z=pos.z;previous.time=t;
- if(!kind||!['rainbow','star','snow','petal','flame','dark','heart'].includes(kind)||speed<.00035||t-previous.spawn<100||characterTrailParticles.length>=160)return;
- previous.spawn=t;const behind=Math.hypot(dx,dz)||1;
- for(let i=0;i<(perfWeakDevice?1:2);i++){
+ if(!kind||!['rainbow','star','snow','petal','flame','dark','heart'].includes(kind)||speed<.00035||t-previous.spawn<75||characterTrailParticles.length>=160)return;
+ previous.spawn=t;const distance=Math.hypot(dx,dz)||1,nx=dx/distance,nz=dz/distance;
+ if(kind==='rainbow'){
+  const material=new THREE.MeshBasicMaterial({map:characterTrailTexture(kind),transparent:true,opacity:.78,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending});
+  const ribbon=new THREE.Mesh(rainbowTrailGeometry,material);ribbon.position.set(pos.x-nx*.58,pos.y+1.05,pos.z-nz*.58);ribbon.rotation.y=-Math.atan2(nz,nx);ribbon.scale.set(1.45,1.05,1);ribbon.renderOrder=30;parent.add(ribbon);if(parent===scene&&stageForeground)ribbon.layers.set(1);
+  characterTrailParticles.push({sprite:ribbon,parent,start:t,life:900,size:1,kind});return;
+ }
+ const count=kind==='flame'?(perfWeakDevice?2:3):(perfWeakDevice?1:2);
+ for(let i=0;i<count;i++){
   const mat=new THREE.SpriteMaterial({map:characterTrailTexture(kind),transparent:true,opacity:.86,depthWrite:false,blending:kind==='dark'?THREE.NormalBlending:THREE.AdditiveBlending});
-  const sprite=new THREE.Sprite(mat),side=(i-.5)*.45;sprite.position.set(pos.x-dx/behind*(.5+i*.14)+dz/behind*side,pos.y+.45+i*.64,pos.z-dz/behind*(.5+i*.14)-dx/behind*side);
-  const size=kind==='rainbow'?1.7:kind==='dark'?1.3:.8;sprite.scale.set(size,size,1);sprite.renderOrder=30;parent.add(sprite);if(parent===scene&&stageForeground)sprite.layers.set(1);
-  characterTrailParticles.push({sprite,parent,start:t,life:kind==='dark'?1100:900,size,kind});
+  const sprite=new THREE.Sprite(mat),side=(i-(count-1)/2)*.25;
+  sprite.position.set(pos.x-nx*(.50+i*.16)+nz*side,pos.y+(kind==='flame'?.65+i*.22:.45+i*.64),pos.z-nz*(.50+i*.16)-nx*side);
+  const size=kind==='dark'?1.3:kind==='flame'?1.35:.8;sprite.scale.set(size,kind==='flame'?size*1.45:size,1);sprite.renderOrder=30;parent.add(sprite);if(parent===scene&&stageForeground)sprite.layers.set(1);
+  characterTrailParticles.push({sprite,parent,start:t,life:kind==='dark'?1100:kind==='flame'?680:900,size,kind,driftX:-nx*.25,driftZ:-nz*.25});
  }
 }
-function animateCharacterTrails(t){for(let i=characterTrailParticles.length-1;i>=0;i--){const p=characterTrailParticles[i],v=(t-p.start)/p.life;if(v>=1){p.parent.remove(p.sprite);p.sprite.material.dispose();characterTrailParticles.splice(i,1);continue}p.sprite.material.opacity=.85*(1-v);p.sprite.position.y+=p.kind==='dark'?.012:.004;const size=p.size*(1+v*(p.kind==='dark'?.8:.15));p.sprite.scale.set(size,size,1);p.sprite.material.rotation+=p.kind==='petal'?.025:p.kind==='snow'?.012:0;}}
+function animateCharacterTrails(t){for(let i=characterTrailParticles.length-1;i>=0;i--){const p=characterTrailParticles[i],v=(t-p.start)/p.life;if(v>=1){p.parent.remove(p.sprite);p.sprite.material.dispose();characterTrailParticles.splice(i,1);continue}p.sprite.material.opacity=(p.kind==='rainbow'?.78:.85)*(1-v);if(p.kind==='rainbow')continue;p.sprite.position.y+=p.kind==='dark'?.012:p.kind==='flame'?.018:.004;if(p.kind==='flame'){p.sprite.position.x+=p.driftX*.012;p.sprite.position.z+=p.driftZ*.012;}const size=p.size*(p.kind==='flame'?(1-.55*v):1+v*(p.kind==='dark'?.8:.15));p.sprite.scale.set(size,p.kind==='flame'?size*1.45:size,1);p.sprite.material.rotation+=p.kind==='petal'?.025:p.kind==='snow'?.012:0;}}
 
 // Chat bubbles are true 3D sprites anchored in world coordinates, independent of avatar pose.
 function bubbleTexture(message,style=null){
