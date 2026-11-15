@@ -6308,7 +6308,7 @@ function getFishKingWhale(){
 function makeFishKingVisual(root,parts){
  const group=new THREE.Group();root.add(group);group.visible=false;parts.fishKingVisual=group;
  // Mount the rod at the animated wrist so it follows the arm rather than floating.
- const rodGrip=new THREE.Group();rodGrip.position.set(0,-.38,.04);rodGrip.rotation.set(-.55,0,-.18);parts.rightElbow.add(rodGrip);rodGrip.visible=false;parts.fishKingRod=rodGrip;
+ const rodGrip=new THREE.Group();rodGrip.position.set(0,-.38,.04);rodGrip.rotation.set(-.55,0,-.18);rodGrip.rotateX(Math.PI);parts.rightElbow.add(rodGrip);rodGrip.visible=false;parts.fishKingRod=rodGrip;
  const rod=new THREE.Mesh(new THREE.CylinderGeometry(.022,.07,2.7,8),new THREE.MeshStandardMaterial({color:'#c79856',metalness:.2,roughness:.55}));rod.position.y=1.27;rodGrip.add(rod);
  const tip=new THREE.Object3D();tip.position.y=2.62;rodGrip.add(tip);parts.fishKingTip=tip;
  const lineGeometry=new THREE.BufferGeometry();lineGeometry.setAttribute('position',new THREE.BufferAttribute(new Float32Array(6),3));
