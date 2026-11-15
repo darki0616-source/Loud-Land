@@ -2614,6 +2614,7 @@ const petUIStyle=document.createElement('style');petUIStyle.textContent=`
 #petOverlay{position:fixed;inset:0;z-index:6000;background:rgba(0,0,0,.63);display:none;align-items:center;justify-content:center;padding:14px}
 #petOverlay.show{display:flex}#petPanel{width:min(420px,100%);max-height:85dvh;overflow-y:auto;background:linear-gradient(155deg,#24223c,#131828);color:#fff;border:1px solid #55536e;border-radius:22px;padding:20px;box-shadow:0 16px 60px #0009}
 #petPanel h2{margin:0 0 10px;font-size:23px}#petPreviewWrap{display:none;position:relative;margin:8px 0 14px;border:1px solid #77738b66;border-radius:16px;background:radial-gradient(ellipse at 50% 65%,#4b456c 0%,#282942 58%,#1a1d32 100%);overflow:hidden;height:208px}#petPreviewWrap.show{display:block}#petPreviewCanvas{display:block;width:100%;height:100%}#petPreviewLabel{position:absolute;left:12px;top:10px;font-size:12px;font-weight:800;color:#eee9ff;pointer-events:none}#petPreviewLoading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#ccc8dc;font-size:12px;pointer-events:none}#petPreviewLoading[hidden]{display:none}#petPanel p{margin:8px 0;color:#d9d9e7;line-height:1.6}#petPanel button{border:1px solid #6b6880;border-radius:12px;padding:11px 13px;background:#353650;color:#fff;font-weight:800;cursor:pointer}#petPanel button:disabled{opacity:.45;cursor:not-allowed}#petPanel button.pet-primary{background:#b267ff;border-color:#b267ff;color:#14101c}#petPanel .pet-actions{display:flex;flex-wrap:wrap;gap:7px;margin:12px 0}#petPanel .pet-progress{height:10px;background:#48465b;border-radius:99px;overflow:hidden}#petPanel .pet-progress>span{display:block;height:100%;background:#b79cff}#petPanel .pet-muted{font-size:12px;color:#c0baca}#petPanel .pet-close{float:right;background:none;border:0;font-size:24px;padding:0 4px}
+ #petPreviewWrap.effect-preview{height:260px}.pet-effect-controls{display:flex;align-items:center;justify-content:flex-end;gap:5px;flex-wrap:wrap}.pet-effect-controls button{padding:9px 8px!important;font-size:11px!important}
  .pet-color-swatch{display:inline-block;width:20px;height:20px;border-radius:50%;vertical-align:middle;border:1px solid #ffffff99}.pet-effect-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 4px;border-bottom:1px solid #ffffff22}.pet-effect-row>div{min-width:0}.pet-effect-row small{display:block;color:#bdbbd0;font-size:11px}.pet-effect-row button{white-space:nowrap;font-size:12px} .pet-tabs{margin-bottom:4px}
 `;document.head.append(petUIStyle);
 const petMenuButton=document.createElement('button');petMenuButton.id='petMenuButton';petMenuButton.type='button';petMenuButton.textContent='🐾 펫';
@@ -2621,7 +2622,7 @@ const petMenuButton=document.createElement('button');petMenuButton.id='petMenuBu
 const petOverlay=document.createElement('div');petOverlay.id='petOverlay';petOverlay.innerHTML=`<section id="petPanel" role="dialog" aria-modal="true" aria-label="펫 관리"><button class="pet-close" type="button" aria-label="닫기">×</button><h2>🐾 ONEseason 펫</h2><div id="petPreviewWrap"><canvas id="petPreviewCanvas" aria-label="내 펫 3D 미리보기"></canvas><span id="petPreviewLabel">내 펫</span><span id="petPreviewLoading">3D 모델 불러오는 중...</span></div><div class="pet-actions pet-tabs"><button type="button" data-pet-tab="pet" class="pet-primary">🐾 내 펫</button><button type="button" data-pet-tab="effects">✨ 이펙트</button><button type="button" data-pet-tab="colors">🎨 색상 변경</button></div><div id="petPanelBody">불러오는 중...</div></section>`;
 document.body.append(petOverlay);
 const petPanelBody=petOverlay.querySelector('#petPanelBody');
-let petViewState=null,petPending=false,petCurrentTab="pet",petPreviewColor=null;
+let petViewState=null,petPending=false,petCurrentTab="pet",petPreviewColor=null,petPreviewEffect=null;
 function petHtmlSafe(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 const petSpeciesLabels={fox:'일렉 여우',turtle:'드럼 거북이',cat:'피아노 고양이',rabbit:'바이올린 토끼',elephant:'트럼펫 코끼리',wolf:'늑대'};
 const petSpeciesIcons={fox:'🦊',turtle:'🐢',cat:'🐱',rabbit:'🐰',elephant:'🐘',wolf:'🐺'};
@@ -2643,8 +2644,8 @@ function renderPetPanel(){
  }
  if(petCurrentTab==='effects'){
   const icons={sparkle:'✨',notes:'🎵',heart:'💖',rainbow:'🌈',light:'💡',petals:'🌸',snow:'❄️',electric:'⚡',moonstars:'🌙',disco:'🪩'},catalog=d.effectCatalog||{};
-  const rows=Object.entries(catalog).map(([id,item])=>{const owned=!!d.effects?.owned?.[id],on=!!d.effects?.enabled?.[id];return `<div class="pet-effect-row"><div><b>${icons[id]||'✨'} ${petHtmlSafe(item.name)}</b><small>${(id==='notes'||id==='disco')?'춤출 때만 나타나요':id==='light'?'가만히 있어도 펫 주변이 빛나요':id==='rainbow'?'펫 주변 무지개빛 오라':''}</small></div><button type="button" data-pet-action="${owned?'effect-toggle':'effect-buy'}" data-effect="${id}" data-enabled="${on?'false':'true'}" ${petPending||(!owned&&points<item.cost)?'disabled':''}>${owned?(on?'사용 중 · 끄기':'켜기'):item.cost.toLocaleString()+'P 구매'}</button></div>`}).join('');
-  petPanelBody.innerHTML=`<p>보유 포인트 <b>${points.toLocaleString()}P</b></p><p class="pet-muted">구매한 이펙트는 여러 개를 동시에 사용할 수 있어요. 펫을 바꿔도 보유합니다.</p>${rows}`;return;
+  const rows=Object.entries(catalog).map(([id,item])=>{const owned=!!d.effects?.owned?.[id],on=!!d.effects?.enabled?.[id],preview=petPreviewEffect===id;return `<div class="pet-effect-row"><div><b>${icons[id]||'✨'} ${petHtmlSafe(item.name)}</b><small>${(id==='notes'||id==='disco')?'춤출 때만 나타나요':id==='light'?'가만히 있어도 펫 주변이 빛나요':id==='rainbow'?'펫 주변 무지개빛 오라':''}</small></div><div class="pet-effect-controls"><button type="button" data-pet-action="preview-effect" data-effect="${petHtmlSafe(id)}" aria-pressed="${preview}" class="${preview?'pet-primary':''}">${preview?'미리보기 중':'미리보기'}</button><button type="button" data-pet-action="${owned?'effect-toggle':'effect-buy'}" data-effect="${petHtmlSafe(id)}" data-enabled="${on?'false':'true'}" ${petPending||(!owned&&points<item.cost)?'disabled':''}>${owned?(on?'사용 중 · 끄기':'켜기'):item.cost.toLocaleString()+'P 구매'}</button></div></div>`}).join('');
+  petPanelBody.innerHTML=`<p>보유 포인트 <b>${points.toLocaleString()}P</b></p><p class="pet-muted">미리보기로 구매 전 효과를 볼 수 있어요. 음표와 디스코볼은 춤출 때 나타나요.<br>구매한 이펙트는 여러 개를 동시에 사용할 수 있어요.</p><div class="pet-actions"><button type="button" data-pet-action="preview-effect-reset">현재 사용 중인 효과 보기</button></div>${rows}`;return;
  }
  if(!pet){petPanelBody.innerHTML=`<p>🥚 알에서 시작하는 펫! 여우·거북이·고양이·토끼·코끼리·늑대 중 한 종류가 각각 약 16.7% 확률로 나와요. 색상도 무작위로 결정돼요.</p><p>입양비 <b>${d.cost.toLocaleString()}P</b> · 부화까지 4시간 · 알부터 소환 가능 · 현재 <b>${points.toLocaleString()}P</b></p><p class="pet-muted">현재 일렉 여우·드럼 거북이·피아노 고양이·바이올린 토끼·트럼펫 코끼리·늑대 6종을 입양할 수 있어요. 기존 펫은 유지되며 새 펫을 입양하려면 먼저 삭제해야 해요.</p><div class="pet-actions"><button class="pet-primary" data-pet-action="adopt" ${petPending||points<d.cost?'disabled':''}>🥚 랜덤 알 입양</button></div>`;return;}
  const remain=pet.hatchAt-Date.now();
@@ -2659,13 +2660,15 @@ async function petRequest(command,extra={}){
  catch(e){toast(e.message);}finally{petPending=false;renderPetPanel();}
 }
 function refreshPetStatus(){if(state.id)void petRequest('status');}
-petMenuButton.onclick=()=>{if(!state.id)return toast('페스티벌에 입장한 뒤 이용해 주세요.');petPreviewColor=null;petOverlay.classList.add('show');renderPetPanel();refreshPetStatus();petPreviewStart();};
+petMenuButton.onclick=()=>{if(!state.id)return toast('페스티벌에 입장한 뒤 이용해 주세요.');petPreviewColor=null;petPreviewEffect=null;petOverlay.classList.add('show');renderPetPanel();refreshPetStatus();petPreviewStart();};
 petOverlay.querySelector('.pet-close').onclick=()=>{petPreviewColor=null;petOverlay.classList.remove('show')};
 petOverlay.onclick=e=>{if(e.target===petOverlay){petPreviewColor=null;petOverlay.classList.remove('show')}};
-petOverlay.querySelectorAll('[data-pet-tab]').forEach(b=>b.addEventListener('click',()=>{petPreviewColor=null;petCurrentTab=b.dataset.petTab;renderPetPanel()}));
+petOverlay.querySelectorAll('[data-pet-tab]').forEach(b=>b.addEventListener('click',()=>{petPreviewColor=null;petPreviewEffect=null;petCurrentTab=b.dataset.petTab;renderPetPanel()}));
 petPanelBody.onclick=e=>{
  const b=e.target.closest('button[data-pet-action]');if(!b||petPending)return;
  const command=b.dataset.petAction;
+ if(command==='preview-effect'){const id=b.dataset.effect;if(!Object.prototype.hasOwnProperty.call(petViewState?.effectCatalog||{},id))return;petPreviewEffect=id;renderPetPanel();petPreviewWrap.scrollIntoView({behavior:'smooth',block:'nearest'});return;}
+ if(command==='preview-effect-reset'){petPreviewEffect=null;renderPetPanel();petPreviewWrap.scrollIntoView({behavior:'smooth',block:'nearest'});return;}
  if(command==='preview-color'){petPreviewColor=b.dataset.petColor;renderPetPanel();petPreviewWrap.scrollIntoView({behavior:'smooth',block:'nearest'});return;}
  if(command==='release'&&!confirm('펫을 영구 삭제할까요? 레벨과 사용한 포인트는 복구되지 않습니다.'))return;
  if(command==='recolor'&&!confirm('1,000P를 사용해 펫 색상을 변경할까요?'))return;
@@ -9108,13 +9111,15 @@ function petPreviewInit(){
  petPreviewCamera=new THREE.PerspectiveCamera(37,1,.1,50);
  petPreviewCamera.position.set(0,1.15,4.1);petPreviewCamera.lookAt(0,.84,0);
 }
+function petPreviewSource(){return petViewState?.pet||(petCurrentTab==='effects'?{species:'fox',stage:1,level:1,hatched:true,color:'#f16b69'}:null);}
 function petPreviewSync(){
- const pet=petViewState?.pet;
+ const pet=petPreviewSource();
  if(!pet){petPreviewWrap.classList.remove('show');if(petPreviewEntry){foxPetDispose(petPreviewEntry);petPreviewEntry=null;}return;}
  const selected=petCurrentTab==='colors'&&pet.hatched&&petPreviewColor?petPreviewColor:pet.color;
  const isPreview=selected!==pet.color;
- petPreviewWrap.classList.add('show');
- petPreviewWrap.querySelector('#petPreviewLabel').textContent=pet.hatched?`${petSpeciesLabels[pet.species]||'내 펫'} · Lv.${pet.level}${isPreview?' · 색상 미리보기':''}`:'미확인 알 · 부화 대기';
+ petPreviewWrap.classList.add('show');petPreviewWrap.classList.toggle('effect-preview',petCurrentTab==='effects');
+ const previewName=petPreviewEffect?petViewState?.effectCatalog?.[petPreviewEffect]?.name:null;
+ petPreviewWrap.querySelector('#petPreviewLabel').textContent=petCurrentTab==='effects'?`${petViewState?.pet?'내 펫':'예시 펫'} · ${previewName?previewName+' 미리보기':'사용 중인 이펙트'}`:pet.hatched?`${petSpeciesLabels[pet.species]||'내 펫'} · Lv.${pet.level}${isPreview?' · 색상 미리보기':''}`:'미확인 알 · 부화 대기';
  const signature=(pet.species||'fox')+'|'+(pet.hatched?pet.stage:0)+'|'+selected;
  const apply=petPanelBody.querySelector('[data-pet-action="recolor"]'),status=petPanelBody.querySelector('#petColorPreviewStatus');
  const setStatus=(ready,text)=>{if(apply){const option=(petViewState?.colorOptions||[]).find(x=>x.color===selected);apply.disabled=!ready||!isPreview||!option?.available||petPending||(Number(petViewState?.points)||0)<Number(petViewState?.colorChangeCost||1000);}if(status)status.textContent=text||'';};
@@ -9138,13 +9143,21 @@ function petPreviewStart(){
   if(!petOverlay.classList.contains('show')){petPreviewLoopActive=false;return;}
   petPreviewSync();
   if(petPreviewRenderer&&petPreviewEntry){
-   const width=Math.max(100,petPreviewWrap.clientWidth),height=208;
-   if(petPreviewRenderer.domElement.width!==Math.round(width*petPreviewRenderer.getPixelRatio())){
-    petPreviewRenderer.setSize(width,height,false);
-    petPreviewCamera.aspect=width/height;petPreviewCamera.updateProjectionMatrix();
+   const width=Math.max(100,petPreviewWrap.clientWidth),height=petCurrentTab==='effects'?260:208,dpr=petPreviewRenderer.getPixelRatio();
+   if(petPreviewRenderer.domElement.width!==Math.round(width*dpr)||petPreviewRenderer.domElement.height!==Math.round(height*dpr)){
+    petPreviewRenderer.setSize(width,height,false);petPreviewCamera.aspect=width/height;petPreviewCamera.updateProjectionMatrix();
+   }
+   if(petCurrentTab==='effects'){
+    const effects=petPreviewEffect?{[petPreviewEffect]:true}:(petViewState?.effects?.enabled||{}),previewPet=petPreviewSource();
+    if(effects.electric||effects.disco){petPreviewCamera.position.set(0,2.6,10.2);petPreviewCamera.lookAt(0,2.05,0);}
+    else{petPreviewCamera.position.set(0,1.9,6.5);petPreviewCamera.lookAt(0,1.3,0);}
+    updatePetEffects(petPreviewEntry,{...previewPet,effects},true,t,true);
+    petPreviewEntry.root.position.y=Math.abs(Math.sin(t*.005))*.10;
+   }else{
+    petPreviewCamera.position.set(0,1.15,4.1);petPreviewCamera.lookAt(0,.84,0);petEffectsDispose(petPreviewEntry);
+    petPreviewEntry.root.position.y=Math.sin(t*.0018)*.045;
    }
    petPreviewEntry.root.rotation.y=Math.sin(t*.00045)*.35-.12;
-   petPreviewEntry.root.position.y=Math.sin(t*.0018)*.045;
    petPreviewRenderer.render(petPreviewScene,petPreviewCamera);
   }
   requestAnimationFrame(frame);
