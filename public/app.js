@@ -10180,7 +10180,8 @@ async function fishingRequest(command){
 }
 function fishingPrimaryAction(){const d=fishingData;if(!d||fishingBusy)return;if(!d.level)return fishingRequest('buy');if(d.session){if(fishingTime()<d.session.biteAt||d.session.startAt)return;return fishingRequest('get');}if(fishingTime()<d.cooldownUntil)return;return fishingRequest('cast');}
 function fishingUpgrade(){if(!fishingData?.level)return fishingPrimaryAction();return fishingRequest('upgrade');}
-function fishArt(f){const id=String(f.id||'');if(!/^(common|uncommon|rare|epic|legendary)\d{2}$/.test(id))return '';return `<img class="fish-art" src="/assets/fishing/species/${id}.webp" alt="" loading="lazy" decoding="async">`;}
+const transparentFishIds=new Set(['common19','common20','common21','uncommon13','uncommon14','uncommon15','uncommon16','rare10','rare11','rare12','epic07','legendary04']);
+function fishArt(f){const id=String(f.id||'');if(!/^(common|uncommon|rare|epic|legendary)\d{2}$/.test(id))return '';const ext=transparentFishIds.has(id)?'png':'webp';return `<img class="fish-art" src="/assets/fishing/species/${id}.${ext}?v=347" alt="" loading="lazy" decoding="async">`;}
 
 function fishSetHolding(held){if(!fishingData?.session?.startAt)return;fishHolding=held;void fishSync();}
 async function fishSync(){
