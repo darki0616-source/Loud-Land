@@ -415,7 +415,7 @@ let fishKingDay=kstDate(),fishKingReward=null;
 const fishKingScores=new Map();
 function fishKingRows(){return [...fishKingScores.entries()].map(([identity,v])=>({identity,...v})).sort((a,b)=>b.score-a.score||a.at-b.at||a.identity.localeCompare(b.identity));}
 function playerIsFishKing(p){return !!(p?.badgeIdentity&&fishKingReward?.date===kstDate()&&fishKingReward.identity===p.badgeIdentity);}
-function syncPlayerFishKing(p){const yes=playerIsFishKing(p);if(Boolean(p.fishKing)===yes)return false;p.fishKing=yes;return true;}
+function syncPlayerFishKing(p){const yes=playerIsFishKing(p),revoke=!yes&&p.action==='fishking';if(Boolean(p.fishKing)===yes&&!revoke)return false;p.fishKing=yes;if(revoke)p.action='idle';return true;}
 function rotateFishKingDay(){const today=kstDate();if(today===fishKingDay)return;const winner=fishKingDay===previousKstDate(today)?fishKingRows()[0]:null;fishKingReward=winner?{date:today,sourceDate:fishKingDay,identity:winner.identity,name:winner.name,score:winner.score}:null;fishKingDay=today;fishKingScores.clear();for(const p of players.values())if(syncPlayerFishKing(p))broadcast({type:'profile',player:p});scheduleSave();}
 function recordFishingPoints(p,points){rotateFishKingDay();if(!p.badgeIdentity||!Number.isSafeInteger(points)||points<=0)return;const old=fishKingScores.get(p.badgeIdentity);fishKingScores.set(p.badgeIdentity,{name:clean(p.name,18)||'ROCKER',score:(old?.score||0)+points,at:Date.now()});}
 function fishKingPublic(){rotateFishKingDay();return {day:fishKingDay,leaderboard:fishKingRows().slice(0,5).map((r,i)=>({rank:i+1,name:r.name,score:r.score})),reward:fishKingReward&&fishKingReward.date===kstDate()?{name:fishKingReward.name,score:fishKingReward.score}:null};}
@@ -1677,7 +1677,7 @@ const server=http.createServer(async(req,res)=>{
           if(!p.tentRoomId)return json(res,400,{error:'먼저 텐트에 입장해 주세요.'});
           const allowed=['idle','peace','jump','run','wave','clap','sit','lie','drink','snack','headbang','buriburi','groove','dougie','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','powerking','moleking','fishking','putyourhandsup','birthday','heartbow','drum','electricguitar','bassguitar','vocal'];
           const action=String(d.action||'idle');
-          p.action=allowed.includes(action)&&!(action==='birthday'&&!birthdayActive())&&!(action==='beatking'&&!playerIsRhythmKing(p))&&!(action==='powerking'&&!playerIsPowerKing(p))&&!(action==='moleking'&&!playerIsMoleKing(p))?action:'idle';
+          p.action=allowed.includes(action)&&!(action==='birthday'&&!birthdayActive())&&!(action==='beatking'&&!playerIsRhythmKing(p))&&!(action==='powerking'&&!playerIsPowerKing(p))&&!(action==='moleking'&&!playerIsMoleKing(p))&&!(action==='fishking'&&!playerIsFishKing(p))?action:'idle';
           p.pose=['stand','sit','lie'].includes(d.pose)?d.pose:'stand';
           p.headbangBpm=clamp(d.headbangBpm||120,40,240);
           const beatAt=Number(d.headbangBeatAt);p.headbangBeatAt=Number.isFinite(beatAt)&&Math.abs(beatAt-Date.now())<86400000?beatAt:Date.now();
@@ -1880,7 +1880,7 @@ const server=http.createServer(async(req,res)=>{
         const beatAt=Number(d.headbangBeatAt);
         p.headbangBeatAt=Number.isFinite(beatAt)&&Math.abs(beatAt-Date.now())<86400000?beatAt:Date.now();
         if(d.action==='beatking'&&!playerIsRhythmKing(p))d.action='idle';
-        if(d.action==='powerking'&&!playerIsPowerKing(p))d.action='idle';if(d.action==='moleking'&&!playerIsMoleKing(p))d.action='idle';
+        if(d.action==='powerking'&&!playerIsPowerKing(p))d.action='idle';if(d.action==='moleking'&&!playerIsMoleKing(p))d.action='idle';if(d.action==='fishking'&&!playerIsFishKing(p))d.action='idle';
         // Validate campfire-only reaction server-side so remote spectators cannot see it outside the zone.
         if(d.action==='marshmallow'){
           const kstHour=Number(new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Seoul',hour:'2-digit',hourCycle:'h23'}).format(new Date()));
