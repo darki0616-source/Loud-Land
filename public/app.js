@@ -608,13 +608,13 @@ function resizeRhythmCanvas(){
  }
 }
 function refreshRhythmReactionButton(){
- for(const [id,granted] of [['beatkingAction',Boolean(state.me?.rhythmKing)],['powerkingAction',Boolean(state.me?.powerKing)],['molekingAction',Boolean(state.me?.moleKing)],['fishkingAction',Boolean(state.me?.fishKing)]]){
+ for(const [id,granted] of [['beatkingAction',Boolean(state.me?.rhythmKing)],['powerkingAction',Boolean(state.me?.powerKing)],['molekingAction',Boolean(state.me?.moleKing)],['fishkingAction',Boolean(state.me?.fishKing)],['minekingAction',Boolean(state.me?.mineKing)]]){
   const btn=$(id);if(!btn)continue;
   btn.hidden=!granted;btn.style.display=granted?'':'none';
-  if(granted)btn.title=id==='beatkingAction'?'전날 박자왕 1등 전용':id==='powerkingAction'?'전날 파워왕 1등 전용':id==='fishkingAction'?'전날 낚시왕 1등 전용':'전날 두더지왕 1등 전용';
+  if(granted)btn.title=id==='beatkingAction'?'전날 박자왕 1등 전용':id==='powerkingAction'?'전날 파워왕 1등 전용':id==='minekingAction'?'전날 광물왕 1등 전용':id==='fishkingAction'?'전날 낚시왕 1등 전용':'전날 두더지왕 1등 전용';
  }
  // Revoke any already-running reaction immediately on a profile update.
- if(state.me&&((state.action==='beatking'&&!state.me.rhythmKing)||(state.action==='powerking'&&!state.me.powerKing)||(state.action==='moleking'&&!state.me.moleKing)||(state.action==='fishking'&&!state.me.fishKing))){state.action='idle';state.me.action='idle';state.actionUntil=0;updateActionButtons();sendMove();}
+ if(state.me&&((state.action==='beatking'&&!state.me.rhythmKing)||(state.action==='powerking'&&!state.me.powerKing)||(state.action==='moleking'&&!state.me.moleKing)||(state.action==='fishking'&&!state.me.fishKing)||(state.action==='mineking'&&!state.me.mineKing))){state.action='idle';state.me.action='idle';state.actionUntil=0;updateActionButtons();sendMove();}
 }
 function updateRhythmLeaderboard(){
  ensureRhythmUI();
@@ -1483,7 +1483,7 @@ function activeBirthdayEvent(){
  const now=Date.now()+(Number.isFinite(state.serverDelta)?state.serverDelta:0);
  return birthdayCalendar.events.find(e=>Number.isFinite(Date.parse(e.start))&&now>=Date.parse(e.start)&&now<Date.parse(e.end))||null;
 }
-const sustainedReactions=new Set(['peace','jump','run','headbang','buriburi','groove','dougie','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','powerking','moleking','fishking','marshmallow','putyourhandsup','nightfirework','heartbow','drum','electricguitar','bassguitar','vocal']);
+const sustainedReactions=new Set(['peace','jump','run','headbang','buriburi','groove','dougie','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','powerking','moleking','fishking','mineking','marshmallow','putyourhandsup','nightfirework','heartbow','drum','electricguitar','bassguitar','vocal']);
 // One shared bottom tab group: reactions / dances / chat.
 // Chat stays inside the dock instead of floating over the 3D world.
 function selectBottomMenu(menu){
@@ -1522,6 +1522,7 @@ function react(a,glowColor=null){
  if(a==='powerking'&&!state.me.powerKing)return toast('전날 파워왕 1등만 사용할 수 있습니다.');
  if(a==='moleking'&&!state.me.moleKing)return toast('전날 두더지왕 1등만 사용할 수 있습니다.');
  if(a==='fishking'&&!state.me.fishKing)return toast('전날 낚시왕 1등만 사용할 수 있습니다.');
+ if(a==='mineking'&&!state.me.mineKing)return toast('전날 광물왕 1등만 사용할 수 있습니다.');
  if(a==='birthday'&&!activeBirthdayEvent())return toast('생일축하 리액션은 이벤트 당일에만 사용할 수 있어요.');
  if(a==='nightfirework'&&!nightFireworkAvailable())return toast('폭죽놀이는 새벽 1시부터 4시까지만 사용할 수 있어요.');
  if(a==='marshmallow'&&!campfireReactionAvailable())return toast('모닥불이 켜진 시간(20:00~03:00)에 화덕 가까이에서 사용할 수 있어요.');
@@ -1543,7 +1544,7 @@ function react(a,glowColor=null){
  if(state.action===a&&sustainedReactions.has(a)){
   state.action='idle';state.actionUntil=0;state.me.action='idle';
  }else{
-  if((a==='jump'||a==='run'||a==='buriburi'||a==='groove'||a==='windmill'||a==='skanking'||a==='airguitar'||a==='headspin'||a==='cheer'||a==='smoke'||a==='bubblegun'||a==='freestyle'||a==='beatking'||a==='powerking'||a==='moleking'||a==='fishking'||a==='marshmallow'||a==='putyourhandsup'||a==='nightfirework'||a==='birthday'||a==='heartbow'||a==='drum'||a==='electricguitar'||a==='bassguitar'||a==='vocal')&&state.pose!=='stand'){
+  if((a==='jump'||a==='run'||a==='buriburi'||a==='groove'||a==='windmill'||a==='skanking'||a==='airguitar'||a==='headspin'||a==='cheer'||a==='smoke'||a==='bubblegun'||a==='freestyle'||a==='beatking'||a==='powerking'||a==='moleking'||a==='fishking'||a==='mineking'||a==='marshmallow'||a==='putyourhandsup'||a==='nightfirework'||a==='birthday'||a==='heartbow'||a==='drum'||a==='electricguitar'||a==='bassguitar'||a==='vocal')&&state.pose!=='stand'){
    state.pose='stand';state.me.pose='stand';
   }
   state.action=a;state.me.action=a;if(petBpmDanceActions.has(a))applyHeadbangToSelf();if(a==='cheer')playCheer();
@@ -1624,6 +1625,7 @@ glowstickStyle.textContent=`
 `;
 document.head.append(glowstickStyle);
 const beatKingButton=document.createElement('button');beatKingButton.id='beatkingAction';beatKingButton.dataset.action='beatking';beatKingButton.hidden=true;beatKingButton.style.display='none';beatKingButton.innerHTML='👑 <span>박자왕</span><em>Y</em>';beatKingButton.onclick=()=>react('beatking');$('reactionActions').append(beatKingButton);
+const mineKingButton=document.createElement('button');mineKingButton.id='minekingAction';mineKingButton.dataset.action='mineking';mineKingButton.hidden=true;mineKingButton.style.display='none';mineKingButton.innerHTML='💎 <span>광물왕</span>';mineKingButton.onclick=()=>react('mineking');$('reactionActions').append(mineKingButton);
 const fishKingButton=document.createElement('button');fishKingButton.id='fishkingAction';fishKingButton.dataset.action='fishking';fishKingButton.hidden=true;fishKingButton.style.display='none';fishKingButton.innerHTML='🐋 <span>낚시왕</span>';fishKingButton.onclick=()=>react('fishking');$('reactionActions').append(fishKingButton);
 const powerKingButton=document.createElement('button');powerKingButton.id='powerkingAction';powerKingButton.dataset.action='powerking';powerKingButton.hidden=true;powerKingButton.style.display='none';powerKingButton.innerHTML='💪 <span>파워왕</span>';powerKingButton.onclick=()=>react('powerking');$('reactionActions').append(powerKingButton);const moleKingButton=document.createElement('button');moleKingButton.id='molekingAction';moleKingButton.dataset.action='moleking';moleKingButton.hidden=true;moleKingButton.style.display='none';moleKingButton.innerHTML='🔨 <span>두더지왕</span>';moleKingButton.onclick=()=>react('moleking');$('reactionActions').append(moleKingButton);refreshRhythmReactionButton();
 // The marshmallow action is local to the lit campfire, and is hidden elsewhere.
@@ -1683,12 +1685,12 @@ syncNightFirework();
 const reactionMenuOrder=[
  'peace','wave','clap','putyourhandsup','cheer','jump','run','sit','lie',
  'drink','smoke','snack','toastStart','bubblegun','heartbow','glowstick',
- 'flagAction','beatking','powerking','moleking','fishking','nightfirework','birthday','marshmallow'
+ 'flagAction','beatking','powerking','moleking','fishking','mineking','nightfirework','birthday','marshmallow'
 ];
 const reactionMenu=$('reactionActions');
 for(const key of reactionMenuOrder){
- const button=key==='toastStart'||key==='flagAction'||key==='beatking'||key==='powerking'||key==='moleking'||key==='fishking'
-  ?(key==='beatking'?beatKingButton:key==='powerking'?powerKingButton:key==='moleking'?moleKingButton:key==='fishking'?fishKingButton:$(key))
+ const button=key==='toastStart'||key==='flagAction'||key==='beatking'||key==='powerking'||key==='moleking'||key==='fishking'||key==='mineking'
+  ?(key==='beatking'?beatKingButton:key==='powerking'?powerKingButton:key==='moleking'?moleKingButton:key==='fishking'?fishKingButton:key==='mineking'?mineKingButton:$(key))
   :reactionMenu.querySelector(`[data-action="${key}"]`);
  if(button)reactionMenu.append(button);
 }
@@ -6405,6 +6407,24 @@ function getGamePresenceTexture(){
  x.fillStyle='#285316';x.font='900 72px system-ui, sans-serif';x.textAlign='center';x.textBaseline='middle';x.fillText('게임중',256,73);
  gamePresenceTexture=new THREE.CanvasTexture(c);gamePresenceTexture.colorSpace=THREE.SRGBColorSpace;sharedWingResources.add(gamePresenceTexture);return gamePresenceTexture;
 }
+// Winner-only crystal reaction: shared original GLB, per-avatar glow and particles.
+let mineKingCrystalPromise=null;
+function getMineKingCrystal(){
+ if(!mineKingCrystalPromise)mineKingCrystalPromise=new Promise((resolve,reject)=>new GLTFLoader().load('/assets/world/mining_king_crystal.glb?v=358',g=>{
+  g.scene.traverse(o=>{if(!o.isMesh)return;o.castShadow=false;o.receiveShadow=false;if(o.geometry)sharedWingResources.add(o.geometry);for(const m of (Array.isArray(o.material)?o.material:[o.material])){if(!m)continue;sharedWingResources.add(m);for(const value of Object.values(m))if(value?.isTexture)sharedWingResources.add(value);}});resolve(g.scene);
+ },undefined,reject)).catch(e=>{mineKingCrystalPromise=null;throw e});return mineKingCrystalPromise;
+}
+function makeMineKingVisual(root,parts){
+ const g=new THREE.Group();root.add(g);g.visible=false;parts.mineKingVisual=g;
+ const gem=new THREE.Group();gem.position.set(0,0,2.8);g.add(gem);parts.mineKingGem=gem;
+ const fallback=new THREE.Mesh(new THREE.OctahedronGeometry(1.2,0),new THREE.MeshStandardMaterial({color:'#b867ff',emissive:'#68309a',emissiveIntensity:.5,metalness:.3,roughness:.25}));fallback.position.y=1.3;gem.add(fallback);
+ getMineKingCrystal().then(template=>{if(!root.parent||!gem.parent)return;const model=template.clone(true),box=new THREE.Box3().setFromObject(model),size=box.getSize(new THREE.Vector3()),center=box.getCenter(new THREE.Vector3());if(!Number.isFinite(size.y)||size.y<=0)return;const scale=2.8/size.y;model.scale.setScalar(scale);model.position.set(-center.x*scale,-box.min.y*scale,-center.z*scale);model.traverse(o=>{if(o.isMesh){o.material=Array.isArray(o.material)?o.material.map(m=>m.clone()):o.material.clone();}});gem.remove(fallback);fallback.geometry.dispose();fallback.material.dispose();gem.add(model);if(stageForeground)addForegroundLayer(model);}).catch(e=>console.warn('광물왕 보석 로딩 실패:',e));
+ const aura=new THREE.Sprite(new THREE.SpriteMaterial({map:petEffectTexture('rainbow'),transparent:true,opacity:.8,depthWrite:false,blending:THREE.AdditiveBlending}));aura.position.set(0,1.45,2.8);aura.scale.set(4.6,4.6,1);g.add(aura);parts.mineKingAura=aura;
+ const stars=[],colors=['#ff72b5','#ffe66c','#8affad','#82e6ff','#bca0ff','#ffffff'];for(let i=0;i<24;i++){const m=new THREE.SpriteMaterial({map:petEffectTexture('sparkle'),color:colors[i%colors.length],transparent:true,depthWrite:false,blending:THREE.AdditiveBlending}),o=new THREE.Sprite(m);o.visible=false;g.add(o);stars.push(o);}parts.mineKingStars=stars;
+ const rings=[];for(let i=0;i<5;i++){const ring=new THREE.Mesh(new THREE.TorusGeometry(1,.05,7,48),new THREE.MeshBasicMaterial({color:colors[i],transparent:true,opacity:.8,depthWrite:false,blending:THREE.AdditiveBlending}));ring.rotation.x=Math.PI/2;ring.visible=false;g.add(ring);rings.push(ring);}parts.mineKingRings=rings;
+ if(stageForeground)addForegroundLayer(g);
+}
+
 function makeAvatar(p){
  const root=new THREE.Group();scene.add(root);
  const parts={}, female=p.gender==='female';
@@ -7240,6 +7260,7 @@ function makeAvatar(p){
  if(p.fishKing){
   const fc=document.createElement('canvas');fc.width=960;fc.height=160;const fx=fc.getContext('2d');fx.font='900 86px Arial, sans-serif';fx.textAlign='center';fx.textBaseline='middle';fx.strokeStyle='#064766';fx.lineWidth=18;fx.strokeText('내가 낚시왕',480,82);fx.fillStyle='#8be8ff';fx.fillText('내가 낚시왕',480,82);const ft=new THREE.CanvasTexture(fc);ft.colorSpace=THREE.SRGBColorSpace;const title=new THREE.Sprite(new THREE.SpriteMaterial({map:ft,transparent:true,depthTest:false}));title.scale.set(7.4,1.24,1);title.position.y=4.96;root.add(title);parts.fishKingTitle=title;
  }
+ if(p.mineKing){const cv=document.createElement('canvas');cv.width=960;cv.height=160;const x=cv.getContext('2d');x.font='900 86px Arial, sans-serif';x.textAlign='center';x.textBaseline='middle';x.lineWidth=18;x.strokeStyle='#68134e';x.strokeText('내가 광물왕',480,82);x.fillStyle='#ff86c9';x.fillText('내가 광물왕',480,82);const tx=new THREE.CanvasTexture(cv);tx.colorSpace=THREE.SRGBColorSpace;const title=new THREE.Sprite(new THREE.SpriteMaterial({map:tx,transparent:true,depthTest:false}));title.scale.set(7.4,1.24,1);title.position.y=4.96;root.add(title);parts.mineKingTitle=title;}
  // v291: The award hammer is held at a ROOT-SPACE grip pivot, not at the
  // elbow. The hand is IK-posed to this pivot during the overhead smash.
  // This keeps the head facing the ground through the entire strike.
@@ -7909,6 +7930,7 @@ function animateAvatar(a,p,t){
   set('leftHip',-.10,0,-.10);set('rightHip',-.10,0,.10);
   set('leftKnee',.13);set('rightKnee',.13);
  }else a.powerkingYaw=0;
+ if(act==='mineking'){const phase=sec%3.4,down=THREE.MathUtils.smoothstep(phase,.65,1.05)*(1-THREE.MathUtils.smoothstep(phase,1.35,2.0));set('upper',-.08-.18*down,0,0);set('leftShoulder',-.5,0,-.22);set('rightShoulder',-1.8+1.15*down,0,.30);set('rightElbow',-.85+.45*down);}
  if(act==='mining'){const swing=(1+Math.sin(sec*7))*.5;set('upper',-.07-.12*swing,0,.05);set('leftShoulder',-.55-.35*swing,0,-.2);set('rightShoulder',-1.05-.8*swing,0,.3);set('rightElbow',-.4-.55*swing);}
  if(act==='fishking'){
   if(a.lastAction!=='fishking')a.fishKingStart=t;
@@ -8381,8 +8403,11 @@ function animateAvatar(a,p,t){
   bubble.material.opacity=.56*(1-THREE.MathUtils.smoothstep(phase,.72,1));
   bubble.visible=true;
  });
- if(act==='mining'&&!P.miningPickaxe)createMiningPickaxe(a);if(P.miningPickaxe)P.miningPickaxe.visible=act==='mining';
- if(P.gameBadge){const n=Number(Boolean(q.rhythmKing))+Number(Boolean(q.powerKing))+Number(Boolean(q.moleKing))+Number(Boolean(q.fishKing));P.gameBadge.visible=Boolean(q.gamePlaying);P.gameBadge.position.y=(n?6.2+(n-1)*1.12:4.7)+(q.equipped?.head==='balloon-hat'?1.4:0);}
+ if((act==='mining'||act==='mineking')&&!P.miningPickaxe)createMiningPickaxe(a);if(P.miningPickaxe)P.miningPickaxe.visible=act==='mining'||(act==='mineking'&&Boolean(q.mineKing));
+ if(P.mineKingTitle){P.mineKingTitle.visible=Boolean(q.mineKing);P.mineKingTitle.position.y=4.96+(q.equipped?.head==='balloon-hat'?1.4:0)+(Number(Boolean(q.rhythmKing))+Number(Boolean(q.powerKing))+Number(Boolean(q.moleKing))+Number(Boolean(q.fishKing)))*1.12+Math.sin(sec*3.2)*.05;}
+ if(act==='mineking'&&q.mineKing&&!P.mineKingVisual)makeMineKingVisual(a.root,P);
+ if(P.mineKingVisual){const active=act==='mineking'&&Boolean(q.mineKing);P.mineKingVisual.visible=active;if(active){const phase=sec%3.4,impact=(phase-1.05)/1.2;P.mineKingAura.material.rotation=sec*.35;P.mineKingAura.scale.setScalar(4.4+.18*Math.sin(sec*4));P.mineKingGem.scale.setScalar(1+.05*Math.sin(sec*3));P.mineKingStars.forEach((o,i)=>{o.visible=impact>=0&&impact<=1;if(o.visible){const angle=i*2.399963,r=(.4+impact*(2.8+(i%5)*.28));o.position.set(Math.cos(angle)*r,.6+Math.sin(impact*Math.PI)*(1.5+(i%4)*.4),2.8+Math.sin(angle)*r);o.material.opacity=1-impact;const z=.3+(i%3)*.1;o.scale.set(z,z,1);}});P.mineKingRings.forEach((o,i)=>{const v=(phase-1.05-i*.08)/1.25;o.visible=v>=0&&v<=1;if(o.visible){o.position.set(0,.08+i*.025,2.8);o.scale.setScalar(.35+v*(3+i*.18));o.material.opacity=.85*(1-v);}});}}
+ if(P.gameBadge){const n=Number(Boolean(q.rhythmKing))+Number(Boolean(q.powerKing))+Number(Boolean(q.moleKing))+Number(Boolean(q.fishKing))+Number(Boolean(q.mineKing));P.gameBadge.visible=Boolean(q.gamePlaying);P.gameBadge.position.y=(n?6.2+(n-1)*1.12:4.7)+(q.equipped?.head==='balloon-hat'?1.4:0);}
  if(P.rhythmTitle){P.rhythmTitle.visible=Boolean(q.rhythmKing);P.rhythmTitle.position.y=4.96+(q.equipped?.head==='balloon-hat'?1.4:0)+(Number(Boolean(q.powerKing))+Number(Boolean(q.moleKing)))*1.12+Math.sin(sec*3.5)*.05;}
  if(P.powerTitle){P.powerTitle.visible=Boolean(q.powerKing);P.powerTitle.position.y=4.96+(q.equipped?.head==='balloon-hat'?1.4:0)+Number(Boolean(q.moleKing))*1.12+Math.sin(sec*3.5+1.5)*.05;}
  if(P.moleTitle){P.moleTitle.visible=Boolean(q.moleKing);P.moleTitle.position.y=4.96+(q.equipped?.head==='balloon-hat'?1.4:0)+Math.sin(sec*3.5+2)*.05;}
@@ -9686,7 +9711,7 @@ function tick(t){
    }
   }
   state.moving=!!(dx||dy)||(rockMotion?.kind==='train'&&rockMotion.leaderId!==state.id&&state.me.action==='train-run');
-  if(state.moving && (dx||dy) && (state.action==='buriburi'||state.action==='groove'||state.action==='windmill'||state.action==='airguitar'||state.action==='headspin'||state.action==='cheer'||state.action==='smoke'||state.action==='freestyle'||state.action==='beatking'||state.action==='powerking'||state.action==='moleking'||state.action==='fishking'||state.action==='marshmallow'||state.action==='heartbow'||state.action==='drum'||state.action==='electricguitar'||state.action==='bassguitar'||state.action==='vocal'||state.action==='fishing') && !slamMotion && !rockMotion){
+  if(state.moving && (dx||dy) && (state.action==='buriburi'||state.action==='groove'||state.action==='windmill'||state.action==='airguitar'||state.action==='headspin'||state.action==='cheer'||state.action==='smoke'||state.action==='freestyle'||state.action==='beatking'||state.action==='powerking'||state.action==='moleking'||state.action==='fishking'||state.action==='mineking'||state.action==='marshmallow'||state.action==='heartbow'||state.action==='drum'||state.action==='electricguitar'||state.action==='bassguitar'||state.action==='vocal'||state.action==='fishing') && !slamMotion && !rockMotion){
    state.action='idle';state.me.action='walk';state.actionUntil=0;updateActionButtons();
   }
   if(state.moving&&(dx||dy)){
@@ -9749,10 +9774,10 @@ function tick(t){
    ?{...serverPlayer,hairStyle:chosenHairStyle,hairColor:chosenHairColor}
    :serverPlayer;
   const current=avatars.get(id);
-  if(current&&(current.color!==p.color||current.name!==p.name||current.badgeTier!==(p.badgeTier||'bronze')||current.gender!==p.gender||current.pattern!==(p.pattern||'solid')||current.sash!==(p.sash||'none')||current.hairStyle!==(p.hairStyle||'short')||current.hairColor!==(p.hairColor||'#4b3932')||current.flagText!==(p.flagText||'')||current.flagImage!==(p.flagImage||'')||Boolean(current.rhythmKing)!==Boolean(p.rhythmKing)||Boolean(current.powerKing)!==Boolean(p.powerKing)||Boolean(current.moleKing)!==Boolean(p.moleKing)||Boolean(current.fishKing)!==Boolean(p.fishKing)||JSON.stringify(current.equipped||{})!==JSON.stringify(p.equipped||{}))){
+  if(current&&(current.color!==p.color||current.name!==p.name||current.badgeTier!==(p.badgeTier||'bronze')||current.gender!==p.gender||current.pattern!==(p.pattern||'solid')||current.sash!==(p.sash||'none')||current.hairStyle!==(p.hairStyle||'short')||current.hairColor!==(p.hairColor||'#4b3932')||current.flagText!==(p.flagText||'')||current.flagImage!==(p.flagImage||'')||Boolean(current.rhythmKing)!==Boolean(p.rhythmKing)||Boolean(current.powerKing)!==Boolean(p.powerKing)||Boolean(current.moleKing)!==Boolean(p.moleKing)||Boolean(current.fishKing)!==Boolean(p.fishKing)||Boolean(current.mineKing)!==Boolean(p.mineKing)||JSON.stringify(current.equipped||{})!==JSON.stringify(p.equipped||{}))){
    disposeAvatar(current.root);avatars.delete(id);
   }
-  if(!avatars.has(id)){let a=makeAvatar(p),pos=toWorld(p);a.root.position.set(pos.x,0,pos.z);a.name=p.name;a.badgeTier=p.badgeTier||'bronze';a.gender=p.gender;a.pattern=p.pattern||'solid';a.sash=p.sash||'none';a.hairStyle=p.hairStyle||'short';a.hairColor=p.hairColor||'#4b3932';a.flagText=p.flagText||'';a.flagImage=p.flagImage||'';a.rhythmKing=Boolean(p.rhythmKing);a.powerKing=Boolean(p.powerKing);a.moleKing=Boolean(p.moleKing);a.fishKing=Boolean(p.fishKing);a.equipped={...(p.equipped||{})};avatars.set(id,a)}
+  if(!avatars.has(id)){let a=makeAvatar(p),pos=toWorld(p);a.root.position.set(pos.x,0,pos.z);a.name=p.name;a.badgeTier=p.badgeTier||'bronze';a.gender=p.gender;a.pattern=p.pattern||'solid';a.sash=p.sash||'none';a.hairStyle=p.hairStyle||'short';a.hairColor=p.hairColor||'#4b3932';a.flagText=p.flagText||'';a.flagImage=p.flagImage||'';a.rhythmKing=Boolean(p.rhythmKing);a.powerKing=Boolean(p.powerKing);a.moleKing=Boolean(p.moleKing);a.fishKing=Boolean(p.fishKing);a.mineKing=Boolean(p.mineKing);a.equipped={...(p.equipped||{})};avatars.set(id,a)}
   const avatar=avatars.get(id);
   animateAvatar(avatar,p,t);updateCharacterTrail(avatar,p,t,scene);
   if(avatar.parts.flagPivot?.parent?.visible){
@@ -10393,6 +10418,7 @@ miningGuide.addEventListener('pointerdown',async e=>{
 });
 function renderMiningBook(){
  if(!miningData)return;const all=miningData.catalog||[],counts=miningData.counts||{};miningBook.querySelector('.mining-collection').textContent=`${Object.keys(counts).length} / ${all.length}종 발견 · 보유 ${Number(miningData.points||0).toLocaleString()}P`;
+ let board=miningBook.querySelector('.mining-ranking');if(!board){board=document.createElement('div');board.className='mining-ranking';board.style.cssText='padding:10px;margin:8px 0;border:1px solid #ff9acf;border-radius:12px;color:#ffd7ed';miningBook.querySelector('.mining-collection').after(board);}board.replaceChildren();const heading=document.createElement('b');heading.textContent='🏆 오늘의 광물왕 TOP 5';board.append(heading);for(const row of miningData.king?.leaderboard||[]){const line=document.createElement('div');line.textContent=`${row.rank}위 · ${row.name} · ${Number(row.score).toLocaleString()}P`;board.append(line)}const winner=document.createElement('div');winner.textContent=miningData.king?.reward?`어제 광물왕 · ${miningData.king.reward.name}`:'어제 광물왕 기록 없음';board.append(winner);
  const filters=miningBook.querySelector('.mining-filters');filters.replaceChildren();for(const [id,name] of [['all','전체'],...Object.entries(miningTierNames)]){const b=document.createElement('button');b.type='button';b.textContent=name;b.classList.toggle('active',id===miningFilter);b.onclick=()=>{miningFilter=id;renderMiningBook()};filters.append(b);}
  const grid=miningBook.querySelector('.mining-grid');grid.replaceChildren();for(const item of all){if(miningFilter!=='all'&&item.rarity!==miningFilter)continue;const count=Number(counts[item.id])||0,card=document.createElement('div');card.className='mining-card '+item.rarity+(count?'':' unknown');const img=document.createElement('img');img.src=miningAsset(item.id);img.alt='';img.loading='lazy';const name=document.createElement('b');name.textContent=item.name;const detail=document.createElement('small');detail.textContent=`${miningTierNames[item.rarity]} · ${item.points}P · ${(item.weight/100).toFixed(2)}%`;const found=document.createElement('small');found.textContent=count?`${count}개 획득`:'아직 발견하지 못했어요';card.append(img,name,detail,found);grid.append(card);}
 }
@@ -10424,7 +10450,7 @@ function animateMiningEffects(t){
  for(let i=miningSparkNodes.length-1;i>=0;i--){const p=miningSparkNodes[i],v=(t-p.start)/p.life;if(v>=1){scene.remove(p.sprite);p.sprite.material.dispose();miningSparkNodes.splice(i,1);continue}p.sprite.position.set(p.x+Math.cos(p.angle)*p.speed*v,.6+Math.sin(v*Math.PI)*2.5,p.z+Math.sin(p.angle)*p.speed*v);p.sprite.material.opacity=1-v;}
 }
 function createMiningPickaxe(avatar){
- const group=new THREE.Group();group.position.set(0,-.38,.04);avatar.parts.rightElbow.add(group);
+ const group=new THREE.Group();group.position.set(0,-.38,.04);group.rotateX(Math.PI);avatar.parts.rightElbow.add(group);
  const wood=new THREE.MeshStandardMaterial({color:'#a9754d',roughness:.8}),steel=new THREE.MeshStandardMaterial({color:'#b7c7d6',metalness:.65,roughness:.32});
  const handle=new THREE.Mesh(new THREE.CylinderGeometry(.045,.06,1.55,7),wood);handle.position.y=.64;group.add(handle);
  const head=new THREE.Mesh(new THREE.CapsuleGeometry(.08,.9,4,8),steel);head.rotation.z=Math.PI/2;head.position.y=1.36;group.add(head);
