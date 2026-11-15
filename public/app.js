@@ -2,6 +2,24 @@ import * as THREE from 'https://esm.sh/three@0.160.1';
 import { OrbitControls } from 'https://esm.sh/three@0.160.1/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'https://esm.sh/three@0.160.1/examples/jsm/loaders/GLTFLoader.js';
 import { CSS3DRenderer, CSS3DObject } from 'https://esm.sh/three@0.160.1/examples/jsm/renderers/CSS3DRenderer.js';
+// Track THREE's actual asset requests so transitions wait for the current 3D load.
+let sceneAssetPending=0,sceneAssetChangedAt=performance.now(),sceneLoadGeneration=0,sceneLoadingElement=null;
+{
+ const manager=THREE.DefaultLoadingManager,start=manager.itemStart.bind(manager),end=manager.itemEnd.bind(manager);
+ manager.itemStart=function(url){sceneAssetPending++;sceneAssetChangedAt=performance.now();return start(url)};
+ manager.itemEnd=function(url){try{return end(url)}finally{sceneAssetPending=Math.max(0,sceneAssetPending-1);sceneAssetChangedAt=performance.now();}};
+}
+function ensureSceneLoading(){
+ if(sceneLoadingElement)return sceneLoadingElement;
+ const style=document.createElement('style');style.textContent=`#sceneLoading{position:fixed;inset:0;z-index:20000;display:grid;place-items:center;background:rgba(8,12,29,.78);backdrop-filter:blur(5px);color:#edfbff;font:700 15px system-ui,sans-serif}#sceneLoading[hidden]{display:none!important}#sceneLoading .loading-box{text-align:center;padding:30px 40px;border:1px solid #81dce999;border-radius:24px;background:linear-gradient(145deg,#182b4fea,#111b36ef);box-shadow:0 18px 80px #0009,0 0 35px #65d9e766}#sceneLoading .loading-orbit{position:relative;width:100px;height:100px;margin:0 auto 22px;border:4px solid #8feafb33;border-top-color:#8ffff1;border-right-color:#b794ff;border-radius:50%;animation:scene-spin 1.1s linear infinite}#sceneLoading .loading-orbit:before{content:'';position:absolute;inset:11px;border:3px solid transparent;border-left-color:#ffb9ea;border-bottom-color:#c5fdff;border-radius:50%;animation:scene-spin .8s linear infinite reverse}#sceneLoading .loading-orbit:after{content:'✦';position:absolute;inset:0;display:grid;place-items:center;color:#f8e2ff;font-size:37px;text-shadow:0 0 16px #adf8ff;animation:scene-spin 2s linear infinite reverse}#sceneLoading strong{display:block;font-size:17px;letter-spacing:.03em}#sceneLoading small{display:block;margin-top:7px;color:#b5d2df;font-size:12px}@keyframes scene-spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){#sceneLoading .loading-orbit,#sceneLoading .loading-orbit:before,#sceneLoading .loading-orbit:after{animation-duration:2.5s}}`;document.head.append(style);
+ const el=document.createElement('div');el.id='sceneLoading';el.hidden=true;el.setAttribute('role','status');el.setAttribute('aria-live','polite');el.innerHTML='<div class="loading-box"><div class="loading-orbit" aria-hidden="true"></div><strong></strong><small>잠시만 기다려 주세요</small></div>';document.body.append(el);sceneLoadingElement=el;return el;
+}
+function beginSceneLoading(message){const token=++sceneLoadGeneration,el=ensureSceneLoading();el.querySelector('strong').textContent=message;setTimeout(()=>{if(token===sceneLoadGeneration)el.hidden=false},120);return token;}
+async function endSceneLoading(token,waitForAssets=true){
+ if(waitForAssets){const started=performance.now();await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));while(token===sceneLoadGeneration&&performance.now()-started<12000){if(sceneAssetPending===0&&performance.now()-sceneAssetChangedAt>=250)break;await new Promise(resolve=>setTimeout(resolve,100));}}
+ if(token===sceneLoadGeneration){sceneLoadGeneration++;if(sceneLoadingElement)sceneLoadingElement.hidden=true;}
+}
+
 const $=id=>document.getElementById(id), palette=['#ff747d','#67d8d1','#f9c463','#a8a0ff','#90dd81','#ff9ce1','#72b5ff','#eeeeee','#16171d'];
 // Picnic zone layout tuned for mobile: keep the main standing/stage area
 // compact, and place the picnic blankets cleanly in the side rest zone.
@@ -1298,7 +1316,7 @@ function updateSkipVoteUI(){
 async function castSkipVote(choice){const vote=state.skipVote;if(!vote||!state.id)return;try{await post('music',{id:state.id,command:'vote-cast',voteId:vote.id,choice})}catch(e){toast(e.message)}}
 function showSkipVoteResult(d){applySkipVote(null,state.skipVoteCooldownUntil);let msg=d.passed?'✅ 과반수 찬성! 요청한 곡으로 이동합니다':d.reason==='timeout'?'투표 시간이 종료되어 현재 곡을 유지합니다':'투표가 부결되어 현재 곡을 유지합니다';notice(msg)}
 setInterval(()=>{updateSkipVoteUI();updateSharedMusicButtons()},500);
-let joining=false;async function join(options={}){const auto=Boolean(options?.auto);if(editingProfile)return updateProfile();if(joining)return;joining=true;manualExit=false;try{let d=await post('join',{sessionKey,pageId,badgeIdentity,flagText:currentFlagText,flagImage:currentFlagImageData,name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender,pattern:chosenPattern,sash:chosenSash,hairStyle:chosenHairStyle,hairColor:chosenHairColor});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);applyHeadbangToSelf();currentFlagImageId=state.me?.flagImage||'';state.pose=state.me?.pose||'stand';cameraFollowInitialized=false;state.players=new Map(d.players.map(p=>[p.id,p]));renderOnlinePlayers();refreshPunkShop();$('joinModal').classList.add('hidden');$('reopenJoin').hidden=true;$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='페스티벌 참가 중';$('avatarPreview').querySelector('b').style.background=chosenColor;saveProfile(state.me);applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);applyPowerState(d.power);if(d.crowdSurf)syncCrowdSurf(d.crowdSurf);syncTents(d.tents);listen();refreshTentStatus();refreshPetStatus();void ensureRecoveryCode();$('audioModal').classList.add('hidden');setPersonalAudio(true);showMovementGuide();showEntryAnnouncements(d.announcements?.entry);if(!auto)toast('ONEseason에 오신 것을 환영합니다!')}catch(e){if(auto)$('joinModal').classList.remove('hidden');$('joinError').textContent='입장 실패: '+(e?.message||'연결을 확인해주세요');console.error('ONEseason join error:',e)}finally{joining=false}}
+let joining=false;async function join(options={}){const auto=Boolean(options?.auto);if(editingProfile)return updateProfile();if(joining)return;joining=true;const loadToken=beginSceneLoading('페스티벌을 준비하고 있어요');let loadSuccess=false;manualExit=false;try{let d=await post('join',{sessionKey,pageId,badgeIdentity,flagText:currentFlagText,flagImage:currentFlagImageData,name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender,pattern:chosenPattern,sash:chosenSash,hairStyle:chosenHairStyle,hairColor:chosenHairColor});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);applyHeadbangToSelf();currentFlagImageId=state.me?.flagImage||'';state.pose=state.me?.pose||'stand';cameraFollowInitialized=false;state.players=new Map(d.players.map(p=>[p.id,p]));renderOnlinePlayers();refreshPunkShop();$('joinModal').classList.add('hidden');$('reopenJoin').hidden=true;$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='페스티벌 참가 중';$('avatarPreview').querySelector('b').style.background=chosenColor;saveProfile(state.me);applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);applyPowerState(d.power);if(d.crowdSurf)syncCrowdSurf(d.crowdSurf);syncTents(d.tents);listen();refreshTentStatus();refreshPetStatus();void ensureRecoveryCode();$('audioModal').classList.add('hidden');setPersonalAudio(true);showMovementGuide();showEntryAnnouncements(d.announcements?.entry);if(!auto)toast('ONEseason에 오신 것을 환영합니다!');loadSuccess=true;}catch(e){if(auto)$('joinModal').classList.remove('hidden');$('joinError').textContent='입장 실패: '+(e?.message||'연결을 확인해주세요');console.error('ONEseason join error:',e)}finally{joining=false;void endSceneLoading(loadToken,loadSuccess)}}
 $('audioYes').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(true);toast(state.music.id?'음악 재생을 허용했어요':'음악이 등록되면 바로 재생돼요')};$('audioNo').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(false);toast('내 소리를 끈 상태로 입장했어요')};// First tap must save even if the nickname field currently has keyboard focus.
 // A pointerdown listener runs BEFORE Safari's keyboard dismissal can consume
 // the subsequent click. De-duplicate that click and block duplicate requests.
@@ -4149,7 +4167,7 @@ async function enterTent(tentId){
   toast('⛺ 텐트 근처(5m 이내)로 이동한 뒤 입장해 주세요.');
   return;
  }
- tentEntryPending=true;
+ tentEntryPending=true;const loadToken=beginSceneLoading('텐트를 준비하고 있어요');let loadSuccess=false;
  try{
   const data=await tentRequest('enter',{tentId});
   if(tentRoomActive)leaveTentInterior(false);
@@ -4168,11 +4186,12 @@ async function enterTent(tentId){
   closeRockMenu();toggleTentMenu(false);cancelTentPlacement();dockTraveling=false;dockBar.classList.remove('is-traveling','dock-manual-open');dockContent.inert=false;dockContent.setAttribute('aria-hidden','false');updateActionButtons();
   state.walkTarget=null;state.benchTarget=null;state.moving=false;
   for(const avatar of tentRoomAvatars.values())disposeAvatar(avatar.root);
-  tentRoomAvatars.clear();
- }catch(error){toast(error.message)}finally{tentEntryPending=false;}
+  tentRoomAvatars.clear();syncTentFurniturePlaced(tentRoomActive);loadSuccess=true;
+ }catch(error){toast(error.message)}finally{tentEntryPending=false;void endSceneLoading(loadToken,loadSuccess);}
 }
 function leaveTentInterior(send=true){
  if(!tentRoomActive)return;
+ const loadToken=beginSceneLoading('페스티벌로 돌아가고 있어요');
  state.action='idle';state.pose='stand';state.actionUntil=0;if(state.me){state.me.action='idle';state.me.pose='stand'}
  cancelTentFurniturePlacement();closeFurnitureShop();clearTentFurniturePlaced();tentFurnitureData=null;tentRoomActive=null;tentCanDecorate=false;applyTentRoomLighting(null);tentRoomWalkTarget=null;tentRoomLocal=null;tentRoomMoveQueued=null;tentRoomWasMoving=false;closeTentDecorate();clearTentRoomBubbles();renderRoomChat(null);selectBottomMenu('reaction');
  for(const avatar of tentRoomAvatars.values())disposeAvatar(avatar.root);
@@ -4184,6 +4203,7 @@ function leaveTentInterior(send=true){
  if(stageForeground)stageForeground.domElement.style.display='';
  const player=state.players.get(state.id);if(player){player.tentRoomId=null;player.tentRoomX=0;player.tentRoomZ=0;}
  if(send&&state.id)tentRequest('exit').then(data=>{if(!tentRoomActive&&Array.isArray(data.chat))renderRoomChat(null,data.chat)}).catch(error=>toast(error.message));
+ void endSceneLoading(loadToken,true);
 }
 $('tentRoomExit').onclick=()=>leaveTentInterior(true);
 function updateTentInterior(frameDelta,t){
@@ -10411,13 +10431,19 @@ async function openMiningPanel(mode){miningPanelMode=mode;miningBook.hidden=fals
 miningHud.querySelector('[data-mining="book"]').onclick=()=>openMiningPanel('book');
 miningHud.querySelector('[data-mining="ranking"]').onclick=()=>openMiningPanel('ranking');
 miningBook.querySelector('[data-mining="close-book"]').onclick=()=>{miningBook.hidden=true;};
-miningGuide.addEventListener('pointerdown',async e=>{
- e.preventDefault();e.stopPropagation();if(!miningActive||miningBusy||!miningData?.active||!miningBook.hidden)return;
+async function miningHit(){
+ if(!miningActive||miningBusy||!miningData?.active||!miningBook.hidden)return;
  const now=performance.now();if(now-miningLastHit<220)return;miningLastHit=now;miningBusy=true;
  try{const active=miningData.active,r=await miningRequest('hit',{sessionId:active.id,seq:active.hits+1});miningData=r.mining;renderMiningHud();
   if(r.result){const status=miningHud.querySelector('.mining-status');status.textContent=`${r.result.name} +${r.result.points}P 획득!`;miningStatusUntil=performance.now()+2500;void refreshTentStatus();}
  }catch(e){if(e.message&&!e.message.includes('천천히'))toast(e.message);try{const sync=await miningRequest('state');miningData=sync.mining;renderMiningHud();if(!miningData.active)void stopMining();}catch{}}finally{miningBusy=false;}
-});
+}
+miningGuide.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();void miningHit();});
+document.addEventListener('keydown',e=>{
+ if(!miningActive||e.code!=='Space'||!miningBook.hidden||!$('joinModal').classList.contains('hidden'))return;
+ if(e.target instanceof HTMLInputElement||e.target instanceof HTMLTextAreaElement||e.target?.isContentEditable)return;
+ e.preventDefault();e.stopImmediatePropagation();state.keys.delete(' ');if(!e.repeat)void miningHit();
+},true);
 function renderMiningBook(){
  if(!miningData)return;const all=miningData.catalog||[],counts=miningData.counts||{};miningBook.querySelector('.mining-collection').textContent=`${Object.keys(counts).length} / ${all.length}종 발견 · 보유 ${Number(miningData.points||0).toLocaleString()}P`;
  let board=miningBook.querySelector('.mining-ranking');if(!board){board=document.createElement('div');board.className='mining-ranking';board.style.cssText='padding:14px;margin:8px 0;border:1px solid #ff9acf;border-radius:12px;color:#ffd7ed;line-height:2';miningBook.querySelector('.mining-collection').after(board);}
