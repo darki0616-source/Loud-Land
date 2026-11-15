@@ -3039,7 +3039,11 @@ function drawDecorationTrailPreview(t){
    const colors=['#ff5c9f','#ff984e','#ffe86b','#80f8a3','#64dbff','#858cff','#e086ff'];
    for(let i=0;i<colors.length;i++){const g=ctx.createLinearGradient(30,0,425,0);g.addColorStop(0,'transparent');g.addColorStop(.55,colors[i]+'aa');g.addColorStop(1,colors[i]);ctx.strokeStyle=g;ctx.lineWidth=8;ctx.shadowColor=colors[i];ctx.shadowBlur=12;ctx.beginPath();ctx.moveTo(30,83+i*12+Math.sin(t*.003)*5);ctx.bezierCurveTo(170,63+i*12,300,94+i*12,425,83+i*12);ctx.stroke();}ctx.shadowBlur=0;
   }else if(kind==='flame'){
-   for(let i=0;i<22;i++){const phase=(t*.00085+i/22)%1,x=425-phase*290,y=155-phase*65+Math.sin(i*4+t*.007)*16;ctx.globalAlpha=(1-phase)*.75;const size=55+(i%5)*8;ctx.drawImage(characterTrailTexture('flame').image,x-size/2,y-size/2,size,size*1.3);}
+   const seed=n=>{const v=Math.sin(n*93.7+21.4)*43758.5453;return v-Math.floor(v)};
+   for(let i=0;i<22;i++){const clock=t*.00085+seed(i*3),phase=clock%1,cycle=Math.floor(clock),key=i*71+cycle*149;
+    const x=425-phase*(240+seed(key+1)*90),y=150+(seed(key+2)-.5)*50-phase*(40+seed(key+3)*40)+Math.sin(t*.002+key)*5,size=42+seed(key+4)*55;
+    ctx.globalAlpha=(1-phase)*(.45+seed(key+5)*.35);ctx.save();ctx.translate(x,y);ctx.rotate((seed(key+6)-.5)*.45);ctx.drawImage(characterTrailTexture('flame').image,-size/2,-size*.65,size,size*1.3);ctx.restore();
+   }
   }else if(kind==='dark'){
    const seed=n=>{const v=Math.sin(n*93.7+21.4)*43758.5453;return v-Math.floor(v)};
    for(let i=0;i<19;i++){const clock=t*.00038+seed(i*3),phase=clock%1,cycle=Math.floor(clock),key=i*71+cycle*149;
@@ -7340,25 +7344,25 @@ function updateCharacterTrail(avatar,player,t,parent){
  if(!previous){avatar.trailLastPos={x:pos.x,z:pos.z,time:t,spawn:0};return;}
  const dx=pos.x-previous.x,dz=pos.z-previous.z,dt=Math.max(1,t-previous.time),speed=Math.hypot(dx,dz)/dt;
  previous.x=pos.x;previous.z=pos.z;previous.time=t;
- const scattered=['star','snow','petal','heart','dark'].includes(kind),interval=scattered?(previous.nextInterval||90):75;
+ const scattered=['star','snow','petal','heart','dark'].includes(kind),flame=kind==='flame',interval=(scattered||flame)?(previous.nextInterval||90):75;
  if(!kind||!['rainbow','star','snow','petal','flame','dark','heart'].includes(kind)||speed<.00035||t-previous.spawn<interval||characterTrailParticles.length>=160)return;
- previous.spawn=t;if(scattered)previous.nextInterval=55+Math.random()*100;const distance=Math.hypot(dx,dz)||1,nx=dx/distance,nz=dz/distance;
+ previous.spawn=t;if(scattered||flame)previous.nextInterval=55+Math.random()*(flame?70:100);const distance=Math.hypot(dx,dz)||1,nx=dx/distance,nz=dz/distance;
  if(kind==='rainbow'){
   const material=new THREE.MeshBasicMaterial({map:characterTrailTexture(kind),transparent:true,opacity:.78,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending});
   const ribbon=new THREE.Mesh(rainbowTrailGeometry,material);ribbon.position.set(pos.x-nx*.58,pos.y+1.05,pos.z-nz*.58);ribbon.rotation.y=-Math.atan2(nz,nx);ribbon.scale.set(1.45,1.05,1);ribbon.renderOrder=30;parent.add(ribbon);if(parent===scene&&stageForeground)ribbon.layers.set(1);
   characterTrailParticles.push({sprite:ribbon,parent,start:t,life:900,size:1,kind});return;
  }
- const count=kind==='flame'?(perfWeakDevice?2:3):scattered?(perfWeakDevice?1:(Math.random()<.45?1:2)):(perfWeakDevice?1:2);
+ const count=flame?(perfWeakDevice?1+(Math.random()<.5?1:0):2+(Math.random()<.5?1:0)):scattered?(perfWeakDevice?1:(Math.random()<.45?1:2)):(perfWeakDevice?1:2);
  for(let i=0;i<count;i++){
   const mat=new THREE.SpriteMaterial({map:characterTrailTexture(kind),transparent:true,opacity:.86,depthWrite:false,blending:kind==='dark'?THREE.NormalBlending:THREE.AdditiveBlending});
-  const sprite=new THREE.Sprite(mat),side=scattered?(Math.random()-.5)*1.3:(i-(count-1)/2)*.25,back=scattered?.25+Math.random()*.75:.50+i*.16;
-  sprite.position.set(pos.x-nx*back+nz*side,pos.y+(scattered?.35+Math.random()*1.7:kind==='flame'?.65+i*.22:.45+i*.64),pos.z-nz*back-nx*side);
-  const size=kind==='dark'?.8+Math.random()*1.0:scattered?.38+Math.random()*.85:kind==='flame'?1.35:.8;sprite.scale.set(size,kind==='flame'?size*1.45:size,1);sprite.renderOrder=30;parent.add(sprite);if(parent===scene&&stageForeground)sprite.layers.set(1);
-  if(scattered)mat.rotation=Math.random()*Math.PI*2;
-  characterTrailParticles.push({sprite,parent,start:t,last:t,life:kind==='dark'?950+Math.random()*700:scattered?750+Math.random()*650:kind==='flame'?680:900,size,kind,scattered,driftX:scattered?(Math.random()-.5)*.0005:-nx*.25,driftZ:scattered?(Math.random()-.5)*.0005:-nz*.25,driftY:scattered?(kind==='dark'?.00065:kind==='snow'||kind==='petal'?-.00025:.00025)*(0.5+Math.random()):0,spin:scattered?(Math.random()-.5)*.003:0});
+  const sprite=new THREE.Sprite(mat),side=scattered?(Math.random()-.5)*1.3:flame?(Math.random()-.5)*.8:(i-(count-1)/2)*.25,back=(scattered||flame)?.25+Math.random()*.75:.50+i*.16;
+  sprite.position.set(pos.x-nx*back+nz*side,pos.y+(scattered?.35+Math.random()*1.7:flame?.45+Math.random()*1.25:.45+i*.64),pos.z-nz*back-nx*side);
+  const size=kind==='dark'?.8+Math.random()*1.0:scattered?.38+Math.random()*.85:flame?.7+Math.random():.8;sprite.scale.set(size,kind==='flame'?size*1.45:size,1);sprite.renderOrder=30;parent.add(sprite);if(parent===scene&&stageForeground)sprite.layers.set(1);
+  if(scattered)mat.rotation=Math.random()*Math.PI*2;else if(flame)mat.rotation=(Math.random()-.5)*.4;
+  characterTrailParticles.push({sprite,parent,start:t,last:t,life:kind==='dark'?950+Math.random()*700:scattered?750+Math.random()*650:flame?520+Math.random()*450:900,size,kind,scattered,driftX:scattered?(Math.random()-.5)*.0005:flame?(Math.random()-.5)*.0005-nx*.0002:-nx*.25,driftZ:scattered?(Math.random()-.5)*.0005:flame?(Math.random()-.5)*.0005-nz*.0002:-nz*.25,driftY:scattered?(kind==='dark'?.00065:kind==='snow'||kind==='petal'?-.00025:.00025)*(0.5+Math.random()):flame?.0007+Math.random()*.001:0,spin:scattered?(Math.random()-.5)*.003:flame?(Math.random()-.5)*.0004:0});
  }
 }
-function animateCharacterTrails(t){for(let i=characterTrailParticles.length-1;i>=0;i--){const p=characterTrailParticles[i],v=(t-p.start)/p.life;if(v>=1){p.parent.remove(p.sprite);p.sprite.material.dispose();characterTrailParticles.splice(i,1);continue}p.sprite.material.opacity=(p.kind==='rainbow'?.78:.85)*(1-v);if(p.kind==='rainbow')continue;if(p.scattered){const dt=Math.min(80,Math.max(0,t-p.last));p.last=t;p.sprite.position.x+=p.driftX*dt;p.sprite.position.z+=p.driftZ*dt;p.sprite.position.y+=p.driftY*dt;p.sprite.material.rotation+=p.spin*dt;const k=p.size*(p.kind==='dark'?1+v*.8:.85+.15*Math.sin(Math.PI*v));p.sprite.scale.set(k,k,1);continue;}p.sprite.position.y+=p.kind==='dark'?.012:p.kind==='flame'?.018:.004;if(p.kind==='flame'){p.sprite.position.x+=p.driftX*.012;p.sprite.position.z+=p.driftZ*.012;}const size=p.size*(p.kind==='flame'?(1-.55*v):1+v*(p.kind==='dark'?.8:.15));p.sprite.scale.set(size,p.kind==='flame'?size*1.45:size,1);p.sprite.material.rotation+=p.kind==='petal'?.025:p.kind==='snow'?.012:0;}}
+function animateCharacterTrails(t){for(let i=characterTrailParticles.length-1;i>=0;i--){const p=characterTrailParticles[i],v=(t-p.start)/p.life;if(v>=1){p.parent.remove(p.sprite);p.sprite.material.dispose();characterTrailParticles.splice(i,1);continue}p.sprite.material.opacity=(p.kind==='rainbow'?.78:.85)*(1-v);if(p.kind==='rainbow')continue;if(p.kind==='flame'){const dt=Math.min(80,Math.max(0,t-p.last));p.last=t;p.sprite.position.x+=p.driftX*dt;p.sprite.position.z+=p.driftZ*dt;p.sprite.position.y+=p.driftY*dt;p.sprite.material.rotation+=p.spin*dt;const k=p.size*(1-.55*v);p.sprite.scale.set(k,k*1.45,1);continue;}if(p.scattered){const dt=Math.min(80,Math.max(0,t-p.last));p.last=t;p.sprite.position.x+=p.driftX*dt;p.sprite.position.z+=p.driftZ*dt;p.sprite.position.y+=p.driftY*dt;p.sprite.material.rotation+=p.spin*dt;const k=p.size*(p.kind==='dark'?1+v*.8:.85+.15*Math.sin(Math.PI*v));p.sprite.scale.set(k,k,1);continue;}p.sprite.position.y+=p.kind==='dark'?.012:p.kind==='flame'?.018:.004;if(p.kind==='flame'){p.sprite.position.x+=p.driftX*.012;p.sprite.position.z+=p.driftZ*.012;}const size=p.size*(p.kind==='flame'?(1-.55*v):1+v*(p.kind==='dark'?.8:.15));p.sprite.scale.set(size,p.kind==='flame'?size*1.45:size,1);p.sprite.material.rotation+=p.kind==='petal'?.025:p.kind==='snow'?.012:0;}}
 
 // Chat bubbles are true 3D sprites anchored in world coordinates, independent of avatar pose.
 // Decorative shapes use canvas paths so they look the same on every device.
