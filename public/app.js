@@ -9168,11 +9168,56 @@ function petEffectTexture(kind){
  else {ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='bold 86px system-ui, sans-serif';ctx.shadowBlur=15;ctx.shadowColor=kind==='heart'?'#ff68a8':kind==='notes'||kind==='snow'?'#9ceaff':'#ffea8a';ctx.fillStyle=kind==='heart'?'#ff78a9':kind==='notes'||kind==='snow'?'#b7f5ff':'#fff1a5';ctx.fillText(kind==='heart'?'♥':kind==='notes'?'♪':kind==='snow'?'❄':kind==='electric'?'ϟ':'✦',64,68);}
  const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;petEffectTextureCache.set(kind,texture);return texture;
 }
-function petEffectsDispose(entry){if(!entry.fx)return;entry.fx.group.parent?.remove(entry.fx.group);for(const list of Object.values(entry.fx.sprites))for(const sprite of list)sprite.material.dispose();for(const sprite of entry.fx.discoRays||[])sprite.material.dispose();entry.fx.discoHalo?.material.dispose();entry.fx=null;}
+// Lightning meshes are pooled per pet and only created while the effect is equipped.
+function makePetElectric(group){
+ const segment=new THREE.CylinderGeometry(1,1,1,5,1,true),coreMat=new THREE.MeshBasicMaterial({color:'#e8ffff',transparent:true,opacity:.98,depthWrite:false,blending:THREE.AdditiveBlending}),glowMat=new THREE.MeshBasicMaterial({color:'#48bfff',transparent:true,opacity:.30,depthWrite:false,blending:THREE.AdditiveBlending}),arcMat=new THREE.MeshBasicMaterial({color:'#9cdeff',transparent:true,opacity:.9,depthWrite:false,blending:THREE.AdditiveBlending});
+ const main=[],glow=[],arcs=[],segments=9,arcCount=perfWeakDevice?6:12;
+ const mesh=(material)=>{const obj=new THREE.Mesh(segment,material);obj.visible=false;obj.frustumCulled=false;group.add(obj);return obj};
+ for(let i=0;i<segments;i++){main.push(mesh(coreMat));glow.push(mesh(glowMat));}
+ for(let i=0;i<arcCount;i++)arcs.push(mesh(arcMat));
+ const flash=new THREE.Sprite(new THREE.SpriteMaterial({map:petEffectTexture('light'),transparent:true,opacity:.85,depthWrite:false,blending:THREE.AdditiveBlending}));flash.visible=false;group.add(flash);
+ const ringGeo=new THREE.TorusGeometry(1,.035,6,36),ringMat=new THREE.MeshBasicMaterial({color:'#9cecff',transparent:true,opacity:.8,depthWrite:false,blending:THREE.AdditiveBlending}),ring=new THREE.Mesh(ringGeo,ringMat);ring.rotation.x=Math.PI/2;ring.visible=false;group.add(ring);
+ return {main,glow,arcs,flash,ring,segment,ringGeo,coreMat,glowMat,arcMat,ringMat};
+}
+const petElectricUp=new THREE.Vector3(0,1,0),petElectricDirection=new THREE.Vector3();
+function petElectricSegment(obj,x1,y1,z1,x2,y2,z2,radius){
+ petElectricDirection.set(x2-x1,y2-y1,z2-z1);const length=petElectricDirection.length();
+ if(length<.0001){obj.visible=false;return;}obj.visible=true;
+ obj.position.set((x1+x2)*.5,(y1+y2)*.5,(z1+z2)*.5);obj.scale.set(radius,length,radius);
+ obj.quaternion.setFromUnitVectors(petElectricUp,petElectricDirection.multiplyScalar(1/length));
+}
+function updatePetElectric(fx,height,sec){
+ const e=fx.electric;if(!e)return;
+ // A fast two-flash strike, followed by smaller restless arcs around the pet.
+ const period=2.8,cycle=(sec%period+period)%period,strike=(cycle<.14)||(cycle>.22&&cycle<.31);
+ const tick=Math.floor(sec*16),jitter=(n)=>{const x=Math.sin(n*127.1+tick*78.233)*43758.5453;return (x-Math.floor(x))*2-1;};
+ if(strike){
+  let px=.18+jitter(40)*.25,py=height+3.6,pz=jitter(41)*.24;
+  for(let i=0;i<e.main.length;i++){
+   const u=(i+1)/e.main.length,step=Math.sin(u*Math.PI),x=.15*(1-u)+jitter(i+1)*.45*step,y=height+3.6-u*3.3,z=jitter(i+21)*.30*step;
+   petElectricSegment(e.glow[i],px,py,pz,x,y,z,.105);petElectricSegment(e.main[i],px,py,pz,x,y,z,.036);px=x;py=y;pz=z;
+  }
+ }else for(const obj of [...e.main,...e.glow])obj.visible=false;
+ const arcTick=Math.floor(sec*10);
+ for(let i=0;i<e.arcs.length;i++){
+  const strand=Math.floor(i/3),part=i%3,active=((arcTick+strand*3)%7)<4;
+  if(!active){e.arcs[i].visible=false;continue;}
+  const angle=strand*Math.PI*2/Math.ceil(e.arcs.length/3)+sec*.9,baseY=height*(.30+.28*(strand%3));
+  const radius=.60+.07*Math.sin(sec*8+strand),x=Math.cos(angle)*radius,z=Math.sin(angle)*radius;
+  const dx=Math.cos(angle+.8)*.16,dz=Math.sin(angle+.8)*.16;
+  const step=part*.17,sign=part%2?1:-1;
+  petElectricSegment(e.arcs[i],x+dx*sign,baseY+step,z+dz*sign,x-dx*sign,baseY+step+.16,z-dz*sign,.025);
+ }
+ e.flash.visible=strike;if(strike){e.flash.position.set(0,height*.7,0);e.flash.scale.set(3.6,3.6,1);}
+ const ripple=(cycle-.02)/.65;e.ring.visible=ripple>=0&&ripple<=1;if(e.ring.visible){e.ring.position.set(0,.06,0);e.ring.scale.setScalar(.35+ripple*1.2);e.ring.material.opacity=.75*(1-ripple);}
+}
+function disposePetElectric(e){if(!e)return;e.segment.dispose();e.ringGeo.dispose();e.coreMat.dispose();e.glowMat.dispose();e.arcMat.dispose();e.ringMat.dispose();e.flash.material.dispose();}
+
+function petEffectsDispose(entry){if(!entry.fx)return;entry.fx.group.parent?.remove(entry.fx.group);for(const list of Object.values(entry.fx.sprites))for(const sprite of list)sprite.material.dispose();for(const sprite of entry.fx.discoRays||[])sprite.material.dispose();entry.fx.discoHalo?.material.dispose();disposePetElectric(entry.fx.electric);entry.fx=null;}
 function makePetEffects(entry,effects,signature){
  const group=new THREE.Group(),sprites={};entry.root.add(group);
  for(const kind of ['sparkle','notes','heart','rainbow','light','petals','snow','electric','moonstars','disco']){
-  if(!effects[kind])continue;
+  if(!effects[kind]||kind==='electric')continue;
   const list=[],count=['rainbow','light','moonstars','disco'].includes(kind)?1:3;
   for(let i=0;i<count;i++){
    const mat=new THREE.SpriteMaterial({map:petEffectTexture(kind),transparent:true,depthWrite:false,opacity:kind==='rainbow'?.7:kind==='light'?.8:.95});
@@ -9186,7 +9231,8 @@ function makePetEffects(entry,effects,signature){
   const count=perfWeakDevice?4:8;
   for(let i=0;i<count;i++){const material=new THREE.SpriteMaterial({map:petEffectTexture('sparkle'),transparent:true,depthWrite:false,opacity:.9,blending:THREE.AdditiveBlending});const star=new THREE.Sprite(material);star.visible=false;group.add(star);discoRays.push(star);}
  }
- let lamp=null;if(effects.light){lamp=new THREE.PointLight(0x9bdbff,1.15,5,2);lamp.position.set(0,1.25,0);lamp.visible=false;group.add(lamp);}entry.fx={group,sprites,lamp,signature,discoRays,discoHalo};
+ const electric=effects.electric?makePetElectric(group):null;
+ let lamp=null;if(effects.light){lamp=new THREE.PointLight(0x9bdbff,1.15,5,2);lamp.position.set(0,1.25,0);lamp.visible=false;group.add(lamp);}entry.fx={group,sprites,lamp,signature,discoRays,discoHalo,electric};
 }
 function updatePetEffects(entry,pet,dancing,t,allowLight){
  const effects=pet.effects||{},signature=Object.keys(effects).filter(k=>effects[k]).sort().join('|');
@@ -9201,6 +9247,7 @@ function updatePetEffects(entry,pet,dancing,t,allowLight){
   else if(kind==='disco'){sprite.position.set(0,height+1.85+Math.sin(sec*2)*.10,0);sprite.scale.set(2.8,2.8,1);sprite.material.rotation=Math.sin(sec*1.8)*.18;}
   else {const phase=(sec*.42+i/3)%1,angle=sec*.8+i*Math.PI*2/3+(kind==='heart'?1.3:kind==='notes'?2.5:kind==='electric'?4:0),fall=kind==='petals'||kind==='snow';sprite.position.set(Math.cos(angle)*(.55+phase*.12),height*.35+(fall?1-phase:phase)*(height+1),Math.sin(angle)*.55);const size=(kind==='sparkle'?.31:kind==='electric'?.48:.38)*Math.sin(Math.PI*phase);sprite.scale.set(size,size,1);sprite.material.rotation=kind==='petals'?sec+i:0;}
  }
+ updatePetElectric(entry.fx,height,sec);
  const showDisco=!!effects.disco&&dancing;
  if(entry.fx.discoHalo){const halo=entry.fx.discoHalo;halo.visible=showDisco;if(showDisco){halo.position.set(0,height+1.8,0);const size=4.4+Math.sin(sec*3)*.16;halo.scale.set(size,size,1);halo.material.rotation=sec*.7;}}
  for(let i=0;i<entry.fx.discoRays.length;i++){
