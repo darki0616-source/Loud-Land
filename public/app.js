@@ -3451,7 +3451,7 @@ function tentBedPose(f){
  // the midpoint of the rotated 3.3-unit body rests at the furniture centre.
  const footOffset=1.55*scale;
  return {x:f.x+Math.sin(facing)*footOffset,z:f.z+Math.cos(facing)*footOffset,
-  y:surface+.52*scale,facing,scale};
+  y:(Number(f.y)||0)+surface+.52*scale,facing,scale};
 }
 function lieOnTentBed(f){
  if(!tentRoomActive||!tentRoomLocal||!state.me||!f||!isTentBed(f.itemId))return false;
@@ -3477,6 +3477,12 @@ function clickedTentBed(ray){
  for(const [instanceId,root] of roots){let obj=hit.object;while(obj){if(obj===root)return tentBedByInstance(instanceId);obj=obj.parent;}}
  return null;
 }
+// A tagged chair uses the same shared room coordinates and sit pose as other players.
+function tentChairByInstance(id){const f=(tentRoomActive?.furnishings||[]).find(x=>x.instanceId===id);return f&&tentRoomActive?.furnitureCatalog?.[f.itemId]?.chairEnabled?f:null;}
+function nearestTentChair(x,z){let best=null,distance=.7;for(const f of tentRoomActive?.furnishings||[]){if(!tentChairByInstance(f.instanceId))continue;const d=Math.hypot(x-f.x,z-f.z);if(d<distance){best=f;distance=d;}}return best;}
+function tentChairPose(f){const item=tentRoomActive?.furnitureCatalog?.[f.itemId];if(!item)return null;const h=Number(item.chairSeatHeight),surface=Number.isFinite(h)&&h>=.05&&h<=item.height?h:item.height*.5;return {x:f.x,z:f.z,y:(Number(f.y)||0)+surface,facing:(Number(f.rotation)||0)*Math.PI/180,scale:1};}
+function sitOnTentChair(f){if(!tentRoomActive||!tentRoomLocal||!state.me||tentFurniturePlacement||!f)return false;const pose=tentChairPose(f);if(!pose)return false;tentRoomWalkTarget=null;state.walkTarget=null;state.benchTarget=null;tentRoomLocal.x=f.x;tentRoomLocal.z=f.z;tentRoomLocal.facing=pose.facing;tentRoomWasMoving=false;state.pose='sit';state.me.pose='sit';state.action='idle';state.me.action='idle';state.actionUntil=0;updateActionButtons();queueTentRoomMove();sendMove();return true;}
+function clickedTentChair(ray){if(!tentRoomActive||tentFurniturePlacement)return null;const roots=[...tentFurniturePlaced.entries()].filter(([id])=>tentChairByInstance(id));const meshes=roots.flatMap(([,root])=>{const list=[];root.traverse(o=>{if(o.isMesh)list.push(o)});return list});const hit=ray.intersectObjects(meshes,false)[0];if(!hit)return null;for(const [id,root] of roots){let obj=hit.object;while(obj){if(obj===root)return tentChairByInstance(id);obj=obj.parent;}}return null;}
 // v248: Persistent purchased indoor furniture, model preview and live placement.
 const tentFurniturePlaced=new Map(),tentFurnitureModels=new Map(),tentFurnitureThumbs=new Map();
 let tentFurnitureData=null,tentFurnitureMode='shop',tentFurnitureSelected='jack',tentFurnitureBusy=false;
@@ -3713,7 +3719,7 @@ function syncTentFurniturePlaced(room){
   getTentFurnitureModel(f.itemId).then(template=>{
    if(tentRoomActive?.id!==roomId||tentFurnitureCurrentSignature!==renderSignature)return;
    const obj=template.clone(true);obj.name='placed-'+f.instanceId;
-   obj.position.set(f.x,0,f.z);obj.rotation.y=(f.rotation||0)*Math.PI/180;
+   obj.position.set(f.x,Number(f.y)||0,f.z);obj.rotation.y=(f.rotation||0)*Math.PI/180;
    tentRoomScene.add(obj);tentFurniturePlaced.set(f.instanceId,obj);
    attachTentFurnitureLight(f.instanceId,f.itemId,obj);
   }).catch(err=>console.warn('Tent furniture:',err.message));
@@ -3731,18 +3737,21 @@ function tentFurniturePolygonsOverlap(a,b){
  }
  return true;
 }
-function tentFurnitureCanPlace(itemId,x,z,rotation){
- const item=tentFurnitureData?.catalog?.[itemId];
- if(!item||!Number.isFinite(x)||!Number.isFinite(z)||![0,45,90,135,180,225,270,315].includes(rotation))return false;
- const c=Math.cos(rotation*Math.PI/180),si=Math.sin(rotation*Math.PI/180);
- const hw=item.width/2+.14,hd=item.depth/2+.14;
- const inside=[[-hw,-hd],[-hw,hd],[hw,-hd],[hw,hd]].every(([u,v])=>Math.abs(x+u*c+v*si)<=5.52&&Math.abs(z-u*si+v*c)<=4.52);
- if(!inside||Math.hypot(x-TENT_FURNITURE_ENTRANCE_X,z-TENT_FURNITURE_ENTRANCE_Z)<=1.28)return false;
- const footprint=tentFurnitureFootprint(item,x,z,rotation);
- return (tentRoomActive?.furnishings||[]).every(f=>{
-  const other=tentFurnitureData.catalog[f.itemId];
-  return !other||!tentFurniturePolygonsOverlap(footprint,tentFurnitureFootprint(other,f.x,f.z,f.rotation));
- });
+function tentFurniturePlacementInfo(itemId,x,z,rotation,supportId=''){
+ const item=tentFurnitureData?.catalog?.[itemId];if(!item||!Number.isFinite(x)||!Number.isFinite(z)||![0,45,90,135,180,225,270,315].includes(rotation))return null;
+ const c=Math.cos(rotation*Math.PI/180),si=Math.sin(rotation*Math.PI/180),hw=item.width/2+.14,hd=item.depth/2+.14;
+ if(![[-hw,-hd],[-hw,hd],[hw,-hd],[hw,hd]].every(([u,v])=>Math.abs(x+u*c+v*si)<=5.52&&Math.abs(z-u*si+v*c)<=4.52)||Math.hypot(x-TENT_FURNITURE_ENTRANCE_X,z-TENT_FURNITURE_ENTRANCE_Z)<=1.28)return null;
+ const list=tentRoomActive?.furnishings||[],parent=supportId?list.find(f=>f.instanceId===supportId):null;if(supportId&&!parent)return null;let y=0;
+ if(parent){const spec=tentFurnitureData.catalog[parent.itemId];if(!spec)return null;y=(Number(parent.y)||0)+spec.height;const a=(Number(parent.rotation)||0)*Math.PI/180,pc=Math.cos(a),ps=Math.sin(a);for(const [u,v] of [[-item.width/2,-item.depth/2],[item.width/2,-item.depth/2],[item.width/2,item.depth/2],[-item.width/2,item.depth/2]]){const dx=x+u*c+v*si-parent.x,dz=z-u*si+v*c-parent.z;if(Math.abs(dx*pc-dz*ps)>spec.width/2+.001||Math.abs(dx*ps+dz*pc)>spec.depth/2+.001)return null;}}
+ if(y+item.height>8)return null;const footprint=tentFurnitureFootprint(item,x,z,rotation);
+ for(const f of list){const spec=tentFurnitureData.catalog[f.itemId];if(!spec)continue;const fy=Number(f.y)||0;if(y+item.height<=fy+.001||y>=fy+spec.height-.001)continue;if(tentFurniturePolygonsOverlap(footprint,tentFurnitureFootprint(spec,f.x,f.z,f.rotation)))return null;}
+ return {y,supportId:supportId||''};
+}
+function tentFurnitureCanPlace(itemId,x,z,rotation,supportId=''){return !!tentFurniturePlacementInfo(itemId,x,z,rotation,supportId);}
+function tentPlacementTarget(ray){
+ const targets=[];for(const [id,root] of tentFurniturePlaced){root.traverse(obj=>{if(obj.isMesh)targets.push(obj)});}const hits=ray.intersectObjects(targets,false);
+ for(const hit of hits){for(const [id,root] of tentFurniturePlaced){let o=hit.object;while(o){if(o===root){const f=(tentRoomActive?.furnishings||[]).find(x=>x.instanceId===id);const spec=f&&tentFurnitureData?.catalog?.[f.itemId];if(f&&spec){const top=(Number(f.y)||0)+spec.height;const normal=hit.face?.normal?.clone().transformDirection(hit.object.matrixWorld);if(normal&&normal.y>.45&&Math.abs(hit.point.y-top)<Math.max(.12,spec.height*.08))return {x:hit.point.x,z:hit.point.z,supportId:id};}break;}o=o.parent;}}}
+ const floor=ray.intersectObject(roomFloor,false)[0];return floor?{x:floor.point.x,z:floor.point.z,supportId:''}:null;
 }
 function clearTentFurnitureGhost(){
  if(!tentFurnitureGhost)return;
@@ -3754,8 +3763,8 @@ function clearTentFurnitureGhost(){
 }
 function repaintTentFurnitureGhost(){
  if(!tentFurniturePlacement||!tentFurnitureGhost)return;
- const p=tentFurniturePlacement,g=tentFurnitureGhost,valid=tentFurnitureCanPlace(p.itemId,p.x,p.z,p.rotation);
- g.root.position.set(p.x,0,p.z);g.root.rotation.y=p.rotation*Math.PI/180;
+ const p=tentFurniturePlacement,g=tentFurnitureGhost,info=tentFurniturePlacementInfo(p.itemId,p.x,p.z,p.rotation,p.supportId),valid=!!info;
+ const parent=(tentRoomActive?.furnishings||[]).find(f=>f.instanceId===p.supportId),parentSpec=parent&&tentFurnitureData?.catalog?.[parent.itemId];const previewY=info?.y??(parentSpec?(Number(parent.y)||0)+parentSpec.height:0);g.root.position.set(p.x,previewY,p.z);g.root.rotation.y=p.rotation*Math.PI/180;
  g.fill.material.color.set(valid?'#49ea83':'#ee4f59');g.fill.material.opacity=valid?.43:.56;
  g.outline.material.color.set(valid?'#afff91':'#ff8e8e');
  $('tentFurnitureRotation').textContent=p.rotation+'°';
@@ -3765,7 +3774,7 @@ function repaintTentFurnitureGhost(){
  $('tentFurnitureRotateRight').disabled=!p.locked||tentFurnitureBusy;
  $('tentFurniturePlaceConfirm').disabled=!p.locked||!valid||tentFurnitureBusy;
  $('tentFurniturePlacementHelp').textContent=!p.locked
-  ?'바닥을 클릭해 위치를 고정하세요. 고정 후 회전하거나 배치할 수 있어요.'
+  ?'바닥이나 가구 윗면을 클릭해 위치를 고정하세요.'
   :valid
    ?'📍 위치 고정 완료 · 회전하거나 배치 버튼을 누르세요. 바닥을 다시 클릭하면 위치를 바꿀 수 있어요.'
    :'📍 위치 고정 · 빨간색은 배치 불가! 다른 위치를 클릭하거나 회전해 주세요.';
@@ -3797,7 +3806,7 @@ async function startTentFurniturePlacement(itemId){
  }catch(err){toast(err.message);cancelTentFurniturePlacement()}
 }
 function cancelTentFurniturePlacement(){tentFurniturePlacement=null;clearTentFurnitureGhost();$('tentFurniturePlacement').classList.add('hidden');}
-function moveTentFurnitureGhost(x,z,lock=false){
+function moveTentFurnitureGhost(x,z,lock=false,supportId=''){
  if(!tentFurniturePlacement||tentFurnitureBusy)return;
  // Pointer hover previews a location only UNTIL the first floor click.
  // After that, the preview is anchored; only an intentional new floor click
@@ -3805,7 +3814,7 @@ function moveTentFurnitureGhost(x,z,lock=false){
  if(tentFurniturePlacement.locked&&!lock)return;
  tentFurniturePlacement.x=Math.round(THREE.MathUtils.clamp(x,-5.2,5.2)*10)/10;
  tentFurniturePlacement.z=Math.round(THREE.MathUtils.clamp(z,-4.2,4.2)*10)/10;
- if(lock)tentFurniturePlacement.locked=true;
+ tentFurniturePlacement.supportId=supportId;if(lock)tentFurniturePlacement.locked=true;
  repaintTentFurnitureGhost();
 }
 function tentFurnitureAvailable(itemId){
@@ -3962,9 +3971,9 @@ $('tentFurnitureRotateRight').onclick=()=>{if(tentFurniturePlacement?.locked&&!t
 $('tentFurniturePlaceCancel').onclick=()=>{cancelTentFurniturePlacement();openTentFurnitureShop('mine')};
 $('tentFurniturePlaceConfirm').onclick=async()=>{
  if(!tentFurniturePlacement||!tentFurniturePlacement.locked||tentFurnitureBusy)return;
- const {itemId,x,z,rotation}=tentFurniturePlacement;
- const p={itemId,x,z,rotation}; // Do not send client-only lock status to the server.
- if(!tentFurnitureCanPlace(p.itemId,p.x,p.z,p.rotation))return toast('배치할 수 없는 위치예요.');
+ const {itemId,x,z,rotation,supportId}=tentFurniturePlacement;
+ const p={itemId,x,z,rotation,supportId:supportId||''}; // Do not send client-only lock status to the server.
+ if(!tentFurnitureCanPlace(p.itemId,p.x,p.z,p.rotation,p.supportId))return toast('배치할 수 없는 위치예요.');
  if(!confirm(`${tentFurnitureData.catalog[p.itemId].name}을(를) 이 위치에 배치하시겠습니까?`))return;
  tentFurnitureBusy=true;repaintTentFurnitureGhost();
  try{
@@ -4260,7 +4269,8 @@ function updateTentInterior(frameDelta,t){
   // The visual character foot-origin gets a consistent offset on all clients.
   const targetPose=p.id===state.id?state.pose:(p.pose||'stand');
   const onBed=targetPose==='lie'?nearestTentBed(rx,rz,1):null;
-  const bedPose=onBed&&Math.hypot(rx-onBed.x,rz-onBed.z)<.7?tentBedPose(onBed):null;
+  const onChair=targetPose==='sit'?nearestTentChair(rx,rz):null;
+  const bedPose=onChair?tentChairPose(onChair):(onBed&&Math.hypot(rx-onBed.x,rz-onBed.z)<.7?tentBedPose(onBed):null);
   const walking=p.id===state.id?moving:(bedPose?false:Math.hypot(a.root.position.x-rx,a.root.position.z-rz)>.10);
   const localAction=p.id===state.id?(state.me?.action||'idle'):(p.action||'idle');
   const fake={...p,id:'room-'+p.id,x:600+rx/.058,y:500+(rz-8)/.058,
@@ -8722,6 +8732,8 @@ gameTouchSurface.addEventListener('pointerup',e=>{
   groundRay.setFromCamera(pointer,camera);
   // Clicking an existing bed puts the player on its mattress. In furniture
   // placement mode the floor click keeps its old lock-position behavior.
+  if(tentFurniturePlacement){const target=tentPlacementTarget(groundRay);if(target)moveTentFurnitureGhost(target.x,target.z,true,target.supportId);return;}
+  const selectedChair=clickedTentChair(groundRay);if(selectedChair&&sitOnTentChair(selectedChair))return;
   const selectedBed=clickedTentBed(groundRay);
   if(selectedBed&&lieOnTentBed(selectedBed))return;
   const target=groundRay.intersectObject(roomFloor,false)[0];
@@ -9951,7 +9963,7 @@ gameTouchSurface.addEventListener('pointermove',e=>{
  const bounds=renderer.domElement.getBoundingClientRect();
  pointer.set(((e.clientX-bounds.left)/bounds.width)*2-1,-((e.clientY-bounds.top)/bounds.height)*2+1);
  groundRay.setFromCamera(pointer,camera);
- const hit=groundRay.intersectObject(roomFloor,false)[0];if(hit)moveTentFurnitureGhost(hit.point.x,hit.point.z);
+ const hit=tentPlacementTarget(groundRay);if(hit)moveTentFurnitureGhost(hit.x,hit.z,false,hit.supportId);
 });
 
 // v304: Lightweight screen-space fireworks for every connected player, even

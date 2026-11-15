@@ -592,7 +592,9 @@ function cleanFurnitureSpec(id,raw,revision){
  const surfaceProvided=raw.bedSurfaceHeight!==null&&raw.bedSurfaceHeight!==undefined&&raw.bedSurfaceHeight!=='';
  const bedSurfaceHeight=surfaceProvided?Number(raw.bedSurfaceHeight):null;
  if(surfaceProvided&&(!Number.isFinite(bedSurfaceHeight)||bedSurfaceHeight<.05||bedSurfaceHeight>height))return null;
- return {name,cost,width,depth,height,description:String(raw.description||'').trim().slice(0,150),enabled:raw.enabled!==false,bedEnabled:typeof raw.bedEnabled==='boolean'?raw.bedEnabled:/(침대|매트리스|mattress|(^|[-_ ])bed($|[-_ ])|^bed|(^|[-_ ])cot($|[-_ ]))/i.test(id+' '+name),bedSurfaceHeight,lightEnabled:typeof raw.lightEnabled==='boolean'?raw.lightEnabled:/(lantern|랜턴|등불|호롱|lamp|램프)/i.test(id+' '+name),
+ const seatProvided=raw.chairSeatHeight!==null&&raw.chairSeatHeight!==undefined&&raw.chairSeatHeight!=='';const seatHeight=seatProvided?Number(raw.chairSeatHeight):null;
+ if(seatProvided&&(!Number.isFinite(seatHeight)||seatHeight<.05||seatHeight>height))return null;
+ return {name,cost,width,depth,height,description:String(raw.description||'').trim().slice(0,150),enabled:raw.enabled!==false,bedEnabled:typeof raw.bedEnabled==='boolean'?raw.bedEnabled:/(침대|매트리스|mattress|(^|[-_ ])bed($|[-_ ])|^bed|(^|[-_ ])cot($|[-_ ]))/i.test(id+' '+name),bedSurfaceHeight,chairEnabled:raw.chairEnabled===true,chairSeatHeight:seatHeight,lightEnabled:typeof raw.lightEnabled==='boolean'?raw.lightEnabled:/(lantern|랜턴|등불|호롱|lamp|램프)/i.test(id+' '+name),
     ...(modelRevision?{modelRevision}:{})};
 }
 function refreshFurnitureCatalog(){
@@ -682,11 +684,30 @@ function polygonsOverlap(a,b){
  }
  return true;
 }
-function canPlaceFurniture(record,itemId,x,z,rotation,ignoreId=''){
- const item=TENT_FURNITURE_CATALOG[itemId];if(!safeFurniturePose(item,x,z,rotation))return false;
- const p={x,z,rotation},box=furnitureCorners(item,p);
- return (record.furnishings||[]).every(other=>other.instanceId===ignoreId||!polygonsOverlap(box,furnitureCorners(TENT_FURNITURE_CATALOG[other.itemId],other)));
+function furniturePlacement(record,itemId,x,z,rotation,supportId=''){
+ const item=TENT_FURNITURE_CATALOG[itemId];if(!safeFurniturePose(item,x,z,rotation))return null;
+ const all=record.furnishings||[],support=supportId?all.find(f=>f.instanceId===supportId):null;if(supportId&&!support)return null;
+ const parent=support&&TENT_FURNITURE_CATALOG[support.itemId];if(support&&!parent)return null;
+ let y=0;
+ if(support){
+  y=(Number(support.y)||0)+parent.height;
+  // Entire base must fit on the supporting item's footprint.
+  const a=(Number(support.rotation)||0)*Math.PI/180,c=Math.cos(a),sn=Math.sin(a);
+  const r=rotation*Math.PI/180,cr=Math.cos(r),sr=Math.sin(r);
+  for(const [u,v] of [[-item.width/2,-item.depth/2],[item.width/2,-item.depth/2],[item.width/2,item.depth/2],[-item.width/2,item.depth/2]]){
+   const dx=x+u*cr+v*sr-support.x,dz=z-u*sr+v*cr-support.z;
+   if(Math.abs(dx*c-dz*sn)>parent.width/2+.001||Math.abs(dx*sn+dz*c)>parent.depth/2+.001)return null;
+  }
+ }
+ if(y+item.height>8)return null;
+ const box=furnitureCorners(item,{x,z,rotation});
+ for(const other of all){const spec=TENT_FURNITURE_CATALOG[other.itemId];if(!spec)continue;const oy=Number(other.y)||0;
+  if(y+item.height<=oy+.001||y>=oy+spec.height-.001)continue;
+  if(polygonsOverlap(box,furnitureCorners(spec,other)))return null;
+ }
+ return {y,supportId:support?.instanceId||''};
 }
+function canPlaceFurniture(record,itemId,x,z,rotation,supportId=''){return !!furniturePlacement(record,itemId,x,z,rotation,supportId);}
 function furnitureInventoryView(p){
  const r=furnitureRecord(p.badgeIdentity);
  return {points:tentPointBalance(p),catalog:TENT_FURNITURE_CATALOG,owned:{...r.owned},roomFurnishings:(tentOwnedBy(p.badgeIdentity)?.furnishings||[]).map(x=>({...x}))};
@@ -960,7 +981,7 @@ function applySaved(d){
   if(Array.isArray(t.furnishings))for(const f of t.furnishings.slice(0,TENT_FURNITURE_MAX_PLACED)){
    const x=Number(f.x),z=Number(f.z),rotation=Number(f.rotation);
    if(!TENT_FURNITURE_CATALOG[f.itemId]||!/^[-a-f0-9]{36}$/.test(f.instanceId||'')||record.furnishings.some(x=>x.instanceId===f.instanceId))continue;
-   if(canPlaceFurniture(record,f.itemId,x,z,rotation))record.furnishings.push({instanceId:f.instanceId,itemId:f.itemId,x,z,rotation});
+   const placement=furniturePlacement(record,f.itemId,x,z,rotation,String(f.supportId||''));if(placement)record.furnishings.push({instanceId:f.instanceId,itemId:f.itemId,x,z,rotation,...placement});
   }
   if(t.placed===true&&tentIsValidPlace(x,z,t.id)){record.placed=true;record.x=x;record.z=z;}
   tentStats.set(identity,record);
@@ -1386,7 +1407,7 @@ const server=http.createServer(async(req,res)=>{
         if(!previous&&Object.keys(TENT_FURNITURE_CATALOG).length>=60)return json(res,409,{error:'등록 한도는 60개예요.'});
         if(revision&&revision!==previous?.modelRevision&&!await storageExists(id,revision))return json(res,400,{error:'업로드한 GLB 파일을 찾지 못했어요. 다시 업로드해 주세요.'});
         const placed=[...tentStats.values()].some(t=>(t.furnishings||[]).some(f=>f.itemId===id));
-        if(placed&&previous&&(spec.width!==previous.width||spec.depth!==previous.depth))return json(res,409,{error:'배치 중인 아이템의 가로·깊이는 변경할 수 없어요. 먼저 회수한 뒤 수정해 주세요.'});
+        if(placed&&previous&&(spec.width!==previous.width||spec.depth!==previous.depth||spec.height!==previous.height))return json(res,409,{error:'배치 중인 아이템의 가로·깊이·높이는 변경할 수 없어요. 먼저 회수한 뒤 수정해 주세요.'});
         furnitureCatalogEdits.set(id,spec);refreshFurnitureCatalog();await strictSaveAdmin();furnitureCatalogChanged();sendTentUpdate();
         return json(res,200,{ok:true,items:furnitureAdminCatalog()});
        }
@@ -1832,14 +1853,15 @@ const server=http.createServer(async(req,res)=>{
           const placedCount=(record.furnishings||[]).filter(f=>f.itemId===itemId).length;
           if((inv.owned[itemId]||0)<=placedCount)return json(res,409,{error:'배치 가능한 보유 아이템이 없어요.'});
           const x=Number(d.x),z=Number(d.z),rotation=Number(d.rotation);
-          if(!canPlaceFurniture(record,itemId,x,z,rotation))return json(res,409,{error:'해당 위치는 소품을 배치할 수 없어요.'});
-          record.furnishings??=[];record.furnishings.push({instanceId:crypto.randomUUID(),itemId,x:Math.round(x*100)/100,z:Math.round(z*100)/100,rotation});
+          const supportId=String(d.supportId||'');const placement=furniturePlacement(record,itemId,x,z,rotation,supportId);if(!placement)return json(res,409,{error:'해당 위치는 소품을 배치할 수 없어요.'});
+          record.furnishings??=[];record.furnishings.push({instanceId:crypto.randomUUID(),itemId,x:Math.round(x*100)/100,z:Math.round(z*100)/100,rotation,...placement});
           await saveNow();sendTentUpdate();return json(res,200,{ok:true,...furnitureInventoryView(p),room:publicTent(record)});
         }
         if(command==='furniture-remove'){
           if(!record||p.tentRoomId!==record.id)return json(res,403,{error:'텐트 주인만 소품을 회수할 수 있어요.'});
           const found=(record.furnishings||[]).findIndex(x=>x.instanceId===String(d.instanceId||''));
           if(found<0)return json(res,404,{error:'배치된 아이템을 찾지 못했어요.'});
+          if(record.furnishings.some(f=>f.supportId===record.furnishings[found].instanceId))return json(res,409,{error:'위에 올린 아이템을 먼저 회수해 주세요.'});
           record.furnishings.splice(found,1);
           await saveNow();sendTentUpdate();return json(res,200,{ok:true,...furnitureInventoryView(p),room:publicTent(record)});
         }
@@ -2301,6 +2323,7 @@ const server=http.createServer(async(req,res)=>{
   if(req.method!=='GET')return json(res,405,{error:'Method not allowed'});
   let pathname;try{pathname=decodeURIComponent(url.pathname)}catch{return json(res,400,{error:'Invalid path'})}
   const f=path.resolve(PUBLIC,'.'+(pathname==='/'?'/index.html':pathname));if(!f.startsWith(PUBLIC+path.sep))return json(res,403,{error:'Forbidden'});
+  if(pathname==='/md-admin.html'){try{const html=fs.readFileSync(f,'utf8').replace('</head>','<script src="/chair-admin.js?v=369"></script></head>');res.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-cache'});return res.end(html);}catch{}}
   fs.stat(f,(err,stat)=>{if(err||!stat.isFile()){res.writeHead(404);res.end('Not found');return}res.writeHead(200,{'content-type':types[path.extname(f)]||'application/octet-stream','cache-control':'no-cache'});fs.createReadStream(f).pipe(res)})
 });
 restorePlaylist().then(()=>server.listen(PORT,'0.0.0.0',()=>console.log(`ONEseason running at http://localhost:${PORT} | storage: ${useSupabase?'Supabase':'local only'}`))).catch(err=>{console.error('Startup stopped to prevent playlist data loss:',err.message);process.exitCode=1});
