@@ -3,280 +3,280 @@
     "id": "common01",
     "name": "석탄",
     "rarity": "common",
-    "points": 4,
+    "points": 8,
     "weight": 775
   },
   {
     "id": "common02",
     "name": "철광석",
     "rarity": "common",
-    "points": 4,
+    "points": 8,
     "weight": 775
   },
   {
     "id": "common03",
     "name": "구리 광석",
     "rarity": "common",
-    "points": 5,
+    "points": 9,
     "weight": 775
   },
   {
     "id": "common04",
     "name": "주석 광석",
     "rarity": "common",
-    "points": 5,
+    "points": 9,
     "weight": 775
   },
   {
     "id": "common05",
     "name": "수정",
     "rarity": "common",
-    "points": 6,
+    "points": 10,
     "weight": 775
   },
   {
     "id": "common06",
     "name": "석회석",
     "rarity": "common",
-    "points": 6,
+    "points": 10,
     "weight": 775
   },
   {
     "id": "common07",
     "name": "점판암",
     "rarity": "common",
-    "points": 7,
+    "points": 11,
     "weight": 775
   },
   {
     "id": "common08",
     "name": "사암",
     "rarity": "common",
-    "points": 7,
+    "points": 11,
     "weight": 775
   },
   {
     "id": "uncommon01",
     "name": "공작석",
     "rarity": "uncommon",
-    "points": 7,
+    "points": 11,
     "weight": 325
   },
   {
     "id": "uncommon02",
     "name": "청금석",
     "rarity": "uncommon",
-    "points": 8,
+    "points": 12,
     "weight": 325
   },
   {
     "id": "uncommon03",
     "name": "자수정",
     "rarity": "uncommon",
-    "points": 8,
+    "points": 12,
     "weight": 325
   },
   {
     "id": "uncommon04",
     "name": "장미수정",
     "rarity": "uncommon",
-    "points": 9,
+    "points": 13,
     "weight": 325
   },
   {
     "id": "uncommon05",
     "name": "형석",
     "rarity": "uncommon",
-    "points": 9,
+    "points": 13,
     "weight": 325
   },
   {
     "id": "uncommon06",
     "name": "터키석",
     "rarity": "uncommon",
-    "points": 10,
+    "points": 14,
     "weight": 325
   },
   {
     "id": "uncommon07",
     "name": "비취",
     "rarity": "uncommon",
-    "points": 10,
+    "points": 14,
     "weight": 325
   },
   {
     "id": "uncommon08",
     "name": "페리도트",
     "rarity": "uncommon",
-    "points": 11,
+    "points": 15,
     "weight": 325
   },
   {
     "id": "rare01",
     "name": "루비",
     "rarity": "rare",
-    "points": 12,
+    "points": 15,
     "weight": 119
   },
   {
     "id": "rare02",
     "name": "사파이어",
     "rarity": "rare",
-    "points": 13,
+    "points": 16,
     "weight": 119
   },
   {
     "id": "rare03",
     "name": "에메랄드",
     "rarity": "rare",
-    "points": 14,
+    "points": 18,
     "weight": 119
   },
   {
     "id": "rare04",
     "name": "아쿠아마린",
     "rarity": "rare",
-    "points": 15,
+    "points": 19,
     "weight": 119
   },
   {
     "id": "rare05",
     "name": "오팔",
     "rarity": "rare",
-    "points": 16,
+    "points": 20,
     "weight": 119
   },
   {
     "id": "rare06",
     "name": "가넷",
     "rarity": "rare",
-    "points": 17,
+    "points": 21,
     "weight": 119
   },
   {
     "id": "rare07",
     "name": "토파즈",
     "rarity": "rare",
-    "points": 18,
+    "points": 22,
     "weight": 118
   },
   {
     "id": "rare08",
     "name": "전기석",
     "rarity": "rare",
-    "points": 19,
+    "points": 23,
     "weight": 118
   },
   {
     "id": "epic01",
     "name": "다이아몬드",
     "rarity": "epic",
-    "points": 21,
+    "points": 24,
     "weight": 29
   },
   {
     "id": "epic02",
     "name": "알렉산드라이트",
     "rarity": "epic",
-    "points": 23,
+    "points": 27,
     "weight": 29
   },
   {
     "id": "epic03",
     "name": "블랙 오팔",
     "rarity": "epic",
-    "points": 25,
+    "points": 29,
     "weight": 29
   },
   {
     "id": "epic04",
     "name": "탄자나이트",
     "rarity": "epic",
-    "points": 27,
+    "points": 31,
     "weight": 29
   },
   {
     "id": "epic05",
     "name": "푸른 빛 수정",
     "rarity": "epic",
-    "points": 29,
+    "points": 33,
     "weight": 29
   },
   {
     "id": "epic06",
     "name": "불꽃 수정",
     "rarity": "epic",
-    "points": 31,
+    "points": 35,
     "weight": 29
   },
   {
     "id": "epic07",
     "name": "달빛 수정",
     "rarity": "epic",
-    "points": 33,
+    "points": 37,
     "weight": 28
   },
   {
     "id": "epic08",
     "name": "별빛 수정",
     "rarity": "epic",
-    "points": 35,
+    "points": 39,
     "weight": 28
   },
   {
     "id": "legendary01",
     "name": "오로라 수정",
     "rarity": "legendary",
-    "points": 48,
+    "points": 52,
     "weight": 3
   },
   {
     "id": "legendary02",
     "name": "용의 심장",
     "rarity": "legendary",
-    "points": 58,
+    "points": 62,
     "weight": 3
   },
   {
     "id": "legendary03",
     "name": "태양의 보석",
     "rarity": "legendary",
-    "points": 68,
+    "points": 72,
     "weight": 3
   },
   {
     "id": "legendary04",
     "name": "바다 왕관석",
     "rarity": "legendary",
-    "points": 78,
+    "points": 82,
     "weight": 3
   },
   {
     "id": "legendary05",
     "name": "공허의 수정",
     "rarity": "legendary",
-    "points": 88,
+    "points": 92,
     "weight": 2
   },
   {
     "id": "legendary06",
     "name": "무지개 프리즘",
     "rarity": "legendary",
-    "points": 98,
+    "points": 102,
     "weight": 2
   },
   {
     "id": "legendary07",
     "name": "성운 결정",
     "rarity": "legendary",
-    "points": 113,
+    "points": 117,
     "weight": 2
   },
   {
     "id": "legendary08",
     "name": "황금 신화석",
     "rarity": "legendary",
-    "points": 133,
+    "points": 137,
     "weight": 2
   }
 ]
