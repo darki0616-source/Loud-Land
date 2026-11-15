@@ -285,12 +285,13 @@ const ONE_TIME_CREDIT_HASH='07cad1e4323da66ca647d215a5b63b5ea02519ad6bb88c3e35b7
 const recoveryHash=code=>crypto.createHash('sha256').update(code).digest('hex');
 function recoveryProfile(p){return {name:p.name,color:p.color,gender:p.gender,pattern:p.pattern,sash:p.sash,hairStyle:p.hairStyle,hairColor:p.hairColor};}
 function setRecoveryProfile(p){const r=p?.badgeIdentity&&recoveryRecords.get(p.badgeIdentity);if(r){r.profile=recoveryProfile(p);scheduleSave();}}
+const TRAIL_TEST_FREE=true;
 const DECORATIONS={bubble:{heart:{name:'하트 말풍선',cost:3000},star:{name:'별 말풍선',cost:3000},neon:{name:'네온 말풍선',cost:2000},music:{name:'음표 말풍선',cost:3000}},trail:{rainbow:{name:'무지개 잔상',cost:3000},star:{name:'별 잔상',cost:3000},snow:{name:'눈꽃 잔상',cost:3000},petal:{name:'꽃잎 잔상',cost:3000},flame:{name:'불꽃 잔상',cost:3000},dark:{name:'어둠 잔상',cost:3000},heart:{name:'하트 잔상',cost:3000}}};
 const decorationStats=new Map();
 function decorationRecord(identity){if(!decorationStats.has(identity))decorationStats.set(identity,{spent:0,owned:{bubble:{},trail:{}},equipped:{bubble:null,trail:null}});return decorationStats.get(identity)}
 function decorationAppearance(identity){const r=identity&&decorationStats.get(identity);return {bubble:r?.equipped?.bubble||null,trail:r?.equipped?.trail||null};}
 function syncDecoration(p){p.cosmetics=decorationAppearance(p.badgeIdentity)}
-function decorationView(p){const r=decorationRecord(p.badgeIdentity);return {catalog:DECORATIONS,owned:r.owned,equipped:r.equipped,points:tentPointBalance(p)};}
+function decorationView(p){const r=decorationRecord(p.badgeIdentity);return {catalog:DECORATIONS,owned:r.owned,equipped:r.equipped,testing:{trail:TRAIL_TEST_FREE},points:tentPointBalance(p)};}
 
 const PET_EFFECTS={sparkle:{name:'반짝이',cost:500},notes:{name:'춤출 때 음표',cost:1000},heart:{name:'하트',cost:1000},rainbow:{name:'무지개',cost:2000},light:{name:'라이트',cost:3000},petals:{name:'꽃잎',cost:1500},snow:{name:'눈꽃',cost:1500},electric:{name:'전기',cost:2500},moonstars:{name:'달과 별',cost:2500},disco:{name:'디스코볼',cost:3000}};
 function petEffectView(record){const owned={},enabled={};for(const id of Object.keys(PET_EFFECTS)){owned[id]=record?.effectsOwned?.[id]===true;enabled[id]=owned[id]&&record?.effectsEnabled?.[id]===true;}return {owned,enabled};}
@@ -837,7 +838,7 @@ function applySaved(d){
  if(d.decorationStats&&typeof d.decorationStats==='object')for(const [id,row] of Object.entries(d.decorationStats).slice(0,50000)){
   if(!/^[a-zA-Z0-9_-]{20,100}$/.test(id)||!row||typeof row!=='object')continue;
   const record={spent:Number.isSafeInteger(row.spent)&&row.spent>=0?row.spent:0,owned:{bubble:{},trail:{}},equipped:{bubble:null,trail:null}};
-  for(const kind of ['bubble','trail']){for(const key of Object.keys(DECORATIONS[kind]))if(row.owned?.[kind]?.[key]===true)record.owned[kind][key]=true;const active=row.equipped?.[kind];if(active&&record.owned[kind][active])record.equipped[kind]=active;}
+  for(const kind of ['bubble','trail']){for(const key of Object.keys(DECORATIONS[kind]))if(row.owned?.[kind]?.[key]===true)record.owned[kind][key]=true;const active=row.equipped?.[kind];if(active&&Object.prototype.hasOwnProperty.call(DECORATIONS[kind],active)&&(record.owned[kind][active]||(kind==='trail'&&TRAIL_TEST_FREE)))record.equipped[kind]=active;}
   decorationStats.set(id,record);
  }
  petStats.clear();petHatchDurationMigrated=false;
@@ -1555,12 +1556,14 @@ const server=http.createServer(async(req,res)=>{
        const kind=String(d.kind||''),item=String(d.item||'');
        if(!Object.prototype.hasOwnProperty.call(DECORATIONS,kind)||!Object.prototype.hasOwnProperty.call(DECORATIONS[kind],item))return json(res,400,{error:'존재하지 않는 꾸미기 아이템이에요.'});
        const r=decorationRecord(p.badgeIdentity),spec=DECORATIONS[kind][item];
-       if(command==='buy'){
+       if(command==='buy'&&kind==='trail'&&TRAIL_TEST_FREE){
+        r.equipped[kind]=item;
+       }else if(command==='buy'){
         if(r.owned[kind][item])return json(res,409,{error:'이미 구매한 아이템이에요.'});
         if(tentPointBalance(p)<spec.cost)return json(res,409,{error:'포인트가 부족해요.'});
         r.owned[kind][item]=true;r.equipped[kind]=item;r.spent+=spec.cost;
        }else if(command==='equip'){
-        if(!r.owned[kind][item])return json(res,403,{error:'먼저 구매해 주세요.'});r.equipped[kind]=item;
+        if(!r.owned[kind][item]&&!(kind==='trail'&&TRAIL_TEST_FREE))return json(res,403,{error:'먼저 구매해 주세요.'});r.equipped[kind]=item;
        }else if(command==='unequip'){
         if(r.equipped[kind]===item)r.equipped[kind]=null;
        }else return json(res,400,{error:'지원하지 않는 꾸미기 요청이에요.'});
