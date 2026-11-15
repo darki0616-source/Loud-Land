@@ -428,6 +428,18 @@ function rotateFishKingDay(){const today=kstDate();if(today===fishKingDay)return
 function recordFishingPoints(p,points){rotateFishKingDay();if(!p.badgeIdentity||!Number.isSafeInteger(points)||points<=0)return;const old=fishKingScores.get(p.badgeIdentity);fishKingScores.set(p.badgeIdentity,{name:clean(p.name,18)||'ROCKER',score:(old?.score||0)+points,at:Date.now()});}
 function fishKingPublic(){rotateFishKingDay();return {day:fishKingDay,leaderboard:fishKingRows().slice(0,5).map((r,i)=>({rank:i+1,name:r.name,score:r.score})),reward:fishKingReward&&fishKingReward.date===kstDate()?{name:fishKingReward.name,score:fishKingReward.score}:null};}
 
+const MINING_CATALOG=JSON.parse(fs.readFileSync(path.join(PUBLIC,'assets/mining/catalog.json'),'utf8'));
+if(MINING_CATALOG.length!==40||MINING_CATALOG.reduce((n,x)=>n+x.weight,0)!==10000)throw Error('Invalid mining catalog');
+const MINING_BY_ID=new Map(MINING_CATALOG.map(x=>[x.id,x]));
+const MINING_ROCKS=[{id:'rock1',x:-28,z:48},{id:'rock2',x:-19,z:54},{id:'rock3',x:-9,z:48},{id:'rock4',x:2,z:54},{id:'rock5',x:13,z:48},{id:'rock6',x:24,z:54},{id:'rock7',x:35,z:48},{id:'rock8',x:42,z:54}];
+const MINING_HITS=20,MINING_HIT_MS=200;
+const miningStats=new Map();
+function miningAccount(identity){if(!miningStats.has(identity))miningStats.set(identity,{bonus:0,counts:{},active:null,lastResult:null});const a=miningStats.get(identity);if(a.active&&Date.now()-a.active.lastAt>90000)a.active=null;return a;}
+function miningDistance(p,rock){return p&&!p.tentRoomId?Math.hypot((p.x-600)*.058-rock.x,(p.y-500)*.058+8-rock.z):Infinity;}
+function miningView(p){const a=miningAccount(p.badgeIdentity);return {catalog:MINING_CATALOG,counts:a.counts,points:tentPointBalance(p),required:MINING_HITS,active:a.active&&a.active.playerId===p.id?{id:a.active.id,rockId:a.active.rockId,hits:a.active.hits}:null,lastResult:a.lastResult};}
+function clearMiningPlayer(p){if(!p?.badgeIdentity)return;const a=miningStats.get(p.badgeIdentity);if(a?.active?.playerId===p.id)a.active=null;}
+function miningDraw(){const n=crypto.randomInt(10000);let sum=0;for(const item of MINING_CATALOG){sum+=item.weight;if(n<sum)return item;}return MINING_CATALOG[MINING_CATALOG.length-1];}
+
 const fishingStats=new Map();
 function fishingNearSea(p){
  if(!p||p.tentRoomId)return false;
@@ -631,7 +643,7 @@ async function serveFurnitureModel(req,res,id){
 const TENT_FURNITURE_MAX_PLACED=30;
 const furnitureStats=new Map();
 function furnitureRecord(identity){if(!furnitureStats.has(identity))furnitureStats.set(identity,{spent:0,owned:{}});return furnitureStats.get(identity);}
-function tentPointBalance(p){const earned=Math.floor(badgeTotal(p)/60)+tentTimeBonus(p)+(p.badgeIdentity?rhythmAccount(p.badgeIdentity).bonus+powerAccount(p.badgeIdentity).bonus+moleAccount(p.badgeIdentity).bonus+(fieldCoinBonuses.get(p.badgeIdentity)||0)+(adminPointCredits.get(p.badgeIdentity)||0)+(lotteryStats.get(p.badgeIdentity)?.bonus||0)+(fishingStats.get(p.badgeIdentity)?.bonus||0):0);return Math.max(0,earned-(fishingStats.get(p.badgeIdentity)?.spent||0)-(lotteryStats.get(p.badgeIdentity)?.spent||0)-(tentOwnedBy(p.badgeIdentity)?TENT_COST:0)-(furnitureStats.get(p.badgeIdentity)?.spent||0)-(petStats.get(p.badgeIdentity)?.spent||0)-(decorationStats.get(p.badgeIdentity)?.spent||0)-(tentOwnedBy(p.badgeIdentity)?.outdoorDecorSpent||0));}
+function tentPointBalance(p){const earned=Math.floor(badgeTotal(p)/60)+tentTimeBonus(p)+(p.badgeIdentity?rhythmAccount(p.badgeIdentity).bonus+powerAccount(p.badgeIdentity).bonus+moleAccount(p.badgeIdentity).bonus+(fieldCoinBonuses.get(p.badgeIdentity)||0)+(adminPointCredits.get(p.badgeIdentity)||0)+(lotteryStats.get(p.badgeIdentity)?.bonus||0)+(fishingStats.get(p.badgeIdentity)?.bonus||0)+(miningStats.get(p.badgeIdentity)?.bonus||0):0);return Math.max(0,earned-(fishingStats.get(p.badgeIdentity)?.spent||0)-(lotteryStats.get(p.badgeIdentity)?.spent||0)-(tentOwnedBy(p.badgeIdentity)?TENT_COST:0)-(furnitureStats.get(p.badgeIdentity)?.spent||0)-(petStats.get(p.badgeIdentity)?.spent||0)-(decorationStats.get(p.badgeIdentity)?.spent||0)-(tentOwnedBy(p.badgeIdentity)?.outdoorDecorSpent||0));}
 function safeFurniturePose(item,x,z,angle){
  if(!item||!Number.isFinite(x)||!Number.isFinite(z)||!Number.isFinite(angle))return false;
  if(angle<0||angle>=360||angle%45!==0)return false;
@@ -820,7 +832,7 @@ const SB_KEY=process.env.SUPABASE_SECRET_KEY||'';
 const useSupabase=Boolean(SB_URL&&SB_KEY);
 let restored=false;
 let saveChain=Promise.resolve();
-function stateData(){return {version:18,decorationStats:Object.fromEntries(decorationStats),fishKingDay,fishKingReward,fishKingScores:Object.fromEntries(fishKingScores),fortuneStats:Object.fromEntries(fortuneStats),oneTimeCreditApplied,adminPointCredits:Object.fromEntries(adminPointCredits),adminPointLedger:Object.fromEntries(adminPointLedger),recoveryRecords:Object.fromEntries(recoveryRecords),fishingStats:Object.fromEntries([...fishingStats].map(([id,a])=>[id,{level:a.level,spent:a.spent,bonus:a.bonus,fishCounts:a.fishCounts,totalMisses:a.totalMisses,lastCastAt:a.lastCastAt,active:a.active,lastResult:a.lastResult}])),lotteryStats:Object.fromEntries([...lotteryStats].map(([identity,a])=>[identity,{day:a.day,used:a.used,spent:a.spent,bonus:a.bonus,pending:a.pending,lastResult:a.lastResult}])),petStats:Object.fromEntries([...petStats].map(([identity,record])=>[identity,{spent:record.spent,pet:record.pet,effectsOwned:record.effectsOwned||{},effectsEnabled:record.effectsEnabled||{}}])),fieldCoinLastSpawnAt,fieldCoins:fieldCoinPublic(),fieldCoinBonuses:Object.fromEntries(fieldCoinBonuses),moleDay,moleHammerRevision,moleReward,moleScores:Object.fromEntries(moleScores),moleAccounts:Object.fromEntries([...moleAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session,lastResult:v.lastResult}])),powerDay,powerReward,powerScores:Object.fromEntries(powerScores),powerAccounts:Object.fromEntries([...powerAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),rhythmAccounts:Object.fromEntries([...rhythmAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),furnitureCatalogEdits:Object.fromEntries(furnitureCatalogEdits),furnitureStats:Object.fromEntries([...furnitureStats].map(([id,v])=>[id,{spent:v.spent,owned:v.owned}])),tentStats:Object.fromEntries([...tentStats].map(([identity,t])=>[identity,storedTent(t)])),announcements:{entry:entranceNotices,ticker:tickerNotices,intervalMinutes:tickerIntervalMinutes,immediateHistory:immediateNoticeHistory},music,queue:[...queue],history:[...history],nextTrackToken,customMd:Object.fromEntries(customMd),shopStats:Object.fromEntries([...shopStats].map(([k,v])=>[k,{spent:0,refunded:v.refunded||0,owned:v.owned,equipped:v.equipped}])),badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),rhythm:{day:rhythmDay,reward:rhythmReward,scores:Object.fromEntries([...rhythmScores].map(([k,v])=>[k,{name:v.name,score:Math.max(0,Math.floor(Number(v.score)||0)),updatedAt:Number(v.updatedAt)||0}]))},savedAt:Date.now()}}
+function stateData(){return {version:18,miningStats:Object.fromEntries([...miningStats].map(([id,r])=>[id,{bonus:r.bonus,counts:r.counts,lastResult:r.lastResult}])),decorationStats:Object.fromEntries(decorationStats),fishKingDay,fishKingReward,fishKingScores:Object.fromEntries(fishKingScores),fortuneStats:Object.fromEntries(fortuneStats),oneTimeCreditApplied,adminPointCredits:Object.fromEntries(adminPointCredits),adminPointLedger:Object.fromEntries(adminPointLedger),recoveryRecords:Object.fromEntries(recoveryRecords),fishingStats:Object.fromEntries([...fishingStats].map(([id,a])=>[id,{level:a.level,spent:a.spent,bonus:a.bonus,fishCounts:a.fishCounts,totalMisses:a.totalMisses,lastCastAt:a.lastCastAt,active:a.active,lastResult:a.lastResult}])),lotteryStats:Object.fromEntries([...lotteryStats].map(([identity,a])=>[identity,{day:a.day,used:a.used,spent:a.spent,bonus:a.bonus,pending:a.pending,lastResult:a.lastResult}])),petStats:Object.fromEntries([...petStats].map(([identity,record])=>[identity,{spent:record.spent,pet:record.pet,effectsOwned:record.effectsOwned||{},effectsEnabled:record.effectsEnabled||{}}])),fieldCoinLastSpawnAt,fieldCoins:fieldCoinPublic(),fieldCoinBonuses:Object.fromEntries(fieldCoinBonuses),moleDay,moleHammerRevision,moleReward,moleScores:Object.fromEntries(moleScores),moleAccounts:Object.fromEntries([...moleAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session,lastResult:v.lastResult}])),powerDay,powerReward,powerScores:Object.fromEntries(powerScores),powerAccounts:Object.fromEntries([...powerAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),rhythmAccounts:Object.fromEntries([...rhythmAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),furnitureCatalogEdits:Object.fromEntries(furnitureCatalogEdits),furnitureStats:Object.fromEntries([...furnitureStats].map(([id,v])=>[id,{spent:v.spent,owned:v.owned}])),tentStats:Object.fromEntries([...tentStats].map(([identity,t])=>[identity,storedTent(t)])),announcements:{entry:entranceNotices,ticker:tickerNotices,intervalMinutes:tickerIntervalMinutes,immediateHistory:immediateNoticeHistory},music,queue:[...queue],history:[...history],nextTrackToken,customMd:Object.fromEntries(customMd),shopStats:Object.fromEntries([...shopStats].map(([k,v])=>[k,{spent:0,refunded:v.refunded||0,owned:v.owned,equipped:v.equipped}])),badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),rhythm:{day:rhythmDay,reward:rhythmReward,scores:Object.fromEntries([...rhythmScores].map(([k,v])=>[k,{name:v.name,score:Math.max(0,Math.floor(Number(v.score)||0)),updatedAt:Number(v.updatedAt)||0}]))},savedAt:Date.now()}}
 function applySaved(d){
  if(!d||typeof d!=='object')return;
  fortuneStats.clear();
@@ -875,6 +887,14 @@ function applySaved(d){
  if(typeof d.fishKingDay==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(d.fishKingDay))fishKingDay=d.fishKingDay;
  if(d.fishKingScores&&typeof d.fishKingScores==='object'&&(fishKingDay===kstDate()||fishKingDay===previousKstDate()))for(const [id,r] of Object.entries(d.fishKingScores).slice(0,50000)){if(/^[a-zA-Z0-9_-]{20,100}$/.test(id)&&r&&Number.isSafeInteger(r.score)&&r.score>0&&Number.isFinite(r.at))fishKingScores.set(id,{name:clean(r.name,18)||'ROCKER',score:r.score,at:r.at});}
  if(d.fishKingReward&&/^[a-zA-Z0-9_-]{20,100}$/.test(d.fishKingReward.identity||'')&&/^\d{4}-\d{2}-\d{2}$/.test(d.fishKingReward.date||''))fishKingReward={identity:d.fishKingReward.identity,name:clean(d.fishKingReward.name,18)||'ROCKER',score:Math.max(0,Math.floor(Number(d.fishKingReward.score)||0)),date:d.fishKingReward.date,sourceDate:String(d.fishKingReward.sourceDate||'')};
+ miningStats.clear();
+ if(d.miningStats&&typeof d.miningStats==='object')for(const [id,r] of Object.entries(d.miningStats).slice(0,50000)){
+  if(!/^[a-zA-Z0-9_-]{20,100}$/.test(id)||!r||typeof r!=='object')continue;
+  const a={bonus:Number.isSafeInteger(r.bonus)&&r.bonus>=0?Math.min(r.bonus,10000000000):0,counts:{},active:null,lastResult:null};
+  if(r.counts&&typeof r.counts==='object')for(const [key,count] of Object.entries(r.counts).slice(0,MINING_CATALOG.length))if(MINING_BY_ID.has(key)&&Number.isSafeInteger(count)&&count>0&&count<100000000)a.counts[key]=count;
+  if(r.lastResult&&/^[a-f0-9-]{36}$/.test(r.lastResult.id||'')&&MINING_BY_ID.has(r.lastResult.oreId))a.lastResult={id:r.lastResult.id,oreId:r.lastResult.oreId,at:Number(r.lastResult.at)||0};
+  miningStats.set(id,a);
+ }
  fishingStats.clear();
  if(d.fishingStats&&typeof d.fishingStats==='object')for(const [id,a] of Object.entries(d.fishingStats).slice(0,50000)){
   if(!/^[a-zA-Z0-9_-]{20,100}$/.test(id)||!a||typeof a!=='object')continue;
@@ -1113,7 +1133,7 @@ setInterval(()=>{const now=Date.now();for(const duo of [...activeDuos.values()])
 const snapshot=(viewerId=null)=>({type:'snapshot',tents:allPlacedTents(),announcements:publicNoticeState(),interactions:[...activeDuos.values()].filter(x=>x.endAt>Date.now()),players:[...players.values()],chatRoomId:players.get(viewerId)?.tentRoomId||null,chat:chatForRoom(players.get(viewerId)?.tentRoomId||null),...musicState(),skipVote:publicSkipVote(),skipVoteCooldownUntil,slam:publicSlam(),slamCooldownUntil,rockPlay:publicRock(),crowdSurf:activeSurfRide&&activeSurfRide.startAt+activeSurfRide.duration>Date.now()?activeSurfRide:null,rockCooldowns:{...rockCooldowns},rockRunningUntil,rhythm:publicRhythmState(),power:publicPowerState(),mole:publicMoleState(),fieldCoins:fieldCoinPublic(),count:players.size});
 const clamp=(n,min,max)=>Math.min(max,Math.max(min,Number(n)||0));
 const SERVER_X_MIN=20,SERVER_X_MAX=1380,SERVER_Y_MIN=60,SERVER_Y_MAX=1550;
-function cleanup(){const now=Date.now();for(const [id,p] of players)if(now-p.seen>180000){settleBadge(p,Math.min(now,p.seen+45000));settleBadge(p);clearDuosFor(id);players.delete(id);forgetSession(id);voterLeaves(id);if(activeSlam?.participants.delete(id))slamUpdate();rockMemberLeaves(id);pauseForEmpty();const r=clients.get(id);if(r){r.end();clients.delete(id)}broadcast({type:'leave',id,count:players.size});sendTentUpdate()}}
+function cleanup(){const now=Date.now();for(const [id,p] of players)if(now-p.seen>180000){settleBadge(p,Math.min(now,p.seen+45000));settleBadge(p);clearDuosFor(id);clearMiningPlayer(p);players.delete(id);forgetSession(id);voterLeaves(id);if(activeSlam?.participants.delete(id))slamUpdate();rockMemberLeaves(id);pauseForEmpty();const r=clients.get(id);if(r){r.end();clients.delete(id)}broadcast({type:'leave',id,count:players.size});sendTentUpdate()}}
 setInterval(cleanup,7000).unref();
 // Check connected, fresh players even while standing still; each coin has one winner.
 setInterval(()=>{
@@ -1549,6 +1569,50 @@ const server=http.createServer(async(req,res)=>{
         if(!fortuneView(p.badgeIdentity).result){const card=crypto.randomInt(FORTUNE_CARDS.length);fortuneStats.set(p.badgeIdentity,{day:kstDate(),card,message:crypto.randomInt(FORTUNE_MESSAGES[card].length),selected});scheduleSave();}
         return json(res,200,{ok:true,fortune:fortuneView(p.badgeIdentity)});
       }
+      if(url.pathname==='/api/mining'){
+       if(!p.badgeIdentity||!playerSessions.get(id)||playerSessions.get(id)!==String(d.sessionKey||''))return json(res,403,{error:'본인 세션에서만 광질할 수 있어요.'});
+       const command=String(d.command||'state'),a=miningAccount(p.badgeIdentity),now=Date.now();
+       if(command==='state')return json(res,200,{ok:true,mining:miningView(p)});
+       if(command==='start'){
+        const rock=MINING_ROCKS.find(x=>x.id===String(d.rockId||''));
+        if(!rock||miningDistance(p,rock)>4)return json(res,403,{error:'광맥 가까이 이동해 주세요.'});
+        if(a.active&&a.active.playerId!==p.id)return json(res,409,{error:'다른 창에서 광질 중이에요. 종료하거나 잠시 기다려 주세요.'});
+        if(a.active)return json(res,200,{ok:true,mining:miningView(p)});
+        a.active={id:crypto.randomUUID(),playerId:p.id,rockId:rock.id,hits:0,lastHit:0,lastAt:now};a.lastResult=null;
+        p.action='mining';p.pose='stand';broadcast({type:'move',player:p});return json(res,200,{ok:true,mining:miningView(p)});
+       }
+       if(command==='stop'){
+        if(a.active?.playerId===p.id)a.active=null;
+        if(p.action==='mining'){p.action='idle';broadcast({type:'move',player:p});}
+        return json(res,200,{ok:true,mining:miningView(p)});
+       }
+       if(command==='hit'){
+        const session=a.active,sessionId=String(d.sessionId||'');
+        if(a.lastResult?.id===sessionId){const item=MINING_BY_ID.get(a.lastResult.oreId);return json(res,200,{ok:true,result:item,mining:miningView(p)});}
+        if(!session||session.playerId!==p.id||session.id!==sessionId)return json(res,409,{error:'광질을 다시 시작해 주세요.',mining:miningView(p)});
+        const rock=MINING_ROCKS.find(x=>x.id===session.rockId);
+        if(!rock||miningDistance(p,rock)>4.5){a.active=null;if(p.action==='mining'){p.action='idle';broadcast({type:'move',player:p});}return json(res,403,{error:'광맥에서 너무 멀어졌어요.',mining:miningView(p)});}
+        const seq=Number(d.seq);if(!Number.isInteger(seq)||seq<1||seq>MINING_HITS)return json(res,400,{error:'올바르지 않은 채광 요청이에요.'});
+        if(seq<=session.hits)return json(res,200,{ok:true,mining:miningView(p)});
+        if(seq!==session.hits+1)return json(res,409,{error:'다시 시도해 주세요.',mining:miningView(p)});
+        if(session.lastHit&&now-session.lastHit<MINING_HIT_MS)return json(res,429,{error:'조금 천천히 두드려 주세요.',mining:miningView(p)});
+        session.hits++;session.lastHit=now;session.lastAt=now;
+        if(session.hits===MINING_HITS){
+         const ore=miningDraw();a.bonus+=ore.points;a.counts[ore.id]=(a.counts[ore.id]||0)+1;
+         a.lastResult={id:session.id,oreId:ore.id,at:now};session.id=crypto.randomUUID();session.hits=0;session.lastHit=0;
+         broadcast({type:'mining-find',playerId:p.id,oreId:ore.id,rarity:ore.rarity,rockId:rock.id,name:ore.name,points:ore.points});
+         await saveNow();return json(res,200,{ok:true,result:{...ore},mining:miningView(p)});
+        }
+        return json(res,200,{ok:true,mining:miningView(p)});
+       }
+       return json(res,400,{error:'지원하지 않는 광질 요청이에요.'});
+      }
+      if(url.pathname==='/api/game-presence'){
+        if(!playerSessions.get(id)||playerSessions.get(id)!==String(d.sessionKey||''))return json(res,403,{error:'본인 세션에서 이용해 주세요.'});
+        if(typeof d.playing!=='boolean')return json(res,400,{error:'게임 상태가 올바르지 않아요.'});
+        if(Boolean(p.gamePlaying)!==d.playing){p.gamePlaying=d.playing;broadcast({type:'game-presence',id:p.id,playing:p.gamePlaying});}
+        return json(res,200,{ok:true,playing:Boolean(p.gamePlaying)});
+      }
       if(url.pathname==='/api/decoration'){
        if(!p.badgeIdentity||playerSessions.get(id)!==String(d.sessionKey||''))return json(res,403,{error:'본인 세션에서 이용해 주세요.'});
        const command=String(d.command||'status');
@@ -1931,7 +1995,8 @@ const server=http.createServer(async(req,res)=>{
           if(kstHour<1||kstHour>=4)d.action='idle';
         }
         if(d.action==='fishing'&&(!fishingNearSea(p)||!fishingAccount(p.badgeIdentity).active))d.action='idle';
-        p.action=['idle','walk','peace','jump','run','wave','clap','sit','lie','drink','snack','headbang','buriburi','groove','dougie','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','powerking','moleking','fishking','marshmallow','putyourhandsup','nightfirework','birthday','fishing','heartbow','drum','electricguitar','bassguitar','vocal','mosh-charge','slam-charge','slam-retreat','slam-celebrate','circle-run','train-run','row-paddle','toast-clink','surf-rider','surf-support','shoulder-headbang','rock-skank'].includes(d.action)?d.action:'idle';
+        if(d.action==='mining'&&(!p.badgeIdentity||miningAccount(p.badgeIdentity).active?.playerId!==p.id))d.action='idle';
+        p.action=['idle','walk','peace','jump','run','wave','clap','sit','lie','drink','snack','headbang','buriburi','groove','dougie','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','powerking','moleking','fishking','marshmallow','putyourhandsup','nightfirework','birthday','fishing','mining','heartbow','drum','electricguitar','bassguitar','vocal','mosh-charge','slam-charge','slam-retreat','slam-celebrate','circle-run','train-run','row-paddle','toast-clink','surf-rider','surf-support','shoulder-headbang','rock-skank'].includes(d.action)?d.action:'idle';
         broadcast({type:'move',player:p});
         // Only a movement packet from this player's private session may
         // award coins; publicly visible avatar IDs are not authentication.
@@ -2203,7 +2268,7 @@ const server=http.createServer(async(req,res)=>{
         // A late pagehide beacon from a previous page must not kick the newer page.
         const owner=pageOwners.get(id);
         if(owner&&d.pageId!==owner)return json(res,200,{ok:true,ignored:'stale-page'});
-        settleBadge(p);clearDuosFor(id);players.delete(id);forgetSession(id);voterLeaves(id);
+        settleBadge(p);clearDuosFor(id);clearMiningPlayer(p);players.delete(id);forgetSession(id);voterLeaves(id);
         if(activeSlam?.participants.delete(id))slamUpdate();rockMemberLeaves(id);pauseForEmpty();
         clients.get(id)?.end();clients.delete(id);broadcast({type:'leave',id,count:players.size});sendTentUpdate();return json(res,200,{ok:true})
       }
