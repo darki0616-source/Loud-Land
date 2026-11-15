@@ -1561,7 +1561,7 @@ const server=http.createServer(async(req,res)=>{
             const success=session.progress>=1&&session.tension<1, fish=FISH_BY_ID.get(session.fishId);a.active=null;
             if(success){a.bonus+=fish.points;a.fishCounts[fish.id]=(a.fishCounts[fish.id]||0)+1;recordFishingPoints(p,fish.points);}else a.totalMisses++;
             a.lastResult={id:castId,success,fish:success?fish:undefined,points:success?fish.points:0,reason:success?'caught':'line',at:now};
-            await saveNow();return json(res,200,{ok:true,result:a.lastResult,fishing:fishingView(p)});
+            await saveNow();if(success)broadcast({type:'fishing-find',playerId:p.id,fishId:fish.id,name:fish.name,points:fish.points,rarity:fish.rarity});return json(res,200,{ok:true,result:a.lastResult,fishing:fishingView(p)});
           }
           return json(res,200,{ok:true,fishing:fishingView(p)});
         }
