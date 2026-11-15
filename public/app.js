@@ -2821,7 +2821,7 @@ let PUNK_SHOP_ITEMS=[
  ['angel-wings','🤍','천사 날개',280,'back'],
  ['star-glasses','⭐','별모양 선글라스',120,'eyes'],
  ['angel-halo','😇','천사 링',130,'head'],
- ['butterfly-wings','🦋','나비 날개',260,'back'],
+ ['butterfly-wings','🦋','요정 날개',260,'back'],
  ['bunny-ears','🐰','토끼 귀',125,'head'],
  ['balloon-hat','🎈','블루 블랙 풍선 모자',0,'head']
 ];
@@ -2884,6 +2884,7 @@ function mdPreviewTarget(id,slot,emoji,name){
    const hairStyle=normalizeHairStyle(p.hairStyle||chosenHairStyle||'basic-short');
    if(!['basic-short','basic-bob'].includes(hairStyle))await getHairAsset(hairStyle).catch(()=>{});
    if(id==='angel-wings')await getAngelWingsModel().catch(()=>{});
+   if(id==='butterfly-wings')await getImportedWingModel('fairy').catch(()=>{});
    if(id==='balloon-hat')await Promise.race([getBalloonHatModel().catch(()=>{}),new Promise(resolve=>setTimeout(resolve,1000))]);
    if(!canvas.isConnected)return;
    if(!mdPreviewRenderer){
@@ -5699,7 +5700,8 @@ function attachBalloonHat(neck,root){
 const importedWingTemplatePromises=new Map();
 const importedWingTypes={
  angel:{url:'/assets/md/angel_wings_optimized.glb?v=201',scale:[1.43,1.36,.67],offset:[0,0,-.07]},
- fallen:{url:'/assets/md/devil_wings_optimized.glb?v=201',scale:[1.48,2.15,.80],offset:[0,.02,-.08]}
+ fallen:{url:'/assets/md/devil_wings_optimized.glb?v=201',scale:[1.48,2.15,.80],offset:[0,.02,-.08]},
+ fairy:{url:'/assets/md/fairy_wings.glb?v=343',scale:[3.2,3.2,3.2],offset:[0,.04,-.06]}
 };
 function getImportedWingModel(kind){
  const setting=importedWingTypes[kind];
@@ -6784,6 +6786,7 @@ function makeAvatar(p){
   };
   makeWing(-1);makeWing(1);
   child(wings,new THREE.CapsuleGeometry(.07,.30,4,8),mat('#5d4c84',.62),[0,.06,-.05]);
+  attachImportedWings(wings,root,'fairy');
  }
  if(look.back==='back-guitar'){
   // Guitar hangs diagonally on the rear torso with a visible strap. Entire rig
@@ -9971,15 +9974,15 @@ function ensureFishingUi(){
  if(fishingUi)return;
  const btn=document.createElement('button');btn.id='fishShoreBtn';btn.type='button';btn.innerHTML='<img src="/assets/fishing/rod.svg" alt=""> 🎣 낚시하기';document.body.append(btn);
  const overlay=document.createElement('div');overlay.id='fishingOverlay';overlay.innerHTML=`<div class="fish-window" role="dialog" aria-modal="true" aria-labelledby="fishTitle">
-  <header class="fish-head"><div><small>ONESEASON · OCEAN ADVENTURE</small><h2 id="fishTitle">🎣 낚시 · FISHING</h2></div><div class="fish-head-info"><span class="fish-pill" id="fishWallet">🪙 0P</span><span class="fish-pill" id="fishCollected">🐠 0/48종</span><button class="fish-close" id="fishClose" aria-label="닫기">×</button></div></header>
+  <header class="fish-head"><div><small>ONESEASON · OCEAN ADVENTURE</small><h2 id="fishTitle">🎣 낚시 · FISHING</h2></div><div class="fish-head-info"><span class="fish-pill" id="fishWallet">🪙 0P</span><span class="fish-pill" id="fishCollected">🐠 0/60종</span><button class="fish-close" id="fishClose" aria-label="닫기">×</button></div></header>
   <div class="fish-chat-toolbar"><span>💬 실시간 채팅</span><button class="fish-chat-toggle" id="fishChatToggle" type="button" aria-expanded="false">채팅 보기</button></div><section class="fish-chat-drawer" id="fishChatDrawer" hidden aria-label="낚시 중 채팅"><div class="fish-chat-heading"><strong>💬 채팅</strong><button type="button" id="fishChatClose" aria-label="채팅 닫기">×</button></div><div id="fishChatMessages" class="fish-chat-messages" aria-live="polite"></div><form id="fishChatForm" class="fish-chat-form"><input id="fishChatInput" type="text" maxlength="80" placeholder="메시지 입력" autocomplete="off" aria-label="채팅 메시지"><button type="submit" id="fishChatSend">전송</button></form></section>
   <div class="fish-content"><nav class="fish-tabs" aria-label="낚시 메뉴"><button class="fish-tab active" data-fish-tab="play">🌊 낚시</button><button class="fish-tab" data-fish-tab="guide">🪝 낚싯대</button><button class="fish-tab" data-fish-tab="catalog">📖 물고기 도감</button></nav>
-   <div id="fishPlay"><div class="fish-main"><section class="fish-card"><div class="fish-poster"><div><strong>바다에서 만나는 48종의 물고기</strong><p>낚싯대를 던지고 입질을 기다리세요. 릴을 감고 장력을 조절해 물고기를 잡아보세요!</p></div></div><div class="fish-game"><h3 class="fish-title" id="fishCurrentStatus">🎣 낚싯대를 준비하세요</h3><div class="fish-stage"><span class="fish-stage-rod" id="fishStageRod">🎣</span><span class="fish-bobber" id="fishBobber"></span><div id="fishHook" class="fish-hook" hidden><span class="fish-hook-line">🪝</span><span id="fishHookIcon"></span><b id="fishHookName"></b></div></div><div class="fish-reel-display" id="fishReelDisplay" hidden><div id="fishStruggleAlert" role="status" style="min-height:1.5em;text-align:center;color:#ffe68b;font-weight:800;font-size:14px"></div><div class="fish-reel-row"><span>🐟 물고기와의 거리</span><b id="fishDistance">100%</b></div><div class="fish-track"><i id="fishProgress"></i></div><div class="fish-reel-row"><span>🪢 낚싯줄 장력</span><b id="fishTensionText">0%</b></div><div class="fish-track tension"><i id="fishTension"></i></div><p>버튼을 눌러 감고, 몸부림 신호가 오면 장력을 조절하세요!</p></div><div class="fish-meter-wrap" hidden><div class="fish-meter-label"><span>🎯 초록색 안에서 당기기</span><span id="fishTimeLabel">READY</span></div><div class="fish-meter"><div id="fishTarget" class="fish-target" style="left:40%;width:20%"></div><div id="fishCursor" class="fish-cursor" style="left:0%"></div></div><p class="fish-meter-help">입질 후 GET을 누르고, 움직이는 하얀 바늘이 초록 영역에 들어왔을 때 <b>당기기!</b>를 누르세요. 모바일은 터치, PC는 스페이스도 가능해요.</p></div><div class="fish-message" id="fishMessage" aria-live="polite">낚싯대는 500P에 구매할 수 있어요.</div><button class="fish-action" id="fishAction" type="button">🪝 낚싯대 구매 · 500P</button></div></section>
+   <div id="fishPlay"><div class="fish-main"><section class="fish-card"><div class="fish-poster"><div><strong>바다에서 만나는 60종의 물고기</strong><p>낚싯대를 던지고 입질을 기다리세요. 릴을 감고 장력을 조절해 물고기를 잡아보세요!</p></div></div><div class="fish-game"><h3 class="fish-title" id="fishCurrentStatus">🎣 낚싯대를 준비하세요</h3><div class="fish-stage"><span class="fish-stage-rod" id="fishStageRod">🎣</span><span class="fish-bobber" id="fishBobber"></span><div id="fishHook" class="fish-hook" hidden><span class="fish-hook-line">🪝</span><span id="fishHookIcon"></span><b id="fishHookName"></b></div></div><div class="fish-reel-display" id="fishReelDisplay" hidden><div id="fishStruggleAlert" role="status" style="min-height:1.5em;text-align:center;color:#ffe68b;font-weight:800;font-size:14px"></div><div class="fish-reel-row"><span>🐟 물고기와의 거리</span><b id="fishDistance">100%</b></div><div class="fish-track"><i id="fishProgress"></i></div><div class="fish-reel-row"><span>🪢 낚싯줄 장력</span><b id="fishTensionText">0%</b></div><div class="fish-track tension"><i id="fishTension"></i></div><p>버튼을 눌러 감고, 몸부림 신호가 오면 장력을 조절하세요!</p></div><div class="fish-meter-wrap" hidden><div class="fish-meter-label"><span>🎯 초록색 안에서 당기기</span><span id="fishTimeLabel">READY</span></div><div class="fish-meter"><div id="fishTarget" class="fish-target" style="left:40%;width:20%"></div><div id="fishCursor" class="fish-cursor" style="left:0%"></div></div><p class="fish-meter-help">입질 후 GET을 누르고, 움직이는 하얀 바늘이 초록 영역에 들어왔을 때 <b>당기기!</b>를 누르세요. 모바일은 터치, PC는 스페이스도 가능해요.</p></div><div class="fish-message" id="fishMessage" aria-live="polite">낚싯대는 500P에 구매할 수 있어요.</div><button class="fish-action" id="fishAction" type="button">🪝 낚싯대 구매 · 500P</button></div></section>
     <aside class="fish-side"><section class="fish-card fish-sidecard"><h3>🎣 내 낚싯대</h3><div class="fish-rodview"><img src="/assets/fishing/rod.svg" alt="낚싯대"><div><strong id="fishRodName">미보유</strong><small id="fishRodEffect">낚싯대 구입 후 낚시 가능</small></div></div><button id="fishUpgrade" type="button" class="fish-upgrade">✨ 낚싯대 강화</button></section>
       <section class="fish-card fish-sidecard"><h3>🐠 물고기 수집 현황</h3><p id="fishStats">0종 발견 · 0마리 잡음</p><div class="fish-rarity"><span class="common">일반</span><span class="uncommon">고급</span><span class="rare">희귀</span><span class="epic">영웅</span><span class="legendary">전설</span></div><p>물고기마다 <b>등장 확률 · 난이도 · 포인트</b>가 달라요. 잡은 물고기는 자동으로 도감에 기록돼요.</p></section>
       <section class="fish-card fish-sidecard"><h3>💡 낚시 방법</h3><div class="fish-steps"><span>1. 낚싯대 구매</span><span>2. 던지기</span><span>3. 입질 기다리기</span><span>4. 릴을 감고 장력 조절</span></div><p>낚싯대가 강해질수록 감는 속도와 줄의 안정성이 높아져요. 포인트는 낚시에 성공했을 때 자동 지급돼요.</p></section></aside></div></div>
    <div id="fishGuide" class="fish-hidden fish-card fish-sidecard"><h3>🪝 낚싯대 상점 / 업그레이드</h3><div id="fishRodProgress"></div><p>낚싯대를 강화하면 더 빨리 감고 물고기의 몸부림을 더 잘 버틸 수 있어요. 강화 비용은 한 번만 결제돼요.</p><button class="fish-action" id="fishGuideAction">낚싯대 구매</button></div>
-   <div id="fishCatalog" class="fish-hidden"><div class="fish-catalog-head"><strong id="fishCatalogHeading">🐠 전체 48종</strong><div class="fish-filters" id="fishFilters"></div></div><div class="fish-grid" id="fishSpeciesGrid"></div></div>
+   <div id="fishCatalog" class="fish-hidden"><div class="fish-catalog-head"><strong id="fishCatalogHeading">🐠 전체 60종</strong><div class="fish-filters" id="fishFilters"></div></div><div class="fish-grid" id="fishSpeciesGrid"></div></div>
    </div><div class="fish-footer">ONEseason 게임 포인트 전용 · 물고기 출현과 낚시 성공 판정 및 보상은 서버에서 관리합니다.</div></div>`;
  document.body.append(overlay);
  const q=id=>overlay.querySelector('#'+id);

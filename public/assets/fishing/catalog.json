@@ -6,7 +6,7 @@
     "rarity": "common",
     "difficulty": 0.8,
     "points": 4,
-    "weight": 750
+    "weight": 660
   },
   {
     "id": "common02",
@@ -15,7 +15,7 @@
     "rarity": "common",
     "difficulty": 0.804,
     "points": 5,
-    "weight": 620
+    "weight": 546
   },
   {
     "id": "common03",
@@ -24,7 +24,7 @@
     "rarity": "common",
     "difficulty": 0.808,
     "points": 6,
-    "weight": 590
+    "weight": 519
   },
   {
     "id": "common04",
@@ -33,7 +33,7 @@
     "rarity": "common",
     "difficulty": 1.812,
     "points": 7,
-    "weight": 530
+    "weight": 466
   },
   {
     "id": "common05",
@@ -42,7 +42,7 @@
     "rarity": "common",
     "difficulty": 1.816,
     "points": 8,
-    "weight": 495
+    "weight": 436
   },
   {
     "id": "common06",
@@ -51,7 +51,7 @@
     "rarity": "common",
     "difficulty": 1.82,
     "points": 9,
-    "weight": 460
+    "weight": 405
   },
   {
     "id": "common07",
@@ -60,7 +60,7 @@
     "rarity": "common",
     "difficulty": 1.824,
     "points": 10,
-    "weight": 430
+    "weight": 378
   },
   {
     "id": "common08",
@@ -69,7 +69,7 @@
     "rarity": "common",
     "difficulty": 1.828,
     "points": 11,
-    "weight": 400
+    "weight": 352
   },
   {
     "id": "common09",
@@ -78,7 +78,7 @@
     "rarity": "common",
     "difficulty": 1.832,
     "points": 12,
-    "weight": 360
+    "weight": 317
   },
   {
     "id": "common10",
@@ -87,7 +87,7 @@
     "rarity": "common",
     "difficulty": 1.836,
     "points": 13,
-    "weight": 330
+    "weight": 290
   },
   {
     "id": "common11",
@@ -96,7 +96,7 @@
     "rarity": "common",
     "difficulty": 1.84,
     "points": 14,
-    "weight": 300
+    "weight": 264
   },
   {
     "id": "common12",
@@ -105,7 +105,7 @@
     "rarity": "common",
     "difficulty": 1.844,
     "points": 15,
-    "weight": 270
+    "weight": 238
   },
   {
     "id": "common13",
@@ -114,7 +114,7 @@
     "rarity": "common",
     "difficulty": 1.848,
     "points": 16,
-    "weight": 240
+    "weight": 211
   },
   {
     "id": "common14",
@@ -123,7 +123,7 @@
     "rarity": "common",
     "difficulty": 2.852,
     "points": 18,
-    "weight": 210
+    "weight": 185
   },
   {
     "id": "common15",
@@ -132,7 +132,7 @@
     "rarity": "common",
     "difficulty": 2.856,
     "points": 20,
-    "weight": 160
+    "weight": 141
   },
   {
     "id": "common16",
@@ -141,7 +141,7 @@
     "rarity": "common",
     "difficulty": 2.86,
     "points": 22,
-    "weight": 85
+    "weight": 75
   },
   {
     "id": "common17",
@@ -150,7 +150,7 @@
     "rarity": "common",
     "difficulty": 1.864,
     "points": 16,
-    "weight": 55
+    "weight": 48
   },
   {
     "id": "common18",
@@ -159,7 +159,7 @@
     "rarity": "common",
     "difficulty": 2.868,
     "points": 24,
-    "weight": 15
+    "weight": 13
   },
   {
     "id": "uncommon01",
@@ -168,7 +168,7 @@
     "rarity": "uncommon",
     "difficulty": 2.872,
     "points": 28,
-    "weight": 385
+    "weight": 339
   },
   {
     "id": "uncommon02",
@@ -177,7 +177,7 @@
     "rarity": "uncommon",
     "difficulty": 2.876,
     "points": 30,
-    "weight": 350
+    "weight": 308
   },
   {
     "id": "uncommon03",
@@ -186,7 +186,7 @@
     "rarity": "uncommon",
     "difficulty": 2.88,
     "points": 32,
-    "weight": 310
+    "weight": 273
   },
   {
     "id": "uncommon04",
@@ -195,7 +195,7 @@
     "rarity": "uncommon",
     "difficulty": 2.884,
     "points": 35,
-    "weight": 280
+    "weight": 246
   },
   {
     "id": "uncommon05",
@@ -204,7 +204,7 @@
     "rarity": "uncommon",
     "difficulty": 2.888,
     "points": 38,
-    "weight": 243
+    "weight": 214
   },
   {
     "id": "uncommon06",
@@ -213,7 +213,7 @@
     "rarity": "uncommon",
     "difficulty": 2.892,
     "points": 40,
-    "weight": 212
+    "weight": 187
   },
   {
     "id": "uncommon07",
@@ -222,7 +222,7 @@
     "rarity": "uncommon",
     "difficulty": 2.896,
     "points": 42,
-    "weight": 180
+    "weight": 158
   },
   {
     "id": "uncommon08",
@@ -231,7 +231,7 @@
     "rarity": "uncommon",
     "difficulty": 2.9,
     "points": 45,
-    "weight": 162
+    "weight": 143
   },
   {
     "id": "uncommon09",
@@ -240,7 +240,7 @@
     "rarity": "uncommon",
     "difficulty": 3.904,
     "points": 48,
-    "weight": 135
+    "weight": 119
   },
   {
     "id": "uncommon10",
@@ -249,7 +249,7 @@
     "rarity": "uncommon",
     "difficulty": 3.908,
     "points": 52,
-    "weight": 115
+    "weight": 101
   },
   {
     "id": "uncommon11",
@@ -258,7 +258,7 @@
     "rarity": "uncommon",
     "difficulty": 3.912,
     "points": 54,
-    "weight": 80
+    "weight": 70
   },
   {
     "id": "uncommon12",
@@ -267,7 +267,7 @@
     "rarity": "uncommon",
     "difficulty": 3.916,
     "points": 60,
-    "weight": 48
+    "weight": 42
   },
   {
     "id": "rare01",
@@ -276,7 +276,7 @@
     "rarity": "rare",
     "difficulty": 3.92,
     "points": 75,
-    "weight": 200
+    "weight": 176
   },
   {
     "id": "rare02",
@@ -285,7 +285,7 @@
     "rarity": "rare",
     "difficulty": 3.924,
     "points": 85,
-    "weight": 175
+    "weight": 154
   },
   {
     "id": "rare03",
@@ -294,7 +294,7 @@
     "rarity": "rare",
     "difficulty": 3.928,
     "points": 90,
-    "weight": 140
+    "weight": 123
   },
   {
     "id": "rare04",
@@ -303,7 +303,7 @@
     "rarity": "rare",
     "difficulty": 3.932,
     "points": 110,
-    "weight": 110
+    "weight": 97
   },
   {
     "id": "rare05",
@@ -312,7 +312,7 @@
     "rarity": "rare",
     "difficulty": 4.936,
     "points": 125,
-    "weight": 90
+    "weight": 79
   },
   {
     "id": "rare06",
@@ -321,7 +321,7 @@
     "rarity": "rare",
     "difficulty": 3.94,
     "points": 135,
-    "weight": 70
+    "weight": 62
   },
   {
     "id": "rare07",
@@ -330,7 +330,7 @@
     "rarity": "rare",
     "difficulty": 4.944,
     "points": 155,
-    "weight": 50
+    "weight": 44
   },
   {
     "id": "rare08",
@@ -339,7 +339,7 @@
     "rarity": "rare",
     "difficulty": 4.948,
     "points": 175,
-    "weight": 35
+    "weight": 31
   },
   {
     "id": "rare09",
@@ -348,7 +348,7 @@
     "rarity": "rare",
     "difficulty": 4.952,
     "points": 190,
-    "weight": 30
+    "weight": 26
   },
   {
     "id": "epic01",
@@ -357,7 +357,7 @@
     "rarity": "epic",
     "difficulty": 4.956,
     "points": 260,
-    "weight": 94
+    "weight": 83
   },
   {
     "id": "epic02",
@@ -366,7 +366,7 @@
     "rarity": "epic",
     "difficulty": 4.96,
     "points": 310,
-    "weight": 60
+    "weight": 53
   },
   {
     "id": "epic03",
@@ -375,7 +375,7 @@
     "rarity": "epic",
     "difficulty": 4.964,
     "points": 370,
-    "weight": 45
+    "weight": 40
   },
   {
     "id": "epic04",
@@ -384,7 +384,7 @@
     "rarity": "epic",
     "difficulty": 4.968,
     "points": 440,
-    "weight": 34
+    "weight": 30
   },
   {
     "id": "epic05",
@@ -393,7 +393,7 @@
     "rarity": "epic",
     "difficulty": 4.972,
     "points": 550,
-    "weight": 25
+    "weight": 22
   },
   {
     "id": "epic06",
@@ -402,7 +402,7 @@
     "rarity": "epic",
     "difficulty": 4.976,
     "points": 650,
-    "weight": 12
+    "weight": 10
   },
   {
     "id": "legendary01",
@@ -411,7 +411,7 @@
     "rarity": "legendary",
     "difficulty": 4.98,
     "points": 1200,
-    "weight": 16
+    "weight": 14
   },
   {
     "id": "legendary02",
@@ -420,7 +420,7 @@
     "rarity": "legendary",
     "difficulty": 4.984,
     "points": 1800,
-    "weight": 10
+    "weight": 9
   },
   {
     "id": "legendary03",
@@ -429,6 +429,114 @@
     "rarity": "legendary",
     "difficulty": 4.988,
     "points": 3000,
+    "weight": 3
+  },
+  {
+    "id": "common19",
+    "name": "청어",
+    "icon": "🐟",
+    "rarity": "common",
+    "difficulty": 1.6,
+    "points": 8,
+    "weight": 252
+  },
+  {
+    "id": "common20",
+    "name": "돌돔",
+    "icon": "🐟",
+    "rarity": "common",
+    "difficulty": 2.0,
+    "points": 13,
+    "weight": 252
+  },
+  {
+    "id": "common21",
+    "name": "푸타수",
+    "icon": "🐟",
+    "rarity": "common",
+    "difficulty": 2.1,
+    "points": 14,
+    "weight": 252
+  },
+  {
+    "id": "uncommon13",
+    "name": "쏠배감펭",
+    "icon": "🐟",
+    "rarity": "uncommon",
+    "difficulty": 2.65,
+    "points": 36,
+    "weight": 75
+  },
+  {
+    "id": "uncommon14",
+    "name": "나비고기",
+    "icon": "🐟",
+    "rarity": "uncommon",
+    "difficulty": 2.5,
+    "points": 35,
+    "weight": 75
+  },
+  {
+    "id": "uncommon15",
+    "name": "흰동가리",
+    "icon": "🐟",
+    "rarity": "uncommon",
+    "difficulty": 2.45,
+    "points": 32,
+    "weight": 75
+  },
+  {
+    "id": "uncommon16",
+    "name": "잎해룡",
+    "icon": "🐟",
+    "rarity": "uncommon",
+    "difficulty": 3.0,
+    "points": 48,
+    "weight": 75
+  },
+  {
+    "id": "rare10",
+    "name": "개복치",
+    "icon": "🐟",
+    "rarity": "rare",
+    "difficulty": 3.4,
+    "points": 100,
+    "weight": 36
+  },
+  {
+    "id": "rare11",
+    "name": "산갈치",
+    "icon": "🐟",
+    "rarity": "rare",
+    "difficulty": 3.8,
+    "points": 145,
+    "weight": 36
+  },
+  {
+    "id": "rare12",
+    "name": "청상아리",
+    "icon": "🐟",
+    "rarity": "rare",
+    "difficulty": 3.6,
+    "points": 120,
+    "weight": 36
+  },
+  {
+    "id": "epic07",
+    "name": "발광 수정 오징어",
+    "icon": "🐟",
+    "rarity": "epic",
+    "difficulty": 4.2,
+    "points": 400,
+    "weight": 32
+  },
+  {
+    "id": "legendary04",
+    "name": "별빛 바다용",
+    "icon": "🐟",
+    "rarity": "legendary",
+    "difficulty": 4.9,
+    "points": 1600,
     "weight": 4
   }
 ]

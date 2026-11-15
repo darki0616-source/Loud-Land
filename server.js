@@ -405,7 +405,7 @@ function lotteryDraw(){
 }
 // v312: Shore fishing. Every draw, timing result, purchase and payout is server-owned.
 const FISH_CATALOG=JSON.parse(fs.readFileSync(path.join(PUBLIC,'assets/fishing/catalog.json'),'utf8'));
-if(FISH_CATALOG.length!==48||FISH_CATALOG.reduce((n,f)=>n+f.weight,0)!==10000)throw Error('Invalid fishing probabilities');
+if(FISH_CATALOG.length!==60||FISH_CATALOG.reduce((n,f)=>n+f.weight,0)!==10000)throw Error('Invalid fishing probabilities');
 const FISH_BY_ID=new Map(FISH_CATALOG.map(f=>[f.id,f]));
 const FISH_ROD_PRICES=[0,500,650,1400,2800,5000]; // level 1 purchase, then lv2..lv5
 const FISH_LEVEL_NAMES=['','나무 낚싯대','실버 낚싯대','골드 낚싯대','플래티넘 낚싯대','레인보우 낚싯대'];
@@ -476,7 +476,7 @@ function fishingDraw(){const n=crypto.randomInt(10000);let sum=0;for(const fish 
 function fishingRestore(a){
  const record={level:Math.max(0,Math.min(FISH_MAX_LEVEL,Math.floor(Number(a?.level)||0))),spent:0,bonus:0,fishCounts:{},totalMisses:0,lastCastAt:0,active:null,lastResult:null};
  for(const key of ['spent','bonus','totalMisses','lastCastAt'])if(Number.isSafeInteger(a?.[key])&&a[key]>=0&&a[key]<=10000000000)record[key]=a[key];
- if(a?.fishCounts&&typeof a.fishCounts==='object')for(const [id,count] of Object.entries(a.fishCounts).slice(0,48))if(FISH_BY_ID.has(id)&&Number.isSafeInteger(count)&&count>0&&count<100000000)record.fishCounts[id]=count;
+ if(a?.fishCounts&&typeof a.fishCounts==='object')for(const [id,count] of Object.entries(a.fishCounts).slice(0,FISH_CATALOG.length))if(FISH_BY_ID.has(id)&&Number.isSafeInteger(count)&&count>0&&count<100000000)record.fishCounts[id]=count;
  const last=a?.lastResult;
  if(last&&/^[a-f0-9-]{36}$/.test(last.id||'')&&typeof last.success==='boolean'){
   const fish=last.success?FISH_BY_ID.get(last.fish?.id):null;
@@ -723,7 +723,7 @@ const PUNK_ITEMS={
  'angel-wings':{name:'천사 날개',slot:'back',cost:280},
  'star-glasses':{name:'별모양 선글라스',slot:'eyes',cost:120},
  'angel-halo':{name:'천사 링',slot:'head',cost:130},
- 'butterfly-wings':{name:'나비 날개',slot:'back',cost:260},
+ 'butterfly-wings':{name:'요정 날개',slot:'back',cost:260},
  'bunny-ears':{name:'토끼 귀',slot:'head',cost:125},
  'balloon-hat':{name:'블루 블랙 풍선 모자',slot:'head',cost:0}
 };
