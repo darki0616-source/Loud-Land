@@ -3020,6 +3020,12 @@ function drawDecorationTrailPreview(t){
    for(let i=0;i<colors.length;i++){const g=ctx.createLinearGradient(30,0,425,0);g.addColorStop(0,'transparent');g.addColorStop(.55,colors[i]+'aa');g.addColorStop(1,colors[i]);ctx.strokeStyle=g;ctx.lineWidth=8;ctx.shadowColor=colors[i];ctx.shadowBlur=12;ctx.beginPath();ctx.moveTo(30,83+i*12+Math.sin(t*.003)*5);ctx.bezierCurveTo(170,63+i*12,300,94+i*12,425,83+i*12);ctx.stroke();}ctx.shadowBlur=0;
   }else if(kind==='flame'){
    for(let i=0;i<22;i++){const phase=(t*.00085+i/22)%1,x=425-phase*290,y=155-phase*65+Math.sin(i*4+t*.007)*16;ctx.globalAlpha=(1-phase)*.75;const size=55+(i%5)*8;ctx.drawImage(characterTrailTexture('flame').image,x-size/2,y-size/2,size,size*1.3);}
+  }else if(['star','snow','petal','heart'].includes(kind)){
+   const seed=n=>{const v=Math.sin(n*127.1+43.7)*43758.5453;return v-Math.floor(v)};
+   for(let i=0;i<17;i++){const offset=seed(i*4+1),clock=t*.00042+offset,phase=clock%1,cycle=Math.floor(clock),key=i*47+cycle*137;
+    const x=417-phase*(280+seed(key+1)*90),y=52+seed(key+2)*142+Math.sin(t*.002+key)*9+(kind==='snow'||kind==='petal'?phase*16:-phase*8),size=22+seed(key+3)*42,rot=seed(key+4)*6.28+phase*(kind==='petal'?1.3:.5);
+    ctx.globalAlpha=(1-phase)*(.55+seed(key+5)*.4);ctx.save();ctx.translate(x,y);ctx.rotate(rot);ctx.drawImage(characterTrailTexture(kind).image,-size/2,-size/2,size,size);ctx.restore();
+   }
   }else if(kind){for(let i=0;i<15;i++){const phase=((t*.00042+i/15)%1),x=415-phase*350,y=132+Math.sin(i*2.4+t*.003)*35;ctx.globalAlpha=(1-phase)*.85;const size=40+(i%4)*7;ctx.drawImage(characterTrailTexture(kind).image,x-size/2,y-size/2,size,size);}}
   ctx.globalAlpha=1;ctx.shadowBlur=0;ctx.fillStyle='#d7dff6';ctx.beginPath();ctx.arc(455,76,32,0,Math.PI*2);ctx.fill();ctx.fillStyle='#7d6cca';ctx.beginPath();ctx.roundRect(429,112,53,75,18);ctx.fill();ctx.strokeStyle='#d7dff6';ctx.lineWidth=13;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(440,180);ctx.lineTo(425,216);ctx.moveTo(470,180);ctx.lineTo(490,212);ctx.stroke();ctx.fillStyle='#d9e8fc';ctx.font='16px system-ui';ctx.fillText(kind?'이동 중 미리보기':'이펙트를 선택해 주세요',20,236);
  }
@@ -7259,7 +7265,10 @@ function characterTrailTexture(kind){
   // Soft irregular plasma glow: particles overlap to form actual flowing fire.
   const g=c.createRadialGradient(64,85,1,64,70,55);g.addColorStop(0,'rgba(255,255,191,.95)');g.addColorStop(.16,'rgba(255,210,75,.9)');g.addColorStop(.4,'rgba(255,105,19,.7)');g.addColorStop(.7,'rgba(224,35,6,.35)');g.addColorStop(1,'rgba(100,0,0,0)');c.fillStyle=g;c.fillRect(0,0,128,128);
  }else if(kind==='dark'){
-  const g=c.createRadialGradient(64,64,4,64,64,60);g.addColorStop(0,'rgba(72,65,92,.8)');g.addColorStop(.45,'rgba(42,37,55,.65)');g.addColorStop(1,'rgba(20,17,29,0)');c.fillStyle=g;c.fillRect(0,0,128,128);
+  // Black smoke with a crimson aura and a restrained glowing ember core.
+  let g=c.createRadialGradient(64,66,2,64,66,62);g.addColorStop(0,'rgba(255,57,40,.58)');g.addColorStop(.20,'rgba(177,18,18,.64)');g.addColorStop(.50,'rgba(76,10,18,.46)');g.addColorStop(.78,'rgba(156,17,20,.24)');g.addColorStop(1,'rgba(90,0,0,0)');c.fillStyle=g;c.fillRect(0,0,128,128);
+  for(const [x,y,r] of [[42,61,29],[72,48,34],[88,70,25],[55,86,29]]){g=c.createRadialGradient(x,y,2,x,y,r);g.addColorStop(0,'rgba(15,13,18,.89)');g.addColorStop(.48,'rgba(26,20,25,.72)');g.addColorStop(1,'rgba(24,15,19,0)');c.fillStyle=g;c.fillRect(x-r,y-r,2*r,2*r);}
+  g=c.createRadialGradient(70,76,0,70,76,26);g.addColorStop(0,'rgba(255,62,38,.66)');g.addColorStop(.35,'rgba(185,20,19,.35)');g.addColorStop(1,'rgba(140,0,0,0)');c.fillStyle=g;c.fillRect(44,50,52,52);
  }else{
   const glyph={star:'★',snow:'❄',petal:'✿',heart:'♥'}[kind]||'✦';
   const color={star:'#ffe782',snow:'#c9f8ff',petal:'#ff9fcf',flame:'#ffb54d',heart:'#ff72b6'}[kind]||'#fff';
@@ -7273,44 +7282,64 @@ function updateCharacterTrail(avatar,player,t,parent){
  if(!previous){avatar.trailLastPos={x:pos.x,z:pos.z,time:t,spawn:0};return;}
  const dx=pos.x-previous.x,dz=pos.z-previous.z,dt=Math.max(1,t-previous.time),speed=Math.hypot(dx,dz)/dt;
  previous.x=pos.x;previous.z=pos.z;previous.time=t;
- if(!kind||!['rainbow','star','snow','petal','flame','dark','heart'].includes(kind)||speed<.00035||t-previous.spawn<75||characterTrailParticles.length>=160)return;
- previous.spawn=t;const distance=Math.hypot(dx,dz)||1,nx=dx/distance,nz=dz/distance;
+ const scattered=['star','snow','petal','heart'].includes(kind),interval=scattered?(previous.nextInterval||90):75;
+ if(!kind||!['rainbow','star','snow','petal','flame','dark','heart'].includes(kind)||speed<.00035||t-previous.spawn<interval||characterTrailParticles.length>=160)return;
+ previous.spawn=t;if(scattered)previous.nextInterval=55+Math.random()*100;const distance=Math.hypot(dx,dz)||1,nx=dx/distance,nz=dz/distance;
  if(kind==='rainbow'){
   const material=new THREE.MeshBasicMaterial({map:characterTrailTexture(kind),transparent:true,opacity:.78,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending});
   const ribbon=new THREE.Mesh(rainbowTrailGeometry,material);ribbon.position.set(pos.x-nx*.58,pos.y+1.05,pos.z-nz*.58);ribbon.rotation.y=-Math.atan2(nz,nx);ribbon.scale.set(1.45,1.05,1);ribbon.renderOrder=30;parent.add(ribbon);if(parent===scene&&stageForeground)ribbon.layers.set(1);
   characterTrailParticles.push({sprite:ribbon,parent,start:t,life:900,size:1,kind});return;
  }
- const count=kind==='flame'?(perfWeakDevice?2:3):(perfWeakDevice?1:2);
+ const count=kind==='flame'?(perfWeakDevice?2:3):scattered?(perfWeakDevice?1:(Math.random()<.45?1:2)):(perfWeakDevice?1:2);
  for(let i=0;i<count;i++){
   const mat=new THREE.SpriteMaterial({map:characterTrailTexture(kind),transparent:true,opacity:.86,depthWrite:false,blending:kind==='dark'?THREE.NormalBlending:THREE.AdditiveBlending});
-  const sprite=new THREE.Sprite(mat),side=(i-(count-1)/2)*.25;
-  sprite.position.set(pos.x-nx*(.50+i*.16)+nz*side,pos.y+(kind==='flame'?.65+i*.22:.45+i*.64),pos.z-nz*(.50+i*.16)-nx*side);
-  const size=kind==='dark'?1.3:kind==='flame'?1.35:.8;sprite.scale.set(size,kind==='flame'?size*1.45:size,1);sprite.renderOrder=30;parent.add(sprite);if(parent===scene&&stageForeground)sprite.layers.set(1);
-  characterTrailParticles.push({sprite,parent,start:t,life:kind==='dark'?1100:kind==='flame'?680:900,size,kind,driftX:-nx*.25,driftZ:-nz*.25});
+  const sprite=new THREE.Sprite(mat),side=scattered?(Math.random()-.5)*1.3:(i-(count-1)/2)*.25,back=scattered?.25+Math.random()*.75:.50+i*.16;
+  sprite.position.set(pos.x-nx*back+nz*side,pos.y+(scattered?.35+Math.random()*1.7:kind==='flame'?.65+i*.22:.45+i*.64),pos.z-nz*back-nx*side);
+  const size=scattered?.38+Math.random()*.85:kind==='dark'?1.3:kind==='flame'?1.35:.8;sprite.scale.set(size,kind==='flame'?size*1.45:size,1);sprite.renderOrder=30;parent.add(sprite);if(parent===scene&&stageForeground)sprite.layers.set(1);
+  if(scattered)mat.rotation=Math.random()*Math.PI*2;
+  characterTrailParticles.push({sprite,parent,start:t,last:t,life:scattered?750+Math.random()*650:kind==='dark'?1100:kind==='flame'?680:900,size,kind,scattered,driftX:scattered?(Math.random()-.5)*.0005:-nx*.25,driftZ:scattered?(Math.random()-.5)*.0005:-nz*.25,driftY:scattered?(kind==='snow'||kind==='petal'?-.00025:.00025)*(0.5+Math.random()):0,spin:scattered?(Math.random()-.5)*.003:0});
  }
 }
-function animateCharacterTrails(t){for(let i=characterTrailParticles.length-1;i>=0;i--){const p=characterTrailParticles[i],v=(t-p.start)/p.life;if(v>=1){p.parent.remove(p.sprite);p.sprite.material.dispose();characterTrailParticles.splice(i,1);continue}p.sprite.material.opacity=(p.kind==='rainbow'?.78:.85)*(1-v);if(p.kind==='rainbow')continue;p.sprite.position.y+=p.kind==='dark'?.012:p.kind==='flame'?.018:.004;if(p.kind==='flame'){p.sprite.position.x+=p.driftX*.012;p.sprite.position.z+=p.driftZ*.012;}const size=p.size*(p.kind==='flame'?(1-.55*v):1+v*(p.kind==='dark'?.8:.15));p.sprite.scale.set(size,p.kind==='flame'?size*1.45:size,1);p.sprite.material.rotation+=p.kind==='petal'?.025:p.kind==='snow'?.012:0;}}
+function animateCharacterTrails(t){for(let i=characterTrailParticles.length-1;i>=0;i--){const p=characterTrailParticles[i],v=(t-p.start)/p.life;if(v>=1){p.parent.remove(p.sprite);p.sprite.material.dispose();characterTrailParticles.splice(i,1);continue}p.sprite.material.opacity=(p.kind==='rainbow'?.78:.85)*(1-v);if(p.kind==='rainbow')continue;if(p.scattered){const dt=Math.min(80,Math.max(0,t-p.last));p.last=t;p.sprite.position.x+=p.driftX*dt;p.sprite.position.z+=p.driftZ*dt;p.sprite.position.y+=p.driftY*dt;p.sprite.material.rotation+=p.spin*dt;const k=p.size*(.85+.15*Math.sin(Math.PI*v));p.sprite.scale.set(k,k,1);continue;}p.sprite.position.y+=p.kind==='dark'?.012:p.kind==='flame'?.018:.004;if(p.kind==='flame'){p.sprite.position.x+=p.driftX*.012;p.sprite.position.z+=p.driftZ*.012;}const size=p.size*(p.kind==='flame'?(1-.55*v):1+v*(p.kind==='dark'?.8:.15));p.sprite.scale.set(size,p.kind==='flame'?size*1.45:size,1);p.sprite.material.rotation+=p.kind==='petal'?.025:p.kind==='snow'?.012:0;}}
 
 // Chat bubbles are true 3D sprites anchored in world coordinates, independent of avatar pose.
+// Decorative shapes use canvas paths so they look the same on every device.
+function drawBubbleDecoration(ctx,style){
+ const palette={heart:{bright:'#fb73b1',dark:'#d63881',light:'#ffe1ed'},star:{bright:'#ffd55b',dark:'#d49119',light:'#fff1af'},music:{bright:'#be8df7',dark:'#8154cf',light:'#eee0ff'}}[style];
+ if(!palette)return;
+ ctx.save();ctx.strokeStyle=palette.bright;ctx.globalAlpha=.48;ctx.lineWidth=3;ctx.beginPath();ctx.roundRect(37,36,950,337,37);ctx.stroke();ctx.globalAlpha=1;
+ function heart(x,y,size,rotate){ctx.save();ctx.translate(x,y);ctx.rotate(rotate);ctx.scale(size/50,size/50);ctx.beginPath();ctx.moveTo(0,19);ctx.bezierCurveTo(-48,-9,-29,-34,0,-13);ctx.bezierCurveTo(29,-34,48,-9,0,19);ctx.closePath();ctx.fillStyle=palette.bright;ctx.shadowColor=palette.bright;ctx.shadowBlur=13;ctx.fill();ctx.shadowBlur=0;ctx.strokeStyle=palette.dark;ctx.lineWidth=2;ctx.stroke();ctx.restore();}
+ function star(x,y,size,rotate){ctx.save();ctx.translate(x,y);ctx.rotate(rotate);ctx.beginPath();for(let i=0;i<10;i++){const a=-Math.PI/2+i*Math.PI/5,r=size*(i%2?.43:1);i?ctx.lineTo(Math.cos(a)*r,Math.sin(a)*r):ctx.moveTo(Math.cos(a)*r,Math.sin(a)*r)}ctx.closePath();ctx.fillStyle=palette.bright;ctx.shadowColor=palette.bright;ctx.shadowBlur=15;ctx.fill();ctx.shadowBlur=0;ctx.strokeStyle=palette.dark;ctx.lineWidth=2;ctx.stroke();ctx.restore();}
+ function note(x,y,size,rotate){ctx.save();ctx.translate(x,y);ctx.rotate(rotate);ctx.scale(size/40,size/40);ctx.strokeStyle=palette.dark;ctx.fillStyle=palette.bright;ctx.lineWidth=7;ctx.lineCap='round';ctx.shadowColor=palette.bright;ctx.shadowBlur=12;ctx.beginPath();ctx.moveTo(8,11);ctx.lineTo(8,-24);ctx.lineTo(28,-29);ctx.lineTo(28,4);ctx.stroke();ctx.beginPath();ctx.ellipse(0,13,11,7,-.3,0,Math.PI*2);ctx.ellipse(20,6,11,7,-.3,0,Math.PI*2);ctx.fill();ctx.restore();}
+ const draw=style==='heart'?heart:style==='star'?star:note;
+ for(const [x,y,size,angle] of [[62,62,43,-.28],[964,62,43,.28],[62,345,40,.24],[962,345,40,-.24],[125,58,23,.3],[900,58,23,-.3],[125,344,22,-.2],[898,344,22,.2],[57,137,19,-.3],[968,137,19,.3],[57,270,19,.25],[968,270,19,-.25]])draw(x,y,size,angle);
+ // Small sparkling details remain outside the text area.
+ for(const [x,y,r] of [[165,55,4],[859,55,4],[165,348,4],[859,348,4],[70,141,3],[954,141,3],[70,265,3],[954,265,3]]){ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fillStyle=palette.dark;ctx.globalAlpha=.56;ctx.fill();}
+ ctx.restore();
+}
+
 function bubbleTexture(message,style=null){
  // v158: much larger glyphs, proportionally larger bubble and a fourth
  // line when needed. Fit text by measured pixel width, not character count.
  const canvas=document.createElement('canvas');canvas.width=1024;canvas.height=460;
  const ctx=canvas.getContext('2d');ctx.clearRect(0,0,1024,460);
  const colors={heart:'#f067a5',star:'#e6b340',neon:'#46f4f1',music:'#a66be9'};
- ctx.fillStyle=style==='neon'?'rgba(13,20,50,.98)':'rgba(255,255,255,.98)';ctx.strokeStyle=colors[style]||'#283044';ctx.lineWidth=style?12:9;
+ if(['heart','star','music'].includes(style)){
+  const palettes={heart:['#fff9fc','#ffe4f0'],star:['#fffef8','#fff2cd'],music:['#fffbff','#eee4ff']};const grad=ctx.createLinearGradient(0,18,0,393);grad.addColorStop(0,palettes[style][0]);grad.addColorStop(1,palettes[style][1]);ctx.fillStyle=grad;
+ }else ctx.fillStyle=style==='neon'?'rgba(13,20,50,.98)':'rgba(255,255,255,.98)';
+ ctx.strokeStyle=colors[style]||'#283044';ctx.lineWidth=style?12:9;
  if(style==='neon'){ctx.shadowColor='#24f8ff';ctx.shadowBlur=30;}
  ctx.beginPath();ctx.roundRect(18,18,988,375,46);ctx.fill();ctx.stroke();
  ctx.beginPath();ctx.moveTo(468,394);ctx.lineTo(512,440);ctx.lineTo(556,394);ctx.closePath();ctx.fill();ctx.stroke();ctx.shadowBlur=0;
- if(style&&style!=='neon'){const glyph={heart:'♥',star:'★',music:'♫'}[style];if(glyph){ctx.fillStyle=colors[style];ctx.font='bold 50px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';ctx.shadowColor=colors[style];ctx.shadowBlur=12;for(const [x,y] of [[66,60],[958,60],[68,349],[954,349]])ctx.fillText(glyph,x,y);ctx.shadowBlur=0;}}
+ if(style==='heart'||style==='star'||style==='music')drawBubbleDecoration(ctx,style);
 
  ctx.fillStyle=style==='neon'?'#eaffff':'#171d31';ctx.textAlign='center';ctx.textBaseline='middle';
- const chars=Array.from(String(message||''));
+ const chars=Array.from(String(message||'')),maxTextWidth=['heart','star','music'].includes(style)?780:900;
  const wrap=(size)=>{
   ctx.font=`900 ${size}px system-ui, sans-serif`;
   const rows=[];let line='';
   for(const ch of chars){
-   if(ctx.measureText(line+ch).width>900&&line){rows.push(line);line=ch;}
+   if(ctx.measureText(line+ch).width>maxTextWidth&&line){rows.push(line);line=ch;}
    else line+=ch;
   }
   if(line)rows.push(line);
@@ -7320,13 +7349,13 @@ function bubbleTexture(message,style=null){
  while(lines.length>4&&fontSize>46){fontSize-=2;lines=wrap(fontSize)}
  if(lines.length>4){
   lines=lines.slice(0,4);let last=lines[3];
-  while(ctx.measureText(last+'…').width>900&&last.length)last=last.slice(0,-1);
+  while(ctx.measureText(last+'…').width>maxTextWidth&&last.length)last=last.slice(0,-1);
   lines[3]=last+'…';
  }
  // Vertically center one to four lines inside the main white balloon.
  const lineHeight=fontSize*1.10,top=200-(lines.length-1)*lineHeight/2;
  ctx.font=`900 ${fontSize}px system-ui, sans-serif`;
- lines.forEach((l,i)=>ctx.fillText(l,512,top+i*lineHeight,900));
+ lines.forEach((l,i)=>ctx.fillText(l,512,top+i*lineHeight,maxTextWidth));
  const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;return texture;
 }
 function showBubble(entry){
