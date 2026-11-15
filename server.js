@@ -285,7 +285,7 @@ const ONE_TIME_CREDIT_HASH='07cad1e4323da66ca647d215a5b63b5ea02519ad6bb88c3e35b7
 const recoveryHash=code=>crypto.createHash('sha256').update(code).digest('hex');
 function recoveryProfile(p){return {name:p.name,color:p.color,gender:p.gender,pattern:p.pattern,sash:p.sash,hairStyle:p.hairStyle,hairColor:p.hairColor};}
 function setRecoveryProfile(p){const r=p?.badgeIdentity&&recoveryRecords.get(p.badgeIdentity);if(r){r.profile=recoveryProfile(p);scheduleSave();}}
-const TRAIL_TEST_FREE=true;
+const TRAIL_TEST_FREE=false;
 const DECORATIONS={bubble:{heart:{name:'하트 말풍선',cost:3000},star:{name:'별 말풍선',cost:3000},neon:{name:'네온 말풍선',cost:2000},music:{name:'음표 말풍선',cost:3000}},trail:{rainbow:{name:'무지개 잔상',cost:3000},star:{name:'별 잔상',cost:3000},snow:{name:'눈꽃 잔상',cost:3000},petal:{name:'꽃잎 잔상',cost:3000},flame:{name:'불꽃 잔상',cost:3000},dark:{name:'어둠 잔상',cost:3000},heart:{name:'하트 잔상',cost:3000}}};
 const decorationStats=new Map();
 function decorationRecord(identity){if(!decorationStats.has(identity))decorationStats.set(identity,{spent:0,owned:{bubble:{},trail:{}},equipped:{bubble:null,trail:null}});return decorationStats.get(identity)}
