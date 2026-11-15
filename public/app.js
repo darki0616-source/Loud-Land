@@ -3173,7 +3173,7 @@ function receiveRoomChat(entry){
  if(!entry?.id)return;
  const key=chatRoomKey(roomId),known=(chatRoomCache.get(key)||[]).some(item=>item.id===entry.id);
  mergeChatHistory(roomId,[entry]);
- if(!known&&roomId===(tentRoomActive?.id||null)){appendChat(entry);showBubble(entry)}
+ if(!known&&roomId===(tentRoomActive?.id||null)){appendChat(entry);if(!entry.noticeRarity)showBubble(entry)}
 }
 // v243: Keep locally predicted indoor coordinates separate from SSE snapshots.
 // Echoed HTTP/SSE updates can be 100-300ms older than the rendered player,
@@ -9887,7 +9887,7 @@ $('musicClose').onclick=event=>{event.preventDefault();event.stopPropagation();c
 
 function showMusicControlNotice(name,command){const messages={pause:'일시정지했습니다',resume:'다시 재생했습니다',skip:'다음 곡으로 넘겼습니다'};if(messages[command])notice((name||'참가자')+'님이 음악을 '+messages[command])}
 function notice(message){const host=$('joinNotices');const el=document.createElement('div');el.textContent=message;host.append(el);setTimeout(()=>el.remove(),4400)}
-function appendChat(entry){const el=document.createElement('div');el.className='chat-line';const who=document.createElement('b');who.textContent=entry.name+' : ';const value=document.createElement('span');value.textContent=entry.message;el.append(who,value);$('chatMessages').append(el);while($('chatMessages').children.length>35)$('chatMessages').firstChild.remove();$('chatMessages').scrollTop=$('chatMessages').scrollHeight}
+function appendChat(entry){const el=document.createElement('div');el.className='chat-line';if(entry.noticeRarity==='epic'||entry.noticeRarity==='legendary'){el.style.color=entry.noticeRarity==='epic'?'#d89aff':'#ffe45c';el.style.fontWeight='700';el.textContent='✦ '+entry.message;}else{const who=document.createElement('b');who.textContent=entry.name+' : ';const value=document.createElement('span');value.textContent=entry.message;el.append(who,value);}$('chatMessages').append(el);while($('chatMessages').children.length>35)$('chatMessages').firstChild.remove();$('chatMessages').scrollTop=$('chatMessages').scrollHeight}
 function closeChatPanel(){selectBottomMenu('reaction')}
 $('chatClose').addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();closeChatPanel()});
 $('chatClose').onclick=e=>{e.stopPropagation();closeChatPanel()};

@@ -47,6 +47,16 @@ function retainChat(entry){
  }
  while(chatHistory.length>CHAT_TOTAL_LIMIT)chatHistory.shift();
 }
+// Rare catches are server-authored notices shared with every occupied chat room.
+function announceRareFind(player,item){
+ if(!player||!item||!['epic','legendary'].includes(item.rarity))return;
+ const text=String(item.name||'').trim();if(!text)return;
+ const last=text.charCodeAt(text.length-1),particle=last>=0xac00&&last<=0xd7a3&&(last-0xac00)%28?'을':'를';
+ const base={id:crypto.randomUUID(),name:player.name,message:player.name+'님이 '+text+particle+' 획득하셨습니다',at:Date.now(),noticeRarity:item.rarity};
+ const rooms=new Map([[null,[]]]);
+ for(const [viewerId,stream] of clients){const viewer=players.get(viewerId);if(!viewer)continue;const room=viewer.tentRoomId||null;if(!rooms.has(room))rooms.set(room,[]);rooms.get(room).push(stream);}
+ for(const [roomId,streams] of rooms){const entry={...base,roomId};retainChat(entry);for(const stream of streams)try{send(stream,{type:'chat',entry})}catch{}}
+}
 let activeSlam=null,slamCooldownUntil=0;
 let pendingSlamImpact=null; // Last launch roster; exactly one shared first-arrival dust burst
 const SLAM_COUNTDOWN_MS=5000,SLAM_COOLDOWN_MS=15000;
@@ -1561,7 +1571,7 @@ const server=http.createServer(async(req,res)=>{
             const success=session.progress>=1&&session.tension<1, fish=FISH_BY_ID.get(session.fishId);a.active=null;
             if(success){a.bonus+=fish.points;a.fishCounts[fish.id]=(a.fishCounts[fish.id]||0)+1;recordFishingPoints(p,fish.points);}else a.totalMisses++;
             a.lastResult={id:castId,success,fish:success?fish:undefined,points:success?fish.points:0,reason:success?'caught':'line',at:now};
-            await saveNow();if(success)broadcast({type:'fishing-find',playerId:p.id,fishId:fish.id,name:fish.name,points:fish.points,rarity:fish.rarity});return json(res,200,{ok:true,result:a.lastResult,fishing:fishingView(p)});
+            await saveNow();if(success){broadcast({type:'fishing-find',playerId:p.id,fishId:fish.id,name:fish.name,points:fish.points,rarity:fish.rarity});announceRareFind(p,fish);}return json(res,200,{ok:true,result:a.lastResult,fishing:fishingView(p)});
           }
           return json(res,200,{ok:true,fishing:fishingView(p)});
         }
@@ -1613,7 +1623,7 @@ const server=http.createServer(async(req,res)=>{
         if(session.hits===MINING_HITS){
          const ore=miningDraw();a.bonus+=ore.points;recordMiningPoints(p,ore.points);a.counts[ore.id]=(a.counts[ore.id]||0)+1;
          a.lastResult={id:session.id,oreId:ore.id,at:now};session.id=crypto.randomUUID();session.hits=0;session.lastHit=0;
-         broadcast({type:'mining-find',playerId:p.id,oreId:ore.id,rarity:ore.rarity,rockId:rock.id,name:ore.name,points:ore.points});
+         broadcast({type:'mining-find',playerId:p.id,oreId:ore.id,rarity:ore.rarity,rockId:rock.id,name:ore.name,points:ore.points});announceRareFind(p,ore);
          await saveNow();return json(res,200,{ok:true,result:{...ore},mining:miningView(p)});
         }
         return json(res,200,{ok:true,mining:miningView(p)});
