@@ -6307,13 +6307,21 @@ function getFishKingWhale(){
 }
 function makeFishKingVisual(root,parts){
  const group=new THREE.Group();root.add(group);group.visible=false;parts.fishKingVisual=group;
- const rod=new THREE.Mesh(new THREE.CylinderGeometry(.025,.075,2.7,8),new THREE.MeshStandardMaterial({color:'#ce974f',metalness:.25,roughness:.6}));rod.position.set(.62,2.0,.38);rod.rotation.x=-.65;rod.rotation.z=-.25;group.add(rod);
- const line=new THREE.Mesh(new THREE.CylinderGeometry(.012,.012,2.1,5),new THREE.MeshBasicMaterial({color:'#e3faff'}));line.position.set(.9,1.55,1.8);line.rotation.x=.65;group.add(line);
+ // Mount the rod at the animated wrist so it follows the arm rather than floating.
+ const rodGrip=new THREE.Group();rodGrip.position.set(0,-.38,.04);rodGrip.rotation.set(-.55,0,-.18);parts.rightElbow.add(rodGrip);rodGrip.visible=false;parts.fishKingRod=rodGrip;
+ const rod=new THREE.Mesh(new THREE.CylinderGeometry(.022,.07,2.7,8),new THREE.MeshStandardMaterial({color:'#c79856',metalness:.2,roughness:.55}));rod.position.y=1.27;rodGrip.add(rod);
+ const tip=new THREE.Object3D();tip.position.y=2.62;rodGrip.add(tip);parts.fishKingTip=tip;
+ const lineGeometry=new THREE.BufferGeometry();lineGeometry.setAttribute('position',new THREE.BufferAttribute(new Float32Array(6),3));
+ const line=new THREE.Line(lineGeometry,new THREE.LineBasicMaterial({color:'#eaffff',transparent:true,opacity:.96,depthTest:false}));line.frustumCulled=false;line.renderOrder=10;group.add(line);parts.fishKingLine=line;
  const whale=new THREE.Group();group.add(whale);parts.fishKingWhale=whale;
+ // The GLB's mouth points along +Z; after the half turn it faces the rod.
+ const mouth=new THREE.Object3D();mouth.position.set(0,1.05,2.36);whale.add(mouth);parts.fishKingMouth=mouth;
  const fallback=new THREE.Mesh(new THREE.SphereGeometry(1,16,12),new THREE.MeshStandardMaterial({color:'#4ca9cd',roughness:.65}));fallback.scale.set(1.2,.65,2);whale.add(fallback);
  getFishKingWhale().then(template=>{if(!root.parent||!whale.parent)return;const model=template.clone(true);const box=new THREE.Box3().setFromObject(model),size=box.getSize(new THREE.Vector3()),center=box.getCenter(new THREE.Vector3());const largest=Math.max(size.x,size.y,size.z);if(!Number.isFinite(largest)||largest<=0)return;const scale=5.0/largest;model.scale.setScalar(scale);model.position.set(-center.x*scale,-center.y*scale,-center.z*scale);if(stageForeground)addForegroundLayer(model);whale.remove(fallback);fallback.geometry.dispose();fallback.material.dispose();whale.add(model);}).catch(e=>console.warn('낚시왕 고래 로딩 실패:',e));
- const rings=[];for(let i=0;i<4;i++){const ring=new THREE.Mesh(new THREE.TorusGeometry(1,.09,8,48),new THREE.MeshBasicMaterial({color:i%2?'#8ee7ff':'#d5fcff',transparent:true,opacity:.8,depthWrite:false}));ring.rotation.x=Math.PI/2;group.add(ring);rings.push(ring);}parts.fishKingRings=rings;
- if(stageForeground)addForegroundLayer(group);
+ const rings=[];for(let i=0;i<7;i++){const ring=new THREE.Mesh(new THREE.TorusGeometry(1,.055+(i%2)*.025,8,48),new THREE.MeshBasicMaterial({color:['#cbfbff','#56d9ff','#4c9dff','#fff2b4'][i%4],transparent:true,opacity:.8,depthWrite:false,blending:THREE.AdditiveBlending}));ring.rotation.x=Math.PI/2;group.add(ring);rings.push(ring);}parts.fishKingRings=rings;
+ const sprayGeo=new THREE.SphereGeometry(1,8,6),sprayMat=new THREE.MeshBasicMaterial({color:'#b2f5ff',transparent:true,opacity:.9,depthWrite:false,blending:THREE.AdditiveBlending}),spray=[];
+ for(let i=0;i<32;i++){const drop=new THREE.Mesh(sprayGeo,sprayMat);drop.visible=false;group.add(drop);spray.push(drop);}parts.fishKingSpray=spray;
+ if(stageForeground){addForegroundLayer(group);addForegroundLayer(rodGrip);}
 }
 
 function makeAvatar(p){
@@ -7745,7 +7753,13 @@ function animateAvatar(a,p,t){
   set('leftHip',-.10,0,-.10);set('rightHip',-.10,0,.10);
   set('leftKnee',.13);set('rightKnee',.13);
  }else a.powerkingYaw=0;
- if(act==='fishking'){set('upper',-.10,0,.06);set('leftShoulder',-.65,0,-.3);set('rightShoulder',-1.0,0,.35);set('rightElbow',-.6);}
+ if(act==='fishking'){
+  if(a.lastAction!=='fishking')a.fishKingStart=t;
+  const phase=((t-a.fishKingStart)*.001)%7;
+  const lift=THREE.MathUtils.smoothstep(phase,.25,1.8)*(1-THREE.MathUtils.smoothstep(phase,2.5,3.8));
+  set('upper',-.06-.16*lift,0,.04);set('leftShoulder',-.45-.5*lift,0,-.3);set('leftElbow',-.35-.25*lift);
+  set('rightShoulder',-.55-1.0*lift,0,.30);set('rightElbow',-.35-.60*lift);
+ }
  if(act==='moleking'){
   // v291: A real overhead smash, with the hammer head hitting the ground
   // IN FRONT (+Z) of the avatar. Animate the hammer in root space rather
@@ -8216,11 +8230,19 @@ function animateAvatar(a,p,t){
  if(P.fishKingTitle){P.fishKingTitle.visible=Boolean(q.fishKing);P.fishKingTitle.position.y=4.96+(q.equipped?.head==='balloon-hat'?1.4:0)+(Number(Boolean(q.rhythmKing))+Number(Boolean(q.powerKing))+Number(Boolean(q.moleKing)))*1.12+Math.sin(sec*3)*.05;}
  if(act==='fishking'&&!P.fishKingVisual)makeFishKingVisual(a.root,P);
  if(P.fishKingVisual){
-  const active=act==='fishking';P.fishKingVisual.visible=active;
-  if(active){const phase=sec%7;const w=P.fishKingWhale;w.visible=phase>.6&&phase<5.7;
-   const u=THREE.MathUtils.clamp((phase-.6)/1.8,0,1),fall=THREE.MathUtils.clamp((phase-2.5)/1.25,0,1);
-   w.position.set(0,.7+6.5*Math.sin(u*Math.PI*.5)*(1-fall),3.4);w.rotation.x=-.45*Math.sin(u*Math.PI)+fall*.4;
-   P.fishKingRings.forEach((ring,i)=>{const v=(phase-3.75-i*.12)/1.3;ring.visible=v>=0&&v<=1;if(ring.visible){ring.position.set(0,.07+i*.012,3.4);ring.scale.setScalar(.5+v*(3.2+i*.3));ring.material.opacity=.85*(1-v);}});
+  const active=act==='fishking';P.fishKingVisual.visible=active;P.fishKingRod.visible=active;
+  if(active){
+   const phase=((t-(a.fishKingStart??t))*.001)%7,w=P.fishKingWhale;
+   w.visible=phase>.6&&phase<5.8;P.fishKingLine.visible=w.visible;
+   const up=THREE.MathUtils.smoothstep(phase,.6,2.4),fall=THREE.MathUtils.smoothstep(phase,2.5,3.75);
+   w.position.set(0,1.35+6.2*up*(1-fall),3.4);w.rotation.set(-.25*Math.sin(up*Math.PI),Math.PI,Math.PI*fall);
+   // The rod tip and mouth are transformed to the same coordinate space each frame.
+   a.root.updateMatrixWorld(true);
+   const start=P.fishKingTip.getWorldPosition(new THREE.Vector3()),end=P.fishKingMouth.getWorldPosition(new THREE.Vector3());
+   P.fishKingVisual.worldToLocal(start);P.fishKingVisual.worldToLocal(end);
+   const attr=P.fishKingLine.geometry.attributes.position;attr.setXYZ(0,start.x,start.y,start.z);attr.setXYZ(1,end.x,end.y,end.z);attr.needsUpdate=true;
+   P.fishKingRings.forEach((ring,i)=>{const v=(phase-3.72-i*.11)/1.55;ring.visible=v>=0&&v<=1;if(ring.visible){ring.position.set(0,.08+i*.015,3.4);ring.scale.setScalar(.35+v*(4.0+i*.23));ring.material.opacity=.9*(1-v);}});
+   P.fishKingSpray.forEach((drop,i)=>{const v=(phase-3.72-(i%4)*.035)/1.25;drop.visible=v>=0&&v<=1;if(drop.visible){const angle=i*2.39996,radius=(.4+v*(1.5+(i%5)*.27));drop.position.set(Math.cos(angle)*radius,.18+Math.sin(v*Math.PI)*(1.5+(i%6)*.24),3.4+Math.sin(angle)*radius);drop.scale.setScalar((.09+(i%4)*.035)*(1-v*.45));drop.material.opacity=.9*(1-v*.8);}});
   }
  }
  if(P.moleHammer)P.moleHammer.visible=act==='moleking'&&Boolean(q.moleKing);
