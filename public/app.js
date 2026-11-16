@@ -10607,7 +10607,7 @@ function petRaceStartRenderer(){
   petRaceModels=petRaceState.participants.map((p,i)=>{const root=new THREE.Group();petRaceScene.add(root);const name=document.createElement('span');name.textContent=p.name;raceGet('#petRaceNames').append(name);return {root,name,model:null,lastAttempt:0,index:i,progress:0};});
   const ranking=raceGet('#petRaceRanking');ranking.replaceChildren();for(let i=0;i<petRaceModels.length;i++){const item=document.createElement('span');ranking.append(item);}
   // The start line and turnaround are part of the illustrated track itself.
-  const courseLength=900;
+  const courseLength=300;
   petRaceParticles=[];let lastEvent=-1,cameraX=0,lastRankUpdate=0,lastWidth=0,lastHeight=0;
   function frame(now){
    if(!petRaceOpen||!petRaceRenderer||petRaceState?.phase!=='running')return;petRaceRaf=requestAnimationFrame(frame);
