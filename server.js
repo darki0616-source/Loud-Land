@@ -338,7 +338,7 @@ setInterval(()=>{
 
 // v302: ONEseason Scratch Lottery. Server draws and settles all prizes;
 // accounts are keyed by the same persistent private badge identity as tents.
-const LOTTERY_PRICE=100,LOTTERY_DAILY_LIMIT=5;
+const LOTTERY_PRICE=100,LOTTERY_DAILY_LIMIT=10;
 const LOTTERY_BOOTH={x:38,z:-7.2,radius:9.5};
 const LOTTERY_PRIZES=[
  {tier:'miss',chance:3000,prize:0,symbols:['star','coin','diamond']},
@@ -676,19 +676,19 @@ function safeFurniturePose(item,x,z,angle,record){
  if(!item||!Number.isFinite(x)||!Number.isFinite(z)||!Number.isFinite(angle))return false;
  if(angle<0||angle>=360||angle%45!==0)return false;
  const c=Math.cos(angle*Math.PI/180),sn=Math.sin(angle*Math.PI/180);
- const hw=item.width/2+.14,hd=item.depth/2+.14;
+ const hw=item.width/2,hd=item.depth/2;
  const corners=[[-hw,-hd],[-hw,hd],[hw,-hd],[hw,hd]].map(([px,pz])=>[x+px*c+pz*sn,z-px*sn+pz*c]);
- const extra=record?.upgradeLevel===1?2:0;return corners.every(([px,pz])=>Math.abs(px)<=5.52+extra&&Math.abs(pz)<=4.52+extra)&&Math.hypot(x,z-2.5)>1.28;
+ const extra=record?.upgradeLevel===1?2:0;return corners.every(([px,pz])=>Math.abs(px)<=5.89+extra+1e-8&&Math.abs(pz)<=4.89+extra+1e-8)&&Math.hypot(x,z-2.5)>1.28;
 }
 function furnitureCorners(item,placement){
- const a=placement.rotation*Math.PI/180,c=Math.cos(a),sn=Math.sin(a),hw=item.width/2+.20,hd=item.depth/2+.20;
+ const a=placement.rotation*Math.PI/180,c=Math.cos(a),sn=Math.sin(a),hw=item.width/2,hd=item.depth/2;
  return [[-hw,-hd],[hw,-hd],[hw,hd],[-hw,hd]].map(([u,v])=>[placement.x+u*c+v*sn,placement.z-u*sn+v*c]);
 }
 function polygonsOverlap(a,b){
  for(const poly of [a,b])for(let i=0;i<poly.length;i++){
   const u=poly[i],v=poly[(i+1)%poly.length],nx=-(v[1]-u[1]),ny=v[0]-u[0];
   const pa=a.map(p=>p[0]*nx+p[1]*ny),pb=b.map(p=>p[0]*nx+p[1]*ny);
-  if(Math.max(...pa)<=Math.min(...pb)||Math.max(...pb)<=Math.min(...pa))return false;
+  if(Math.max(...pa)<=Math.min(...pb)+1e-8||Math.max(...pb)<=Math.min(...pa)+1e-8)return false;
  }
  return true;
 }
@@ -1715,7 +1715,7 @@ const server=http.createServer(async(req,res)=>{
         if(command==='buy'){
           if(!lotteryNearBooth(p))return json(res,403,{error:'복권샵 부스 근처에서 구매할 수 있어요.'});
           if(a.pending)return json(res,409,{error:'먼저 구매한 복권을 긁어주세요.',lottery:lotteryAccountView(p)});
-          if(a.used>=LOTTERY_DAILY_LIMIT)return json(res,409,{error:'오늘은 5장을 모두 구매했어요. 한국 시간 자정에 초기화돼요.'});
+          if(a.used>=LOTTERY_DAILY_LIMIT)return json(res,409,{error:'오늘은 10장을 모두 구매했어요. 한국 시간 자정에 초기화돼요.'});
           if(tentPointBalance(p)<LOTTERY_PRICE)return json(res,409,{error:'복권 구매에 필요한 100P가 부족해요.'});
           const tier=lotteryDraw();
           a.pending={id:crypto.randomUUID(),tier:tier.tier,prize:tier.prize,symbols:[...tier.symbols],createdAt:Date.now()};
