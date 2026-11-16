@@ -2620,6 +2620,8 @@ refreshSlamUI();
 // v104: quality settings affect only graphics, never music, input, chat or server state.
 const PERF_KEY='oneseason-render-quality-v104';
 const perfMobile=matchMedia('(max-width:700px)').matches;
+const petRaceMobileDevice=perfMobile||/Android|iPhone|iPad|iPod/i.test(navigator.userAgent||'')||(navigator.maxTouchPoints>1&&matchMedia('(pointer:coarse)').matches);
+let petRaceUsingMain=false,petRaceCanvasHome=null,petRaceCanvasNext=null,petRaceCanvasStyle='',petRaceBackdrop=null,petRaceMobileMode=false;
 const perfWeakDevice=perfMobile||((navigator.deviceMemory||8)<=4)||((navigator.hardwareConcurrency||8)<=4);
 // High-quality is the first-visit default. Persisted manual choices take precedence.
 let perfMode='high';try{const saved=localStorage.getItem(PERF_KEY);if(['auto','eco','high'].includes(saved))perfMode=saved}catch{}
@@ -9616,6 +9618,7 @@ function tick(t){
  if(!perfLastFrameTime)perfLastFrameTime=t-perfTargetFrame;
  const elapsed=t-perfLastFrameTime;
  if(document.hidden){perfLastFrameTime=t;tick.lastFrame=t;return}
+ if(petRaceMobileDevice&&petRaceOpen){perfLastFrameTime=t;tick.lastFrame=t;return;}
  // A small indoor room needs far less work than the festival exterior.
  // Render its movement at >=45fps when hardware permits, even in eco mode.
  const targetFrame=tentRoomActive?Math.min(perfTargetFrame,1000/45):perfTargetFrame;
@@ -9914,7 +9917,7 @@ function tick(t){
   }
  }
 }
-function resize(){let w=host.clientWidth,h=host.clientHeight;if(!w||!h)return;camera.aspect=w/h;camera.updateProjectionMatrix();renderer.setSize(w,h,false);cssRenderer.setSize(w,h);if(stageForeground)stageForeground.setSize(perfMobile&&tentRoomActive?1:w,perfMobile&&tentRoomActive?1:h,false)}new ResizeObserver(resize).observe(host);resize();requestAnimationFrame(tick);
+function resize(){let w=host.clientWidth,h=host.clientHeight;if(!w||!h)return;camera.aspect=w/h;camera.updateProjectionMatrix();if(!petRaceUsingMain)renderer.setSize(w,h,false);cssRenderer.setSize(w,h);if(stageForeground)stageForeground.setSize((perfMobile&&tentRoomActive)||petRaceMobileMode?1:w,(perfMobile&&tentRoomActive)||petRaceMobileMode?1:h,false)}new ResizeObserver(resize).observe(host);resize();requestAnimationFrame(tick);
 setInterval(()=>{syncVideo();reportDuration();let m=state.music;if(!m.id)return;let sec=m.paused?m.position:(Date.now()+state.serverDelta-m.startedAt)/1000;let dur=state.ytReady?state.yt.getDuration():0;$('progressFill').style.width=m.isLive?'100%':dur?Math.min(100,sec/dur*100)+'%':'0%'},5000);
 window.addEventListener('pagehide',()=>{if(state.id)navigator.sendBeacon('/api/leave',new Blob([JSON.stringify({id:state.id,pageId})],{type:'application/json'}))});
 
@@ -10582,18 +10585,24 @@ function petRaceSyncChat(){const source=$('chatMessages'),target=raceGet('#petRa
 new MutationObserver(()=>{if(petRaceOpen)petRaceSyncChat()}).observe($('chatMessages'),{childList:true,subtree:true,characterData:true});
 raceGet('#petRaceChat form').onsubmit=async e=>{e.preventDefault();const input=e.currentTarget.querySelector('input');if(await sendChatMessage(input.value))input.value='';};
 async function petRaceAction(command,extra={}){if(petRaceBusy)return;petRaceBusy=true;try{const result=await petRaceRequest(command,extra);petRaceState=result.race;petRaceClockOffset=(petRaceState?.serverNow||Date.now())-Date.now();petRaceRole=petRaceState?.participants?.some(p=>p.isMe)?'participant':petRaceState?.viewer?'viewer':'';renderPetRace();return result;}catch(e){toast(e.message||'경주 요청 실패');}finally{petRaceBusy=false;}}
-petRaceNear.onclick=async()=>{petRaceOpen=true;petRaceOverlay.hidden=false;petRaceNear.hidden=true;petRaceSyncChat();await petRaceAction('state');clearInterval(petRacePoll);petRacePoll=setInterval(()=>{if(petRaceOpen&&!petRaceBusy)void petRaceAction('state')},2000);};
-raceButton('close').onclick=()=>{if(petRaceState?.phase==='waiting'&&petRaceRole)void petRaceAction('leave');petRaceOpen=false;petRaceOverlay.hidden=true;clearInterval(petRacePoll);petRaceStopRenderer();petRaceRole='';};
+function enterMobilePetRace(){if(!petRaceMobileDevice||petRaceMobileMode)return;petRaceMobileMode=true;for(const avatar of avatars.values())disposeAvatar(avatar.root);avatars.clear();for(const entry of foxPetNodes.values())foxPetDispose(entry);foxPetNodes.clear();renderer.renderLists?.dispose();if(stageForeground){stageForeground.setSize(1,1,false);stageForeground.domElement.style.display='none';}}
+function exitMobilePetRace(){if(!petRaceMobileMode)return;petRaceMobileMode=false;if(stageForeground)stageForeground.domElement.style.display='';renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,performanceRatio()));resize();}
+petRaceNear.onclick=async()=>{petRaceOpen=true;enterMobilePetRace();petRaceOverlay.hidden=false;petRaceNear.hidden=true;petRaceSyncChat();await petRaceAction('state');clearInterval(petRacePoll);petRacePoll=setInterval(()=>{if(petRaceOpen&&!petRaceBusy)void petRaceAction('state')},2000);};
+raceButton('close').onclick=()=>{if(petRaceState?.phase==='waiting'&&petRaceRole)void petRaceAction('leave');petRaceOpen=false;petRaceOverlay.hidden=true;clearInterval(petRacePoll);petRaceStopRenderer();exitMobilePetRace();petRaceRole='';};
 raceButton('500').onclick=()=>{petRaceBet=500;renderPetRace()};raceButton('1000').onclick=()=>{petRaceBet=1000;renderPetRace()};
 raceButton('join').onclick=()=>void petRaceAction('join',{stake:petRaceBet});raceButton('watch').onclick=()=>void petRaceAction('watch');raceButton('start').onclick=()=>void petRaceAction('start');raceButton('leave').onclick=()=>void petRaceAction('leave');
 function renderPetRace(){const r=petRaceState,waiting=!r||r.phase==='waiting'||r.phase==='finished',track=raceGet('#petRaceTrack');raceButton('500').classList.toggle('selected',petRaceBet===500);raceButton('1000').classList.toggle('selected',petRaceBet===1000);for(const name of ['500','1000','join','watch'])raceButton(name).hidden=!waiting;raceButton('start').hidden=!waiting||!r?.host;raceButton('leave').hidden=!waiting||!petRaceRole;raceGet('#petRaceText').textContent=!r?'500P 또는 1,000P를 선택하고 참가하세요.':r.phase==='waiting'?`대기 중 ${r.participants.length}/5 · 3명 이상 · 참가비가 모두 같아야 시작 · 결과는 무작위` :r.phase==='running'?'경주 진행 중 · 펫 이펙트는 적용되지 않습니다.':'경주 종료 · 참가비의 10%를 제외하고 순위별 지급';const list=raceGet('#petRaceList');list.replaceChildren();for(const p of r?.participants||[]){const el=document.createElement('span');el.textContent=`${p.name}${p.isMe?' (나)':''} · ${p.stake.toLocaleString()}P`;list.append(el)}track.hidden=!(r&&r.phase==='running');if(r?.phase==='running'){const key=String(r.startAt);if(petRaceVisualId!==key){petRaceVisualId=key;petRaceStartRenderer();}}else petRaceStopRenderer();raceGet('#petRaceResult').textContent=r?.phase==='finished'?r.awards.slice(0,3).map(a=>`${a.rank}위 ${a.name} · ${a.amount.toLocaleString()}P`).join('\n'):'';}
-function petRaceStopRenderer(){cancelAnimationFrame(petRaceRaf);petRaceRaf=0;if(petRaceRenderer){petRaceRenderer.dispose();petRaceRenderer.forceContextLoss?.();petRaceRenderer.domElement.remove();petRaceRenderer=null;}for(const entry of petRaceModels){if(entry?.model)entry.model.traverse(o=>{if(o.isMesh)for(const m of (Array.isArray(o.material)?o.material:[o.material]))m?.dispose?.();});}petRaceModels=[];for(const p of petRaceParticles){p.mesh.geometry.dispose();p.mesh.material.dispose();}petRaceParticles=[];petRaceScene?.traverse(o=>{if(o.userData?.petRaceMarker){o.geometry?.dispose();o.material?.map?.dispose();o.material?.dispose();}});petRaceScene=null;petRaceVisualId='';raceGet('#petRaceNames').replaceChildren();}
+function petRaceStopRenderer(){cancelAnimationFrame(petRaceRaf);petRaceRaf=0;if(petRaceRenderer){if(petRaceUsingMain){const canvas=petRaceRenderer.domElement;petRaceUsingMain=false;if(petRaceCanvasHome){if(petRaceCanvasNext?.parentNode===petRaceCanvasHome)petRaceCanvasHome.insertBefore(canvas,petRaceCanvasNext);else petRaceCanvasHome.appendChild(canvas);}canvas.style.cssText=petRaceCanvasStyle;petRaceCanvasHome=null;petRaceCanvasNext=null;renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,performanceRatio()));resize();}else{petRaceRenderer.dispose();petRaceRenderer.forceContextLoss?.();petRaceRenderer.domElement.remove();}petRaceRenderer=null;}if(petRaceBackdrop){petRaceBackdrop.texture?.dispose();petRaceBackdrop.mesh.geometry.dispose();petRaceBackdrop.mesh.material.dispose();petRaceBackdrop=null;}for(const entry of petRaceModels){if(entry?.model)entry.model.traverse(o=>{if(o.isMesh)for(const m of (Array.isArray(o.material)?o.material:[o.material]))m?.dispose?.();});}petRaceModels=[];for(const p of petRaceParticles){p.mesh.geometry.dispose();p.mesh.material.dispose();}petRaceParticles=[];petRaceScene?.traverse(o=>{if(o.userData?.petRaceMarker){o.geometry?.dispose();o.material?.map?.dispose();o.material?.dispose();}});petRaceScene=null;petRaceVisualId='';raceGet('#petRaceNames').replaceChildren();}
 function petRaceStartRenderer(){
  petRaceStopRenderer();if(!petRaceState||petRaceState.phase!=='running')return;petRaceVisualId=String(petRaceState.startAt);const track=raceGet('#petRaceTrack');
  try{
-  petRaceRenderer=new THREE.WebGLRenderer({alpha:true,antialias:!perfMobile,powerPreference:'low-power'});petRaceRenderer.setPixelRatio(Math.min(devicePixelRatio||1,perfMobile?.65:1));petRaceRenderer.setSize(track.clientWidth,track.clientHeight,false);track.prepend(petRaceRenderer.domElement);
+  if(petRaceMobileDevice){petRaceCanvasHome=renderer.domElement.parentNode;petRaceCanvasNext=renderer.domElement.nextSibling;petRaceCanvasStyle=renderer.domElement.style.cssText;petRaceUsingMain=true;petRaceRenderer=renderer;}
+  else petRaceRenderer=new THREE.WebGLRenderer({alpha:true,antialias:true,powerPreference:'low-power'});
+  petRaceRenderer.setPixelRatio(Math.min(devicePixelRatio||1,petRaceMobileDevice?.55:1));petRaceRenderer.setSize(track.clientWidth,track.clientHeight,false);track.prepend(petRaceRenderer.domElement);
   petRaceScene=new THREE.Scene();petRaceScene.add(new THREE.HemisphereLight('#ffffff','#9f8a88',2.6));const light=new THREE.DirectionalLight('#fff2cf',2);light.position.set(0,10,8);petRaceScene.add(light);
   petRaceCamera=new THREE.OrthographicCamera(-7.4,7.4,4,-4,.1,90);petRaceCamera.position.set(0,8,14);petRaceCamera.lookAt(0,0,0);
+  if(petRaceUsingMain){const texture=new THREE.TextureLoader().load('/assets/pet-race/track-long.png?v=376');texture.colorSpace=THREE.SRGBColorSpace;texture.wrapS=texture.wrapT=THREE.ClampToEdgeWrapping;const mesh=new THREE.Mesh(new THREE.PlaneGeometry(1,1),new THREE.MeshBasicMaterial({map:texture,depthTest:false,depthWrite:false}));mesh.position.set(0,0,-80);mesh.renderOrder=-1000;petRaceCamera.add(mesh);petRaceScene.add(petRaceCamera);petRaceBackdrop={mesh,texture};}
+
   // Widely separated lanes are centred for the actual number of entrants.
   petRaceModels=petRaceState.participants.map((p,i)=>{const root=new THREE.Group();petRaceScene.add(root);const name=document.createElement('span');name.textContent=p.name;raceGet('#petRaceNames').append(name);return {root,name,model:null,lastAttempt:0,index:i,progress:0};});
   const ranking=raceGet('#petRaceRanking');ranking.replaceChildren();for(let i=0;i<petRaceModels.length;i++){const item=document.createElement('span');ranking.append(item);}
@@ -10603,7 +10612,7 @@ function petRaceStartRenderer(){
   function frame(now){
    if(!petRaceOpen||!petRaceRenderer||petRaceState?.phase!=='running')return;petRaceRaf=requestAnimationFrame(frame);
    const r=petRaceState,elapsed=Math.max(0,Date.now()+petRaceClockOffset-r.startAt),duration=r.finishAt-r.startAt,order=r.order||[],count=r.participants.length;
-   const width=track.clientWidth,height=track.clientHeight;if(width>0&&height>0&&(width!==lastWidth||height!==lastHeight)){lastWidth=width;lastHeight=height;petRaceRenderer.setSize(width,height,false);petRaceCamera.left=-4*width/height;petRaceCamera.right=4*width/height;petRaceCamera.top=4;petRaceCamera.bottom=-4;petRaceCamera.updateProjectionMatrix();}
+   const width=track.clientWidth,height=track.clientHeight;if(width>0&&height>0&&(width!==lastWidth||height!==lastHeight)){lastWidth=width;lastHeight=height;petRaceRenderer.setSize(width,height,false);petRaceCamera.left=-4*width/height;petRaceCamera.right=4*width/height;petRaceCamera.top=4;petRaceCamera.bottom=-4;petRaceCamera.updateProjectionMatrix();if(petRaceBackdrop){petRaceBackdrop.mesh.scale.set(8*width/height,8,1);const aspect=petRaceBackdrop.texture.image?.width&&petRaceBackdrop.texture.image?.height?petRaceBackdrop.texture.image.width/petRaceBackdrop.texture.image.height:3;petRaceBackdrop.texture.repeat.set(Math.min(1,(width/height)/aspect),1);}}
    for(const entry of petRaceModels){
     const p=r.participants[entry.index];if(!p)continue;
     if(!entry.model&&now-entry.lastAttempt>900){entry.lastAttempt=now;const model=petMakeModel(p.pet.species,p.pet.stage,p.pet.color);if(model){entry.model=model;entry.root.scale.setScalar(.72);entry.root.add(model);}}
@@ -10624,7 +10633,7 @@ function petRaceStartRenderer(){
    const focusIndex=showWinner?order[0]:focusEvent?(elapsed>=(focusEvent.hitMs??focusEvent.ms)&&focusEvent.target!==focusEvent.actor?focusEvent.target:focusEvent.actor):undefined;
    const focus=petRaceModels[focusIndex]||standings[0];const goal=focus?.root.position.x||0;
    const halfWidth=4*track.clientWidth/Math.max(1,track.clientHeight),clampedGoal=Math.max(halfWidth-1.5,Math.min(courseLength-halfWidth+1.5,goal));cameraX+=(clampedGoal-cameraX)*.09;petRaceCamera.position.set(cameraX,8,14);petRaceCamera.lookAt(cameraX,0,0);petRaceCamera.updateMatrixWorld();
-   track.style.backgroundPosition=`${Math.max(0,Math.min(100,(cameraX-(halfWidth-1.5))/(courseLength-2*(halfWidth-1.5))*100))}% center`;
+   const sceneryPosition=Math.max(0,Math.min(1,(cameraX-(halfWidth-1.5))/(courseLength-2*(halfWidth-1.5))));track.style.backgroundPosition=`${sceneryPosition*100}% center`;if(petRaceBackdrop)petRaceBackdrop.texture.offset.x=sceneryPosition*(1-petRaceBackdrop.texture.repeat.x);
    // Repeating foreground streaks communicate running speed while the camera follows the pet.
    raceGet('#petRaceSpeedLines').style.backgroundPosition=`${-cameraX*75}px 0`;
    const labels={stumble:'넘어짐',stone:'돌 던지기',missile:'미사일',shock:'전기 충격',boost:'부스터'};
