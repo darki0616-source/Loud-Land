@@ -1187,7 +1187,7 @@ function renderOnlinePlayers(){
  if(!people.length){const empty=document.createElement('li');empty.className='players-empty';empty.textContent='현재 접속자가 없습니다';list.append(empty);return}
  for(const p of people){
   const li=document.createElement('li');li.className='players-entry';
-  const swatch=document.createElement('span');swatch.className='players-swatch';swatch.style.background=palette.includes(p.color)?p.color:'#d7fa81';
+  const swatch=document.createElement('span');swatch.className='players-swatch';swatch.style.background=hairColors.some(([,color])=>color===p.hairColor)?p.hairColor:'#4b3932';
   const name=document.createElement('span');name.className='players-name';name.textContent=p.name||'ROCKER';
   const icon=makeBadgeImg(p.badgeTier);li.append(swatch,icon,name);
   // Indoor users stay in the online list but cannot be selected from outside.
@@ -3287,7 +3287,7 @@ for(const x of [-5,-3,-1,1,3,5]){
  seam.position.set(x,.015,0);tentRoomScene.add(seam);tentRoomFloorSeams.push(seam);
 }
 function tentRoomExtra(room=tentRoomActive){return room?.upgradeLevel===1?2:0;}
-function applyTentRoomSize(room){const extra=tentRoomExtra(room),sx=(12+extra*2)/12,sz=(10+extra*2)/10;roomFloor.scale.set(sx,1,sz);tentRoomWalls[0].scale.x=sx;tentRoomWalls[0].position.z=-5-extra;tentRoomWalls[1].scale.z=sz;tentRoomWalls[1].position.x=-6-extra;tentRoomWalls[2].scale.z=sz;tentRoomWalls[2].position.x=6+extra;for(const seam of tentRoomFloorSeams){seam.scale.z=sz;seam.position.x=seam.userData.baseX*sx;}}
+function applyTentRoomSize(room){const extra=tentRoomExtra(room),sx=(12+extra*2)/12,sz=(10+extra*2)/10;roomFloor.scale.set(sx,1,sz);tentRoomWalls[0].scale.x=sx;tentRoomWalls[0].position.z=-5-extra;tentRoomWalls[1].scale.z=sz;tentRoomWalls[1].position.x=-6-extra;tentRoomWalls[2].scale.z=sz;tentRoomWalls[2].position.x=6+extra;for(const seam of tentRoomFloorSeams){seam.scale.z=sz;seam.position.x=seam.userData.baseX*sx;}if(tentRoomActive&&tentRoomSavedCamera)controls.maxDistance=extra?36:19;}
 for(const seam of tentRoomFloorSeams)seam.userData.baseX=seam.position.x;
 // v267 Pepero Day: decorative boxes throughout the outdoor festival AND every tent interior.
 // The supplied Meshy GLB is loaded once. Instanced meshes reuse its geometry/material,
@@ -3768,21 +3768,21 @@ function syncTentFurniturePlaced(room){
  }
 }
 function tentFurnitureFootprint(item,x,z,rotation){
- const a=rotation*Math.PI/180,c=Math.cos(a),si=Math.sin(a),hw=item.width/2+.20,hd=item.depth/2+.20;
+ const a=rotation*Math.PI/180,c=Math.cos(a),si=Math.sin(a),hw=item.width/2,hd=item.depth/2;
  return [[-hw,-hd],[hw,-hd],[hw,hd],[-hw,hd]].map(([u,v])=>[x+u*c+v*si,z-u*si+v*c]);
 }
 function tentFurniturePolygonsOverlap(a,b){
  for(const poly of [a,b])for(let i=0;i<poly.length;i++){
   const v=poly[i],n=poly[(i+1)%poly.length],ax=-(n[1]-v[1]),ay=n[0]-v[0];
   const ap=a.map(p=>p[0]*ax+p[1]*ay),bp=b.map(p=>p[0]*ax+p[1]*ay);
-  if(Math.max(...ap)<=Math.min(...bp)||Math.max(...bp)<=Math.min(...ap))return false;
+  if(Math.max(...ap)<=Math.min(...bp)+1e-8||Math.max(...bp)<=Math.min(...ap)+1e-8)return false;
  }
  return true;
 }
 function tentFurniturePlacementInfo(itemId,x,z,rotation,supportId=''){
  const item=tentFurnitureData?.catalog?.[itemId];if(!item||!Number.isFinite(x)||!Number.isFinite(z)||![0,45,90,135,180,225,270,315].includes(rotation))return null;
- const c=Math.cos(rotation*Math.PI/180),si=Math.sin(rotation*Math.PI/180),hw=item.width/2+.14,hd=item.depth/2+.14,extra=tentRoomExtra();
- if(![[-hw,-hd],[-hw,hd],[hw,-hd],[hw,hd]].every(([u,v])=>Math.abs(x+u*c+v*si)<=5.52+extra&&Math.abs(z-u*si+v*c)<=4.52+extra)||Math.hypot(x-TENT_FURNITURE_ENTRANCE_X,z-TENT_FURNITURE_ENTRANCE_Z)<=1.28)return null;
+ const c=Math.cos(rotation*Math.PI/180),si=Math.sin(rotation*Math.PI/180),hw=item.width/2,hd=item.depth/2,extra=tentRoomExtra();
+ if(![[-hw,-hd],[-hw,hd],[hw,-hd],[hw,hd]].every(([u,v])=>Math.abs(x+u*c+v*si)<=5.89+extra+1e-8&&Math.abs(z-u*si+v*c)<=4.89+extra+1e-8)||Math.hypot(x-TENT_FURNITURE_ENTRANCE_X,z-TENT_FURNITURE_ENTRANCE_Z)<=1.28)return null;
  const list=tentRoomActive?.furnishings||[],parent=supportId?list.find(f=>f.instanceId===supportId):null;if(supportId&&!parent)return null;let y=0;
  if(parent){const spec=tentFurnitureData.catalog[parent.itemId];if(!spec)return null;y=(Number(parent.y)||0)+spec.height;const a=(Number(parent.rotation)||0)*Math.PI/180,pc=Math.cos(a),ps=Math.sin(a);for(const [u,v] of [[-item.width/2,-item.depth/2],[item.width/2,-item.depth/2],[item.width/2,item.depth/2],[-item.width/2,item.depth/2]]){const dx=x+u*c+v*si-parent.x,dz=z-u*si+v*c-parent.z;if(Math.abs(dx*pc-dz*ps)>spec.width/2+.001||Math.abs(dx*ps+dz*pc)>spec.depth/2+.001)return null;}}
  if(y+item.height>8)return null;const footprint=tentFurnitureFootprint(item,x,z,rotation);
@@ -3828,9 +3828,9 @@ async function startTentFurniturePlacement(itemId){
  cancelTentFurniturePlacement();closeFurnitureShop();closeTentDecorate();
  tentRoomWalkTarget=null;tentFurniturePlacement={itemId,x:1.8,z:0,rotation:0,locked:false};
  const item=tentFurnitureData.catalog[itemId],root=new THREE.Group();
- const fill=new THREE.Mesh(new THREE.PlaneGeometry(item.width+.28,item.depth+.28),new THREE.MeshBasicMaterial({color:'#49ea83',transparent:true,opacity:.43,depthWrite:false,side:THREE.DoubleSide}));
+ const fill=new THREE.Mesh(new THREE.PlaneGeometry(item.width,item.depth),new THREE.MeshBasicMaterial({color:'#49ea83',transparent:true,opacity:.43,depthWrite:false,side:THREE.DoubleSide}));
  fill.rotation.x=-Math.PI/2;fill.position.y=.045;root.add(fill);
- const w=(item.width+.28)/2,d=(item.depth+.28)/2;
+ const w=item.width/2,d=item.depth/2;
  const points=[new THREE.Vector3(-w,.075,-d),new THREE.Vector3(w,.075,-d),new THREE.Vector3(w,.075,d),new THREE.Vector3(-w,.075,d)];
  const coords=[];for(let i=0;i<4;i++)coords.push(points[i],points[(i+1)%4]);
  const outline=new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(coords),new THREE.LineDashedMaterial({color:'#afff91',dashSize:.15,gapSize:.09,linewidth:2,depthTest:false}));
@@ -3854,8 +3854,8 @@ function moveTentFurnitureGhost(x,z,lock=false,supportId=''){
  // After that, the preview is anchored; only an intentional new floor click
  // may move it. Rotation uses the same fixed x/z coordinates.
  if(tentFurniturePlacement.locked&&!lock)return;
- tentFurniturePlacement.x=Math.round(THREE.MathUtils.clamp(x,-5.2-tentRoomExtra(),5.2+tentRoomExtra())*10)/10;
- tentFurniturePlacement.z=Math.round(THREE.MathUtils.clamp(z,-4.2-tentRoomExtra(),4.2+tentRoomExtra())*10)/10;
+ tentFurniturePlacement.x=Math.round(THREE.MathUtils.clamp(x,-5.89-tentRoomExtra(),5.89+tentRoomExtra())*100)/100;
+ tentFurniturePlacement.z=Math.round(THREE.MathUtils.clamp(z,-4.89-tentRoomExtra(),4.89+tentRoomExtra())*100)/100;
  tentFurniturePlacement.supportId=supportId;if(lock)tentFurniturePlacement.locked=true;
  repaintTentFurnitureGhost();
 }
@@ -4241,7 +4241,7 @@ async function enterTent(tentId){
   tentRoomWalkTarget=null;tentRoomLocal={x:0,z:2,facing:0};tentRoomLastSend=0;tentRoomWasMoving=false;tentRoomMoveQueued=null;
   applyTentRoomSize(tentRoomActive);applyTentRoomColors(data.room);applyTentRoomLighting(tentRoomActive);closeTentDecorate();closeFurnitureShop();cancelTentFurniturePlacement();syncTents(data.tents);renderRoomChat(data.room.id,data.chat);selectBottomMenu('reaction');
   tentRoomSavedCamera={position:camera.position.clone(),target:controls.target.clone(),minDistance:controls.minDistance,maxDistance:controls.maxDistance,enabled:controls.enabled};
-  camera.position.set(0,8.1+tentRoomExtra(),13.6+tentRoomExtra()*1.6);controls.target.set(0,1,0);controls.minDistance=5;controls.maxDistance=19+tentRoomExtra()*2;controls.enabled=true;
+  camera.position.set(0,8.1+tentRoomExtra(),13.6+tentRoomExtra()*1.6);controls.target.set(0,1,0);controls.minDistance=5;controls.maxDistance=tentRoomExtra()?36:19;controls.enabled=true;
   controls.update();cameraFollowInitialized=false;
   syncRoomCaption();
   $('tentRoomOverlay').classList.remove('hidden');document.body.classList.add('tent-interior-open');
@@ -10106,10 +10106,10 @@ function ensureLotteryUi(){
  const overlay=document.createElement('div');overlay.id='lotteryOverlay';overlay.className='lottery-overlay';overlay.hidden=true;
  overlay.innerHTML=`<section class="lottery-window" role="dialog" aria-modal="true" aria-labelledby="lotteryTitle">
   <header class="lottery-head"><div><small>ONEseason FESTIVAL</small><h2 id="lotteryTitle">🎟️ LOTTERY SHOP</h2></div><button class="lottery-close" type="button" aria-label="닫기">×</button></header>
-  <div class="lottery-subhead"><span class="lottery-wallet" id="lotteryWallet">보유 0P</span><span class="lottery-remaining" id="lotteryRemaining">오늘 남은 복권 5 / 5</span></div>
+  <div class="lottery-subhead"><span class="lottery-wallet" id="lotteryWallet">보유 0P</span><span class="lottery-remaining" id="lotteryRemaining">오늘 남은 복권 10 / 10</span></div>
   <div class="lottery-main"><div class="lottery-ticket" aria-label="스크래치 복권"><div class="lottery-scratch-field" id="lotteryScratchField"><div class="lottery-symbols" id="lotterySymbols"></div><canvas class="lottery-scratch-canvas" id="lotteryScratchCanvas" aria-label="마우스나 손가락으로 긁어서 결과를 확인하세요"></canvas></div><div class="lottery-prize-tag" id="lotteryPrizeTag">100P · 행운을 긁어보세요</div></div>
   <aside class="lottery-side"><div class="lottery-info"><h3>✦ 당첨 확률과 보상</h3><table class="lottery-odds"><tbody><tr><td>✕ 꽝</td><td>30%</td><td>0P</td></tr><tr><td>🪙 소액</td><td>25%</td><td>50P</td></tr><tr><td>⭐ 일반</td><td>25%</td><td>100P</td></tr><tr><td>💎 고액</td><td>15%</td><td>300P</td></tr><tr><td>✨ 초고액</td><td>4%</td><td>1,000P</td></tr><tr><td>👑 대박</td><td>1%</td><td>5,000P</td></tr></tbody></table></div>
-  <div class="lottery-info lottery-guide"><h3>✦ 이용 방법</h3><strong>PC는 마우스로, 모바일은 손가락으로</strong> 은색 부분을 문질러 긁으세요.<br>1장 100P · 하루 5장 · 한국시간 자정 초기화</div>
+  <div class="lottery-info lottery-guide"><h3>✦ 이용 방법</h3><strong>PC는 마우스로, 모바일은 손가락으로</strong> 은색 부분을 문질러 긁으세요.<br>1장 100P · 하루 10장 · 한국시간 자정 초기화</div>
   <div class="lottery-message" id="lotteryMessage" aria-live="polite">복권을 구매하면 긁을 수 있어요.</div><button class="lottery-reveal-button" id="lotteryReveal" type="button">🎁 당첨 결과 확인</button><button class="lottery-action" id="lotteryBuy" type="button">100P로 복권 구매하기</button></aside></div>
   <div class="lottery-note">게임 내 포인트 전용 · 현금 교환 불가 · 당첨 결과는 서버에서 무작위로 결정됩니다.</div></section>`;
  document.body.append(overlay);
