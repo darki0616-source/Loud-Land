@@ -266,7 +266,7 @@ async function commitMoleResult(identity,playId){
 }
 function scheduleMoleFinish(identity,session){
  const previous=moleFinishTimers.get(identity);if(previous)clearTimeout(previous);
- const delay=Math.max(100,session.startedAt+MOLE_DELAY_MS+MOLE_DURATION_MS+6000-Date.now());
+ const delay=Math.max(100,session.startedAt+MOLE_DELAY_MS+MOLE_DURATION_MS+18000-Date.now());
  const timer=setTimeout(()=>{
   if(moleFinishTimers.get(identity)===timer)moleFinishTimers.delete(identity);
   void commitMoleResult(identity,session.id).catch(e=>console.error('Mole result save failed:',e.message));
@@ -2263,12 +2263,12 @@ const server=http.createServer(async(req,res)=>{
         if(command==='hit'){
           const index=Number(d.index),hole=Number(d.hole),receivedAt=Date.now(),reportedAt=Number(d.hitAt);
           // Accept a bounded network delay while still checking the server-generated slot and rejecting duplicates.
-          const hitAt=Number.isFinite(reportedAt)&&reportedAt>=receivedAt-5000&&reportedAt<=receivedAt+180?reportedAt:receivedAt;
+          const hitAt=Number.isFinite(reportedAt)&&reportedAt>=receivedAt-15000&&reportedAt<=receivedAt+500?reportedAt:receivedAt;
           const elapsed=hitAt-session.startedAt-MOLE_DELAY_MS;
           if(!Number.isInteger(index)||index<0||index>=MOLE_SLOTS||!Number.isInteger(hole)||hole!==session.positions[index])return json(res,400,{error:'잘못된 두더지 위치입니다.'});
-          if(elapsed<MOLE_SLOT_STARTS_MS[index]-180||elapsed>MOLE_SLOT_STARTS_MS[index+1]+500)return json(res,409,{error:'두더지가 이미 사라졌어요.'});
-          if(session.hits.includes(index))return json(res,409,{error:'이미 맞힌 두더지입니다.'});
-          session.hits.push(index);const combo=index===session.lastHit+1?Math.min(10,session.hits.length):1;session.score+=100+combo*10;session.lastHit=index;scheduleSave();
+          if(elapsed<MOLE_SLOT_STARTS_MS[index]-500||elapsed>MOLE_SLOT_STARTS_MS[index+1]+1000)return json(res,409,{error:'두더지가 이미 사라졌어요.'});
+          if(session.hits.includes(index))return json(res,200,{ok:true,score:session.score,combo:session.lastCombo||1,duplicate:true});
+          session.hits.push(index);const combo=index===session.lastHit+1?Math.min(10,session.hits.length):1;session.score+=100+combo*10;session.lastHit=index;session.lastCombo=combo;scheduleSave();
           return json(res,200,{ok:true,score:session.score,combo});
         }
         if(command==='finish'){

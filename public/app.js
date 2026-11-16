@@ -330,7 +330,7 @@ function updatePowerGame(){
 }
 
 // v262: lower mole sprite and accelerate each round from 1100ms to 400ms.
-const moleGame={open:false,running:false,pending:false,finishing:false,pendingHits:0,playId:null,startedAt:0,offset:0,delay:1500,interval:750,intervals:[],starts:[],duration:30000,positions:[],coins:5,best:0,score:0,confirmedScore:0,pendingScores:new Map(),combo:0,hitIndex:-1,activeIndex:-1,leaderboard:[],reward:null};
+const moleGame={open:false,running:false,pending:false,finishing:false,pendingHits:0,playId:null,startedAt:0,offset:0,delay:1500,interval:750,intervals:[],starts:[],duration:30000,positions:[],coins:5,best:0,score:0,confirmedScore:0,pendingScores:new Map(),hitQueue:Promise.resolve(),combo:0,hitIndex:-1,activeIndex:-1,leaderboard:[],reward:null};
 let moleUi=null,moleHammerRevision='';
 function ensureMoleUI(){
  if(moleUi)return moleUi;
@@ -399,19 +399,36 @@ function closeMoleGame(){moleGame.open=false;moleUi?.el.classList.remove('show')
 function moleBuildSlotStarts(intervals){const starts=[0];for(const duration of intervals)starts.push(starts[starts.length-1]+duration);return starts;}
 function moleSlotIndex(elapsed,starts){if(elapsed<0)return -1;if(!starts||starts.length<2||elapsed>=starts[starts.length-1])return (starts?.length||1)-1;let lo=0,hi=starts.length-1;while(lo+1<hi){const mid=(lo+hi)>>1;if(starts[mid]<=elapsed)lo=mid;else hi=mid;}return lo;}
 async function startMoleGame(){if(moleGame.pending||moleGame.running||!nearRhythmBooth())return;moleGame.pending=true;moleUi.start.disabled=true;const sent=Date.now();
- try{const r=await post('mole',{id:state.id,sessionKey,command:'start'});moleGame.playId=r.playId;moleGame.startedAt=r.startedAt;moleGame.offset=r.serverNow+(Date.now()-sent)/2-Date.now();moleGame.positions=r.positions;moleGame.interval=r.interval;moleGame.intervals=Array.isArray(r.intervals)&&r.intervals.length===r.positions.length?r.intervals:Array(r.positions.length).fill(r.interval);moleGame.starts=moleBuildSlotStarts(moleGame.intervals);moleGame.duration=moleGame.starts[moleGame.starts.length-1];moleGame.delay=r.delay;moleGame.coins=r.account.coins;moleGame.score=0;moleGame.confirmedScore=0;moleGame.pendingScores.clear();moleGame.combo=0;moleGame.pendingHits=0;moleGame.hitIndex=-1;moleGame.activeIndex=-1;moleGame.running=true;moleGame.finishing=false;moleUi.start.hidden=true;moleUi.retry.hidden=true;moleUi.msg.textContent='준비!';renderMoleUI();}catch(e){toast(e.message);}finally{moleGame.pending=false;renderMoleUI();}}
-async function hitMole(hole,visibleIndex){if(!moleGame.running||!moleGame.playId)return;const index=visibleIndex;if(!Number.isInteger(index)||index!==moleGame.activeIndex||index<0||index>=moleGame.positions.length||moleGame.positions[index]!==hole||moleGame.hitIndex===index)return;
- const playId=moleGame.playId,hitAt=Date.now()+moleGame.offset;
- moleGame.hitIndex=index;moleGame.pendingHits++;moleGame.pendingScores.set(index,110);const cell=moleUi.holes[hole];cell.classList.add('hit');
- moleGame.score=moleGame.confirmedScore+[...moleGame.pendingScores.values()].reduce((a,b)=>a+b,0);moleUi.msg.textContent='💥 HIT!';renderMoleUI();
- try{const r=await post('mole',{id:state.id,sessionKey,command:'hit',playId,index,hole,hitAt});if(moleGame.playId!==playId)return;moleGame.pendingScores.delete(index);moleGame.confirmedScore=Math.max(moleGame.confirmedScore,Number(r.score)||0);moleGame.score=moleGame.confirmedScore+[...moleGame.pendingScores.values()].reduce((a,b)=>a+b,0);moleGame.combo=r.combo;moleUi.msg.textContent=`💥 HIT! ${r.combo} COMBO`;renderMoleUI();}catch(e){if(moleGame.playId!==playId)return;moleGame.pendingScores.delete(index);moleGame.score=moleGame.confirmedScore+[...moleGame.pendingScores.values()].reduce((a,b)=>a+b,0);if(moleGame.activeIndex===index)cell.classList.remove('hit');moleUi.msg.textContent=e.message||'타이밍을 놓쳤어요.';renderMoleUI();}finally{if(moleGame.playId===playId)moleGame.pendingHits=Math.max(0,moleGame.pendingHits-1);}}
+ try{const r=await post('mole',{id:state.id,sessionKey,command:'start'});moleGame.playId=r.playId;moleGame.startedAt=r.startedAt;moleGame.offset=r.serverNow+(Date.now()-sent)/2-Date.now();moleGame.positions=r.positions;moleGame.interval=r.interval;moleGame.intervals=Array.isArray(r.intervals)&&r.intervals.length===r.positions.length?r.intervals:Array(r.positions.length).fill(r.interval);moleGame.starts=moleBuildSlotStarts(moleGame.intervals);moleGame.duration=moleGame.starts[moleGame.starts.length-1];moleGame.delay=r.delay;moleGame.coins=r.account.coins;moleGame.score=0;moleGame.confirmedScore=0;moleGame.pendingScores.clear();moleGame.hitQueue=Promise.resolve();moleGame.combo=0;moleGame.pendingHits=0;moleGame.hitIndex=-1;moleGame.activeIndex=-1;moleGame.running=true;moleGame.finishing=false;moleUi.start.hidden=true;moleUi.retry.hidden=true;moleUi.msg.textContent='준비!';renderMoleUI();}catch(e){toast(e.message);}finally{moleGame.pending=false;renderMoleUI();}}
+function recalculateMoleScore(){
+ let score=moleGame.confirmedScore;for(const points of moleGame.pendingScores.values())score+=points;
+ moleGame.score=score;renderMoleUI();
+}
+function hitMole(hole,visibleIndex){
+ if(!moleGame.running||!moleGame.playId)return;
+ const index=visibleIndex;if(!Number.isInteger(index)||index!==moleGame.activeIndex||index<0||index>=moleGame.positions.length||moleGame.positions[index]!==hole||moleGame.hitIndex===index)return;
+ const playId=moleGame.playId,hitAt=Date.now()+moleGame.offset,cell=moleUi.holes[hole];
+ moleGame.hitIndex=index;moleGame.pendingHits++;moleGame.pendingScores.set(index,110);cell.classList.add('hit');moleUi.msg.textContent='💥 HIT!';recalculateMoleScore();
+ // Keep hits in the same order they were tapped, even when requests are slow.
+ moleGame.hitQueue=moleGame.hitQueue.catch(()=>{}).then(async()=>{
+  let error=null;
+  for(let attempt=0;attempt<3;attempt++){
+   try{
+    const r=await post('mole',{id:state.id,sessionKey,command:'hit',playId,index,hole,hitAt});
+    if(moleGame.playId!==playId)return;
+    moleGame.pendingScores.delete(index);moleGame.confirmedScore=Number(r.score)||0;moleGame.combo=r.combo;moleUi.msg.textContent=`💥 HIT! ${r.combo} COMBO`;recalculateMoleScore();return;
+   }catch(e){error=e;if(attempt<2)await new Promise(resolve=>setTimeout(resolve,300));}
+  }
+  if(moleGame.playId===playId){moleGame.pendingScores.delete(index);if(moleGame.activeIndex===index)cell.classList.remove('hit');moleUi.msg.textContent=error?.message||'점수 저장에 실패했어요.';recalculateMoleScore();}
+ }).finally(()=>{if(moleGame.playId===playId)moleGame.pendingHits=Math.max(0,moleGame.pendingHits-1);});
+}
 function refreshMoleWallet(){void refreshTentStatus();if(!$('punkShop').classList.contains('hidden')||!$('mdWardrobe').hidden)void refreshPunkShop();}
 async function finishMoleGame(){if(moleGame.finishing||!moleGame.playId)return;
  moleGame.finishing=true;moleGame.running=false;moleUi.retry.hidden=true;moleUi.msg.textContent='순위표에 기록 저장 중...';
  const playId=moleGame.playId;let confirmed=false,lastError=null;
  try{
   // A hit request may still be in flight at the last frame. Wait briefly before settling.
-  for(let wait=0;wait<40&&moleGame.pendingHits>0;wait++)await new Promise(resolve=>setTimeout(resolve,150));
+  for(let wait=0;wait<100&&moleGame.pendingHits>0;wait++)await new Promise(resolve=>setTimeout(resolve,150));
   for(let attempt=0;attempt<8;attempt++){
    try{
     const r=await post('mole',{id:state.id,sessionKey,command:'finish',playId});
