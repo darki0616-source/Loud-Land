@@ -335,14 +335,14 @@ let moleUi=null,moleHammerRevision='';
 function ensureMoleUI(){
  if(moleUi)return moleUi;
  const css=document.createElement('style');css.textContent=`
- #moleOverlay{display:none;position:fixed;inset:0;z-index:95;background:#07140f url('/assets/mole/background.png') center/cover no-repeat;color:#fff;overflow:auto;overscroll-behavior:contain}
+ #moleOverlay{display:none;position:fixed;inset:0;z-index:8000;background:#07140f url('/assets/mole/background.png') center/cover no-repeat;color:#fff;overflow:auto;overscroll-behavior:contain}
  #moleOverlay.show{display:block}#moleOverlay *{box-sizing:border-box}
  #moleShell{width:min(100%,570px);margin:auto;min-height:100dvh;padding:calc(env(safe-area-inset-top,0px) + 12px) 14px calc(env(safe-area-inset-bottom,0px) + 25px);display:flex;flex-direction:column;gap:11px}
  #moleHead{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
  #moleTitle{height:clamp(64px,18vw,112px);flex:1;background:url('/assets/mole/title.png') left center/contain no-repeat}
  #moleClose{background:#192b29e8;color:white;border:1px solid #a3ecaa66;border-radius:12px;padding:11px 13px;font-weight:800}
  #moleStats{display:flex;justify-content:space-between;gap:10px;padding:11px 14px;background:#071d19d9;border:1px solid #a6ff9a55;border-radius:14px;font-weight:900}
- #moleBoard{width:100%;aspect-ratio:1000/1030;max-height:min(60dvh,580px);position:relative;background:url('/assets/mole/board.png') center/100% 100% no-repeat;border-radius:24px;overflow:hidden;touch-action:manipulation}
+ #moleBoard{width:100%;aspect-ratio:1000/1030;max-height:min(60dvh,580px);position:relative;background:url('/assets/mole/board.png') center/100% 100% no-repeat;border-radius:24px;overflow:hidden;touch-action:none}
  /* v260: The uploaded board.png ALREADY contains the nine holes.
     Align transparent hit areas to the artwork instead of drawing another set. */
  #moleGrid{position:absolute;inset:0;pointer-events:none}
@@ -369,7 +369,16 @@ function ensureMoleUI(){
  el.querySelector('#moleClose').onclick=closeMoleGame;
  moleUi.start.onclick=startMoleGame;
  moleUi.retry.onclick=()=>{void finishMoleGame();};
- for(const hole of moleUi.holes)hole.onclick=()=>{void hitMole(Number(hole.dataset.hole));};
+ // Capture on the board: the artwork extends above the transparent button.
+ // Use pointerdown rather than delayed mobile click; only the visible mole is hittable.
+ el.querySelector('#moleBoard').addEventListener('pointerdown',e=>{
+  if(!moleGame.running||!moleGame.playId||(e.pointerType==='mouse'&&e.button!==0))return;
+  const index=moleGame.activeIndex,hole=moleGame.positions[index],cell=moleUi.holes[hole];
+  if(!Number.isInteger(index)||index<0||!cell||!cell.classList.contains('active'))return;
+  const rects=[cell.getBoundingClientRect(),cell.querySelector('.moleSprite').getBoundingClientRect()],pad=8;
+  if(!rects.some(r=>e.clientX>=r.left-pad&&e.clientX<=r.right+pad&&e.clientY>=r.top-pad&&e.clientY<=r.bottom+pad))return;
+  if(e.cancelable)e.preventDefault();e.stopPropagation();void hitMole(hole,index);
+ },{capture:true});
  el.addEventListener('touchstart',e=>{if(e.touches.length>1)e.preventDefault()},{passive:false});
  return moleUi;
 }
@@ -389,9 +398,9 @@ function moleBuildSlotStarts(intervals){const starts=[0];for(const duration of i
 function moleSlotIndex(elapsed,starts){if(elapsed<0)return -1;if(!starts||starts.length<2||elapsed>=starts[starts.length-1])return (starts?.length||1)-1;let lo=0,hi=starts.length-1;while(lo+1<hi){const mid=(lo+hi)>>1;if(starts[mid]<=elapsed)lo=mid;else hi=mid;}return lo;}
 async function startMoleGame(){if(moleGame.pending||moleGame.running||!nearRhythmBooth())return;moleGame.pending=true;moleUi.start.disabled=true;const sent=Date.now();
  try{const r=await post('mole',{id:state.id,sessionKey,command:'start'});moleGame.playId=r.playId;moleGame.startedAt=r.startedAt;moleGame.offset=r.serverNow+(Date.now()-sent)/2-Date.now();moleGame.positions=r.positions;moleGame.interval=r.interval;moleGame.intervals=Array.isArray(r.intervals)&&r.intervals.length===r.positions.length?r.intervals:Array(r.positions.length).fill(r.interval);moleGame.starts=moleBuildSlotStarts(moleGame.intervals);moleGame.duration=moleGame.starts[moleGame.starts.length-1];moleGame.delay=r.delay;moleGame.coins=r.account.coins;moleGame.score=0;moleGame.combo=0;moleGame.pendingHits=0;moleGame.hitIndex=-1;moleGame.activeIndex=-1;moleGame.running=true;moleGame.finishing=false;moleUi.start.hidden=true;moleUi.retry.hidden=true;moleUi.msg.textContent='준비!';renderMoleUI();}catch(e){toast(e.message);}finally{moleGame.pending=false;renderMoleUI();}}
-async function hitMole(hole){if(!moleGame.running||!moleGame.playId)return;const elapsed=Date.now()+moleGame.offset-moleGame.startedAt-moleGame.delay,index=moleSlotIndex(elapsed,moleGame.starts);if(index<0||index>=moleGame.positions.length||moleGame.positions[index]!==hole||moleGame.hitIndex===index)return;
+async function hitMole(hole,visibleIndex){if(!moleGame.running||!moleGame.playId)return;const index=visibleIndex;if(!Number.isInteger(index)||index!==moleGame.activeIndex||index<0||index>=moleGame.positions.length||moleGame.positions[index]!==hole||moleGame.hitIndex===index)return;
  moleGame.hitIndex=index;moleGame.pendingHits++;const cell=moleUi.holes[hole];cell.classList.add('hit');
- try{const r=await post('mole',{id:state.id,sessionKey,command:'hit',playId:moleGame.playId,index,hole});moleGame.score=r.score;moleGame.combo=r.combo;moleUi.msg.textContent=`💥 HIT! ${r.combo} COMBO`;renderMoleUI();}catch(e){cell.classList.remove('hit');moleUi.msg.textContent=e.message||'타이밍을 놓쳤어요.';}finally{moleGame.pendingHits=Math.max(0,moleGame.pendingHits-1);}}
+ try{const r=await post('mole',{id:state.id,sessionKey,command:'hit',playId:moleGame.playId,index,hole});moleGame.score=Math.max(moleGame.score,Number(r.score)||0);moleGame.combo=r.combo;moleUi.msg.textContent=`💥 HIT! ${r.combo} COMBO`;renderMoleUI();}catch(e){cell.classList.remove('hit');moleUi.msg.textContent=e.message||'타이밍을 놓쳤어요.';}finally{moleGame.pendingHits=Math.max(0,moleGame.pendingHits-1);}}
 async function finishMoleGame(){if(moleGame.finishing||!moleGame.playId)return;
  moleGame.finishing=true;moleGame.running=false;moleUi.retry.hidden=true;moleUi.msg.textContent='순위표에 기록 저장 중...';
  const playId=moleGame.playId;let confirmed=false,lastError=null;
