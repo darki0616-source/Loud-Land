@@ -10615,7 +10615,7 @@ function petRaceStartRenderer(){
  try{
   if(petRaceMobileDevice){petRaceCanvasHome=renderer.domElement.parentNode;petRaceCanvasNext=renderer.domElement.nextSibling;petRaceCanvasStyle=renderer.domElement.style.cssText;petRaceUsingMain=true;petRaceRenderer=renderer;}
   else petRaceRenderer=new THREE.WebGLRenderer({alpha:true,antialias:true,powerPreference:'low-power'});
-  petRaceRenderer.setPixelRatio(Math.min(devicePixelRatio||1,petRaceMobileDevice?.55:1));petRaceRenderer.setSize(track.clientWidth,track.clientHeight,false);track.prepend(petRaceRenderer.domElement);
+  petRaceRenderer.setPixelRatio(Math.min(devicePixelRatio||1,petRaceMobileDevice?1.25:1.5));petRaceRenderer.setSize(track.clientWidth,track.clientHeight,false);track.prepend(petRaceRenderer.domElement);
   petRaceScene=new THREE.Scene();petRaceScene.add(new THREE.HemisphereLight('#ffffff','#9f8a88',2.6));const light=new THREE.DirectionalLight('#fff2cf',2);light.position.set(0,10,8);petRaceScene.add(light);
   petRaceCamera=new THREE.OrthographicCamera(-7.4,7.4,4,-4,.1,90);petRaceCamera.position.set(0,8,14);petRaceCamera.lookAt(0,2,0);
   if(petRaceUsingMain){const texture=new THREE.TextureLoader().load('/assets/pet-race/track-ultrawide.png?v=378');texture.colorSpace=THREE.SRGBColorSpace;texture.wrapS=texture.wrapT=THREE.ClampToEdgeWrapping;const mesh=new THREE.Mesh(new THREE.PlaneGeometry(1,1),new THREE.MeshBasicMaterial({map:texture,depthTest:false,depthWrite:false}));mesh.position.set(0,0,-80);mesh.renderOrder=-1000;petRaceCamera.add(mesh);petRaceScene.add(petRaceCamera);petRaceBackdrop={mesh,texture};}

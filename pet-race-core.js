@@ -19,10 +19,10 @@ function createRacePlan(entrants,stake){
  const settlement=calculatePayouts(entrants.length,stake);secureOrder(entrants);
  const kinds=['stumble','stone','missile','shock','boost'];
  for(let attempt=0;attempt<80;attempt++){
-  const targetSeconds=201+crypto.randomInt(13),base=1/targetSeconds;
+  const targetSeconds=111+crypto.randomInt(6),base=1/targetSeconds;
   const runners=entrants.map(id=>({id,distance:0,finish:null,speed:base*(.98+crypto.randomInt(41)/1000),effectUntil:0,multiplier:1}));
   const keyframes=[runners.map(()=>0)],events=[];let nextEvent=7+crypto.randomInt(6);
-  for(let second=1;second<=240;second++){
+  for(let second=1;second<=150;second++){
    if(second===nextEvent&&runners.some(r=>r.finish===null)){
     const live=runners.filter(r=>r.finish===null);const actor=live[crypto.randomInt(live.length)];let kind=kinds[crypto.randomInt(kinds.length)];
     const ahead=live.filter(r=>r.id!==actor.id&&r.distance>actor.distance+.001);if(['stone','missile','shock'].includes(kind)&&!ahead.length)kind='boost';
@@ -37,7 +37,7 @@ function createRacePlan(entrants,stake){
    if(runners.every(r=>r.finish!==null))break;
   }
   if(runners.some(r=>r.finish===null))continue;
-  const duration=(keyframes.length-1)*1000;if(duration<180000||duration>240000)continue;
+  const duration=(keyframes.length-1)*1000;if(duration<110000||duration>130000)continue;
   const order=[...runners].sort((a,b)=>a.finish-b.finish||entrants.indexOf(a.id)-entrants.indexOf(b.id)).map(r=>r.id);
   return {duration,order,events,settlement,keyframes,finishTimes:runners.map(r=>Math.round(r.finish)),intervalMs:1000};
  }
