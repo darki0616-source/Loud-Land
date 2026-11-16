@@ -2261,7 +2261,7 @@ const server=http.createServer(async(req,res)=>{
         if(command==='hit'){
           const index=Number(d.index),hole=Number(d.hole),elapsed=Date.now()-session.startedAt-MOLE_DELAY_MS;
           if(!Number.isInteger(index)||index<0||index>=MOLE_SLOTS||!Number.isInteger(hole)||hole!==session.positions[index])return json(res,400,{error:'잘못된 두더지 위치입니다.'});
-          if(elapsed<MOLE_SLOT_STARTS_MS[index]-180||elapsed>MOLE_SLOT_STARTS_MS[index+1]+240)return json(res,409,{error:'두더지가 이미 사라졌어요.'});
+          if(elapsed<MOLE_SLOT_STARTS_MS[index]-180||elapsed>MOLE_SLOT_STARTS_MS[index+1]+500)return json(res,409,{error:'두더지가 이미 사라졌어요.'});
           if(session.hits.includes(index))return json(res,409,{error:'이미 맞힌 두더지입니다.'});
           session.hits.push(index);const combo=index===session.lastHit+1?Math.min(10,session.hits.length):1;session.score+=100+combo*10;session.lastHit=index;scheduleSave();
           return json(res,200,{ok:true,score:session.score,combo});
