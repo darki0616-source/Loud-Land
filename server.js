@@ -261,11 +261,12 @@ async function commitMoleResult(identity,playId){
  const best=moleScores.get(identity);
  if(!best||score>best.score)moleScores.set(identity,{name:clean(session.name,18)||best?.name||'ROCKER',score,at:now});
  await saveNow();broadcast({type:'mole-state',mole:publicMoleState()});
+ for(const player of players.values())if(player.badgeIdentity===identity){const client=clients.get(player.id);if(client)try{send(client,{type:'mole-result',playId,score,prize,points:tentPointBalance(player)})}catch{}}
  return result;
 }
 function scheduleMoleFinish(identity,session){
  const previous=moleFinishTimers.get(identity);if(previous)clearTimeout(previous);
- const delay=Math.max(100,session.startedAt+MOLE_DELAY_MS+MOLE_DURATION_MS+1400-Date.now());
+ const delay=Math.max(100,session.startedAt+MOLE_DELAY_MS+MOLE_DURATION_MS+6000-Date.now());
  const timer=setTimeout(()=>{
   if(moleFinishTimers.get(identity)===timer)moleFinishTimers.delete(identity);
   void commitMoleResult(identity,session.id).catch(e=>console.error('Mole result save failed:',e.message));
@@ -2255,11 +2256,15 @@ const server=http.createServer(async(req,res)=>{
         }
         if(!session||session.id!==d.playId)return json(res,409,{error:'게임 기록이 만료됐어요.'});
         if(command==='abandon'){
+          if(Date.now()>=session.startedAt+MOLE_DELAY_MS+MOLE_DURATION_MS){const result=await commitMoleResult(p.badgeIdentity,session.id);return json(res,200,{ok:true,result,points:tentPointBalance(p)});}
           a.session=null;const timer=moleFinishTimers.get(p.badgeIdentity);if(timer)clearTimeout(timer);moleFinishTimers.delete(p.badgeIdentity);
           await saveNow();return json(res,200,{ok:true});
         }
         if(command==='hit'){
-          const index=Number(d.index),hole=Number(d.hole),elapsed=Date.now()-session.startedAt-MOLE_DELAY_MS;
+          const index=Number(d.index),hole=Number(d.hole),receivedAt=Date.now(),reportedAt=Number(d.hitAt);
+          // Accept a bounded network delay while still checking the server-generated slot and rejecting duplicates.
+          const hitAt=Number.isFinite(reportedAt)&&reportedAt>=receivedAt-5000&&reportedAt<=receivedAt+180?reportedAt:receivedAt;
+          const elapsed=hitAt-session.startedAt-MOLE_DELAY_MS;
           if(!Number.isInteger(index)||index<0||index>=MOLE_SLOTS||!Number.isInteger(hole)||hole!==session.positions[index])return json(res,400,{error:'잘못된 두더지 위치입니다.'});
           if(elapsed<MOLE_SLOT_STARTS_MS[index]-180||elapsed>MOLE_SLOT_STARTS_MS[index+1]+500)return json(res,409,{error:'두더지가 이미 사라졌어요.'});
           if(session.hits.includes(index))return json(res,409,{error:'이미 맞힌 두더지입니다.'});
