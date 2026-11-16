@@ -2195,12 +2195,12 @@ $('tentExteriorSave').onclick=async()=>{
  }catch(error){toast(error.message)}finally{tentExteriorBusy=false;$('tentExteriorSave').disabled=false}
 };
 function tentRequest(command,values={}){return post('tent',{id:state.id,sessionKey,command,...values});}
+let tentWorldRefreshPending=false;
 function syncTents(tents){
  if(!Array.isArray(tents))return;
  tentList=tents;
  if(tentRoomActive){const current=tents.find(t=>t.id===tentRoomActive.id);if(!current)leaveTentInterior(false);else{tentRoomActive={...tentRoomActive,...current};applyTentRoomSize(tentRoomActive);syncRoomCaption();applyTentRoomColors(current);applyTentRoomLighting(current);syncTentFurniturePlaced(tentRoomActive)}}
- updateTentModels();
- refreshPeperoInstances(); // v267: keep decorative boxes clear of newly placed tents
+ if(tentRoomActive&&perfMobile){tentWorldRefreshPending=true;}else{updateTentModels();refreshPeperoInstances();tentWorldRefreshPending=false;} // Defer rebuilding outdoor meshes while inside on mobile.
 }
 async function refreshTentStatus(){
  if(!state.id)return;
@@ -2794,7 +2794,7 @@ function updatePerformanceButton(){
 }
 function applyPerformancePreset(){
  const preset=effectivePerfPreset();perfTargetFrame=1000/preset.fps;
- renderer.setPixelRatio(Math.min(devicePixelRatio,performanceRatio()));
+ renderer.setPixelRatio(Math.min(devicePixelRatio,performanceRatio(),perfMobile&&tentRoomActive?.75:Infinity));
  renderer.shadowMap.enabled=preset.shadows&&!perfMobile;
  if(stageForeground)stageForeground.setPixelRatio(Math.min(devicePixelRatio,Math.max(.30,preset.foreground*perfAutoScale)));
  // Keep lightweight sky/lighting selections in sync when the user changes modes.
@@ -3491,12 +3491,28 @@ function clickedTentChair(ray){if(!tentRoomActive||tentFurniturePlacement)return
 // v248: Persistent purchased indoor furniture, model preview and live placement.
 const tentFurniturePlaced=new Map(),tentFurnitureModels=new Map(),tentFurnitureThumbs=new Map();
 let tentFurnitureData=null,tentFurnitureMode='shop',tentFurnitureSelected='jack',tentFurnitureBusy=false;
-let tentFurnitureGhost=null,tentFurnitureCurrentSignature='',tentFurniturePlacement=null;
+let tentFurnitureGhost=null,tentFurnitureCurrentSignature='',tentFurniturePlacement=null,tentFurnitureLoadEpoch=0;
 let tentFurniturePreviewRenderer=null,tentFurniturePreviewScene=null,tentFurniturePreviewCamera=null;
 const furnitureColorOptions={black:['블랙','#27282e'],white:['화이트','#f1eee9'],gray:['그레이','#80848a'],beige:['베이지','#cfbca0'],burgundy:['버건디','#702f43'],navy:['남색','#283a62'],wood:['우드','#a57043']};let tentFurnitureSelectedColor='black',furnitureWoodTexture=null;
 function getFurnitureWoodTexture(){if(furnitureWoodTexture)return furnitureWoodTexture;const canvas=document.createElement('canvas');canvas.width=256;canvas.height=256;const ctx=canvas.getContext('2d');ctx.fillStyle='#bb8859';ctx.fillRect(0,0,256,256);for(let i=0;i<110;i++){const x=(i*71)%256,alpha=.06+((i*31)%12)/100;ctx.strokeStyle=`rgba(76,40,16,${alpha})`;ctx.lineWidth=.4+(i%4)*.3;ctx.beginPath();ctx.moveTo(x,0);ctx.bezierCurveTo(x+Math.sin(i)*9,80,x-Math.cos(i)*8,180,x+Math.sin(i*4)*5,256);ctx.stroke();}furnitureWoodTexture=new THREE.CanvasTexture(canvas);furnitureWoodTexture.colorSpace=THREE.SRGBColorSpace;furnitureWoodTexture.wrapS=furnitureWoodTexture.wrapT=THREE.RepeatWrapping;return furnitureWoodTexture;}
 function colorFurnitureModel(original,kind){const choice=furnitureColorOptions[kind];if(!choice)return;original.traverse(obj=>{if(!obj.isMesh)return;const paint=()=>new THREE.MeshStandardMaterial({color:kind==='wood'&&obj.geometry?.attributes?.uv?'#ffffff':choice[1],map:kind==='wood'&&obj.geometry?.attributes?.uv?getFurnitureWoodTexture():null,roughness:.86,metalness:0,side:THREE.DoubleSide});obj.material=Array.isArray(obj.material)?obj.material.map(paint):paint();});}
 const furnitureAssetLoader=new GLTFLoader();
+// Mobile Safari is sensitive to many GLB/texture decoders running at once.
+let mobileFurnitureQueue=Promise.resolve();
+function loadTentFurnitureGltf(url){
+ const roomId=tentRoomActive?.id;const start=()=>new Promise((resolve,reject)=>{if(perfMobile&&(!roomId||tentRoomActive?.id!==roomId))return reject(Error('텐트에서 나가 가구 불러오기를 중단했어요.'));furnitureAssetLoader.load(url,resolve,undefined,reject)});
+ if(!perfMobile)return start();
+ const task=mobileFurnitureQueue.catch(()=>{}).then(start);mobileFurnitureQueue=task.catch(()=>{});return task;
+}
+function limitMobileFurnitureTextures(model){
+ if(!perfMobile)return;const seen=new Set();
+ model.traverse(object=>{if(!object.isMesh)return;for(const material of (Array.isArray(object.material)?object.material:[object.material])){
+  if(!material)continue;for(const key of ['map','normalMap','roughnessMap','metalnessMap','emissiveMap','aoMap']){const texture=material[key];if(!texture||seen.has(texture))continue;seen.add(texture);const img=texture.image,w=img?.width||0,h=img?.height||0;if(!w||!h||Math.max(w,h)<=1024)continue;
+   try{const scale=1024/Math.max(w,h),canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(w*scale));canvas.height=Math.max(1,Math.round(h*scale));canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);texture.image=canvas;texture.needsUpdate=true;}catch(error){console.warn('가구 텍스처 최적화:',error.message);}
+  }
+ }});
+}
+
 const TENT_FURNITURE_ENTRANCE_X=0,TENT_FURNITURE_ENTRANCE_Z=2.5;
 // v252: Each placed luminous item has a soft lens halo, a warm floor pool,
 // and a real point light, parented to its placed GLB so rotate/remove/reenter work.
@@ -3678,12 +3694,12 @@ async function getTentFurnitureModel(itemId){
  const item=tentRoomActive?.furnitureCatalog?.[itemId]||tentFurnitureData?.catalog?.[itemId];
  if(!item||!(/^\/assets\/tent-items\/[a-z0-9_-]+\.glb$/.test(item.asset)||/^\/api\/tent-item-model\/[a-z0-9_-]+\?v=[a-f0-9]{16}$/.test(item.asset)))throw Error('알 수 없는 아이템 파일입니다.');
  const load=new Promise((resolve,reject)=>{
-  furnitureAssetLoader.load(item.asset,gltf=>{
+  loadTentFurnitureGltf(item.asset).then(gltf=>{
    try{
     // v251: Width (X), height (Y) AND depth (Z) are real visible GLB
     // dimensions, not just a collision footprint. Preserve glTF's own
     // transform by scaling an outer group rather than replacing root.scale.
-    const original=gltf.scene;if(item.variantColor)colorFurnitureModel(original,item.variantColor);
+    const original=gltf.scene;if(item.variantColor)colorFurnitureModel(original,item.variantColor);limitMobileFurnitureTextures(original);
     // v287: Hearth stove GLB is already Y-up. Do NOT rotate it on X:
     // the previous -90-degree correction tipped the stove onto its side.
     // Keep its original glTF orientation before floor alignment and fitting.
@@ -3702,7 +3718,7 @@ async function getTentFurnitureModel(itemId){
     original.traverse(obj=>{if(obj.isMesh){obj.castShadow=false;obj.receiveShadow=true;}});
     resolve(template);
    }catch(error){reject(error)}
-  },undefined,()=>reject(Error('아이템 3D 모델을 불러오지 못했어요.')));
+  },()=>reject(Error('아이템 3D 모델을 불러오지 못했어요.')));
  });
  tentFurnitureModels.set(itemId,load);
  // A failed network fetch should not permanently poison the model cache.
@@ -3710,9 +3726,13 @@ async function getTentFurnitureModel(itemId){
  return load;
 }
 function clearTentFurniturePlaced(){
- clearTentFurnitureLightEffects();
+ tentFurnitureLoadEpoch++;clearTentFurnitureLightEffects();
  for(const obj of tentFurniturePlaced.values())tentRoomScene.remove(obj);
  tentFurniturePlaced.clear();tentFurnitureCurrentSignature='';
+}
+function releaseMobileFurnitureCache(){
+ if(!perfMobile)return;const cached=[...tentFurnitureModels.values()];tentFurnitureModels.clear();
+ for(const promise of cached)Promise.resolve(promise).then(root=>{const geometries=new Set(),materials=new Set(),textures=new Set();root.traverse(obj=>{if(obj.geometry)geometries.add(obj.geometry);for(const mat of (Array.isArray(obj.material)?obj.material:[obj.material]))if(mat){materials.add(mat);for(const key of ['map','normalMap','roughnessMap','metalnessMap','emissiveMap','aoMap'])if(mat[key]&&mat[key]!==furnitureWoodTexture)textures.add(mat[key]);}});for(const tex of textures)tex.dispose();for(const mat of materials)mat.dispose();for(const geo of geometries)geo.dispose();}).catch(()=>{});
 }
 function syncTentFurniturePlaced(room){
  if(!room||!tentRoomActive||room.id!==tentRoomActive.id)return;
@@ -3723,9 +3743,9 @@ function syncTentFurniturePlaced(room){
  clearTentFurniturePlaced();tentFurnitureCurrentSignature=signature;
  for(const f of list){
   if(!f||!f.instanceId||!tentRoomActive.furnitureCatalog?.[f.itemId])continue;
-  const roomId=room.id,renderSignature=signature;
+  const roomId=room.id,renderSignature=signature,loadEpoch=tentFurnitureLoadEpoch;
   getTentFurnitureModel(f.itemId).then(template=>{
-   if(tentRoomActive?.id!==roomId||tentFurnitureCurrentSignature!==renderSignature)return;
+   if(tentRoomActive?.id!==roomId||tentFurnitureCurrentSignature!==renderSignature||tentFurnitureLoadEpoch!==loadEpoch)return;
    const obj=template.clone(true);obj.name='placed-'+f.instanceId;
    obj.position.set(f.x,Number(f.y)||0,f.z);obj.rotation.y=(f.rotation||0)*Math.PI/180;
    tentRoomScene.add(obj);tentFurniturePlaced.set(f.instanceId,obj);
@@ -4197,6 +4217,12 @@ async function enterTent(tentId){
   const data=await tentRequest('enter',{tentId});
   if(tentRoomActive)leaveTentInterior(false);
   state.action='idle';state.pose='stand';state.actionUntil=0;if(state.me){state.me.action='idle';state.me.pose='stand'}
+  if(perfMobile){
+   // Indoor avatars are rebuilt below, so release outdoor copies before allocating them.
+   for(const avatar of avatars.values())disposeAvatar(avatar.root);avatars.clear();renderer.renderLists?.dispose();
+   renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,performanceRatio(),.75));
+   if(stageForeground)stageForeground.setSize(1,1,false);
+  }
   tentRoomActive={...data.room,furnitureCatalog:data.furnitureCatalog||{}};tentCanDecorate=Boolean(data.canDecorate);tentPaintWall=data.room.wallColor||'default';tentPaintFloor=data.room.floorColor||'default';
   tentRoomWalkTarget=null;tentRoomLocal={x:0,z:2,facing:0};tentRoomLastSend=0;tentRoomWasMoving=false;tentRoomMoveQueued=null;
   applyTentRoomSize(tentRoomActive);applyTentRoomColors(data.room);applyTentRoomLighting(tentRoomActive);closeTentDecorate();closeFurnitureShop();cancelTentFurniturePlacement();syncTents(data.tents);renderRoomChat(data.room.id,data.chat);selectBottomMenu('reaction');
@@ -4218,7 +4244,7 @@ function leaveTentInterior(send=true){
  if(!tentRoomActive)return;
  const loadToken=beginSceneLoading('페스티벌로 돌아가고 있어요');
  state.action='idle';state.pose='stand';state.actionUntil=0;if(state.me){state.me.action='idle';state.me.pose='stand'}
- cancelTentFurniturePlacement();closeFurnitureShop();clearTentFurniturePlaced();tentFurnitureData=null;tentRoomActive=null;tentCanDecorate=false;applyTentRoomLighting(null);tentRoomWalkTarget=null;tentRoomLocal=null;tentRoomMoveQueued=null;tentRoomWasMoving=false;closeTentDecorate();clearTentRoomBubbles();renderRoomChat(null);selectBottomMenu('reaction');
+ cancelTentFurniturePlacement();closeFurnitureShop();clearTentFurniturePlaced();releaseMobileFurnitureCache();tentFurnitureData=null;tentRoomActive=null;tentCanDecorate=false;applyTentRoomLighting(null);tentRoomWalkTarget=null;tentRoomLocal=null;tentRoomMoveQueued=null;tentRoomWasMoving=false;closeTentDecorate();clearTentRoomBubbles();renderRoomChat(null);selectBottomMenu('reaction');
  for(const avatar of tentRoomAvatars.values())disposeAvatar(avatar.root);
  tentRoomAvatars.clear();
  if(tentRoomSavedCamera){camera.position.copy(tentRoomSavedCamera.position);controls.target.copy(tentRoomSavedCamera.target);controls.minDistance=tentRoomSavedCamera.minDistance;controls.maxDistance=tentRoomSavedCamera.maxDistance;controls.enabled=!povEnabled;tentRoomSavedCamera=null;}
@@ -4226,6 +4252,7 @@ function leaveTentInterior(send=true){
  document.body.classList.remove('tent-interior-open');$('tentRoomOverlay').classList.add('hidden');
  cssRenderer.domElement.style.visibility='';
  if(stageForeground)stageForeground.domElement.style.display='';
+ if(perfMobile){renderer.renderLists?.dispose();renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,performanceRatio()));if(tentWorldRefreshPending){updateTentModels();refreshPeperoInstances();tentWorldRefreshPending=false;}resize();}
  const player=state.players.get(state.id);if(player){player.tentRoomId=null;player.tentRoomX=0;player.tentRoomZ=0;}
  if(send&&state.id)tentRequest('exit').then(data=>{if(!tentRoomActive&&Array.isArray(data.chat))renderRoomChat(null,data.chat)}).catch(error=>toast(error.message));
  void endSceneLoading(loadToken,true);
@@ -8918,6 +8945,7 @@ const petModelFailed=new Set();
 const petMaxConcurrentLoads=perfWeakDevice?1:2;
 let petModelActiveLoads=0;
 function petModelIsNeeded(species,stage){
+ if(typeof petRaceState!=='undefined'&&petRaceState?.phase==='running'&&petRaceState.participants?.some(p=>p.pet?.species===species&&p.pet?.stage===stage))return true;
  const preview=petViewState?.pet;
  if(petOverlay.classList.contains('show')&&preview?.hatched&&preview.species===species&&preview.stage===stage)return true;
  for(const p of state.players.values()){
@@ -9886,7 +9914,7 @@ function tick(t){
   }
  }
 }
-function resize(){let w=host.clientWidth,h=host.clientHeight;if(!w||!h)return;camera.aspect=w/h;camera.updateProjectionMatrix();renderer.setSize(w,h,false);cssRenderer.setSize(w,h);if(stageForeground)stageForeground.setSize(w,h,false)}new ResizeObserver(resize).observe(host);resize();requestAnimationFrame(tick);
+function resize(){let w=host.clientWidth,h=host.clientHeight;if(!w||!h)return;camera.aspect=w/h;camera.updateProjectionMatrix();renderer.setSize(w,h,false);cssRenderer.setSize(w,h);if(stageForeground)stageForeground.setSize(perfMobile&&tentRoomActive?1:w,perfMobile&&tentRoomActive?1:h,false)}new ResizeObserver(resize).observe(host);resize();requestAnimationFrame(tick);
 setInterval(()=>{syncVideo();reportDuration();let m=state.music;if(!m.id)return;let sec=m.paused?m.position:(Date.now()+state.serverDelta-m.startedAt)/1000;let dur=state.ytReady?state.yt.getDuration():0;$('progressFill').style.width=m.isLive?'100%':dur?Math.min(100,sec/dur*100)+'%':'0%'},5000);
 window.addEventListener('pagehide',()=>{if(state.id)navigator.sendBeacon('/api/leave',new Blob([JSON.stringify({id:state.id,pageId})],{type:'application/json'}))});
 
@@ -10539,3 +10567,39 @@ function createMiningPickaxe(avatar){
  const head=new THREE.Mesh(new THREE.CapsuleGeometry(.08,.9,4,8),steel);head.rotation.z=Math.PI/2;head.position.y=1.36;group.add(head);
  avatar.parts.miningPickaxe=group;if(stageForeground)addForegroundLayer(group);
 }
+
+// v373: Shared pet-race lobby and beach track.
+let petRaceState=null,petRaceOpen=false,petRaceRole='',petRaceBet=500,petRaceBusy=false,petRaceClockOffset=0,petRacePoll=null,petRaceRaf=0,petRaceRenderer=null,petRaceScene=null,petRaceCamera=null,petRaceModels=[],petRaceParticles=[],petRaceVisualId='';
+const petRaceStyle=document.createElement('style');petRaceStyle.textContent=`#petRaceNear{position:fixed;left:50%;bottom:calc(160px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:160;background:linear-gradient(90deg,#ff83a7,#f6ca76);border:1px solid white;border-radius:25px;padding:12px 24px;color:#352344;font-weight:900;font-size:16px}#petRaceNear[hidden],#petRaceOverlay[hidden]{display:none!important}#petRaceOverlay{position:fixed;inset:0;z-index:7000;background:#111a30eb;color:#fff;font-family:system-ui;display:flex;align-items:center;justify-content:center;padding:max(8px,env(safe-area-inset-top));box-sizing:border-box}#petRacePanel{width:min(1050px,100%);max-height:96dvh;overflow:auto;border:2px solid #f7c2b5;border-radius:20px;background:#172844;box-shadow:0 10px 60px #000a;padding:12px;box-sizing:border-box}#petRacePanel header{display:flex;justify-content:space-between;align-items:center;gap:6px}#petRacePanel h2{margin:0;font-size:20px;color:#ffdfb4}#petRacePanel button{background:#7549a4;color:white;border:1px solid #e4caff;border-radius:9px;padding:8px 12px;font-weight:800}#petRacePanel button:disabled{opacity:.45}#petRaceControls{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}#petRaceControls .selected{background:#ee996d;color:#291c32}#petRaceText{font-size:13px;color:#e1d8ef;margin:6px 0}#petRaceList{display:flex;gap:6px;flex-wrap:wrap;font-size:12px}#petRaceList span{padding:5px 8px;background:#ffffff18;border-radius:8px}#petRaceTrack{position:relative;aspect-ratio:3/1;min-height:190px;background:center/100% 100% url('/assets/pet-race/track.png') no-repeat;border-radius:14px;overflow:hidden}#petRaceTrack canvas{position:absolute;inset:0;width:100%;height:100%}#petRaceNames{position:absolute;inset:0;pointer-events:none}#petRaceNames span{position:absolute;transform:translate(-50%,-120%);font-size:12px;font-weight:900;text-shadow:0 2px 4px #000;white-space:nowrap}#petRaceChat{margin-top:8px;background:#0b1729;border-radius:10px;padding:8px}#petRaceChatMessages{height:90px;overflow:auto;font-size:12px}#petRaceChat form{display:flex;gap:6px}#petRaceChat input{flex:1;min-width:0;background:#263b58;border:1px solid #7184a0;color:white;border-radius:8px;padding:8px;font-size:16px}#petRaceResult{font-weight:800;color:#ffe183;white-space:pre-line;margin:8px 0}@media(max-width:600px){#petRacePanel{padding:8px}#petRaceTrack{min-height:160px}#petRaceChatMessages{height:65px}}`;document.head.append(petRaceStyle);
+const petRaceNear=document.createElement('button');petRaceNear.id='petRaceNear';petRaceNear.textContent='🐾 경주하기';petRaceNear.hidden=true;document.body.append(petRaceNear);
+const petRaceOverlay=document.createElement('section');petRaceOverlay.id='petRaceOverlay';petRaceOverlay.hidden=true;petRaceOverlay.innerHTML=`<div id="petRacePanel"><header><h2>🐾 펫 해변 경주</h2><button type="button" data-race="close">닫기</button></header><div id="petRaceText">경주를 준비하고 있어요.</div><div id="petRaceControls"><button type="button" data-race="500">500P</button><button type="button" data-race="1000">1,000P</button><button type="button" data-race="join">참가하기</button><button type="button" data-race="watch">구경하기</button><button type="button" data-race="start">경주 시작</button><button type="button" data-race="leave">대기 취소</button></div><div id="petRaceList"></div><div id="petRaceTrack" hidden><div id="petRaceNames"></div></div><div id="petRaceResult"></div><div id="petRaceChat"><strong>💬 채팅</strong><div id="petRaceChatMessages"></div><form><input maxlength="80" placeholder="메시지 입력" autocomplete="off"><button type="submit">전송</button></form></div></div>`;document.body.append(petRaceOverlay);
+const raceGet=s=>petRaceOverlay.querySelector(s),raceButton=c=>raceGet(`[data-race="${c}"]`);
+function raceNear(){if(!state.id||!state.me||tentRoomActive)return false;const w=toWorld(state.me);return Math.hypot(w.x+38,w.z-39)<7;}
+const petRaceBooth=new THREE.Group();petRaceBooth.position.set(-38,0,39);const prMat=new THREE.MeshStandardMaterial({color:'#d986ac',roughness:.8});const prBase=new THREE.Mesh(new THREE.BoxGeometry(3.3,2.3,1.8),prMat);prBase.position.y=1.2;petRaceBooth.add(prBase);const prRoof=new THREE.Mesh(new THREE.ConeGeometry(2.6,1.4,4),new THREE.MeshStandardMaterial({color:'#ffe8a5'}));prRoof.rotation.y=Math.PI/4;prRoof.position.y=3;petRaceBooth.add(prRoof);const prSign=new THREE.Mesh(new THREE.PlaneGeometry(3.1,.8),label('PET RACE',55,'#fff6d0','#983b70'));prSign.position.set(0,2.15,.92);petRaceBooth.add(prSign);scene.add(petRaceBooth);
+setInterval(()=>{petRaceNear.hidden=!raceNear()||petRaceOpen;},500);
+async function petRaceRequest(command,extra={}){return post('pet-race',{id:state.id,sessionKey,command,...extra});}
+function petRaceSyncChat(){const source=$('chatMessages'),target=raceGet('#petRaceChatMessages');if(!source||!target)return;target.replaceChildren(...Array.from(source.children,n=>n.cloneNode(true)));target.scrollTop=target.scrollHeight;}
+new MutationObserver(()=>{if(petRaceOpen)petRaceSyncChat()}).observe($('chatMessages'),{childList:true,subtree:true,characterData:true});
+raceGet('#petRaceChat form').onsubmit=async e=>{e.preventDefault();const input=e.currentTarget.querySelector('input');if(await sendChatMessage(input.value))input.value='';};
+async function petRaceAction(command,extra={}){if(petRaceBusy)return;petRaceBusy=true;try{const result=await petRaceRequest(command,extra);petRaceState=result.race;petRaceClockOffset=(petRaceState?.serverNow||Date.now())-Date.now();petRaceRole=petRaceState?.participants?.some(p=>p.isMe)?'participant':petRaceState?.viewer?'viewer':'';renderPetRace();return result;}catch(e){toast(e.message||'경주 요청 실패');}finally{petRaceBusy=false;}}
+petRaceNear.onclick=async()=>{petRaceOpen=true;petRaceOverlay.hidden=false;petRaceNear.hidden=true;petRaceSyncChat();await petRaceAction('state');clearInterval(petRacePoll);petRacePoll=setInterval(()=>{if(petRaceOpen&&!petRaceBusy)void petRaceAction('state')},2000);};
+raceButton('close').onclick=()=>{if(petRaceState?.phase==='waiting'&&petRaceRole)void petRaceAction('leave');petRaceOpen=false;petRaceOverlay.hidden=true;clearInterval(petRacePoll);petRaceStopRenderer();petRaceRole='';};
+raceButton('500').onclick=()=>{petRaceBet=500;renderPetRace()};raceButton('1000').onclick=()=>{petRaceBet=1000;renderPetRace()};
+raceButton('join').onclick=()=>void petRaceAction('join',{stake:petRaceBet});raceButton('watch').onclick=()=>void petRaceAction('watch');raceButton('start').onclick=()=>void petRaceAction('start');raceButton('leave').onclick=()=>void petRaceAction('leave');
+function renderPetRace(){const r=petRaceState,waiting=!r||r.phase==='waiting'||r.phase==='finished',track=raceGet('#petRaceTrack');raceButton('500').classList.toggle('selected',petRaceBet===500);raceButton('1000').classList.toggle('selected',petRaceBet===1000);for(const name of ['500','1000','join','watch'])raceButton(name).hidden=!waiting;raceButton('start').hidden=!waiting||!r?.host;raceButton('leave').hidden=!waiting||!petRaceRole;raceGet('#petRaceText').textContent=!r?'500P 또는 1,000P를 선택하고 참가하세요.':r.phase==='waiting'?`대기 중 ${r.participants.length}/5 · 3명 이상 · 참가비가 모두 같아야 시작 · 결과는 무작위` :r.phase==='running'?'경주 진행 중 · 펫 이펙트는 적용되지 않습니다.':'경주 종료 · 참가비의 10%를 제외하고 순위별 지급';const list=raceGet('#petRaceList');list.replaceChildren();for(const p of r?.participants||[]){const el=document.createElement('span');el.textContent=`${p.name}${p.isMe?' (나)':''} · ${p.stake.toLocaleString()}P`;list.append(el)}track.hidden=!(r&&r.phase==='running');if(r?.phase==='running'){const key=String(r.startAt);if(petRaceVisualId!==key){petRaceVisualId=key;petRaceStartRenderer();}}else petRaceStopRenderer();raceGet('#petRaceResult').textContent=r?.phase==='finished'?r.awards.slice(0,3).map(a=>`${a.rank}위 ${a.name} · ${a.amount.toLocaleString()}P`).join('\n'):'';}
+function petRaceStopRenderer(){cancelAnimationFrame(petRaceRaf);petRaceRaf=0;if(petRaceRenderer){petRaceRenderer.dispose();petRaceRenderer.forceContextLoss?.();petRaceRenderer.domElement.remove();petRaceRenderer=null;}for(const entry of petRaceModels){if(entry?.model)entry.model.traverse(o=>{if(o.isMesh)for(const m of (Array.isArray(o.material)?o.material:[o.material]))m?.dispose?.();});}petRaceModels=[];for(const p of petRaceParticles){p.mesh.geometry.dispose();p.mesh.material.dispose();}petRaceParticles=[];petRaceScene=null;petRaceVisualId='';raceGet('#petRaceNames').replaceChildren();}
+function petRaceStartRenderer(){petRaceStopRenderer();if(!petRaceState||petRaceState.phase!=='running')return;petRaceVisualId=String(petRaceState.startAt);const track=raceGet('#petRaceTrack');try{petRaceRenderer=new THREE.WebGLRenderer({alpha:true,antialias:!perfMobile,powerPreference:'low-power'});petRaceRenderer.setPixelRatio(Math.min(devicePixelRatio||1,perfMobile?.65:1));petRaceRenderer.setSize(track.clientWidth,track.clientHeight,false);track.prepend(petRaceRenderer.domElement);petRaceScene=new THREE.Scene();petRaceScene.add(new THREE.HemisphereLight('#ffffff','#9f8a88',2.6));const light=new THREE.DirectionalLight('#fff2cf',2);light.position.set(0,10,8);petRaceScene.add(light);petRaceCamera=new THREE.OrthographicCamera(-8,8,4.2,-4.2,.1,80);petRaceCamera.position.set(0,9,15);petRaceCamera.lookAt(0,0,0);
+ petRaceModels=petRaceState.participants.map((p,i)=>{const root=new THREE.Group();petRaceScene.add(root);const name=document.createElement('span');name.textContent=p.name;raceGet('#petRaceNames').append(name);return {root,name,model:null,lastAttempt:0,index:i};});petRaceParticles=[];let lastEvent=-1;
+ function frame(now){if(!petRaceOpen||!petRaceRenderer||petRaceState?.phase!=='running')return;petRaceRaf=requestAnimationFrame(frame);const r=petRaceState,elapsed=Math.max(0,Date.now()+petRaceClockOffset-r.startAt),duration=r.finishAt-r.startAt,order=r.order||[];
+  for(const [i,e] of (r.events||[]).entries())if(i>lastEvent&&elapsed>=e.ms){lastEvent=i;if(elapsed-e.ms<1800)spawnPetRaceEvent(e,elapsed);}
+  for(const entry of petRaceModels){const p=r.participants[entry.index];if(!p)continue;if(!entry.model&&now-entry.lastAttempt>900){entry.lastAttempt=now;const model=petMakeModel(p.pet.species,p.pet.stage,p.pet.color);if(model){entry.model=model;entry.root.add(model);}}
+   const rank=order.indexOf(entry.index),finish=duration-Math.max(0,order.length-1-rank)*800;let progress=Math.max(0,Math.min(1,elapsed/finish));const effect=(r.events||[]).find(e=>e.target===entry.index&&elapsed-e.ms>=0&&elapsed-e.ms<2200);if(effect){const t=(elapsed-effect.ms)/2200,amplitude=effect.kind==='boost'?.022:effect.kind==='shock'?-.018:-.028;progress=Math.max(0,Math.min(1,progress+amplitude*Math.sin(t*Math.PI)));}const round=progress<.5?progress*2:(1-progress)*2;const wobble=Math.sin(elapsed*.0016+entry.index*1.7)*.22*Math.sin(Math.PI*progress);entry.root.position.set(-5.7+round*11.4+wobble,Math.abs(Math.sin(elapsed*.009+entry.index))*0.09,(entry.index-2)*.48);entry.root.rotation.y=progress<.5?Math.PI/2:-Math.PI/2;entry.root.rotation.z=0;
+   const active=(r.events||[]).filter(e=>e.target===entry.index&&elapsed-e.ms>=0&&elapsed-e.ms<1500).at(-1);if(active&&['stumble','stone','missile'].includes(active.kind))entry.root.rotation.z=Math.sin((elapsed-active.ms)/1500*Math.PI)*1.1;else if(active&&active.kind==='shock')entry.root.rotation.z=Math.sin(elapsed*.045)*.18;
+   const v=entry.root.position.clone();v.y+=2.1;v.project(petRaceCamera);entry.name.style.left=((v.x+1)*50)+'%';entry.name.style.top=((1-v.y)*50)+'%';
+  }
+  for(let i=petRaceParticles.length-1;i>=0;i--){const p=petRaceParticles[i],age=(elapsed-p.at)/p.life;if(age>=1||age<0){petRaceScene.remove(p.mesh);p.mesh.geometry.dispose();p.mesh.material.dispose();petRaceParticles.splice(i,1);continue;}if(p.target!==undefined){const a=petRaceModels[p.actor]?.root.position,b=petRaceModels[p.target]?.root.position;if(a&&b)p.mesh.position.copy(a).lerp(b,Math.min(1,age*1.6)).add(new THREE.Vector3(0,.8+Math.sin(age*Math.PI)*.7,0));}else{p.mesh.position.copy(p.origin).addScaledVector(p.velocity,age);p.mesh.material.opacity=1-age;}}
+  petRaceRenderer.render(petRaceScene,petRaceCamera);
+ }petRaceRaf=requestAnimationFrame(frame);
+ }catch(error){console.warn('펫 경주 화면:',error);toast('경주 화면을 불러오지 못했어요.');petRaceStopRenderer();}}
+function spawnPetRaceEvent(event,at){const actor=petRaceModels[event.actor]?.root.position,target=petRaceModels[event.target]?.root.position;if(!actor||!target||!petRaceScene)return;const projectile=event.kind==='stone'||event.kind==='missile';if(projectile){const geo=event.kind==='stone'?new THREE.DodecahedronGeometry(.18,0):new THREE.ConeGeometry(.12,.45,6),mat=new THREE.MeshBasicMaterial({color:event.kind==='stone'?'#7d6e60':'#ff6248'}),mesh=new THREE.Mesh(geo,mat);petRaceScene.add(mesh);petRaceParticles.push({mesh,at,life:1100,actor:event.actor,target:event.target});}
+ const colors={stumble:'#e6c59a',stone:'#d6b997',missile:'#ffb068',shock:'#8ddaff',boost:'#ffc85a'};for(let i=0;i<7;i++){const mesh=new THREE.Mesh(new THREE.SphereGeometry(.08+(i%3)*.04,5,4),new THREE.MeshBasicMaterial({color:colors[event.kind]||'#fff',transparent:true,opacity:.9}));petRaceScene.add(mesh);const angle=i*2.399;petRaceParticles.push({mesh,at,life:900,origin:(event.kind==='boost'?actor:target).clone(),velocity:new THREE.Vector3(Math.cos(angle)*.7,.4+(i%3)*.3,Math.sin(angle)*.7)});}}
