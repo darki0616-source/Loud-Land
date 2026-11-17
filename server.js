@@ -314,11 +314,13 @@ function petLevel(xp){
  let level=1;while(level<PET_MAX_LEVEL&&xp>=40*level+8*level*(level+1))level++;
  return level;
 }
+function petCombatPower(level){return Math.max(0,Math.floor(level))*12;}
+function characterCombatPower(id){const level=questLevel(questAccounts.get(id)?.xp||0),r=craftAccounts.get(id),tier=r?.equippedWeapon,index=CRAFT_TIERS.indexOf(tier);return level*15+(index<0?0:(index+1)*60+(r.weapons[tier]||0)*12);}
 function petPublic(pet,record){
  if(!pet)return null;
  const level=petLevel(pet.xp),hatched=Date.now()>=pet.hatchAt;
  return {species:hatched?(PET_SPECIES.includes(pet.species)?pet.species:'fox'):null,color:pet.color,adoptedAt:pet.adoptedAt,hatchAt:pet.hatchAt,
-  hatched,level:hatched?level:0,xp:pet.xp,nextXp:level<PET_MAX_LEVEL?40*level+8*level*(level+1):null,
+  hatched,level:hatched?level:0,combatPower:hatched?petCombatPower(level):0,xp:pet.xp,nextXp:level<PET_MAX_LEVEL?40*level+8*level*(level+1):null,
   stage:hatched?(level>=25?25:level>=10?10:1):0,summoned:!!pet.summoned,effects:petEffectView(record).enabled};
 }
 function petAccount(identity){if(!petStats.has(identity))petStats.set(identity,{spent:0,pet:null,effectsOwned:{},effectsEnabled:{}});return petStats.get(identity);}
@@ -517,7 +519,7 @@ const QUEST_CATALOG=[
 ];
 function questAccount(id){let q=questAccounts.get(id);if(!q){q={day:kstDate(),used:0,spent:0,xp:0,active:null};questAccounts.set(id,q);}if(q.day!==kstDate()){q.day=kstDate();q.used=0;}return q;}
 function questLevel(xp){let level=1;while(level<200&&xp>=40*level+8*level*(level+1))level++;return level;}
-function questView(p){const q=questAccount(p.badgeIdentity),level=questLevel(q.xp);return {day:q.day,used:q.used,limit:10,cost:2000,xp:q.xp,level,nextXp:level<200?40*level+8*level*(level+1):null,active:q.active,points:tentPointBalance(p)};}
+function questView(p){const q=questAccount(p.badgeIdentity),level=questLevel(q.xp);return {day:q.day,used:q.used,limit:10,cost:2000,xp:q.xp,level,combatPower:characterCombatPower(p.badgeIdentity),nextXp:level<200?40*level+8*level*(level+1):null,active:q.active,points:tentPointBalance(p)};}
 function questProgress(p,kind,rarity){const q=questAccounts.get(p.badgeIdentity),m=q?.active;if(!m||m.done||m.kind!==kind||m.rarity!==rarity)return;m.progress=Math.min(m.goal,m.progress+1);if(m.progress===m.goal)m.done=true;}
 
 const CRAFT_TIERS=['common','uncommon','rare','epic','legendary'],craftAccounts=new Map();
