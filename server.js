@@ -547,7 +547,7 @@ function battleAction(p,d){const id=p.badgeIdentity,r=battleAccount(id),command=
   if(p.tentRoomId||Math.hypot((p.x-600)*.058-44,(p.y-500)*.058+8-60)>8)throw Error('해변 포털 가까이 이동해 주세요.');
   const stage=Number(d.stage),pet=petStats.get(id)?.pet;if(!pet||Date.now()<pet.hatchAt||!pet.summoned)throw Error('부화한 펫을 소환해 주세요.');if(!Number.isInteger(stage)||stage<1||stage>20||stage>r.highest+1)throw Error('이전 단계를 먼저 클리어해 주세요.');if(r.active?.phase==='running')throw Error('진행 중인 전투가 있어요.');
   const level=questLevel(questAccounts.get(id)?.xp||0),playerPower=characterCombatPower(id),gear=craftAccounts.get(id),tier=gear?.equippedSkill,skillIndex=CRAFT_TIERS.indexOf(tier),petPower=petEquippedCombatPower(id,petLevel(pet.xp));
-  const enemyMax=180+stage*110+stage*stage*24,playerMax=260+level*42+Math.floor(petPower*1.5),enemyAttack=3+stage*5+stage*stage*4;
+  const enemyMax=Math.round((180+stage*110+stage*stage*24)*(1+.032*(stage-1))),playerMax=260+level*42+Math.floor(petPower*1.5),enemyAttack=3+stage*5+stage*stage*4;
   r.active={id:crypto.randomUUID(),stage,phase:'running',turn:0,playerHp:playerMax,playerMax,enemyHp:enemyMax,enemyMax,playerPower,petPower,enemyAttack:Math.round(enemyAttack),skillTier:tier||null,last:null};return;
  }
  if(command==='abandon'){if(!r.active||r.active.phase!=='running')throw Error('진행 중인 전투가 없어요.');r.active.phase='abandoned';return;}
