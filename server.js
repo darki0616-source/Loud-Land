@@ -441,6 +441,54 @@ function rotateFishKingDay(){const today=kstDate();if(today===fishKingDay)return
 function recordFishingPoints(p,points){rotateFishKingDay();if(!p.badgeIdentity||!Number.isSafeInteger(points)||points<=0)return;const old=fishKingScores.get(p.badgeIdentity);fishKingScores.set(p.badgeIdentity,{name:clean(p.name,18)||'ROCKER',score:(old?.score||0)+points,at:Date.now()});}
 function fishKingPublic(){rotateFishKingDay();return {day:fishKingDay,leaderboard:fishKingRows().slice(0,5).map((r,i)=>({rank:i+1,name:r.name,score:r.score})),reward:fishKingReward&&fishKingReward.date===kstDate()?{name:fishKingReward.name,score:fishKingReward.score}:null};}
 
+// Fishing tournaments run independently of fishing sessions and survive reconnects.
+const fishingTournaments=new Map(),FISH_TOURNEY_FEE=1000,FISH_TOURNEY_WAIT=300000;
+function fishingTourneyPlayer(identity){return [...players.values()].find(p=>p.badgeIdentity===identity)||{badgeIdentity:identity,badgeSince:Date.now()};}
+function fishingTourneyNotify(t,message){for(const entry of t.entries){for(const player of players.values())if(player.badgeIdentity===entry.id){const stream=clients.get(player.id);if(stream)try{send(stream,{type:'fishing-tournament-notice',message})}catch{}}}}
+function fishingTourneyChanged(){broadcast({type:'fishing-tournament-update'});}
+function fishingTourneyTargets(){const ids=[];for(const rarity of ['common','uncommon','rare']){const pool=FISH_CATALOG.filter(f=>f.rarity===rarity).map(f=>f.id);if(pool.length<3)throw Error('물고기 목록이 부족합니다.');for(let n=0;n<3;n++)ids.push(pool.splice(crypto.randomInt(pool.length),1)[0]);}return ids;}
+function fishingTourneyTick(now=Date.now()){
+ let changed=false;
+ for(const t of fishingTournaments.values()){
+  if(t.phase==='waiting'&&now>=t.startsAt){
+   const eligible=t.entries.filter(e=>tentPointBalance(fishingTourneyPlayer(e.id))>=FISH_TOURNEY_FEE);
+   if(eligible.length<2){t.phase='cancelled';t.endedAt=now;t.reason='참가자가 2명 미만이거나 포인트가 부족해 취소됐어요.';fishingTourneyNotify(t,t.reason);}
+   else {const removed=t.entries.filter(e=>!eligible.includes(e));for(const e of removed)fishingTourneyNotify({entries:[e]},'참가비가 부족해 낚시대회 참가가 취소됐어요.');t.entries=eligible;t.targets=fishingTourneyTargets();t.phase='running';t.startedAt=now;t.pot=eligible.length*FISH_TOURNEY_FEE;t.prize=Math.floor(t.pot*.8);for(const e of eligible)petRacePoints.set(e.id,(petRacePoints.get(e.id)||0)-FISH_TOURNEY_FEE);fishingTourneyNotify(t,'🎣 낚시대회가 시작됐어요! 목표 물고기를 확인하세요.');}
+   changed=true;
+  }
+  if(t.phase==='running'&&t.vote&&now>=t.vote.expiresAt){t.vote=null;changed=true;}
+ }
+ if(changed){scheduleSave();fishingTourneyChanged();}return changed;
+}
+function fishingTourneyCatch(p,fish){
+ fishingTourneyTick();for(const t of fishingTournaments.values()){
+  if(t.phase!=='running'||!t.targets.includes(fish.id))continue;const e=t.entries.find(x=>x.id===p.badgeIdentity);if(!e||e.caught.includes(fish.id))continue;
+  e.caught.push(fish.id);
+  if(e.caught.length===t.targets.length){t.phase='finished';t.endedAt=Date.now();t.winner=e.name;t.winnerId=e.id;petRacePoints.set(e.id,(petRacePoints.get(e.id)||0)+t.prize);t.vote=null;fishingTourneyNotify(t,`🏆 낚시대회 우승: ${e.name} · ${t.prize.toLocaleString()}P`);}
+  fishingTourneyChanged();
+ }
+}
+function fishingTourneyView(identity){
+ fishingTourneyTick();const now=Date.now();return {serverNow:now,items:[...fishingTournaments.values()].filter(t=>t.phase==='waiting'||t.phase==='running'||(t.entries.some(e=>e.id===identity)&&now-(t.endedAt||now)<86400000)).sort((a,b)=>b.createdAt-a.createdAt).slice(0,40).map(t=>{const mine=t.entries.find(e=>e.id===identity);return {id:t.id,host:t.host,phase:t.phase,startsAt:t.startsAt,startedAt:t.startedAt,endedAt:t.endedAt,reason:t.reason,winner:t.winner,prize:t.prize||0,participantCount:t.entries.length,entries:t.entries.map(e=>({name:e.name,progress:e.caught.length,isMe:e.id===identity})),joined:!!mine,targets:t.phase==='waiting'?[]:(t.targets||[]).map(id=>FISH_BY_ID.get(id)).filter(Boolean),caught:mine?.caught||[],vote:t.vote?{yes:Object.values(t.vote.ballots).filter(Boolean).length,no:Object.values(t.vote.ballots).filter(v=>!v).length,total:t.entries.length,myVote:mine&&Object.hasOwn(t.vote.ballots,identity)?t.vote.ballots[identity]:null,expiresAt:t.vote.expiresAt}:null};})};
+}
+function fishingTourneyAction(p,d){
+ fishingTourneyTick();const id=p.badgeIdentity,command=String(d.command||'state');if(command==='state')return;
+ if(command==='create'||command==='join'){
+  if([...fishingTournaments.values()].some(t=>['waiting','running'].includes(t.phase)&&t.entries.some(e=>e.id===id)))throw Error('이미 참가 중인 대회가 있어요.');
+  if(tentPointBalance(p)<FISH_TOURNEY_FEE)throw Error('참가하려면 1,000P가 필요해요.');
+  if(command==='create'){if([...fishingTournaments.values()].filter(t=>['waiting','running'].includes(t.phase)).length>=50)throw Error('진행 중인 대회가 너무 많아요.');const now=Date.now(),t={id:crypto.randomUUID(),host:clean(p.name,18)||'참가자',createdAt:now,startsAt:now+FISH_TOURNEY_WAIT,phase:'waiting',entries:[{id,name:clean(p.name,18)||'참가자',caught:[]}]};fishingTournaments.set(t.id,t);}
+  else {const t=fishingTournaments.get(String(d.tournamentId||''));if(!t||t.phase!=='waiting')throw Error('모집 중인 대회가 아니에요.');if(t.entries.length>=100)throw Error('참가 인원이 가득 찼어요.');t.entries.push({id,name:clean(p.name,18)||'참가자',caught:[]});}
+ }else{
+  const t=fishingTournaments.get(String(d.tournamentId||'')),e=t?.entries.find(x=>x.id===id);if(!e)throw Error('참가한 대회가 아니에요.');
+  if(command==='leave'){if(t.phase!=='waiting')throw Error('모집 중에만 나갈 수 있어요.');t.entries=t.entries.filter(x=>x.id!==id);if(!t.entries.length)fishingTournaments.delete(t.id);}
+  else if(command==='vote_start'){if(t.phase!=='running')throw Error('진행 중인 대회에서만 투표할 수 있어요.');if(t.vote)throw Error('이미 투표가 진행 중이에요.');t.vote={expiresAt:Date.now()+120000,ballots:{[id]:true}};fishingTourneyNotify(t,'🗳️ 낚시대회 종료 투표가 시작됐어요.');}
+  else if(command==='vote'){if(t.phase!=='running'||!t.vote)throw Error('진행 중인 투표가 없어요.');if(typeof d.yes!=='boolean')throw Error('찬성 또는 반대를 선택해 주세요.');if(Object.hasOwn(t.vote.ballots,id))throw Error('이미 투표했어요.');t.vote.ballots[id]=d.yes;}
+  else throw Error('알 수 없는 요청입니다.');
+  if(t.vote){const votes=Object.values(t.vote.ballots),majority=Math.floor(t.entries.length/2)+1;if(votes.filter(Boolean).length>=majority){t.phase='cancelled';t.endedAt=Date.now();t.reason='종료 투표가 가결되어 참가비를 전액 돌려드렸어요.';for(const entry of t.entries)petRacePoints.set(entry.id,(petRacePoints.get(entry.id)||0)+FISH_TOURNEY_FEE);t.vote=null;fishingTourneyNotify(t,t.reason);}else if(votes.filter(v=>!v).length>=majority){t.vote=null;fishingTourneyNotify(t,'종료 투표가 부결되어 낚시대회가 계속됩니다.');}}
+ }
+ scheduleSave();fishingTourneyChanged();
+}
+
 let mineKingDay=kstDate(),mineKingReward=null;const mineKingScores=new Map();
 function mineKingRows(){return [...mineKingScores.entries()].map(([identity,v])=>({identity,...v})).sort((a,b)=>b.score-a.score||a.at-b.at||a.identity.localeCompare(b.identity));}
 function playerIsMineKing(p){return !!(p?.badgeIdentity&&mineKingReward?.date===kstDate()&&mineKingReward.identity===p.badgeIdentity);}
@@ -880,10 +928,11 @@ const SB_KEY=process.env.SUPABASE_SECRET_KEY||'';
 const useSupabase=Boolean(SB_URL&&SB_KEY);
 let restored=false;
 let saveChain=Promise.resolve();
-function stateData(){return {version:18,petRace:petRace.race,petRacePoints:Object.fromEntries(petRacePoints),mineKingDay,mineKingReward,mineKingScores:Object.fromEntries(mineKingScores),miningStats:Object.fromEntries([...miningStats].map(([id,r])=>[id,{bonus:r.bonus,counts:r.counts,lastResult:r.lastResult}])),decorationStats:Object.fromEntries(decorationStats),fishKingDay,fishKingReward,fishKingScores:Object.fromEntries(fishKingScores),fortuneStats:Object.fromEntries(fortuneStats),oneTimeCreditApplied,adminPointCredits:Object.fromEntries(adminPointCredits),adminPointLedger:Object.fromEntries(adminPointLedger),recoveryRecords:Object.fromEntries(recoveryRecords),fishingStats:Object.fromEntries([...fishingStats].map(([id,a])=>[id,{level:a.level,spent:a.spent,bonus:a.bonus,fishCounts:a.fishCounts,totalMisses:a.totalMisses,lastCastAt:a.lastCastAt,active:a.active,lastResult:a.lastResult}])),lotteryStats:Object.fromEntries([...lotteryStats].map(([identity,a])=>[identity,{day:a.day,used:a.used,spent:a.spent,bonus:a.bonus,pending:a.pending,lastResult:a.lastResult}])),petStats:Object.fromEntries([...petStats].map(([identity,record])=>[identity,{spent:record.spent,pet:record.pet,effectsOwned:record.effectsOwned||{},effectsEnabled:record.effectsEnabled||{}}])),fieldCoinLastSpawnAt,fieldCoins:fieldCoinPublic(),fieldCoinBonuses:Object.fromEntries(fieldCoinBonuses),moleDay,moleHammerRevision,moleReward,moleScores:Object.fromEntries(moleScores),moleAccounts:Object.fromEntries([...moleAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session,lastResult:v.lastResult}])),powerDay,powerReward,powerScores:Object.fromEntries(powerScores),powerAccounts:Object.fromEntries([...powerAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),rhythmAccounts:Object.fromEntries([...rhythmAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),furnitureCatalogEdits:Object.fromEntries(furnitureCatalogEdits),furnitureStats:Object.fromEntries([...furnitureStats].map(([id,v])=>[id,{spent:v.spent,owned:v.owned}])),tentStats:Object.fromEntries([...tentStats].map(([identity,t])=>[identity,storedTent(t)])),announcements:{entry:entranceNotices,ticker:tickerNotices,intervalMinutes:tickerIntervalMinutes,immediateHistory:immediateNoticeHistory},music,queue:[...queue],history:[...history],nextTrackToken,customMd:Object.fromEntries(customMd),shopStats:Object.fromEntries([...shopStats].map(([k,v])=>[k,{spent:0,refunded:v.refunded||0,owned:v.owned,equipped:v.equipped}])),badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),rhythm:{day:rhythmDay,reward:rhythmReward,scores:Object.fromEntries([...rhythmScores].map(([k,v])=>[k,{name:v.name,score:Math.max(0,Math.floor(Number(v.score)||0)),updatedAt:Number(v.updatedAt)||0}]))},savedAt:Date.now()}}
+function stateData(){return {version:18,fishingTournaments:[...fishingTournaments.values()],petRace:petRace.race,petRacePoints:Object.fromEntries(petRacePoints),mineKingDay,mineKingReward,mineKingScores:Object.fromEntries(mineKingScores),miningStats:Object.fromEntries([...miningStats].map(([id,r])=>[id,{bonus:r.bonus,counts:r.counts,lastResult:r.lastResult}])),decorationStats:Object.fromEntries(decorationStats),fishKingDay,fishKingReward,fishKingScores:Object.fromEntries(fishKingScores),fortuneStats:Object.fromEntries(fortuneStats),oneTimeCreditApplied,adminPointCredits:Object.fromEntries(adminPointCredits),adminPointLedger:Object.fromEntries(adminPointLedger),recoveryRecords:Object.fromEntries(recoveryRecords),fishingStats:Object.fromEntries([...fishingStats].map(([id,a])=>[id,{level:a.level,spent:a.spent,bonus:a.bonus,fishCounts:a.fishCounts,totalMisses:a.totalMisses,lastCastAt:a.lastCastAt,active:a.active,lastResult:a.lastResult}])),lotteryStats:Object.fromEntries([...lotteryStats].map(([identity,a])=>[identity,{day:a.day,used:a.used,spent:a.spent,bonus:a.bonus,pending:a.pending,lastResult:a.lastResult}])),petStats:Object.fromEntries([...petStats].map(([identity,record])=>[identity,{spent:record.spent,pet:record.pet,effectsOwned:record.effectsOwned||{},effectsEnabled:record.effectsEnabled||{}}])),fieldCoinLastSpawnAt,fieldCoins:fieldCoinPublic(),fieldCoinBonuses:Object.fromEntries(fieldCoinBonuses),moleDay,moleHammerRevision,moleReward,moleScores:Object.fromEntries(moleScores),moleAccounts:Object.fromEntries([...moleAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session,lastResult:v.lastResult}])),powerDay,powerReward,powerScores:Object.fromEntries(powerScores),powerAccounts:Object.fromEntries([...powerAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),rhythmAccounts:Object.fromEntries([...rhythmAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),furnitureCatalogEdits:Object.fromEntries(furnitureCatalogEdits),furnitureStats:Object.fromEntries([...furnitureStats].map(([id,v])=>[id,{spent:v.spent,owned:v.owned}])),tentStats:Object.fromEntries([...tentStats].map(([identity,t])=>[identity,storedTent(t)])),announcements:{entry:entranceNotices,ticker:tickerNotices,intervalMinutes:tickerIntervalMinutes,immediateHistory:immediateNoticeHistory},music,queue:[...queue],history:[...history],nextTrackToken,customMd:Object.fromEntries(customMd),shopStats:Object.fromEntries([...shopStats].map(([k,v])=>[k,{spent:0,refunded:v.refunded||0,owned:v.owned,equipped:v.equipped}])),badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),rhythm:{day:rhythmDay,reward:rhythmReward,scores:Object.fromEntries([...rhythmScores].map(([k,v])=>[k,{name:v.name,score:Math.max(0,Math.floor(Number(v.score)||0)),updatedAt:Number(v.updatedAt)||0}]))},savedAt:Date.now()}}
 function applySaved(d){
  if(d?.petRace&&['waiting','running','finished'].includes(d.petRace.phase))petRace.race=d.petRace;petRacePoints.clear();if(d?.petRacePoints&&typeof d.petRacePoints==='object')for(const [id,n] of Object.entries(d.petRacePoints))if(/^[a-zA-Z0-9_-]{20,100}$/.test(id)&&Number.isSafeInteger(n)&&Math.abs(n)<1e9)petRacePoints.set(id,n);
  if(!d||typeof d!=='object')return;
+ fishingTournaments.clear();if(Array.isArray(d.fishingTournaments))for(const t of d.fishingTournaments.slice(-1000)){if(t&&typeof t.id==='string'&&['waiting','running','finished','cancelled'].includes(t.phase)&&Array.isArray(t.entries))fishingTournaments.set(t.id,t);}
  fortuneStats.clear();
  if(d.fortuneStats&&typeof d.fortuneStats==='object')for(const [id,v] of Object.entries(d.fortuneStats).slice(0,50000)){if(/^[a-zA-Z0-9_-]{20,100}$/.test(id)&&v&&/^\d{4}-\d{2}-\d{2}$/.test(v.day)&&Number.isInteger(v.card)&&v.card>=0&&v.card<FORTUNE_CARDS.length&&Number.isInteger(v.message)&&v.message>=0&&v.message<FORTUNE_MESSAGES[v.card].length&&Number.isInteger(v.selected)&&v.selected>=0&&v.selected<7)fortuneStats.set(id,v);}
  oneTimeCreditApplied=d.oneTimeCreditApplied===true;adminPointCredits.clear();adminPointLedger.clear();
@@ -1123,7 +1172,7 @@ function strictSaveAdmin(){
  return saveChain;
 }
 async function settlePetRace(){if(!restored||petRaceBusy)return;petRaceBusy=true;try{const result=petRace.settle();if(result){for(const x of result.awards)petRacePoints.set(x.identity,(petRacePoints.get(x.identity)||0)+x.amount);petRaceDirty=true;}if(petRaceDirty){await strictSaveAdmin();petRaceDirty=false;}}catch(e){console.error('Pet race save pending:',e.message)}finally{petRaceBusy=false;}}
-setInterval(()=>{void settlePetRace()},2000).unref();
+setInterval(()=>{void settlePetRace();if(restored)fishingTourneyTick()},2000).unref();
 setInterval(()=>{if(!restored||petRaceBusy||petRace.race?.phase!=='waiting')return;const online=new Set([...players.values()].map(p=>p.badgeIdentity));let changed=false;for(const entry of [...petRace.race.participants])if(!online.has(entry.identity)){petRace.leave(entry.identity);changed=true;}if(changed)scheduleSave();},15000).unref();
 function scheduleSave(){clearTimeout(saveTimeout);saveTimeout=setTimeout(()=>{void saveNow()},120);saveTimeout.unref()}
 function pauseForEmpty(){if(players.size===0&&music.id&&!music.paused){music.position=music.isLive?0:Math.max(0,(Date.now()-music.startedAt)/1000);music.paused=true;scheduleSave()}}
@@ -1573,6 +1622,10 @@ const server=http.createServer(async(req,res)=>{
         return json(res,200,{ok:true,...awarded,points:tentPointBalance(p),coins:fieldCoinPublic()});
       }
 
+      if(url.pathname==='/api/fishing-tournament'){
+        if(!p.badgeIdentity||playerSessions.get(id)!==String(d.sessionKey||''))return json(res,403,{error:'본인 세션에서 이용해 주세요.'});
+        try{fishingTourneyAction(p,d);return json(res,200,{ok:true,tournaments:fishingTourneyView(p.badgeIdentity),points:tentPointBalance(p)});}catch(error){return json(res,400,{error:error.message});}
+      }
       if(url.pathname==='/api/fishing'){
         if(!p.badgeIdentity||playerSessions.get(id)!==String(d.sessionKey||''))return json(res,403,{error:'본인 세션에서만 낚시할 수 있어요.'});
         const command=String(d.command||'state'),a=fishingAccount(p.badgeIdentity);
@@ -1620,7 +1673,7 @@ const server=http.createServer(async(req,res)=>{
           session.updatedAt=now;session.held=d.held===true;
           if(session.progress>=1||session.tension>=1){
             const success=session.progress>=1&&session.tension<1, fish=FISH_BY_ID.get(session.fishId);a.active=null;
-            if(success){a.bonus+=fish.points;a.fishCounts[fish.id]=(a.fishCounts[fish.id]||0)+1;recordFishingPoints(p,fish.points);}else a.totalMisses++;
+            if(success){a.bonus+=fish.points;a.fishCounts[fish.id]=(a.fishCounts[fish.id]||0)+1;recordFishingPoints(p,fish.points);fishingTourneyCatch(p,fish);}else a.totalMisses++;
             a.lastResult={id:castId,success,fish:success?fish:undefined,points:success?fish.points:0,reason:success?'caught':'line',at:now};
             await saveNow();if(success){broadcast({type:'fishing-find',playerId:p.id,fishId:fish.id,name:fish.name,points:fish.points,rarity:fish.rarity});announceRareFind(p,fish);}return json(res,200,{ok:true,result:a.lastResult,fishing:fishingView(p)});
           }
