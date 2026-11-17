@@ -100,6 +100,7 @@ function getBadgeIdentity(){
 }
 const badgeIdentity=getBadgeIdentity();
 function badgeIconUrl(tier){return '/assets/badges/'+(BADGE_INFO[tier]?tier:'bronze')+'.svg';}
+function makeBattleBadge(stage){const rank=Math.max(0,Math.min(20,Math.floor(Number(stage)||0)));if(!rank)return null;const icon=document.createElement('span');icon.className='stay-badge-icon';icon.setAttribute('role','img');icon.setAttribute('aria-label',rank+'단계 뱃지');icon.title=rank+'단계 뱃지';const col=(rank-1)%5,row=Math.floor((rank-1)/5);icon.style.cssText=`display:inline-block;width:20px;height:20px;flex:none;background-image:url('/assets/rpg/stage-badges.png');background-size:500% 400%;background-position:${col*25}% ${row*100/3}%;`;return icon;}
 function makeBadgeImg(tier){
  const img=document.createElement('img');img.className='stay-badge-icon';img.src=badgeIconUrl(tier);img.alt=(BADGE_INFO[tier]||BADGE_INFO.bronze)[0]+' 배지';img.width=20;img.height=20;
  return img;
@@ -1211,7 +1212,7 @@ function renderOnlinePlayers(){
   const li=document.createElement('li');li.className='players-entry';
   const swatch=document.createElement('span');swatch.className='players-swatch';swatch.style.background=hairColors.some(([,color])=>color===p.hairColor)?p.hairColor:'#4b3932';
   const name=document.createElement('span');name.className='players-name';name.textContent=p.name||'ROCKER';
-  const icon=makeBadgeImg(p.badgeTier);li.append(swatch,icon,name);
+  const icon=makeBattleBadge(p.battleStage);li.append(swatch);if(icon)li.append(icon);li.append(name);
   // Indoor users stay in the online list but cannot be selected from outside.
   if(p.id!==state.id&&!p.tentRoomId&&!tentRoomActive){li.classList.add('duo-select-player');li.title='상호작용 요청하기';li.style.cursor='pointer';li.onclick=()=>chooseDuoTarget(p.id)}
   else if(p.tentRoomId){li.title='텐트 안에 있는 유저';const inside=document.createElement('small');inside.textContent='⛺ 텐트 안';li.append(inside)}
@@ -7404,7 +7405,7 @@ function makeAvatar(p){
  }
  // One crisp sprite for [badge][nickname] above every avatar.
  const cv=document.createElement('canvas');cv.width=768;cv.height=128;const ctx=cv.getContext('2d');
- const nickname=(p.name||'ROCKER').slice(0,18);
+ const nickname=`Lv.${Math.max(1,Number(p.characterLevel)||1)} ${(p.name||'ROCKER').slice(0,18)}`;
  ctx.font='900 53px Arial, sans-serif';ctx.textAlign='left';ctx.textBaseline='middle';
  const textWidth=Math.min(560,ctx.measureText(nickname).width);
  const beginning=(768-(84+textWidth))/2;
@@ -7441,8 +7442,8 @@ function makeAvatar(p){
  attachMoleHammerModel(moleHammerVisual);
  parts.moleRainbow=[];for(let i=0;i<7;i++){const ring=new THREE.Mesh(new THREE.TorusGeometry(1,.055,7,52),new THREE.MeshBasicMaterial({color:new THREE.Color().setHSL(i/7,1,.63),transparent:true,opacity:.7,depthWrite:false}));ring.rotation.x=Math.PI/2;ring.visible=false;ring.renderOrder=50;root.add(ring);parts.moleRainbow.push(ring);}
  parts.rhythmSparkles=[];const sparkleGeo=new THREE.OctahedronGeometry(.12,0);const sparkleColors=['#ff79c5','#ffe46f','#81d9ff','#a688ff','#89ffb0'];for(let i=0;i<16;i++){const star=new THREE.Mesh(sparkleGeo,new THREE.MeshBasicMaterial({color:sparkleColors[i%sparkleColors.length],transparent:true,opacity:.94}));star.visible=false;star.renderOrder=40;root.add(star);parts.rhythmSparkles.push(star);}
- const badgeImage=new Image();badgeImage.src=badgeIconUrl(p.badgeTier);
- badgeImage.onload=()=>{ctx.drawImage(badgeImage,beginning,29,66,66);texture.needsUpdate=true;};
+ const rank=Math.max(0,Math.min(20,Math.floor(Number(p.battleStage)||0)));
+ if(rank){const badgeImage=new Image();badgeImage.onload=()=>{const col=(rank-1)%5,row=Math.floor((rank-1)/5),w=badgeImage.naturalWidth/5,h=badgeImage.naturalHeight/4;ctx.drawImage(badgeImage,col*w,row*h,w,h,beginning,29,66,66);texture.needsUpdate=true;};badgeImage.src='/assets/rpg/stage-badges.png';}
  addForegroundLayer(root);
  // Lightweight snack crumbs attached to the head; visually visible to all spectators.
  const snackCrumbs=new THREE.Group();neck.add(snackCrumbs);parts.snackCrumbs=[];
@@ -9951,10 +9952,10 @@ function tick(t){
    ?{...serverPlayer,hairStyle:chosenHairStyle,hairColor:chosenHairColor}
    :serverPlayer;
   const current=avatars.get(id);
-  if(current&&(current.weaponTier!==(p.weaponTier||null)||current.color!==p.color||current.name!==p.name||current.badgeTier!==(p.badgeTier||'bronze')||current.gender!==p.gender||current.pattern!==(p.pattern||'solid')||current.sash!==(p.sash||'none')||current.hairStyle!==(p.hairStyle||'short')||current.hairColor!==(p.hairColor||'#4b3932')||current.flagText!==(p.flagText||'')||current.flagImage!==(p.flagImage||'')||Boolean(current.rhythmKing)!==Boolean(p.rhythmKing)||Boolean(current.powerKing)!==Boolean(p.powerKing)||Boolean(current.moleKing)!==Boolean(p.moleKing)||Boolean(current.fishKing)!==Boolean(p.fishKing)||Boolean(current.mineKing)!==Boolean(p.mineKing)||JSON.stringify(current.equipped||{})!==JSON.stringify(p.equipped||{}))){
+  if(current&&(current.battleStage!==(p.battleStage||0)||current.characterLevel!==(p.characterLevel||1)||current.weaponTier!==(p.weaponTier||null)||current.color!==p.color||current.name!==p.name||current.badgeTier!==(p.badgeTier||'bronze')||current.gender!==p.gender||current.pattern!==(p.pattern||'solid')||current.sash!==(p.sash||'none')||current.hairStyle!==(p.hairStyle||'short')||current.hairColor!==(p.hairColor||'#4b3932')||current.flagText!==(p.flagText||'')||current.flagImage!==(p.flagImage||'')||Boolean(current.rhythmKing)!==Boolean(p.rhythmKing)||Boolean(current.powerKing)!==Boolean(p.powerKing)||Boolean(current.moleKing)!==Boolean(p.moleKing)||Boolean(current.fishKing)!==Boolean(p.fishKing)||Boolean(current.mineKing)!==Boolean(p.mineKing)||JSON.stringify(current.equipped||{})!==JSON.stringify(p.equipped||{}))){
    disposeAvatar(current.root);avatars.delete(id);
   }
-  if(!avatars.has(id)){let a=makeAvatar(p),pos=toWorld(p);a.root.position.set(pos.x,0,pos.z);a.weaponTier=p.weaponTier||null;a.name=p.name;a.badgeTier=p.badgeTier||'bronze';a.gender=p.gender;a.pattern=p.pattern||'solid';a.sash=p.sash||'none';a.hairStyle=p.hairStyle||'short';a.hairColor=p.hairColor||'#4b3932';a.flagText=p.flagText||'';a.flagImage=p.flagImage||'';a.rhythmKing=Boolean(p.rhythmKing);a.powerKing=Boolean(p.powerKing);a.moleKing=Boolean(p.moleKing);a.fishKing=Boolean(p.fishKing);a.mineKing=Boolean(p.mineKing);a.equipped={...(p.equipped||{})};avatars.set(id,a)}
+  if(!avatars.has(id)){let a=makeAvatar(p),pos=toWorld(p);a.root.position.set(pos.x,0,pos.z);a.battleStage=p.battleStage||0;a.characterLevel=p.characterLevel||1;a.weaponTier=p.weaponTier||null;a.name=p.name;a.badgeTier=p.badgeTier||'bronze';a.gender=p.gender;a.pattern=p.pattern||'solid';a.sash=p.sash||'none';a.hairStyle=p.hairStyle||'short';a.hairColor=p.hairColor||'#4b3932';a.flagText=p.flagText||'';a.flagImage=p.flagImage||'';a.rhythmKing=Boolean(p.rhythmKing);a.powerKing=Boolean(p.powerKing);a.moleKing=Boolean(p.moleKing);a.fishKing=Boolean(p.fishKing);a.mineKing=Boolean(p.mineKing);a.equipped={...(p.equipped||{})};avatars.set(id,a)}
   const avatar=avatars.get(id);
   animateAvatar(avatar,p,t);updateCharacterTrail(avatar,p,t,scene);
   if(avatar.parts.flagPivot?.parent?.visible){

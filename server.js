@@ -947,7 +947,7 @@ function getShopView(p,now=Date.now()){
  return {points:tentPointBalance(p),earned,spent:(tentOwnedBy(p.badgeIdentity)?TENT_COST:0)+(furnitureStats.get(p.badgeIdentity)?.spent||0)+(petStats.get(p.badgeIdentity)?.spent||0)+(tentOwnedBy(p.badgeIdentity)?.outdoorDecorSpent||0),refunded:record.refunded||0,testing:true,owned:Object.keys(publicMdItems()),equipped:{...record.equipped},items:publicMdItems()};
 }
 function setShopAppearance(p){
- p.equipped=p.badgeIdentity?{...shopRecord(p.badgeIdentity).equipped}:{};p.weaponTier=p.badgeIdentity?(craftAccounts.get(p.badgeIdentity)?.equippedWeapon||null):null;
+ p.equipped=p.badgeIdentity?{...shopRecord(p.badgeIdentity).equipped}:{};p.weaponTier=p.badgeIdentity?(craftAccounts.get(p.badgeIdentity)?.equippedWeapon||null):null;p.battleStage=p.badgeIdentity?(battleAccounts.get(p.badgeIdentity)?.highest||0):0;p.characterLevel=p.badgeIdentity?questLevel(questAccounts.get(p.badgeIdentity)?.xp||0):1;
 }
 
 const BADGE_LEVELS=[['bronze',0],['silver',3600],['gold',18000],['platinum',54000],['diamond',144000],['crown',360000]];
@@ -1631,7 +1631,7 @@ const server=http.createServer(async(req,res)=>{
       const id=clean(d.id,80),p=players.get(id);if(!p)return json(res,401,{error:'Session expired. Please rejoin.'});p.seen=Date.now();
       if(url.pathname==='/api/battle'){
        if(!p.badgeIdentity||playerSessions.get(id)!==String(d.sessionKey||''))return json(res,403,{error:'본인 세션에서만 전투할 수 있어요.'});
-       try{battleAction(p,d);if(d.command!=='state')await saveNow();return json(res,200,{ok:true,battle:battlePublic(p)});}catch(error){return json(res,400,{error:error.message});}
+       try{const previous=battleAccount(p.badgeIdentity).highest;battleAction(p,d);if(d.command!=='state')await saveNow();if(battleAccount(p.badgeIdentity).highest!==previous)for(const person of players.values())if(person.badgeIdentity===p.badgeIdentity){setShopAppearance(person);broadcast({type:'profile',player:person});}return json(res,200,{ok:true,battle:battlePublic(p)});}catch(error){return json(res,400,{error:error.message});}
       }
       if(url.pathname==='/api/craft'){
        if(!p.badgeIdentity||playerSessions.get(id)!==String(d.sessionKey||''))return json(res,403,{error:'본인 세션에서 이용해 주세요.'});
@@ -1646,7 +1646,7 @@ const server=http.createServer(async(req,res)=>{
         if(q.active)return json(res,409,{error:'진행 중인 의뢰를 완료해 주세요.'});if(q.used>=10)return json(res,409,{error:'오늘의 의뢰 10개를 모두 받았어요.'});if(tentPointBalance(p)<2000)return json(res,409,{error:'의뢰를 받으려면 2,000P가 필요해요.'});
         q.active={...QUEST_CATALOG[crypto.randomInt(QUEST_CATALOG.length)],progress:0,done:false};q.spent+=2000;q.used++;await saveNow();
        }else if(command==='claim'){
-        if(!q.active?.done)return json(res,409,{error:'완료한 의뢰가 없어요.'});q.xp=Math.min(1000000,q.xp+q.active.xp);q.active=null;await saveNow();
+        if(!q.active?.done)return json(res,409,{error:'완료한 의뢰가 없어요.'});q.xp=Math.min(1000000,q.xp+q.active.xp);q.active=null;await saveNow();for(const person of players.values())if(person.badgeIdentity===p.badgeIdentity){setShopAppearance(person);broadcast({type:'profile',player:person});}
        }else if(command!=='state')return json(res,400,{error:'지원하지 않는 의뢰 명령입니다.'});
        return json(res,200,{ok:true,quest:questView(p)});
       }
