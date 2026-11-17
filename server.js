@@ -284,7 +284,7 @@ const shopStats=new Map();
 // Pet purchases and food use the SAME authoritative points ledger as tents.
 // v284: egg identity stays secret until natural hatching; no instant-hatch test endpoint.
 // Pets may continue to be summoned from egg stage and immediately after hatching.
-const PET_ADOPTION_COST=1000, PET_HATCH_MS=4*60*60*1000, PET_MAX_LEVEL=30;
+const PET_ADOPTION_COST=1000, PET_HATCH_MS=4*60*60*1000, PET_MAX_LEVEL=200;
 const PET_FOODS={snack:{cost:30,xp:15,name:'간식'},meal:{cost:100,xp:60,name:'식사'},feast:{cost:250,xp:170,name:'특식'}};
 const PET_COLORS=['#f16b69','#67b9f2','#75d8a0','#b68ae8','#f4eee0'];
 const PET_COLOR_CHANGE_COST=1000;
