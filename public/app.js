@@ -5393,6 +5393,25 @@ function renderBattle(){const body=battleOverlay.querySelector('#battleText'),bu
  if(b?.phase==='running')add('전투 포기','abandon',{},false);else add(`${Math.min(20,d.highest+1)}단계 도전`,'start',{stage:Math.min(20,d.highest+1)},!battleIsNear());}
 async function battleRequest(command='state',extra={}){if(battleBusy||!state.id)return;battleBusy=true;try{const r=await post('battle',{id:state.id,sessionKey,command,...extra});battleData=r.battle;renderBattle();}catch(e){toast(e.message||'전투 정보를 불러오지 못했어요.')}finally{battleBusy=false;renderBattle();if(!battleOverlay.hidden&&battleData?.active?.phase==='running'){clearTimeout(battleTimer);const b=battleData.active;battleTimer=setTimeout(()=>void battleRequest('turn',{battleId:b.id,turn:b.turn}),900);}}}
 let battleSceneActive=false,battleScene=null,battleCamera=null,battleAvatar=null,battlePetEntry=null,battleMonster=null,battleBg=null,battleCanvasHome=null,battleCanvasNext=null,battleCanvasStyle='',battleSceneRaf=0,battleFrameSize='',battleLastSceneTurn='',battleActionAt=0,battlePetAttempt=0;
+function makeBattleRockMonster(){
+ const group=new THREE.Group(),rock=new THREE.MeshStandardMaterial({color:'#5d526e',roughness:.78,metalness:.15,emissive:'#332452',emissiveIntensity:.22}),dark=new THREE.MeshStandardMaterial({color:'#282238',roughness:.9}),crystal=new THREE.MeshStandardMaterial({color:'#58e7e0',emissive:'#25b7b9',emissiveIntensity:.65,roughness:.25,metalness:.2}),eyes=new THREE.MeshBasicMaterial({color:'#c0ffff'});
+ const shape=(geom,material,x,y,z,sx,sy,sz)=>{const m=new THREE.Mesh(geom,material);m.position.set(x,y,z);m.scale.set(sx,sy,sz);group.add(m);return m};
+ shape(new THREE.DodecahedronGeometry(1,0),rock,0,1.23,0,1.1,1.12,.68);
+ shape(new THREE.DodecahedronGeometry(1,0),rock,0,2.1,.08,.93,.7,.62);
+ shape(new THREE.BoxGeometry(1,1,1),dark,0,2.01,.62,.64,.11,.08);
+ for(const side of [-1,1]){
+  shape(new THREE.DodecahedronGeometry(1,0),rock,side*.55,.3,0,.4,.42,.48);
+  const arm=shape(new THREE.DodecahedronGeometry(1,0),rock,side*1.12,1.21,.05,.53,.75,.54);arm.rotation.z=side*.25;
+  shape(new THREE.DodecahedronGeometry(1,0),rock,side*1.32,.86,.25,.48,.4,.49);
+  shape(new THREE.SphereGeometry(.12,8,6),eyes,side*.35,2.26,.61,1.2,.72,.4);
+  const horn=shape(new THREE.ConeGeometry(.3,.8,5),crystal,side*.68,2.7,.02,1,1,1);horn.rotation.z=-side*.28;
+ }
+ const chest=shape(new THREE.OctahedronGeometry(.35,0),crystal,0,1.25,.7,.7,1.15,.42);chest.rotation.z=Math.PI/4;
+ for(let i=0;i<3;i++){const c=shape(new THREE.ConeGeometry(.20,.58+i*.12,5),crystal,(i-1)*.5,2.55,.0,1,1,1);c.rotation.z=(i-1)*-.16;}
+ group.userData={rock,dark,crystal,eyes,stage:0};return group;
+}
+function updateBattleMonsterStage(monster,stage){stage=Math.max(1,Math.min(20,Number(stage)||1));if(monster.userData.stage===stage)return;monster.userData.stage=stage;const themes=[['#657079','#88dfc7'],['#496d7e','#80c7ff'],['#655080','#cc8dff'],['#775347','#ffd575']];const colors=themes[Math.min(3,Math.floor((stage-1)/5))];monster.userData.rock.color.set(colors[0]);monster.userData.crystal.color.set(colors[1]);monster.userData.crystal.emissive.set(colors[1]);monster.userData.crystal.emissiveIntensity=.35+stage*.025;const scale=.82+stage*.012;monster.scale.setScalar(scale);}
+
 function startBattleScene(){
  if(battleSceneActive||!state.me)return;
  const area=battleOverlay.querySelector('#battleArena'),canvas=renderer.domElement;
@@ -5405,7 +5424,7 @@ function startBattleScene(){
   battleCamera=new THREE.OrthographicCamera(-6,6,3.4,-3.4,.1,100);battleCamera.position.set(0,4.3,12);battleCamera.lookAt(0,1.5,0);battleCamera.layers.enable(1);battleScene.add(battleCamera);
   const bgTexture=new THREE.TextureLoader().load('/assets/rpg/battle-arena.png');bgTexture.colorSpace=THREE.SRGBColorSpace;const bgMesh=new THREE.Mesh(new THREE.PlaneGeometry(1,1),new THREE.MeshBasicMaterial({map:bgTexture,depthTest:false,depthWrite:false}));bgMesh.position.z=-80;bgMesh.renderOrder=-1000;battleCamera.add(bgMesh);battleBg={mesh:bgMesh,texture:bgTexture};
   battleAvatar=makeAvatar({...state.me,id:'battle-preview',name:state.me.name||'나'});scene.remove(battleAvatar.root);battleScene.add(battleAvatar.root);battleAvatar.root.position.set(-2.7,0,0);battleAvatar.root.rotation.y=.6;
-  const monsterTexture=new THREE.TextureLoader().load('/assets/rpg/battle-monster.png');monsterTexture.colorSpace=THREE.SRGBColorSpace;battleMonster=new THREE.Sprite(new THREE.SpriteMaterial({map:monsterTexture,transparent:true,depthWrite:false}));battleMonster.position.set(2.65,1.45,0);battleMonster.scale.set(3,3,1);battleScene.add(battleMonster);
+  battleMonster=makeBattleRockMonster();battleMonster.position.set(2.65,0,0);battleMonster.rotation.y=-.3;battleScene.add(battleMonster);
   battleLastSceneTurn='';battleActionAt=0;battleFrameSize='';battlePetAttempt=0;
   const frame=now=>{if(!battleSceneActive)return;battleSceneRaf=requestAnimationFrame(frame);if(document.hidden)return;const w=area.clientWidth,h=area.clientHeight;if(!w||!h)return;
    const key=w+'x'+h;if(key!==battleFrameSize){battleFrameSize=key;renderer.setSize(w,h,false);battleCamera.left=-3.4*w/h;battleCamera.right=3.4*w/h;battleCamera.top=3.4;battleCamera.bottom=-3.4;battleCamera.updateProjectionMatrix();battleBg.mesh.scale.set(6.8*w/h,6.8,1);}
@@ -5414,7 +5433,7 @@ function startBattleScene(){
    const elapsed=now-battleActionAt,phase=Math.max(0,Math.min(1,elapsed/800)),pulse=Math.sin(phase*Math.PI),actor=b?.last?.actor;
    if(battleAvatar){battleAvatar.root.position.x=-2.7+(actor==='character'?pulse*.65:0);if(battleAvatar.parts.rightShoulder)battleAvatar.parts.rightShoulder.rotation.x=actor==='character'?-pulse*1.2:0;}
    if(battlePetEntry){battlePetEntry.root.position.y=actor==='pet'?pulse*.6:0;battlePetEntry.root.rotation.z=actor==='pet'?-pulse*.22:0;}
-   if(battleMonster){battleMonster.position.x=2.65-(actor==='monster'?pulse*.45:0);battleMonster.material.opacity=b?.phase==='won'?.35:1;}
+   if(battleMonster){updateBattleMonsterStage(battleMonster,b?.stage||1);battleMonster.position.x=2.65-(actor==='monster'?pulse*.55:0);battleMonster.position.y=Math.sin(now*.002)*.035+(actor==='monster'?pulse*.14:0);battleMonster.rotation.z=(actor==='monster'?-pulse*.15:actor==='pet'||actor==='character'?pulse*.09:0);battleMonster.visible=b?.phase!=='won'||Math.floor(now/180)%2===0;}
    renderer.render(battleScene,battleCamera);
   };battleSceneRaf=requestAnimationFrame(frame);
  }catch(error){console.warn('Battle 3D preview:',error);stopBattleScene();}
@@ -5423,7 +5442,7 @@ function stopBattleScene(){
  if(!battleSceneActive)return;battleSceneActive=false;cancelAnimationFrame(battleSceneRaf);battleSceneRaf=0;
  if(battleAvatar){disposeAvatar(battleAvatar.root);battleAvatar=null;}
  if(battlePetEntry){foxPetDispose(battlePetEntry);battlePetEntry=null;}
- if(battleMonster){battleMonster.material.map?.dispose();battleMonster.material.dispose();battleMonster.parent?.remove(battleMonster);battleMonster=null;}
+ if(battleMonster){const geos=new Set(),mats=new Set();battleMonster.traverse(o=>{if(o.geometry)geos.add(o.geometry);if(o.material)for(const m of Array.isArray(o.material)?o.material:[o.material])mats.add(m)});for(const g of geos)g.dispose();for(const m of mats)m.dispose();battleMonster.parent?.remove(battleMonster);battleMonster=null;}
  if(battleBg){battleBg.mesh.geometry.dispose();battleBg.mesh.material.dispose();battleBg.texture.dispose();battleBg=null;}
  const canvas=renderer.domElement;if(battleCanvasHome){if(battleCanvasNext?.parentNode===battleCanvasHome)battleCanvasHome.insertBefore(canvas,battleCanvasNext);else battleCanvasHome.appendChild(canvas);}canvas.style.cssText=battleCanvasStyle;battleCanvasHome=null;battleCanvasNext=null;battleScene=null;battleCamera=null;battleOverlay.querySelector('#battleArena').classList.remove('battle-3d');if(stageForeground)stageForeground.domElement.style.display='';renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,performanceRatio()));resize();
 }
