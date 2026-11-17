@@ -446,7 +446,7 @@ const fishingTournaments=new Map(),FISH_TOURNEY_FEE=1000,FISH_TOURNEY_WAIT=30000
 function fishingTourneyPlayer(identity){return [...players.values()].find(p=>p.badgeIdentity===identity)||{badgeIdentity:identity,badgeSince:Date.now()};}
 function fishingTourneyNotify(t,message){for(const entry of t.entries){for(const player of players.values())if(player.badgeIdentity===entry.id){const stream=clients.get(player.id);if(stream)try{send(stream,{type:'fishing-tournament-notice',message})}catch{}}}}
 function fishingTourneyChanged(){broadcast({type:'fishing-tournament-update'});}
-function fishingTourneyTargets(){const ids=[];for(const rarity of ['common','uncommon','rare']){const pool=FISH_CATALOG.filter(f=>f.rarity===rarity).map(f=>f.id);if(pool.length<3)throw Error('물고기 목록이 부족합니다.');for(let n=0;n<3;n++)ids.push(pool.splice(crypto.randomInt(pool.length),1)[0]);}return ids;}
+function fishingTourneyTargets(){const tiers=['common','rare','epic'];const rarity=tiers[crypto.randomInt(tiers.length)];const pool=FISH_CATALOG.filter(f=>f.rarity===rarity);if(!pool.length)throw Error('물고기 목록이 부족합니다.');return [pool[crypto.randomInt(pool.length)].id];}
 function fishingTourneyTick(now=Date.now()){
  let changed=false;
  for(const t of fishingTournaments.values()){
