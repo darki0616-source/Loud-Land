@@ -2089,7 +2089,22 @@ function playCheer(){
   audio.play().catch(error=>console.warn('Cheer sound could not play',error));
  }catch(error){console.warn('Cheer sound unavailable',error)}
 }
-function sendMove(){if(!state.id||!state.me||currentDuo())return;let p=state.me;if(tentRoomActive){tentRequest('room-action',{action:p.action,pose:p.pose,glowColor:p.glowColor,glowEnabled:p.glowEnabled,headbangBpm:p.headbangBpm,headbangBeatAt:p.headbangBeatAt}).catch(()=>{});return;}post('move',{id:state.id,sessionKey,x:Math.round(p.x),y:Math.round(p.y),facing:p.facing,action:p.action,pose:p.pose||'stand',glowColor:p.glowColor||'lime',glowEnabled:Boolean(p.glowEnabled),headbangBpm:Math.max(40,Math.min(240,Number(p.headbangBpm)||120)),headbangBeatAt:Number(p.headbangBeatAt)||headbangServerTime()}).catch(()=>{})}
+// Keep outdoor movement requests ordered. Routine positions are coalesced while
+// a previous request is in flight; explicit reactions and stop packets are kept.
+let outdoorMoveQueue=[],outdoorMoveSending=false,outdoorMoveSignature='',outdoorWasMoving=false;
+function outdoorVisualSignature(p){return JSON.stringify([p.action,p.pose||'stand',p.glowColor||'lime',Boolean(p.glowEnabled),Number(p.headbangBpm)||120,Number(p.headbangBeatAt)||0]);}
+async function flushOutdoorMoveQueue(){
+ if(outdoorMoveSending)return;outdoorMoveSending=true;
+ try{while(outdoorMoveQueue.length){const item=outdoorMoveQueue.shift();if(item.data.id!==state.id)continue;try{await post('move',item.data)}catch(error){console.warn('Movement sync:',error.message)}}}
+ finally{outdoorMoveSending=false;if(outdoorMoveQueue.length)void flushOutdoorMoveQueue();}
+}
+function sendMove(options={}){
+ if(!state.id||!state.me||currentDuo())return;const p=state.me;
+ if(tentRoomActive){tentRequest('room-action',{action:p.action,pose:p.pose,glowColor:p.glowColor,glowEnabled:p.glowEnabled,headbangBpm:p.headbangBpm,headbangBeatAt:p.headbangBeatAt}).catch(()=>{});return;}
+ const data={id:state.id,sessionKey,x:Math.round(p.x),y:Math.round(p.y),facing:p.facing,action:p.action,pose:p.pose||'stand',glowColor:p.glowColor||'lime',glowEnabled:Boolean(p.glowEnabled),headbangBpm:Math.max(40,Math.min(240,Number(p.headbangBpm)||120)),headbangBeatAt:Number(p.headbangBeatAt)||headbangServerTime()};
+ outdoorMoveSignature=outdoorVisualSignature(p);state.lastSent=performance.now();const coalesce=options.coalesce===true,last=outdoorMoveQueue[outdoorMoveQueue.length-1];
+ if(coalesce&&last?.coalesce)outdoorMoveQueue[outdoorMoveQueue.length-1]={data,coalesce};else outdoorMoveQueue.push({data,coalesce});void flushOutdoorMoveQueue();
+}
 // Shared SLAM countdown (server timestamps, 15 s global launch cooldown).
 const slamButton=$('slamButton'),slamInfo=$('slamInfo'),slamMarker=$('slamMarker'),slamCount=$('slamCount'),slamMembers=$('slamMembers'),slamJoin=$('slamJoin');
 function slamNow(){return Date.now()+state.serverDelta}
@@ -9758,7 +9773,7 @@ function tick(t){
      state.me.facing=Math.atan2(tx,ty);
      state.action='rock-skank';state.me.action='rock-skank';
      state.moving=true;state.actionUntil=Infinity;
-     if(t-state.lastSent>90){state.lastSent=t;sendMove()}
+     if(t-state.lastSent>=250){state.lastSent=t;sendMove({coalesce:true})}
     }
    }else if(m.phase==='celebrate'){
     state.action='slam-celebrate';state.me.action='slam-celebrate';
@@ -9779,7 +9794,7 @@ function tick(t){
        state.me.facing=Math.atan2(n.x-a.x,n.z-a.z);
        state.action='train-run';state.me.action='train-run';state.moving=true;
       }else{state.action='idle';state.me.action='idle';state.moving=false;}
-      if(t-state.lastSent>110){state.lastSent=t;sendMove()}
+      if(t-state.lastSent>=250){state.lastSent=t;sendMove({coalesce:true})}
      }
     }
    }else if(m.kind==='surf'){
@@ -9791,7 +9806,7 @@ function tick(t){
      state.me.facing=surf.facing;
      state.me.action=surf.action;state.action=surf.action;
      state.moving=surf.running;
-     if(t-state.lastSent>110){state.lastSent=t;sendMove()}
+     if(t-state.lastSent>=250){state.lastSent=t;sendMove({coalesce:true})}
     }
    }else{
     const p=m.kind==='mosh'?moshPathAt(m,elapsed):rockPathAt(m,elapsed);
@@ -9808,7 +9823,7 @@ function tick(t){
      m.kind==='toast'?Math.atan2(m.x-p.x,m.y-p.y):m.kind==='row'?0:Math.atan2(p.dx,p.dy);
     state.me.action=m.kind==='surf'?(state.id===m.riderId?'surf-rider':'surf-support'):m.kind==='mosh'?'mosh-charge':m.kind==='circle'?'circle-run':m.kind==='row'?'row-paddle':m.kind==='shoulder'?(elapsed<3000?'walk':'shoulder-headbang'):m.kind==='toast'?(m.campfireToast&&elapsed<3000?'walk':'toast-clink'):'train-run';state.action=state.me.action;
     state.moving=m.kind!=='shoulder'||elapsed<3000;
-    if(t-state.lastSent>70){state.lastSent=t;sendMove()}
+    if(t-state.lastSent>=250){state.lastSent=t;sendMove({coalesce:true})}
    }
   }
   if(!dx&&!dy&&!slamMotion&&(!rockMotion||(rockMotion.kind==='train'&&rockMotion.leaderId===state.id))&&state.walkTarget){
@@ -9871,7 +9886,11 @@ function tick(t){
    updateActionButtons();
   }
   if(rockMotion?.kind==='train'&&rockMotion.leaderId===state.id)recordTrainLeader(state.me);
-  if(t-state.lastSent>150){state.lastSent=t;sendMove()}
+  const outdoorMoved=Math.hypot(state.me.x-dockFromX,state.me.y-dockFromY)>1e-7;
+  const visualChanged=outdoorVisualSignature(state.me)!==outdoorMoveSignature;
+  if(visualChanged||(!outdoorMoved&&outdoorWasMoving))sendMove();
+  else if(outdoorMoved&&t-state.lastSent>=250)sendMove({coalesce:true});
+  outdoorWasMoving=outdoorMoved;
  }
  // Collapse the dock only while the local character is actually travelling.
  // Includes arrow/WASD input and scripted or click-to-move displacement.
