@@ -521,7 +521,7 @@ const QUEST_CATALOG=[
 function questAccount(id){let q=questAccounts.get(id);if(!q){q={day:kstDate(),used:0,spent:0,xp:0,active:null};questAccounts.set(id,q);}if(q.day!==kstDate()){q.day=kstDate();q.used=0;}return q;}
 function questLevel(xp){let level=1;while(level<200&&xp>=40*level+8*level*(level+1))level++;return level;}
 function questView(p){const q=questAccount(p.badgeIdentity),level=questLevel(q.xp);return {day:q.day,used:q.used,limit:10,cost:2000,xp:q.xp,level,combatPower:characterCombatPower(p.badgeIdentity),nextXp:level<200?40*level+8*level*(level+1):null,active:q.active,points:tentPointBalance(p)};}
-function questProgress(p,kind,rarity){const q=questAccounts.get(p.badgeIdentity),m=q?.active;if(!m||m.done||m.kind!==kind||m.rarity!==rarity)return;m.progress=Math.min(m.goal,m.progress+1);if(m.progress===m.goal)m.done=true;}
+function questProgress(p,kind,rarity){const q=questAccounts.get(p.badgeIdentity),m=q?.active;if(!m||m.done||m.kind!==kind||m.rarity!==rarity)return;m.progress=Math.min(m.goal,m.progress+1);if(m.progress===m.goal)m.done=true;for(const viewer of players.values()){if(viewer.badgeIdentity!==p.badgeIdentity)continue;const connection=clients.get(viewer.id);if(connection)try{send(connection,{type:'quest-progress',quest:{...m}})}catch{}}}
 
 const CRAFT_TIERS=['common','uncommon','rare','epic','legendary'],craftAccounts=new Map();
 function craftAccount(id){let r=craftAccounts.get(id);if(!r){r={spentOre:{},spentFish:{},weapons:{},skills:{},equippedWeapon:null,equippedSkill:null,awakening:{weapon:false,skill:false},tickets:{weapon:0,skill:0},upgradeTickets:{weapon:{},skill:{}},awakened:{weapon:null,skill:null}};craftAccounts.set(id,r)}return r;}
