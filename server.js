@@ -315,18 +315,19 @@ function petLevel(xp){
  return level;
 }
 function petCombatPower(level){return Math.max(0,Math.floor(level))*12;}
+function petEquippedCombatPower(id,level){const r=craftAccounts.get(id),tier=r?.equippedSkill,index=CRAFT_TIERS.indexOf(tier);return petCombatPower(level)+(index<0?0:(index+1)*60+(r.skills[tier]||0)*12);}
 function characterCombatPower(id){const level=questLevel(questAccounts.get(id)?.xp||0),r=craftAccounts.get(id),tier=r?.equippedWeapon,index=CRAFT_TIERS.indexOf(tier);return level*15+(index<0?0:(index+1)*60+(r.weapons[tier]||0)*12);}
-function petPublic(pet,record){
+function petPublic(pet,record,identity){
  if(!pet)return null;
  const level=petLevel(pet.xp),hatched=Date.now()>=pet.hatchAt;
  return {species:hatched?(PET_SPECIES.includes(pet.species)?pet.species:'fox'):null,color:pet.color,adoptedAt:pet.adoptedAt,hatchAt:pet.hatchAt,
-  hatched,level:hatched?level:0,combatPower:hatched?petCombatPower(level):0,xp:pet.xp,nextXp:level<PET_MAX_LEVEL?40*level+8*level*(level+1):null,
+  hatched,level:hatched?level:0,combatPower:hatched?petEquippedCombatPower(identity,level):0,xp:pet.xp,nextXp:level<PET_MAX_LEVEL?40*level+8*level*(level+1):null,
   stage:hatched?(level>=25?25:level>=10?10:1):0,summoned:!!pet.summoned,effects:petEffectView(record).enabled};
 }
 function petAccount(identity){if(!petStats.has(identity))petStats.set(identity,{spent:0,pet:null,effectsOwned:{},effectsEnabled:{}});return petStats.get(identity);}
-function petView(p){const record=petAccount(p.badgeIdentity);return {pet:petPublic(record.pet,record),effects:petEffectView(record),effectCatalog:PET_EFFECTS,colorChangeCost:PET_COLOR_CHANGE_COST,colorOptions:record.pet&&Date.now()>=record.pet.hatchAt?PET_COLORS.map(color=>({color,available:petColorAvailable(record.pet.species,color)})):[],points:tentPointBalance(p),cost:PET_ADOPTION_COST,hatchMs:PET_HATCH_MS,foods:PET_FOODS,availableSpecies:PET_SPECIES,maxLevel:PET_MAX_LEVEL};}
+function petView(p){const record=petAccount(p.badgeIdentity);return {pet:petPublic(record.pet,record,p.badgeIdentity),effects:petEffectView(record),effectCatalog:PET_EFFECTS,colorChangeCost:PET_COLOR_CHANGE_COST,colorOptions:record.pet&&Date.now()>=record.pet.hatchAt?PET_COLORS.map(color=>({color,available:petColorAvailable(record.pet.species,color)})):[],points:tentPointBalance(p),cost:PET_ADOPTION_COST,hatchMs:PET_HATCH_MS,foods:PET_FOODS,availableSpecies:PET_SPECIES,maxLevel:PET_MAX_LEVEL};}
 function syncPetPlayers(identity){
- const record=petStats.get(identity);for(const other of players.values())if(other.badgeIdentity===identity){other.pet=petPublic(record?.pet,record);broadcast({type:'pet-update',id:other.id,pet:other.pet});}
+ const record=petStats.get(identity);for(const other of players.values())if(other.badgeIdentity===identity){other.pet=petPublic(record?.pet,record,identity);broadcast({type:'pet-update',id:other.id,pet:other.pet});}
 }
 // Notify everyone when a summoned egg finishes hatching, even if its owner is offline.
 const petHatchNotified=new Set();
@@ -947,7 +948,7 @@ function getShopView(p,now=Date.now()){
  return {points:tentPointBalance(p),earned,spent:(tentOwnedBy(p.badgeIdentity)?TENT_COST:0)+(furnitureStats.get(p.badgeIdentity)?.spent||0)+(petStats.get(p.badgeIdentity)?.spent||0)+(tentOwnedBy(p.badgeIdentity)?.outdoorDecorSpent||0),refunded:record.refunded||0,testing:true,owned:Object.keys(publicMdItems()),equipped:{...record.equipped},items:publicMdItems()};
 }
 function setShopAppearance(p){
- p.equipped=p.badgeIdentity?{...shopRecord(p.badgeIdentity).equipped}:{};p.weaponTier=p.badgeIdentity?(craftAccounts.get(p.badgeIdentity)?.equippedWeapon||null):null;p.battleStage=p.badgeIdentity?(battleAccounts.get(p.badgeIdentity)?.highest||0):0;p.characterLevel=p.badgeIdentity?questLevel(questAccounts.get(p.badgeIdentity)?.xp||0):1;
+ p.equipped=p.badgeIdentity?{...shopRecord(p.badgeIdentity).equipped}:{};p.weaponTier=p.badgeIdentity?(craftAccounts.get(p.badgeIdentity)?.equippedWeapon||null):null;p.battleStage=p.badgeIdentity?(battleAccounts.get(p.badgeIdentity)?.highest||0):0;p.characterLevel=p.badgeIdentity?questLevel(questAccounts.get(p.badgeIdentity)?.xp||0):1;p.characterPower=p.badgeIdentity?characterCombatPower(p.badgeIdentity):0;
 }
 
 const BADGE_LEVELS=[['bronze',0],['silver',3600],['gold',18000],['platinum',54000],['diamond',144000],['crown',360000]];
@@ -1615,7 +1616,7 @@ const server=http.createServer(async(req,res)=>{
           if(existing){
             maybeRotateRhythmDay();
             existing.seen=Date.now();
-            syncPlayerRhythmKing(existing);syncPlayerPowerKing(existing);syncPlayerMoleKing(existing);syncPlayerFishKing(existing);rotateMineKingDay();syncPlayerMineKing(existing);syncDecoration(existing);existing.pet=petPublic(petStats.get(existing.badgeIdentity)?.pet,petStats.get(existing.badgeIdentity));
+            syncPlayerRhythmKing(existing);syncPlayerPowerKing(existing);syncPlayerMoleKing(existing);syncPlayerFishKing(existing);rotateMineKingDay();syncPlayerMineKing(existing);syncDecoration(existing);existing.pet=petPublic(petStats.get(existing.badgeIdentity)?.pet,petStats.get(existing.badgeIdentity),existing.badgeIdentity);
             if(pageId)pageOwners.set(existingId,pageId);
             return json(res,200,{id:existingId,reused:true,...snapshot(existingId)});
           }
@@ -1623,7 +1624,7 @@ const server=http.createServer(async(req,res)=>{
         }
         maybeRotateRhythmDay();
         const id=crypto.randomUUID(),p={id,badgeSince:Date.now(),badgeTier:'bronze',badgeSeconds:0,name:clean(d.name,18)||'ROCKER',flagText:cleanFlag(d.flagText),flagImage:d.flagImage?storeFlagImage(d.flagImage)||'':'',color:colors.includes(d.color)?d.color:colors[0],...apparel(d),gender:d.gender==='female'?'female':'male',x:clamp(190+Math.random()*880,SERVER_X_MIN,SERVER_X_MAX),y:clamp(390+Math.random()*420,SERVER_Y_MIN,SERVER_Y_MAX),facing:0,action:'idle',pose:'stand',glowColor:'lime',glowEnabled:false,headbangBpm:120,headbangBeatAt:Date.now(),seen:Date.now(),rhythmKing:false,powerKing:false,moleKing:false};
-        Object.defineProperty(p,'badgeIdentity',{value:badgeIdentity,writable:true,enumerable:false});updateBadge(p);syncPlayerRhythmKing(p);syncPlayerPowerKing(p);syncPlayerMoleKing(p);rotateFishKingDay();syncPlayerFishKing(p);rotateMineKingDay();syncPlayerMineKing(p);syncDecoration(p);setShopAppearance(p);p.pet=petPublic(petStats.get(p.badgeIdentity)?.pet,petStats.get(p.badgeIdentity));players.set(id,p);
+        Object.defineProperty(p,'badgeIdentity',{value:badgeIdentity,writable:true,enumerable:false});updateBadge(p);syncPlayerRhythmKing(p);syncPlayerPowerKing(p);syncPlayerMoleKing(p);rotateFishKingDay();syncPlayerFishKing(p);rotateMineKingDay();syncPlayerMineKing(p);syncDecoration(p);setShopAppearance(p);p.pet=petPublic(petStats.get(p.badgeIdentity)?.pet,petStats.get(p.badgeIdentity),p.badgeIdentity);players.set(id,p);
         if(sessionKey){sessionPlayers.set(sessionKey,id);playerSessions.set(id,sessionKey)}
         if(pageId)pageOwners.set(id,pageId);
         resumeForFirst();broadcast({type:'join',player:p,count:players.size});return json(res,200,{id,reused:false,...snapshot(id)});
@@ -1636,7 +1637,7 @@ const server=http.createServer(async(req,res)=>{
       if(url.pathname==='/api/craft'){
        if(!p.badgeIdentity||playerSessions.get(id)!==String(d.sessionKey||''))return json(res,403,{error:'본인 세션에서 이용해 주세요.'});
        if(String(d.command||'state')!=='state'&&(p.tentRoomId||Math.hypot((p.x-600)*.058-(-32),(p.y-500)*.058+8-(-7.2))>9))return json(res,403,{error:'제작 부스 가까이 이동해 주세요.'});
-       try{const result=craftAct(p,d);if(result){await saveNow();if(d.kind==='weapon'&&d.command==='equip')for(const person of players.values())if(person.badgeIdentity===p.badgeIdentity){setShopAppearance(person);broadcast({type:'profile',player:person});}}return json(res,200,{ok:true,result,craft:craftView(p)});}catch(error){return json(res,400,{error:error.message});}
+       try{const result=craftAct(p,d);if(result){await saveNow();if(d.kind==='skill'&&(d.command==='equip'||d.command==='upgrade'))syncPetPlayers(p.badgeIdentity);if(d.kind==='weapon'&&(d.command==='equip'||d.command==='upgrade'))for(const person of players.values())if(person.badgeIdentity===p.badgeIdentity){setShopAppearance(person);broadcast({type:'profile',player:person});}}return json(res,200,{ok:true,result,craft:craftView(p)});}catch(error){return json(res,400,{error:error.message});}
       }
       if(url.pathname==='/api/quest'){
        if(!p.badgeIdentity||playerSessions.get(id)!==String(d.sessionKey||''))return json(res,403,{error:'본인 세션에서 이용해 주세요.'});
@@ -1656,7 +1657,7 @@ const server=http.createServer(async(req,res)=>{
        if(petRaceBusy)return json(res,409,{error:'경주 상태를 저장하고 있어요. 잠시 후 다시 시도해 주세요.'});
        if(command!=='state'&&command!=='leave'&&(p.tentRoomId||Math.hypot((p.x-600)*.058+38,(p.y-500)*.058+8-39)>7))return json(res,403,{error:'해변의 펫 경주 부스에 가까이 와 주세요.'});
        try{
-        if(command==='join'){const pet=petPublic(petStats.get(identity)?.pet,petStats.get(identity));if(!pet?.hatched)throw Error('부화한 펫이 필요해요.');if(tentPointBalance(p)<Number(d.stake))throw Error('참가비가 부족해요.');petRace.join({identity,name:p.name,pet:{species:pet.species,color:pet.color,stage:pet.stage,hatched:true}},Number(d.stake));await saveNow();}
+        if(command==='join'){const pet=petPublic(petStats.get(identity)?.pet,petStats.get(identity),identity);if(!pet?.hatched)throw Error('부화한 펫이 필요해요.');if(tentPointBalance(p)<Number(d.stake))throw Error('참가비가 부족해요.');petRace.join({identity,name:p.name,pet:{species:pet.species,color:pet.color,stage:pet.stage,hatched:true}},Number(d.stake));await saveNow();}
         else if(command==='watch'){petRace.watch(identity);await saveNow();}
         else if(command==='leave'){petRace.leave(identity);await saveNow();}
         else if(command==='start'){

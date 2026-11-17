@@ -7411,7 +7411,7 @@ function makeAvatar(p){
  }
  // One crisp sprite for [badge][nickname] above every avatar.
  const cv=document.createElement('canvas');cv.width=768;cv.height=128;const ctx=cv.getContext('2d');
- const nickname=`Lv.${Math.max(1,Number(p.characterLevel)||1)} ${(p.name||'ROCKER').slice(0,18)}`;
+ const nickname=`Lv.${Math.max(1,Number(p.characterLevel)||1)} ${(p.name||'ROCKER').slice(0,18)} · 전투력 ${Number(p.characterPower||0).toLocaleString()}`;
  ctx.font='900 53px Arial, sans-serif';ctx.textAlign='left';ctx.textBaseline='middle';
  const textWidth=Math.min(560,ctx.measureText(nickname).width);
  const beginning=(768-(84+textWidth))/2;
@@ -9630,7 +9630,7 @@ function updatePetEffects(entry,pet,dancing,t,allowLight){
  }
  if(entry.fx.lamp)entry.fx.lamp.visible=!!effects.light&&allowLight;
 }
-function foxPetDispose(entry){petEffectsDispose(entry);entry.root.parent?.remove(entry.root);entry.model?.traverse(o=>{if(o.isMesh){for(const m of Array.isArray(o.material)?o.material:[o.material])m?.dispose?.();if(o.userData.foxPetOwnGeometry)o.geometry?.dispose?.();}});}
+function foxPetDispose(entry){if(entry.powerTag){entry.powerTag.material.map?.dispose();entry.powerTag.material.dispose();}petEffectsDispose(entry);entry.root.parent?.remove(entry.root);entry.model?.traverse(o=>{if(o.isMesh){for(const m of Array.isArray(o.material)?o.material:[o.material])m?.dispose?.();if(o.userData.foxPetOwnGeometry)o.geometry?.dispose?.();}});}
 // A single short takeoff/landing per beat, followed by a grounded pause.
 // This uses the same server-aligned BPM and beat origin as the owner's dance,
 // so nearby visitors see the pet jump in sync rather than using local timers.
@@ -9685,6 +9685,7 @@ function animateFoxPets(t,indoor=false){
    root.position.copy(avatar.root.position);(indoor?tentRoomScene:scene).add(root);
    entry={root,pivot,model,signature,lastX:root.position.x,lastZ:root.position.z};foxPetNodes.set(p.id,entry);
   }
+  if(pet.hatched){const power=Math.max(0,Number(pet.combatPower)||0);if(!entry.powerTag||entry.shownPower!==power){if(entry.powerTag){entry.root.remove(entry.powerTag);entry.powerTag.material.map?.dispose();entry.powerTag.material.dispose();}const cv=document.createElement('canvas');cv.width=512;cv.height=96;const cx=cv.getContext('2d');cx.font='bold 48px system-ui';cx.textAlign='center';cx.textBaseline='middle';cx.lineWidth=7;cx.strokeStyle='#10283b';cx.strokeText('전투력 '+power.toLocaleString(),256,48);cx.fillStyle='#dcf9ff';cx.fillText('전투력 '+power.toLocaleString(),256,48);const texture=new THREE.CanvasTexture(cv);texture.colorSpace=THREE.SRGBColorSpace;entry.powerTag=new THREE.Sprite(new THREE.SpriteMaterial({map:texture,transparent:true,depthTest:false,depthWrite:false}));entry.powerTag.scale.set(2.7,.51,1);entry.powerTag.position.y=2.7;entry.root.add(entry.powerTag);entry.shownPower=power;}}
   const parent=indoor?tentRoomScene:scene;if(entry.root.parent!==parent)parent.add(entry.root);
   const yaw=Number(p.id===state.id&&indoor?tentRoomLocal?.facing:p.facing)||0;
   const anchor=avatar.root.position;
@@ -9958,10 +9959,10 @@ function tick(t){
    ?{...serverPlayer,hairStyle:chosenHairStyle,hairColor:chosenHairColor}
    :serverPlayer;
   const current=avatars.get(id);
-  if(current&&(current.battleStage!==(p.battleStage||0)||current.characterLevel!==(p.characterLevel||1)||current.weaponTier!==(p.weaponTier||null)||current.color!==p.color||current.name!==p.name||current.badgeTier!==(p.badgeTier||'bronze')||current.gender!==p.gender||current.pattern!==(p.pattern||'solid')||current.sash!==(p.sash||'none')||current.hairStyle!==(p.hairStyle||'short')||current.hairColor!==(p.hairColor||'#4b3932')||current.flagText!==(p.flagText||'')||current.flagImage!==(p.flagImage||'')||Boolean(current.rhythmKing)!==Boolean(p.rhythmKing)||Boolean(current.powerKing)!==Boolean(p.powerKing)||Boolean(current.moleKing)!==Boolean(p.moleKing)||Boolean(current.fishKing)!==Boolean(p.fishKing)||Boolean(current.mineKing)!==Boolean(p.mineKing)||JSON.stringify(current.equipped||{})!==JSON.stringify(p.equipped||{}))){
+  if(current&&(current.characterPower!==(p.characterPower||0)||current.battleStage!==(p.battleStage||0)||current.characterLevel!==(p.characterLevel||1)||current.weaponTier!==(p.weaponTier||null)||current.color!==p.color||current.name!==p.name||current.badgeTier!==(p.badgeTier||'bronze')||current.gender!==p.gender||current.pattern!==(p.pattern||'solid')||current.sash!==(p.sash||'none')||current.hairStyle!==(p.hairStyle||'short')||current.hairColor!==(p.hairColor||'#4b3932')||current.flagText!==(p.flagText||'')||current.flagImage!==(p.flagImage||'')||Boolean(current.rhythmKing)!==Boolean(p.rhythmKing)||Boolean(current.powerKing)!==Boolean(p.powerKing)||Boolean(current.moleKing)!==Boolean(p.moleKing)||Boolean(current.fishKing)!==Boolean(p.fishKing)||Boolean(current.mineKing)!==Boolean(p.mineKing)||JSON.stringify(current.equipped||{})!==JSON.stringify(p.equipped||{}))){
    disposeAvatar(current.root);avatars.delete(id);
   }
-  if(!avatars.has(id)){let a=makeAvatar(p),pos=toWorld(p);a.root.position.set(pos.x,0,pos.z);a.battleStage=p.battleStage||0;a.characterLevel=p.characterLevel||1;a.weaponTier=p.weaponTier||null;a.name=p.name;a.badgeTier=p.badgeTier||'bronze';a.gender=p.gender;a.pattern=p.pattern||'solid';a.sash=p.sash||'none';a.hairStyle=p.hairStyle||'short';a.hairColor=p.hairColor||'#4b3932';a.flagText=p.flagText||'';a.flagImage=p.flagImage||'';a.rhythmKing=Boolean(p.rhythmKing);a.powerKing=Boolean(p.powerKing);a.moleKing=Boolean(p.moleKing);a.fishKing=Boolean(p.fishKing);a.mineKing=Boolean(p.mineKing);a.equipped={...(p.equipped||{})};avatars.set(id,a)}
+  if(!avatars.has(id)){let a=makeAvatar(p),pos=toWorld(p);a.root.position.set(pos.x,0,pos.z);a.characterPower=p.characterPower||0;a.battleStage=p.battleStage||0;a.characterLevel=p.characterLevel||1;a.weaponTier=p.weaponTier||null;a.name=p.name;a.badgeTier=p.badgeTier||'bronze';a.gender=p.gender;a.pattern=p.pattern||'solid';a.sash=p.sash||'none';a.hairStyle=p.hairStyle||'short';a.hairColor=p.hairColor||'#4b3932';a.flagText=p.flagText||'';a.flagImage=p.flagImage||'';a.rhythmKing=Boolean(p.rhythmKing);a.powerKing=Boolean(p.powerKing);a.moleKing=Boolean(p.moleKing);a.fishKing=Boolean(p.fishKing);a.mineKing=Boolean(p.mineKing);a.equipped={...(p.equipped||{})};avatars.set(id,a)}
   const avatar=avatars.get(id);
   animateAvatar(avatar,p,t);updateCharacterTrail(avatar,p,t,scene);
   if(avatar.parts.flagPivot?.parent?.visible){
