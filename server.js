@@ -468,7 +468,7 @@ function fishingTourneyCatch(p,fish){
  fishingTourneyTick();for(const t of fishingTournaments.values()){
   if(t.phase!=='running'||!t.targets.includes(fish.id))continue;const e=t.entries.find(x=>x.id===p.badgeIdentity);if(!e||e.caught.includes(fish.id))continue;
   e.caught.push(fish.id);
-  if(e.caught.length===t.targets.length){t.phase='finished';t.endedAt=Date.now();t.winner=e.name;t.winnerId=e.id;t.prize+=3000;petRacePoints.set(e.id,(petRacePoints.get(e.id)||0)+t.prize);t.vote=null;fishingTourneyNotify(t,`🏆 낚시대회 우승: ${e.name} · ${t.prize.toLocaleString()}P`);}
+  if(e.caught.length===t.targets.length){t.phase='finished';t.endedAt=Date.now();t.winner=e.name;t.winnerId=e.id;petRacePoints.set(e.id,(petRacePoints.get(e.id)||0)+t.prize);t.vote=null;fishingTourneyNotify(t,`🏆 낚시대회 우승: ${e.name} · ${t.prize.toLocaleString()}P`);}
   fishingTourneyChanged();
  }
 }
@@ -1226,7 +1226,7 @@ function strictSaveAdmin(){
  saveChain=saveChain.catch(()=>{}).then(()=>supabaseRequest('PATCH',{state:data,updated_at:new Date().toISOString()}));
  return saveChain;
 }
-async function settlePetRace(){if(!restored||petRaceBusy)return;petRaceBusy=true;try{const result=petRace.settle();if(result){for(const x of result.awards){if(x.rank===1)x.amount+=3000;petRacePoints.set(x.identity,(petRacePoints.get(x.identity)||0)+x.amount);}petRaceDirty=true;}if(petRaceDirty){await strictSaveAdmin();petRaceDirty=false;}}catch(e){console.error('Pet race save pending:',e.message)}finally{petRaceBusy=false;}}
+async function settlePetRace(){if(!restored||petRaceBusy)return;petRaceBusy=true;try{const result=petRace.settle();if(result){for(const x of result.awards)petRacePoints.set(x.identity,(petRacePoints.get(x.identity)||0)+x.amount);petRaceDirty=true;}if(petRaceDirty){await strictSaveAdmin();petRaceDirty=false;}}catch(e){console.error('Pet race save pending:',e.message)}finally{petRaceBusy=false;}}
 setInterval(()=>{void settlePetRace();if(restored)fishingTourneyTick()},2000).unref();
 setInterval(()=>{if(!restored||petRaceBusy||petRace.race?.phase!=='waiting')return;const online=new Set([...players.values()].map(p=>p.badgeIdentity));let changed=false;for(const entry of [...petRace.race.participants])if(!online.has(entry.identity)){petRace.leave(entry.identity);changed=true;}if(changed)scheduleSave();},15000).unref();
 function scheduleSave(){clearTimeout(saveTimeout);saveTimeout=setTimeout(()=>{void saveNow()},120);saveTimeout.unref()}
