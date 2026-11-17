@@ -519,6 +519,8 @@ const QUEST_CATALOG=[
  {kind:'fish',rarity:'common',goal:8,xp:260},{kind:'fish',rarity:'uncommon',goal:5,xp:380},{kind:'fish',rarity:'rare',goal:3,xp:560},{kind:'fish',rarity:'epic',goal:1,xp:850},
  {kind:'ore',rarity:'common',goal:10,xp:260},{kind:'ore',rarity:'uncommon',goal:6,xp:380},{kind:'ore',rarity:'rare',goal:4,xp:560},{kind:'ore',rarity:'epic',goal:2,xp:850}
 ];
+// Keep legacy missions valid when restoring saves, but do not offer heroic missions.
+const AVAILABLE_QUESTS=QUEST_CATALOG.filter(q=>q.rarity!=='epic');
 function questAccount(id){let q=questAccounts.get(id);if(!q){q={day:kstDate(),used:0,spent:0,xp:0,active:null};questAccounts.set(id,q);}if(q.day!==kstDate()){q.day=kstDate();q.used=0;}return q;}
 function questLevel(xp){let level=1;while(level<200&&xp>=40*level+8*level*(level+1))level++;return level;}
 function questView(p){const q=questAccount(p.badgeIdentity),level=questLevel(q.xp);return {day:q.day,used:q.used,limit:10,cost:2000,xp:q.xp,level,combatPower:characterCombatPower(p.badgeIdentity),nextXp:level<200?40*level+8*level*(level+1):null,active:q.active,points:tentPointBalance(p)};}
@@ -1650,7 +1652,7 @@ const server=http.createServer(async(req,res)=>{
        if(command==='accept'){
         if(p.tentRoomId||Math.hypot((p.x-600)*.058-(-45.6),(p.y-500)*.058+8-12)>16)return json(res,403,{error:'의뢰 부스 가까이 이동해 주세요.'});
         if(q.active)return json(res,409,{error:'진행 중인 의뢰를 완료해 주세요.'});if(q.used>=10)return json(res,409,{error:'오늘의 의뢰 10개를 모두 받았어요.'});if(tentPointBalance(p)<2000)return json(res,409,{error:'의뢰를 받으려면 2,000P가 필요해요.'});
-        q.active={...QUEST_CATALOG[crypto.randomInt(QUEST_CATALOG.length)],progress:0,done:false};q.spent+=2000;q.used++;await saveNow();
+        q.active={...AVAILABLE_QUESTS[crypto.randomInt(AVAILABLE_QUESTS.length)],progress:0,done:false};q.spent+=2000;q.used++;await saveNow();
        }else if(command==='claim'){
         if(!q.active?.done)return json(res,409,{error:'완료한 의뢰가 없어요.'});q.xp=Math.min(1000000,q.xp+q.active.xp);q.active=null;await saveNow();for(const person of players.values())if(person.badgeIdentity===p.badgeIdentity){setShopAppearance(person);broadcast({type:'profile',player:person});}
        }else if(command!=='state')return json(res,400,{error:'지원하지 않는 의뢰 명령입니다.'});
