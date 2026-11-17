@@ -5376,7 +5376,44 @@ function renderBattle(){const body=battleOverlay.querySelector('#battleText'),bu
  const add=(name,cmd,extra,disabled)=>{const button=document.createElement('button');button.textContent=name;button.disabled=!!disabled||battleBusy;button.onclick=()=>void battleRequest(cmd,extra);buttons.append(button)};
  if(b?.phase==='running')add('전투 포기','abandon',{},false);else add(`${Math.min(20,d.highest+1)}단계 도전`,'start',{stage:Math.min(20,d.highest+1)},!battleIsNear());}
 async function battleRequest(command='state',extra={}){if(battleBusy||!state.id)return;battleBusy=true;try{const r=await post('battle',{id:state.id,sessionKey,command,...extra});battleData=r.battle;renderBattle();}catch(e){toast(e.message||'전투 정보를 불러오지 못했어요.')}finally{battleBusy=false;renderBattle();if(!battleOverlay.hidden&&battleData?.active?.phase==='running'){clearTimeout(battleTimer);const b=battleData.active;battleTimer=setTimeout(()=>void battleRequest('turn',{battleId:b.id,turn:b.turn}),900);}}}
-battleNear.onclick=()=>{battleOverlay.hidden=false;void battleRequest()};battleOverlay.querySelector('#battleClose').onclick=()=>{battleOverlay.hidden=true;clearTimeout(battleTimer)};setInterval(()=>{battleNear.hidden=!battleIsNear()||!battleOverlay.hidden||!$('joinModal').classList.contains('hidden');},1000);
+let battleSceneActive=false,battleScene=null,battleCamera=null,battleAvatar=null,battlePetEntry=null,battleMonster=null,battleBg=null,battleCanvasHome=null,battleCanvasNext=null,battleCanvasStyle='',battleSceneRaf=0,battleFrameSize='',battleLastSceneTurn='',battleActionAt=0,battlePetAttempt=0;
+function startBattleScene(){
+ if(battleSceneActive||!state.me)return;
+ const area=battleOverlay.querySelector('#battleArena'),canvas=renderer.domElement;
+ try{
+  battleCanvasHome=canvas.parentNode;battleCanvasNext=canvas.nextSibling;battleCanvasStyle=canvas.style.cssText;battleSceneActive=true;
+  area.prepend(canvas);canvas.style.cssText='position:absolute;inset:0;width:100%;height:100%;z-index:1;pointer-events:none';area.classList.add('battle-3d');
+  if(stageForeground)stageForeground.domElement.style.display='none';
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,perfMobile?1:1.5));
+  battleScene=new THREE.Scene();battleScene.add(new THREE.HemisphereLight('#ffffff','#687080',2.4));const sun=new THREE.DirectionalLight('#fff5df',2);sun.position.set(0,7,9);battleScene.add(sun);
+  battleCamera=new THREE.OrthographicCamera(-6,6,3.4,-3.4,.1,100);battleCamera.position.set(0,4.3,12);battleCamera.lookAt(0,1.5,0);battleCamera.layers.enable(1);battleScene.add(battleCamera);
+  const bgTexture=new THREE.TextureLoader().load('/assets/rpg/battle-arena.png');bgTexture.colorSpace=THREE.SRGBColorSpace;const bgMesh=new THREE.Mesh(new THREE.PlaneGeometry(1,1),new THREE.MeshBasicMaterial({map:bgTexture,depthTest:false,depthWrite:false}));bgMesh.position.z=-80;bgMesh.renderOrder=-1000;battleCamera.add(bgMesh);battleBg={mesh:bgMesh,texture:bgTexture};
+  battleAvatar=makeAvatar({...state.me,id:'battle-preview',name:state.me.name||'나'});scene.remove(battleAvatar.root);battleScene.add(battleAvatar.root);battleAvatar.root.position.set(-2.7,0,0);battleAvatar.root.rotation.y=.6;
+  const monsterTexture=new THREE.TextureLoader().load('/assets/rpg/battle-monster.png');monsterTexture.colorSpace=THREE.SRGBColorSpace;battleMonster=new THREE.Sprite(new THREE.SpriteMaterial({map:monsterTexture,transparent:true,depthWrite:false}));battleMonster.position.set(2.65,1.45,0);battleMonster.scale.set(3,3,1);battleScene.add(battleMonster);
+  battleLastSceneTurn='';battleActionAt=0;battleFrameSize='';battlePetAttempt=0;
+  const frame=now=>{if(!battleSceneActive)return;battleSceneRaf=requestAnimationFrame(frame);if(document.hidden)return;const w=area.clientWidth,h=area.clientHeight;if(!w||!h)return;
+   const key=w+'x'+h;if(key!==battleFrameSize){battleFrameSize=key;renderer.setSize(w,h,false);battleCamera.left=-3.4*w/h;battleCamera.right=3.4*w/h;battleCamera.top=3.4;battleCamera.bottom=-3.4;battleCamera.updateProjectionMatrix();battleBg.mesh.scale.set(6.8*w/h,6.8,1);}
+   const pet=state.me?.pet;if(!battlePetEntry&&pet?.hatched&&now-battlePetAttempt>1000){battlePetAttempt=now;const model=petMakeModel(pet.species,pet.stage,pet.color);if(model){const root=new THREE.Group();root.position.set(-.95,0,.4);root.add(model);battleScene.add(root);battlePetEntry={root,model};}}
+   const b=battleData?.active,turnKey=b?b.id+':'+b.turn:'';if(turnKey!==battleLastSceneTurn){battleLastSceneTurn=turnKey;battleActionAt=now;}
+   const elapsed=now-battleActionAt,phase=Math.max(0,Math.min(1,elapsed/800)),pulse=Math.sin(phase*Math.PI),actor=b?.last?.actor;
+   if(battleAvatar){battleAvatar.root.position.x=-2.7+(actor==='character'?pulse*.65:0);if(battleAvatar.parts.rightShoulder)battleAvatar.parts.rightShoulder.rotation.x=actor==='character'?-pulse*1.2:0;}
+   if(battlePetEntry){battlePetEntry.root.position.y=actor==='pet'?pulse*.6:0;battlePetEntry.root.rotation.z=actor==='pet'?-pulse*.22:0;}
+   if(battleMonster){battleMonster.position.x=2.65-(actor==='monster'?pulse*.45:0);battleMonster.material.opacity=b?.phase==='won'?.35:1;}
+   renderer.render(battleScene,battleCamera);
+  };battleSceneRaf=requestAnimationFrame(frame);
+ }catch(error){console.warn('Battle 3D preview:',error);stopBattleScene();}
+}
+function stopBattleScene(){
+ if(!battleSceneActive)return;battleSceneActive=false;cancelAnimationFrame(battleSceneRaf);battleSceneRaf=0;
+ if(battleAvatar){disposeAvatar(battleAvatar.root);battleAvatar=null;}
+ if(battlePetEntry){foxPetDispose(battlePetEntry);battlePetEntry=null;}
+ if(battleMonster){battleMonster.material.map?.dispose();battleMonster.material.dispose();battleMonster.parent?.remove(battleMonster);battleMonster=null;}
+ if(battleBg){battleBg.mesh.geometry.dispose();battleBg.mesh.material.dispose();battleBg.texture.dispose();battleBg=null;}
+ const canvas=renderer.domElement;if(battleCanvasHome){if(battleCanvasNext?.parentNode===battleCanvasHome)battleCanvasHome.insertBefore(canvas,battleCanvasNext);else battleCanvasHome.appendChild(canvas);}canvas.style.cssText=battleCanvasStyle;battleCanvasHome=null;battleCanvasNext=null;battleScene=null;battleCamera=null;battleOverlay.querySelector('#battleArena').classList.remove('battle-3d');if(stageForeground)stageForeground.domElement.style.display='';renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,performanceRatio()));resize();
+}
+const battle3DStyle=document.createElement('style');battle3DStyle.textContent=`#battleArena.battle-3d .battle-fighter,#battleArena.battle-3d .battle-pet,#battleArena.battle-3d .battle-monster{display:none}#battleArena.battle-3d .battle-impact,#battleArena.battle-3d .battle-damage{z-index:3}`;document.head.append(battle3DStyle);
+
+battleNear.onclick=()=>{battleOverlay.hidden=false;startBattleScene();void battleRequest()};battleOverlay.querySelector('#battleClose').onclick=()=>{battleOverlay.hidden=true;clearTimeout(battleTimer);stopBattleScene()};setInterval(()=>{battleNear.hidden=!battleIsNear()||!battleOverlay.hidden||!$('joinModal').classList.contains('hidden');},1000);
 
 // trees, lanterns, food stalls
 const importedMapleLoader=new GLTFLoader();
@@ -9724,7 +9761,7 @@ function tick(t){
  if(!perfLastFrameTime)perfLastFrameTime=t-perfTargetFrame;
  const elapsed=t-perfLastFrameTime;
  if(document.hidden){perfLastFrameTime=t;tick.lastFrame=t;return}
- if(petRaceMobileDevice&&petRaceOpen){perfLastFrameTime=t;tick.lastFrame=t;return;}
+ if((petRaceMobileDevice&&petRaceOpen)||battleSceneActive){perfLastFrameTime=t;tick.lastFrame=t;return;}
  // A small indoor room needs far less work than the festival exterior.
  // Render its movement at >=45fps when hardware permits, even in eco mode.
  const targetFrame=tentRoomActive?Math.min(perfTargetFrame,1000/45):perfTargetFrame;
@@ -10027,7 +10064,7 @@ function tick(t){
   }
  }
 }
-function resize(){let w=host.clientWidth,h=host.clientHeight;if(!w||!h)return;camera.aspect=w/h;camera.updateProjectionMatrix();if(!petRaceUsingMain)renderer.setSize(w,h,false);cssRenderer.setSize(w,h);if(stageForeground)stageForeground.setSize((perfMobile&&tentRoomActive)||petRaceMobileMode?1:w,(perfMobile&&tentRoomActive)||petRaceMobileMode?1:h,false)}new ResizeObserver(resize).observe(host);resize();requestAnimationFrame(tick);
+function resize(){let w=host.clientWidth,h=host.clientHeight;if(!w||!h)return;camera.aspect=w/h;camera.updateProjectionMatrix();if(!petRaceUsingMain&&!battleSceneActive)renderer.setSize(w,h,false);cssRenderer.setSize(w,h);if(stageForeground)stageForeground.setSize((perfMobile&&tentRoomActive)||petRaceMobileMode?1:w,(perfMobile&&tentRoomActive)||petRaceMobileMode?1:h,false)}new ResizeObserver(resize).observe(host);resize();requestAnimationFrame(tick);
 setInterval(()=>{syncVideo();reportDuration();let m=state.music;if(!m.id)return;let sec=m.paused?m.position:(Date.now()+state.serverDelta-m.startedAt)/1000;let dur=state.ytReady?state.yt.getDuration():0;$('progressFill').style.width=m.isLive?'100%':dur?Math.min(100,sec/dur*100)+'%':'0%'},5000);
 window.addEventListener('pagehide',()=>{if(state.id)navigator.sendBeacon('/api/leave',new Blob([JSON.stringify({id:state.id,pageId})],{type:'application/json'}))});
 
