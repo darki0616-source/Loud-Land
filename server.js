@@ -1245,7 +1245,7 @@ setInterval(cleanup,7000).unref();
 setInterval(()=>{
  if(!restored||!fieldCoins.size)return;
  const now=Date.now();
- for(const p of players.values())if(clients.has(p.id)&&playerSessions.has(p.id)&&now-p.seen<=45000&&activePetCoinLevel(p)>=25)collectNearbyFieldCoin(p);
+ for(const p of players.values())if(clients.has(p.id)&&playerSessions.has(p.id)&&now-p.seen<=45000)collectNearbyFieldCoin(p);
 },1000).unref();
 
 setInterval(()=>{
