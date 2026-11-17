@@ -6705,8 +6705,8 @@ function attachRpgWeapon(parts,root,tier){if(!tier||!parts.rightElbow)return;con
  // Normalize and locate the grip before parenting to the animated hand: world-space
  // bounds change with the avatar's position and rotation, model-local bounds do not.
  if(tier==='common'||tier==='uncommon')model.rotation.z=Math.PI/2;else if(tier==='rare')model.rotation.x=-Math.PI/2;
- const normalized=new THREE.Group();normalized.add(model);normalized.updateMatrixWorld(true);let box=new THREE.Box3().setFromObject(model),size=box.getSize(new THREE.Vector3());if(!box.isEmpty()&&size.y>0){model.scale.multiplyScalar(1.35/size.y);normalized.updateMatrixWorld(true);box=new THREE.Box3().setFromObject(model);size=box.getSize(new THREE.Vector3());const gripFraction={common:.12,uncommon:.12,rare:.12,epic:.12,legendary:.12}[tier];model.position.sub(new THREE.Vector3((box.min.x+box.max.x)/2,box.min.y+size.y*gripFraction,(box.min.z+box.max.z)/2));}mount.add(normalized);addForegroundLayer(normalized);
- const colors={common:'#d4e6f0',uncommon:'#80ef9e',rare:'#61b9ff',epic:'#d780ff',legendary:'#ffdc70'};const count={common:1,uncommon:2,rare:3,epic:4,legendary:6}[tier];parts.rpgWeaponFx=[];for(let i=0;i<count;i++){const star=new THREE.Mesh(new THREE.OctahedronGeometry(.035+i*.003,0),new THREE.MeshBasicMaterial({color:colors[tier],transparent:true,opacity:.8,depthWrite:false}));mount.add(star);parts.rpgWeaponFx.push(star);}
+ const normalized=new THREE.Group();normalized.add(model);normalized.updateMatrixWorld(true);let box=new THREE.Box3().setFromObject(model),size=box.getSize(new THREE.Vector3());if(!box.isEmpty()&&size.y>0){model.scale.multiplyScalar(1.9/size.y);normalized.updateMatrixWorld(true);box=new THREE.Box3().setFromObject(model);size=box.getSize(new THREE.Vector3());const gripFraction={common:.12,uncommon:.12,rare:.12,epic:.12,legendary:.12}[tier];model.position.sub(new THREE.Vector3((box.min.x+box.max.x)/2,box.min.y+size.y*gripFraction,(box.min.z+box.max.z)/2));}normalized.rotation.x=Math.PI/2;mount.add(normalized);addForegroundLayer(normalized);
+ const colors={common:'#d4e6f0',uncommon:'#80ef9e',rare:'#61b9ff',epic:'#d780ff',legendary:'#ffdc70'};const count={common:1,uncommon:2,rare:3,epic:4,legendary:6}[tier];parts.rpgWeaponFx=[];for(let i=0;i<count;i++){const star=new THREE.Mesh(new THREE.OctahedronGeometry(.035+i*.003,0),new THREE.MeshBasicMaterial({color:colors[tier],transparent:true,opacity:.8,depthWrite:false}));normalized.add(star);parts.rpgWeaponFx.push(star);}
  }).catch(e=>console.warn('무기 모델 로드 실패:',e));
 }
 
@@ -7847,7 +7847,7 @@ function updateBirthdayVfx(avatar,active,t){
  }
 }
 function animateAvatar(a,p,t){
- if(a.parts.rpgWeaponFx)for(const [i,star] of a.parts.rpgWeaponFx.entries()){const angle=t*.002+i*2.4;star.position.set(Math.cos(angle)*.14,.2+((t*.00035+i*.21)%1)*1.15,Math.sin(angle)*.14);star.material.opacity=.4+.5*(.5+.5*Math.sin(t*.006+i));}
+ if(a.parts.rpgWeaponFx)for(const [i,star] of a.parts.rpgWeaponFx.entries()){const angle=t*.002+i*2.4;star.position.set(Math.cos(angle)*.14,.2+((t*.00035+i*.21)%1)*1.65,Math.sin(angle)*.14);star.material.opacity=.4+.5*(.5+.5*Math.sin(t*.006+i));}
  const q=(p.id===state.id&&state.me)?state.me:p,wp=toWorld(q),P=a.parts;
  const duoContext=duoPose(q.id),surfPose=crowdSurfScene&&slamNow()<crowdSurfScene.startAt+crowdSurfScene.duration?surfPoseAt(crowdSurfScene,q.id):null;
  const act=surfPose?.action||duoContext?.action||(q.action||'idle'),basePose=surfPose||duoContext?'stand':(q.pose||((act==='sit'||act==='lie')?act:'stand'));
