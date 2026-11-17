@@ -6571,6 +6571,13 @@ function makeMineKingVisual(root,parts){
  if(stageForeground)addForegroundLayer(g);
 }
 
+const weaponModels=new Map();
+function loadRpgWeapon(tier){if(!['common','uncommon','rare','epic','legendary'].includes(tier))return Promise.reject(Error('무기 등급 오류'));if(!weaponModels.has(tier)){const pending=new Promise((resolve,reject)=>new GLTFLoader().load(`/assets/rpg/weapons/weapon_${tier}.glb`,g=>resolve(g.scene),undefined,reject));weaponModels.set(tier,pending);pending.catch(()=>weaponModels.delete(tier));}return weaponModels.get(tier);}
+function attachRpgWeapon(parts,root,tier){if(!tier||!parts.rightElbow)return;const mount=new THREE.Group();mount.position.set(0,-.42,.06);parts.rightElbow.add(mount);parts.rpgWeapon=mount;
+ loadRpgWeapon(tier).then(template=>{if(!root.parent||parts.rpgWeapon!==mount)return;const model=template.clone(true);model.traverse(o=>{if(!o.isMesh)return;o.geometry=o.geometry.clone();o.material=Array.isArray(o.material)?o.material.map(m=>m.clone()):o.material.clone();for(const m of Array.isArray(o.material)?o.material:[o.material]){if(m.map)sharedWingResources.add(m.map);if(m.emissiveMap)sharedWingResources.add(m.emissiveMap);}});if(tier==='common'||tier==='uncommon')model.rotation.z=Math.PI/2;else if(tier==='rare')model.rotation.x=-Math.PI/2;mount.add(model);model.updateMatrixWorld(true);const box=new THREE.Box3().setFromObject(model),size=box.getSize(new THREE.Vector3());if(!box.isEmpty()&&size.y>0){const scale=1.35/size.y;model.scale.multiplyScalar(scale);model.updateMatrixWorld(true);const b=new THREE.Box3().setFromObject(model),center=b.getCenter(new THREE.Vector3());const grip=mount.worldToLocal(new THREE.Vector3(center.x,b.min.y,center.z));model.position.sub(grip);}addForegroundLayer(model);
+ const colors={common:'#d4e6f0',uncommon:'#80ef9e',rare:'#61b9ff',epic:'#d780ff',legendary:'#ffdc70'};const count={common:1,uncommon:2,rare:3,epic:4,legendary:6}[tier];parts.rpgWeaponFx=[];for(let i=0;i<count;i++){const star=new THREE.Mesh(new THREE.OctahedronGeometry(.035+i*.003,0),new THREE.MeshBasicMaterial({color:colors[tier],transparent:true,opacity:.8,depthWrite:false}));mount.add(star);parts.rpgWeaponFx.push(star);}
+ }).catch(e=>console.warn('무기 모델 로드 실패:',e));
+}
 function makeAvatar(p){
  const root=new THREE.Group();scene.add(root);
  const parts={}, female=p.gender==='female';
@@ -7432,6 +7439,7 @@ function makeAvatar(p){
   const crumb=new THREE.Mesh(crumbGeo,crumbMaterials[i%crumbMaterials.length]);crumb.visible=false;
   snackCrumbs.add(crumb);parts.snackCrumbs.push(crumb);
  }
+ attachRpgWeapon(parts,root,p.weaponTier);
  return {root,parts,color:p.color,lastAction:'idle',beatkingYaw:0,powerkingYaw:0};
 }
 
@@ -7707,6 +7715,7 @@ function updateBirthdayVfx(avatar,active,t){
  }
 }
 function animateAvatar(a,p,t){
+ if(a.parts.rpgWeaponFx)for(const [i,star] of a.parts.rpgWeaponFx.entries()){const angle=t*.002+i*2.4;star.position.set(Math.cos(angle)*.14,.2+((t*.00035+i*.21)%1)*1.15,Math.sin(angle)*.14);star.material.opacity=.4+.5*(.5+.5*Math.sin(t*.006+i));}
  const q=(p.id===state.id&&state.me)?state.me:p,wp=toWorld(q),P=a.parts;
  const duoContext=duoPose(q.id),surfPose=crowdSurfScene&&slamNow()<crowdSurfScene.startAt+crowdSurfScene.duration?surfPoseAt(crowdSurfScene,q.id):null;
  const act=surfPose?.action||duoContext?.action||(q.action||'idle'),basePose=surfPose||duoContext?'stand':(q.pose||((act==='sit'||act==='lie')?act:'stand'));
@@ -9928,10 +9937,10 @@ function tick(t){
    ?{...serverPlayer,hairStyle:chosenHairStyle,hairColor:chosenHairColor}
    :serverPlayer;
   const current=avatars.get(id);
-  if(current&&(current.color!==p.color||current.name!==p.name||current.badgeTier!==(p.badgeTier||'bronze')||current.gender!==p.gender||current.pattern!==(p.pattern||'solid')||current.sash!==(p.sash||'none')||current.hairStyle!==(p.hairStyle||'short')||current.hairColor!==(p.hairColor||'#4b3932')||current.flagText!==(p.flagText||'')||current.flagImage!==(p.flagImage||'')||Boolean(current.rhythmKing)!==Boolean(p.rhythmKing)||Boolean(current.powerKing)!==Boolean(p.powerKing)||Boolean(current.moleKing)!==Boolean(p.moleKing)||Boolean(current.fishKing)!==Boolean(p.fishKing)||Boolean(current.mineKing)!==Boolean(p.mineKing)||JSON.stringify(current.equipped||{})!==JSON.stringify(p.equipped||{}))){
+  if(current&&(current.weaponTier!==(p.weaponTier||null)||current.color!==p.color||current.name!==p.name||current.badgeTier!==(p.badgeTier||'bronze')||current.gender!==p.gender||current.pattern!==(p.pattern||'solid')||current.sash!==(p.sash||'none')||current.hairStyle!==(p.hairStyle||'short')||current.hairColor!==(p.hairColor||'#4b3932')||current.flagText!==(p.flagText||'')||current.flagImage!==(p.flagImage||'')||Boolean(current.rhythmKing)!==Boolean(p.rhythmKing)||Boolean(current.powerKing)!==Boolean(p.powerKing)||Boolean(current.moleKing)!==Boolean(p.moleKing)||Boolean(current.fishKing)!==Boolean(p.fishKing)||Boolean(current.mineKing)!==Boolean(p.mineKing)||JSON.stringify(current.equipped||{})!==JSON.stringify(p.equipped||{}))){
    disposeAvatar(current.root);avatars.delete(id);
   }
-  if(!avatars.has(id)){let a=makeAvatar(p),pos=toWorld(p);a.root.position.set(pos.x,0,pos.z);a.name=p.name;a.badgeTier=p.badgeTier||'bronze';a.gender=p.gender;a.pattern=p.pattern||'solid';a.sash=p.sash||'none';a.hairStyle=p.hairStyle||'short';a.hairColor=p.hairColor||'#4b3932';a.flagText=p.flagText||'';a.flagImage=p.flagImage||'';a.rhythmKing=Boolean(p.rhythmKing);a.powerKing=Boolean(p.powerKing);a.moleKing=Boolean(p.moleKing);a.fishKing=Boolean(p.fishKing);a.mineKing=Boolean(p.mineKing);a.equipped={...(p.equipped||{})};avatars.set(id,a)}
+  if(!avatars.has(id)){let a=makeAvatar(p),pos=toWorld(p);a.root.position.set(pos.x,0,pos.z);a.weaponTier=p.weaponTier||null;a.name=p.name;a.badgeTier=p.badgeTier||'bronze';a.gender=p.gender;a.pattern=p.pattern||'solid';a.sash=p.sash||'none';a.hairStyle=p.hairStyle||'short';a.hairColor=p.hairColor||'#4b3932';a.flagText=p.flagText||'';a.flagImage=p.flagImage||'';a.rhythmKing=Boolean(p.rhythmKing);a.powerKing=Boolean(p.powerKing);a.moleKing=Boolean(p.moleKing);a.fishKing=Boolean(p.fishKing);a.mineKing=Boolean(p.mineKing);a.equipped={...(p.equipped||{})};avatars.set(id,a)}
   const avatar=avatars.get(id);
   animateAvatar(avatar,p,t);updateCharacterTrail(avatar,p,t,scene);
   if(avatar.parts.flagPivot?.parent?.visible){

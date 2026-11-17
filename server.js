@@ -927,7 +927,7 @@ function getShopView(p,now=Date.now()){
  return {points:tentPointBalance(p),earned,spent:(tentOwnedBy(p.badgeIdentity)?TENT_COST:0)+(furnitureStats.get(p.badgeIdentity)?.spent||0)+(petStats.get(p.badgeIdentity)?.spent||0)+(tentOwnedBy(p.badgeIdentity)?.outdoorDecorSpent||0),refunded:record.refunded||0,testing:true,owned:Object.keys(publicMdItems()),equipped:{...record.equipped},items:publicMdItems()};
 }
 function setShopAppearance(p){
- p.equipped=p.badgeIdentity?{...shopRecord(p.badgeIdentity).equipped}:{};
+ p.equipped=p.badgeIdentity?{...shopRecord(p.badgeIdentity).equipped}:{};p.weaponTier=p.badgeIdentity?(craftAccounts.get(p.badgeIdentity)?.equippedWeapon||null):null;
 }
 
 const BADGE_LEVELS=[['bronze',0],['silver',3600],['gold',18000],['platinum',54000],['diamond',144000],['crown',360000]];
@@ -1611,7 +1611,7 @@ const server=http.createServer(async(req,res)=>{
       if(url.pathname==='/api/craft'){
        if(!p.badgeIdentity||playerSessions.get(id)!==String(d.sessionKey||''))return json(res,403,{error:'본인 세션에서 이용해 주세요.'});
        if(String(d.command||'state')!=='state'&&(p.tentRoomId||Math.hypot((p.x-600)*.058-(-32),(p.y-500)*.058+8-(-7.2))>9))return json(res,403,{error:'제작 부스 가까이 이동해 주세요.'});
-       try{const result=craftAct(p,d);if(result)await saveNow();return json(res,200,{ok:true,result,craft:craftView(p)});}catch(error){return json(res,400,{error:error.message});}
+       try{const result=craftAct(p,d);if(result){await saveNow();if(d.kind==='weapon'&&d.command==='equip')for(const person of players.values())if(person.badgeIdentity===p.badgeIdentity){setShopAppearance(person);broadcast({type:'profile',player:person});}}return json(res,200,{ok:true,result,craft:craftView(p)});}catch(error){return json(res,400,{error:error.message});}
       }
       if(url.pathname==='/api/quest'){
        if(!p.badgeIdentity||playerSessions.get(id)!==String(d.sessionKey||''))return json(res,403,{error:'본인 세션에서 이용해 주세요.'});
