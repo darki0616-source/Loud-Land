@@ -1332,6 +1332,18 @@ setInterval(()=>{
 },60000).unref();
 setInterval(()=>{if(restored){maybeRotateRhythmDay();rotatePowerDay();rotateMoleDay();rotateFishKingDay();rotateMineKingDay()}},30000).unref();
 
+// One uninterrupted active dance minute per account yields 10 points.
+const paidDanceActions=new Set(['headbang','buriburi','groove','dougie','windmill','skanking','airguitar','headspin','freestyle','rock-skank','shoulder-headbang']);
+const danceRewardClocks=new Map();
+function processDanceRewards(now=Date.now()){
+ if(!restored)return;
+ const active=new Map();
+ for(const p of players.values())if(p.badgeIdentity&&clients.has(p.id)&&playerSessions.has(p.id)&&now-p.seen<=45000&&!p.gamePlaying&&paidDanceActions.has(p.action))active.set(p.badgeIdentity,p);
+ for(const identity of danceRewardClocks.keys())if(!active.has(identity))danceRewardClocks.delete(identity);
+ for(const [identity,p] of active){let clock=danceRewardClocks.get(identity);if(clock===undefined||now<clock){danceRewardClocks.set(identity,now);continue;}if(now-clock<60000)continue;danceRewardClocks.set(identity,now);adminPointCredits.set(identity,(adminPointCredits.get(identity)||0)+10);scheduleSave();for(const viewer of players.values())if(viewer.badgeIdentity===identity){const connection=clients.get(viewer.id);if(connection)try{send(connection,{type:'dance-reward',amount:10});}catch{}}}
+}
+setInterval(processDanceRewards,1000).unref();
+
 function videoId(input){const v=String(input||'').trim();if(/^[\w-]{11}$/.test(v))return v;try{const u=new URL(v);const host=u.hostname.replace(/^www\./,'');if(host==='youtu.be')return /^[\w-]{11}$/.test(u.pathname.slice(1))?u.pathname.slice(1):null;if(['youtube.com','m.youtube.com','music.youtube.com','youtube-nocookie.com'].includes(host)){const id=u.searchParams.get('v')||u.pathname.match(/\/(?:embed|shorts|live)\/([\w-]{11})/)?.[1];return /^[\w-]{11}$/.test(id||'')?id:null}}catch{}return null}
 // Read the actual public YouTube title server-side; never trust a user-submitted title.
 // YouTube search runs only on the server, keeping its API key out of public JS.
