@@ -571,6 +571,7 @@ function fishingNearSea(p){
 }
 function fishingAccount(identity){
  let a=fishingStats.get(identity);
+ if(a?.auto&&!players.has(a.auto.playerId))a.auto=null;
  if(!a){a={level:0,spent:0,bonus:0,fishCounts:{},totalMisses:0,lastCastAt:0,active:null,lastResult:null};fishingStats.set(identity,a);}
  if(a.active&&Date.now()>a.active.expiresAt+1000){
   a.lastResult={id:a.active.id,success:false,reason:'time',at:Date.now()};a.totalMisses++;a.active=null;scheduleSave();
@@ -602,7 +603,7 @@ function fishPublicSession(s){return s?{id:s.id,biteAt:s.biteAt,expiresAt:s.expi
 function fishingView(p){
  const a=fishingAccount(p.badgeIdentity);return {level:a.level,rodName:FISH_LEVEL_NAMES[a.level],nextPrice:a.level<FISH_MAX_LEVEL?FISH_ROD_PRICES[a.level+1]:null,
   maxLevel:FISH_MAX_LEVEL,prices:FISH_ROD_PRICES,points:tentPointBalance(p),caught:Object.values(a.fishCounts).reduce((n,v)=>n+v,0),
-  collected:Object.keys(a.fishCounts).length,misses:a.totalMisses,fishCounts:a.fishCounts,lastResult:a.lastResult,session:fishPublicSession(a.active),
+  collected:Object.keys(a.fishCounts).length,misses:a.totalMisses,fishCounts:a.fishCounts,lastResult:a.lastResult,session:fishPublicSession(a.active),auto:a.auto?.playerId===p.id?{nextAt:a.auto.nextAt}:null,
   cooldownUntil:a.lastCastAt+FISH_CAST_COOLDOWN_MS,near:fishingNearSea(p),catalog:FISH_CATALOG,king:fishKingPublic(),serverNow:Date.now()};
 }
 // Difficulty rises with rarity while rod upgrades still improve control.
@@ -1724,7 +1725,26 @@ const server=http.createServer(async(req,res)=>{
         if(!p.badgeIdentity||playerSessions.get(id)!==String(d.sessionKey||''))return json(res,403,{error:'본인 세션에서만 낚시할 수 있어요.'});
         const command=String(d.command||'state'),a=fishingAccount(p.badgeIdentity);
         if(command==='state')return json(res,200,{ok:true,fishing:fishingView(p)});
+        if(command==='auto-stop'){if(a.auto?.playerId===p.id)a.auto=null;return json(res,200,{ok:true,fishing:fishingView(p)});}
         if(!fishingNearSea(p))return json(res,403,{error:'바다 앞 모래사장으로 이동해 주세요.'});
+        if(command==='auto-start'){
+          if(!a.level)return json(res,409,{error:'낚싯대를 먼저 구매해 주세요.'});
+          if(a.active)return json(res,409,{error:'현재 낚시를 마친 뒤 자동 낚시를 켜 주세요.'});
+          if(miningAccount(p.badgeIdentity).active)return json(res,409,{error:'광질을 종료한 뒤 자동 낚시를 켜 주세요.'});
+          if(a.auto&&a.auto.playerId!==p.id)return json(res,409,{error:'다른 창에서 자동 낚시 중이에요.'});
+          if(!a.auto)a.auto={playerId:p.id,nextAt:Date.now()+180000};
+          return json(res,200,{ok:true,fishing:fishingView(p)});
+        }
+        if(command==='auto-catch'){
+          const auto=a.auto,now=Date.now();if(!auto||auto.playerId!==p.id)return json(res,409,{error:'자동 낚시가 종료됐어요.'});
+          if(miningAccount(p.badgeIdentity).active){a.auto=null;return json(res,409,{error:'광질 중에는 자동 낚시를 할 수 없어요.'});}
+          if(now<auto.nextAt)return json(res,429,{error:'아직 물고기를 기다리고 있어요.'});
+          auto.nextAt=now+180000;const fish=fishingDraw(),resultId=crypto.randomUUID();
+          a.bonus+=fish.points;a.fishCounts[fish.id]=(a.fishCounts[fish.id]||0)+1;recordFishingPoints(p,fish.points);questProgress(p,'fish',fish.rarity);fishingTourneyCatch(p,fish);
+          a.lastResult={id:resultId,success:true,fish,points:fish.points,reason:'caught',at:now};await saveNow();broadcast({type:'fishing-find',playerId:p.id,fishId:fish.id,name:fish.name,points:fish.points,rarity:fish.rarity});announceRareFind(p,fish);
+          return json(res,200,{ok:true,result:a.lastResult,fishing:fishingView(p)});
+        }
+        if(a.auto)return json(res,409,{error:'자동 낚시를 종료한 뒤 이용해 주세요.'});
         if(command==='buy'){
           if(a.level)return json(res,409,{error:'이미 낚싯대를 가지고 있어요.'});
           const cost=FISH_ROD_PRICES[1];if(tentPointBalance(p)<cost)return json(res,409,{error:'기본 낚싯대 구매에 500P가 필요해요.'});
@@ -1795,6 +1815,7 @@ const server=http.createServer(async(req,res)=>{
        const command=String(d.command||'state'),a=miningAccount(p.badgeIdentity),now=Date.now();
        if(command==='state')return json(res,200,{ok:true,mining:miningView(p)});
        if(command==='start'){
+        if(fishingAccount(p.badgeIdentity).auto)return json(res,409,{error:'자동 낚시를 종료한 뒤 광질해 주세요.'});
         const rock=MINING_ROCKS.find(x=>x.id===String(d.rockId||''));
         if(!rock||miningDistance(p,rock)>4)return json(res,403,{error:'광맥 가까이 이동해 주세요.'});
         if(a.active&&a.active.playerId!==p.id)return json(res,409,{error:'다른 창에서 광질 중이에요. 종료하거나 잠시 기다려 주세요.'});
