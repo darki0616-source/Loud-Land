@@ -578,6 +578,20 @@ function fishingAccount(identity){
  }
  return a;
 }
+async function settleAutoFish(p,a,now=Date.now()){
+ const auto=a.auto;if(!auto||auto.playerId!==p.id||now<auto.nextAt)return null;
+ auto.nextAt=now+180000;const fish=fishingDraw(),resultId=crypto.randomUUID();
+ a.bonus+=fish.points;a.fishCounts[fish.id]=(a.fishCounts[fish.id]||0)+1;recordFishingPoints(p,fish.points);questProgress(p,'fish',fish.rarity);fishingTourneyCatch(p,fish);
+ const result=a.lastResult={id:resultId,success:true,fish,points:fish.points,reason:'caught',at:now};
+ await saveNow();broadcast({type:'fishing-find',playerId:p.id,fishId:fish.id,name:fish.name,points:fish.points,rarity:fish.rarity});announceRareFind(p,fish);
+ const connection=clients.get(p.id);if(connection)try{send(connection,{type:'auto-fishing-update',result,fishing:fishingView(p)});}catch{}
+ return result;
+}
+function processAutoFishing(now=Date.now()){
+ if(!restored)return;
+ for(const [identity,a] of fishingStats){const auto=a.auto;if(!auto||now<auto.nextAt)continue;const p=players.get(auto.playerId);if(!p||p.badgeIdentity!==identity||!clients.has(p.id)||!playerSessions.has(p.id)||!fishingNearSea(p)||miningAccount(identity).active){a.auto=null;continue;}void settleAutoFish(p,a,now).catch(error=>console.error('Auto fishing save failed:',error.message));}
+}
+setInterval(processAutoFishing,1000).unref();
 function fishPosition(session,at){return .5+.5*Math.sin((at-session.startAt)/1000*session.speed+session.phase);}
 // Deterministic resistance phases are shared by the server and the display.
 function fishStrugglePhase(s,at){
@@ -1312,7 +1326,7 @@ setInterval(()=>{const now=Date.now();for(const duo of [...activeDuos.values()])
 const snapshot=(viewerId=null)=>({type:'snapshot',tents:allPlacedTents(),announcements:publicNoticeState(),interactions:[...activeDuos.values()].filter(x=>x.endAt>Date.now()),players:[...players.values()],chatRoomId:players.get(viewerId)?.tentRoomId||null,chat:chatForRoom(players.get(viewerId)?.tentRoomId||null),...musicState(),skipVote:publicSkipVote(),skipVoteCooldownUntil,slam:publicSlam(),slamCooldownUntil,rockPlay:publicRock(),crowdSurf:activeSurfRide&&activeSurfRide.startAt+activeSurfRide.duration>Date.now()?activeSurfRide:null,rockCooldowns:{...rockCooldowns},rockRunningUntil,rhythm:publicRhythmState(),power:publicPowerState(),mole:publicMoleState(),fieldCoins:fieldCoinPublic(),count:players.size});
 const clamp=(n,min,max)=>Math.min(max,Math.max(min,Number(n)||0));
 const SERVER_X_MIN=20,SERVER_X_MAX=1380,SERVER_Y_MIN=60,SERVER_Y_MAX=1550;
-function cleanup(){const now=Date.now();for(const [id,p] of players)if(now-p.seen>180000){settleBadge(p,Math.min(now,p.seen+45000));settleBadge(p);clearDuosFor(id);clearMiningPlayer(p);players.delete(id);forgetSession(id);voterLeaves(id);if(activeSlam?.participants.delete(id))slamUpdate();rockMemberLeaves(id);pauseForEmpty();const r=clients.get(id);if(r){r.end();clients.delete(id)}broadcast({type:'leave',id,count:players.size});sendTentUpdate()}}
+function cleanup(){const now=Date.now();for(const [id,p] of players)if(now-p.seen>180000&&!(clients.has(id)&&fishingStats.get(p.badgeIdentity)?.auto?.playerId===id)){settleBadge(p,Math.min(now,p.seen+45000));settleBadge(p);clearDuosFor(id);clearMiningPlayer(p);players.delete(id);forgetSession(id);voterLeaves(id);if(activeSlam?.participants.delete(id))slamUpdate();rockMemberLeaves(id);pauseForEmpty();const r=clients.get(id);if(r){r.end();clients.delete(id)}broadcast({type:'leave',id,count:players.size});sendTentUpdate()}}
 setInterval(cleanup,7000).unref();
 // Check connected, fresh players even while standing still; each coin has one winner.
 setInterval(()=>{
@@ -1751,10 +1765,8 @@ const server=http.createServer(async(req,res)=>{
           const auto=a.auto,now=Date.now();if(!auto||auto.playerId!==p.id)return json(res,409,{error:'자동 낚시가 종료됐어요.'});
           if(miningAccount(p.badgeIdentity).active){a.auto=null;return json(res,409,{error:'광질 중에는 자동 낚시를 할 수 없어요.'});}
           if(now<auto.nextAt)return json(res,429,{error:'아직 물고기를 기다리고 있어요.'});
-          auto.nextAt=now+180000;const fish=fishingDraw(),resultId=crypto.randomUUID();
-          a.bonus+=fish.points;a.fishCounts[fish.id]=(a.fishCounts[fish.id]||0)+1;recordFishingPoints(p,fish.points);questProgress(p,'fish',fish.rarity);fishingTourneyCatch(p,fish);
-          a.lastResult={id:resultId,success:true,fish,points:fish.points,reason:'caught',at:now};await saveNow();broadcast({type:'fishing-find',playerId:p.id,fishId:fish.id,name:fish.name,points:fish.points,rarity:fish.rarity});announceRareFind(p,fish);
-          return json(res,200,{ok:true,result:a.lastResult,fishing:fishingView(p)});
+          const result=await settleAutoFish(p,a,now);
+          return json(res,200,{ok:true,result,fishing:fishingView(p)});
         }
         if(a.auto)return json(res,409,{error:'자동 낚시를 종료한 뒤 이용해 주세요.'});
         if(command==='buy'){
