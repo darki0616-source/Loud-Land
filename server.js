@@ -1349,7 +1349,7 @@ function endDuo(duo){if(!duo||!activeDuos.has(duo.id))return;activeDuos.delete(d
 function clearDuosFor(id){for(const duo of [...activeDuos.values()])if(duo.a===id||duo.b===id)endDuo(duo);for(const [inviteId,invite] of duoInvites)if(invite.from===id||invite.to===id){duoInvites.delete(inviteId);broadcast({type:'duo-invite-ended',id:inviteId,to:invite.to})}}
 function duoDistance(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
 setInterval(()=>{const now=Date.now();for(const duo of [...activeDuos.values()])if(duo.endAt<=now)endDuo(duo);for(const [key,invite] of duoInvites)if(invite.expiresAt<=now){duoInvites.delete(key);broadcast({type:'duo-invite-ended',id:key,to:invite.to})}},700).unref();
-const snapshot=(viewerId=null)=>({type:'snapshot',tents:allPlacedTents(),announcements:publicNoticeState(),interactions:[...activeDuos.values()].filter(x=>x.endAt>Date.now()),players:[...players.values()],chatRoomId:players.get(viewerId)?.tentRoomId||null,chat:chatForRoom(players.get(viewerId)?.tentRoomId||null),...musicState(),skipVote:publicSkipVote(),skipVoteCooldownUntil,slam:publicSlam(),slamCooldownUntil,rockPlay:publicRock(),crowdSurf:activeSurfRide&&activeSurfRide.startAt+activeSurfRide.duration>Date.now()?activeSurfRide:null,rockCooldowns:{...rockCooldowns},rockRunningUntil,rhythm:publicRhythmState(),power:publicPowerState(),mole:publicMoleState(),fieldCoins:fieldCoinPublic(),count:players.size});
+const snapshot=(viewerId=null)=>({type:'snapshot',seoulWeather,tents:allPlacedTents(),announcements:publicNoticeState(),interactions:[...activeDuos.values()].filter(x=>x.endAt>Date.now()),players:[...players.values()],chatRoomId:players.get(viewerId)?.tentRoomId||null,chat:chatForRoom(players.get(viewerId)?.tentRoomId||null),...musicState(),skipVote:publicSkipVote(),skipVoteCooldownUntil,slam:publicSlam(),slamCooldownUntil,rockPlay:publicRock(),crowdSurf:activeSurfRide&&activeSurfRide.startAt+activeSurfRide.duration>Date.now()?activeSurfRide:null,rockCooldowns:{...rockCooldowns},rockRunningUntil,rhythm:publicRhythmState(),power:publicPowerState(),mole:publicMoleState(),fieldCoins:fieldCoinPublic(),count:players.size});
 const clamp=(n,min,max)=>Math.min(max,Math.max(min,Number(n)||0));
 const SERVER_X_MIN=20,SERVER_X_MAX=1380,SERVER_Y_MIN=60,SERVER_Y_MAX=1550;
 function cleanup(){const now=Date.now();for(const [id,p] of players)if(now-p.seen>180000&&!(()=>{const a=fishingStats.get(p.badgeIdentity)?.auto;return a?.playerId===id&&(clients.has(id)||(a.disconnectedAt&&now-a.disconnectedAt<90000));})()){settleBadge(p,Math.min(now,p.seen+45000));settleBadge(p);clearDuosFor(id);clearMiningPlayer(p);players.delete(id);forgetSession(id);voterLeaves(id);if(activeSlam?.participants.delete(id))slamUpdate();rockMemberLeaves(id);pauseForEmpty();const r=clients.get(id);if(r){r.end();clients.delete(id)}broadcast({type:'leave',id,count:players.size});sendTentUpdate()}}
@@ -2569,4 +2569,23 @@ const server=http.createServer(async(req,res)=>{
   if(pathname==='/md-admin.html'){try{const html=fs.readFileSync(f,'utf8').replace('</head>','<script src="/chair-admin.js?v=371"></script></head>');res.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-cache'});return res.end(html);}catch{}}
   fs.stat(f,(err,stat)=>{if(err||!stat.isFile()){res.writeHead(404);res.end('Not found');return}res.writeHead(200,{'content-type':types[path.extname(f)]||'application/octet-stream','cache-control':'no-cache'});fs.createReadStream(f).pipe(res)})
 });
+// One shared forecast request for the whole server, never one per player.
+// Open-Meteo current values are weather-model estimates, not a live rain gauge.
+const WEATHER_URL='https://api.open-meteo.com/v1/forecast?latitude=37.5665&longitude=126.9780&current=weather_code,rain,showers,snowfall&timezone=Asia%2FSeoul';
+let seoulWeather={kind:'clear',updatedAt:0};
+function classifySeoulWeather(current){
+ const code=Number(current.weather_code),rain=Number(current.rain||0)+Number(current.showers||0),snow=Number(current.snowfall||0);
+ if(!Number.isInteger(code)||code<0||code>99||![rain,snow].every(Number.isFinite))throw Error('invalid weather');
+ if(snow>0||[71,73,75,77,85,86].includes(code))return 'snow';
+ if(rain>0||[51,53,55,56,57,61,63,65,66,67,80,81,82,95,96,99].includes(code))return 'rain';
+ return 'clear';
+}
+let weatherFetchRunning=false;
+async function refreshSeoulWeather(){
+ if(weatherFetchRunning)return;weatherFetchRunning=true;
+ try{const response=await fetch(WEATHER_URL,{signal:AbortSignal.timeout(10000)});if(!response.ok)throw Error('HTTP '+response.status);const data=await response.json();if(!data.current||typeof data.current.weather_code!=='number')throw Error('invalid weather data');const kind=classifySeoulWeather(data.current);seoulWeather={kind,updatedAt:Date.now()};broadcast({type:'seoul-weather',weather:seoulWeather});}
+ catch(error){console.warn('서울 날씨 갱신 실패:',error.message);if(seoulWeather.updatedAt&&Date.now()-seoulWeather.updatedAt>2*60*60*1000){seoulWeather={kind:'clear',updatedAt:0};broadcast({type:'seoul-weather',weather:seoulWeather});}}
+ finally{weatherFetchRunning=false;}
+}
+setTimeout(()=>void refreshSeoulWeather(),1000);setInterval(()=>void refreshSeoulWeather(),15*60*1000).unref();
 restorePlaylist().then(()=>server.listen(PORT,'0.0.0.0',()=>console.log(`ONEseason running at http://localhost:${PORT} | storage: ${useSupabase?'Supabase':'local only'}`))).catch(err=>{console.error('Startup stopped to prevent playlist data loss:',err.message);process.exitCode=1});
