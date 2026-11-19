@@ -589,7 +589,7 @@ async function settleAutoFish(p,a,now=Date.now()){
 }
 function processAutoFishing(now=Date.now()){
  if(!restored)return;
- for(const [identity,a] of fishingStats){const auto=a.auto;if(!auto||now<auto.nextAt)continue;const p=players.get(auto.playerId);if(!p||p.badgeIdentity!==identity||!clients.has(p.id)||!playerSessions.has(p.id)||!fishingNearSea(p)||miningAccount(identity).active){a.auto=null;continue;}void settleAutoFish(p,a,now).catch(error=>console.error('Auto fishing save failed:',error.message));}
+ for(const [identity,a] of fishingStats){const auto=a.auto;if(!auto)continue;const p=players.get(auto.playerId);if(!p||p.badgeIdentity!==identity||!playerSessions.has(p.id)||!fishingNearSea(p)||miningAccount(identity).active){a.auto=null;continue;}if(!clients.has(p.id)){if(!auto.disconnectedAt)auto.disconnectedAt=now;if(now-auto.disconnectedAt>=90000)a.auto=null;continue;}auto.disconnectedAt=0;if(now<auto.nextAt)continue;void settleAutoFish(p,a,now).catch(error=>console.error('Auto fishing save failed:',error.message));}
 }
 setInterval(processAutoFishing,1000).unref();
 function fishPosition(session,at){return .5+.5*Math.sin((at-session.startAt)/1000*session.speed+session.phase);}
@@ -1326,7 +1326,7 @@ setInterval(()=>{const now=Date.now();for(const duo of [...activeDuos.values()])
 const snapshot=(viewerId=null)=>({type:'snapshot',tents:allPlacedTents(),announcements:publicNoticeState(),interactions:[...activeDuos.values()].filter(x=>x.endAt>Date.now()),players:[...players.values()],chatRoomId:players.get(viewerId)?.tentRoomId||null,chat:chatForRoom(players.get(viewerId)?.tentRoomId||null),...musicState(),skipVote:publicSkipVote(),skipVoteCooldownUntil,slam:publicSlam(),slamCooldownUntil,rockPlay:publicRock(),crowdSurf:activeSurfRide&&activeSurfRide.startAt+activeSurfRide.duration>Date.now()?activeSurfRide:null,rockCooldowns:{...rockCooldowns},rockRunningUntil,rhythm:publicRhythmState(),power:publicPowerState(),mole:publicMoleState(),fieldCoins:fieldCoinPublic(),count:players.size});
 const clamp=(n,min,max)=>Math.min(max,Math.max(min,Number(n)||0));
 const SERVER_X_MIN=20,SERVER_X_MAX=1380,SERVER_Y_MIN=60,SERVER_Y_MAX=1550;
-function cleanup(){const now=Date.now();for(const [id,p] of players)if(now-p.seen>180000&&!(clients.has(id)&&fishingStats.get(p.badgeIdentity)?.auto?.playerId===id)){settleBadge(p,Math.min(now,p.seen+45000));settleBadge(p);clearDuosFor(id);clearMiningPlayer(p);players.delete(id);forgetSession(id);voterLeaves(id);if(activeSlam?.participants.delete(id))slamUpdate();rockMemberLeaves(id);pauseForEmpty();const r=clients.get(id);if(r){r.end();clients.delete(id)}broadcast({type:'leave',id,count:players.size});sendTentUpdate()}}
+function cleanup(){const now=Date.now();for(const [id,p] of players)if(now-p.seen>180000&&!(()=>{const a=fishingStats.get(p.badgeIdentity)?.auto;return a?.playerId===id&&(clients.has(id)||(a.disconnectedAt&&now-a.disconnectedAt<90000));})()){settleBadge(p,Math.min(now,p.seen+45000));settleBadge(p);clearDuosFor(id);clearMiningPlayer(p);players.delete(id);forgetSession(id);voterLeaves(id);if(activeSlam?.participants.delete(id))slamUpdate();rockMemberLeaves(id);pauseForEmpty();const r=clients.get(id);if(r){r.end();clients.delete(id)}broadcast({type:'leave',id,count:players.size});sendTentUpdate()}}
 setInterval(cleanup,7000).unref();
 // Check connected, fresh players even while standing still; each coin has one winner.
 setInterval(()=>{
@@ -1500,9 +1500,9 @@ const server=http.createServer(async(req,res)=>{
     const id=clean(url.searchParams.get('id'),80);
     if(!players.has(id))return json(res,404,{error:'Join first'});
     res.writeHead(200,{'content-type':'text/event-stream; charset=utf-8','cache-control':'no-cache, no-transform','connection':'keep-alive','x-accel-buffering':'no'});
-    clients.get(id)?.end();clients.set(id,res);send(res,snapshot(id));
+    clients.get(id)?.end();clients.set(id,res);const auto=fishingStats.get(players.get(id)?.badgeIdentity)?.auto;if(auto?.playerId===id)auto.disconnectedAt=0;send(res,snapshot(id));
     const heartbeat=setInterval(()=>{try{res.write(': ping\n\n')}catch{}},15000);
-    req.on('close',()=>{clearInterval(heartbeat);if(clients.get(id)===res)clients.delete(id)});return;
+    req.on('close',()=>{clearInterval(heartbeat);if(clients.get(id)===res){clients.delete(id);const auto=fishingStats.get(players.get(id)?.badgeIdentity)?.auto;if(auto?.playerId===id)auto.disconnectedAt=Date.now();}});return;
   }
   if(url.pathname.startsWith('/api/')&&req.method==='POST'){
     try{
