@@ -536,7 +536,7 @@ function craftAct(p,d){const id=p.badgeIdentity,r=craftAccount(id),type=String(d
  if(command==='awakening'){const complete=(type==='weapon'?MINING_CATALOG:FISH_CATALOG).every(x=>((type==='weapon'?miningStats.get(id)?.counts:fishingStats.get(id)?.fishCounts)?.[x.id]||0)>0);if(!complete)throw Error('해당 도감을 모두 채워 주세요.');if(r.awakening[type])throw Error('이미 각성권을 받았어요.');r.awakening[type]=true;r.tickets[type]++;return {message:'각성권을 받았어요.'};}
  if(!CRAFT_TIERS.includes(tier))throw Error('등급을 선택해 주세요.');
  if(command==='synthesize'){
-  const index=CRAFT_TIERS.indexOf(tier),attempts=Number(d.attempts),chance=[100,80,50,20][index];
+  const index=CRAFT_TIERS.indexOf(tier),attempts=Number(d.attempts),chance=[100,80,50,10][index];
   if(index<0||index>=4)throw Error('전설 등급은 합성할 수 없어요.');
   if(!Number.isInteger(attempts)||attempts<1||attempts>10)throw Error('합성은 1~10회까지 할 수 있어요.');
   const required=attempts*10;if(craftAvailable(id,type,tier)<required)throw Error('합성할 재료가 부족해요.');
