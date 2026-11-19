@@ -2276,6 +2276,14 @@ const server=http.createServer(async(req,res)=>{
         }
         return json(res,400,{error:'지원하지 않는 상호작용 명령입니다.'});
       }
+      if(url.pathname==='/api/snow-break'){
+       if(!playerSessions.get(id)||playerSessions.get(id)!==String(d.sessionKey||''))return json(res,403,{error:'본인 세션에서 이용해 주세요.'});
+       if(p.tentRoomId)return json(res,400,{error:'맵에서만 부술 수 있어요.'});
+       const o=snowObjects.get(String(d.objectId||'')),px=(p.x-600)*.058,pz=(p.y-500)*.058+8;
+       if(!o||Math.hypot(o.x-px,o.z-pz)>4.5+o.r)return json(res,400,{error:'눈덩이나 눈사람 가까이 이동해 주세요.'});
+       snowObjects.delete(o.id);if(o.rolling&&o.ownerId){snowRolling.delete(o.ownerId);const roller=players.get(o.ownerId);if(roller&&roller.action==='snowroll'){roller.action='idle';broadcast({type:'move',player:roller});}}
+       broadcast({type:'snow-break',object:{id:o.id,x:o.x,z:o.z,r:o.r,kind:o.kind,head:o.head,ownerId:o.ownerId||null}});await saveNow();return json(res,200,{ok:true});
+      }
       if(url.pathname==='/api/snowman'){
        if(!playerSessions.get(id)||playerSessions.get(id)!==String(d.sessionKey||''))return json(res,403,{error:'본인 세션에서 이용해 주세요.'});
        if(p.tentRoomId)return json(res,400,{error:'맵 밖에서 만들 수 있어요.'});
