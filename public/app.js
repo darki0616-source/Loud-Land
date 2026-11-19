@@ -6069,7 +6069,7 @@ const importedWingTemplatePromises=new Map();
 const importedWingTypes={
  angel:{url:'/assets/md/angel_wings_optimized.glb?v=201',scale:[1.43,1.36,.67],offset:[0,0,-.07]},
  fallen:{url:'/assets/md/devil_wings_optimized.glb?v=201',scale:[1.48,2.15,.80],offset:[0,.02,-.08]},
- fairy:{url:'/assets/md/fairy_wings.glb?v=343',scale:[3.2,3.2,3.2],offset:[0,.04,-.06]}
+ fairy:{url:'/assets/md/fairy_wings.glb?v=440',scale:[3.2,3.2,3.2],offset:[0,.04,-.06]}
 };
 function getImportedWingModel(kind){
  const setting=importedWingTypes[kind];
