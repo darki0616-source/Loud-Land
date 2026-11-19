@@ -4482,7 +4482,12 @@ function animateSky(t){const sec=t*.001;for(let i=0;i<cloudGroups.length;i++){co
 const weatherBadge=document.getElementById('weatherBadge');
 let stageAccentFactor=.55;
 const mat=(c,roughness=.83,emissive=null)=>new THREE.MeshStandardMaterial({color:c,roughness,metalness:roughness<.5?.22:0,emissive:emissive||'#000000',emissiveIntensity:emissive?.8:0});
-const dark=mat('#17192b'),metal=mat('#525875',.35),grass=mat('#34554b'),wood=mat('#293344'),skin=mat('#edbd9e');
+const dark=mat('#17192b'),metal=mat('#525875',.35),grass=mat('#e4edf5',1),wood=mat('#293344'),skin=mat('#edbd9e');
+// A single repeating, subtle snow texture keeps the ground lightweight on mobile.
+const snowGroundCanvas=document.createElement('canvas');snowGroundCanvas.width=256;snowGroundCanvas.height=256;
+const snowGroundContext=snowGroundCanvas.getContext('2d');snowGroundContext.fillStyle='#ffffff';snowGroundContext.fillRect(0,0,256,256);
+let snowSeed=7719;for(let i=0;i<1900;i++){snowSeed=(snowSeed*1664525+1013904223)>>>0;const x=snowSeed%256;snowSeed=(snowSeed*1664525+1013904223)>>>0;const y=snowSeed%256;snowGroundContext.fillStyle=i%5===0?'rgba(175,199,219,.13)':'rgba(207,221,233,.09)';snowGroundContext.fillRect(x,y,i%7===0?2:1,i%7===0?2:1);}
+const snowGroundTexture=new THREE.CanvasTexture(snowGroundCanvas);snowGroundTexture.colorSpace=THREE.SRGBColorSpace;snowGroundTexture.wrapS=snowGroundTexture.wrapT=THREE.RepeatWrapping;snowGroundTexture.repeat.set(14,8);grass.map=snowGroundTexture;grass.needsUpdate=true;
 function cube(w,h,d,m,x,y,z,cast=true){let o=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);o.position.set(x,y,z);o.castShadow=cast;o.receiveShadow=true;scene.add(o);return o}
 function sphere(r,m,x,y,z){let o=new THREE.Mesh(new THREE.SphereGeometry(r,12,10),m);o.position.set(x,y,z);o.castShadow=true;scene.add(o);return o}
 function cylinder(rt,rb,h,m,x,y,z){let o=new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,h,14),m);o.position.set(x,y,z);o.castShadow=true;scene.add(o);return o}
@@ -5942,10 +5947,10 @@ function updateEnvironment(force=false){
  else if(hour>=19||hour<4)phase='night';
  else if(hour>=4&&hour<6)phase='dawn';
  const themes={
-  day:{bg:'#86c8ff',fog:'#86c8ff',sky:'#8ecfff',hemiSky:'#e4f6ff',ground:'#58745c',hemi:2.45,grass:'#4a7b60',sand:'#e0c896',wet:'#d5b57c',ocean:'#4098d0',sunColor:'#fff0c0',sunLight:'#fff4cd',sun:2.95,moon:0.15,badge:'☀️ &nbsp; 낮 공연 <span>✦</span>',glow:'#f6d0a8',stage:.42,building:'#b8d1df',roof:'#829fbb',window:'#f6f9fa',windowOpacity:.25,mountain:'#a5bace'},
-  sunset:{bg:'#f39b7e',fog:'#f0a184',sky:'#ffad93',hemiSky:'#ffd8c6',ground:'#6a5755',hemi:1.95,grass:'#56715c',sand:'#ebc28d',wet:'#d3a46d',ocean:'#4c87c2',sunColor:'#ff9855',sunLight:'#ffcb95',sun:2.45,moon:0.25,badge:'🌇 &nbsp; 석양 공연 <span>✦</span>',glow:'#ff8b66',stage:.85,building:'#c4a9c3',roof:'#8d789a',window:'#ffe8c9',windowOpacity:.27,mountain:'#bf9eb4'},
-  night:{bg:'#091326',fog:'#091326',sky:'#0f1b39',hemiSky:'#45608f',ground:'#243330',hemi:1.15,grass:'#2d5244',sand:'#a98d67',wet:'#907558',ocean:'#1f4e86',sunColor:'#ffcf88',sunLight:'#b5c8ff',sun:0.0,moon:1.75,badge:'🌙 &nbsp; 달빛 공연 <span>✦</span>',glow:'#6d84a8',stage:1.12,building:'#586a87',roof:'#425477',window:'#ffe7b8',windowOpacity:.5,mountain:'#657eaa'},
-  dawn:{bg:'#efab8d',fog:'#efab8d',sky:'#ffb79e',hemiSky:'#ffd9cb',ground:'#655a58',hemi:1.75,grass:'#4d6858',sand:'#e6c08f',wet:'#cda06e',ocean:'#4a82be',sunColor:'#ff9b68',sunLight:'#ffd0a1',sun:1.65,moon:0.55,badge:'🌄 &nbsp; 새벽 석양 <span>✦</span>',glow:'#ff9d76',stage:.72,building:'#b6aabd',roof:'#897d9d',window:'#ffe7d1',windowOpacity:.3,mountain:'#b8a0b7'}
+  day:{bg:'#86c8ff',fog:'#86c8ff',sky:'#8ecfff',hemiSky:'#e4f6ff',ground:'#58745c',hemi:2.45,grass:'#e3edf5',sand:'#e0c896',wet:'#d5b57c',ocean:'#4098d0',sunColor:'#fff0c0',sunLight:'#fff4cd',sun:2.95,moon:0.15,badge:'☀️ &nbsp; 낮 공연 <span>✦</span>',glow:'#f6d0a8',stage:.42,building:'#b8d1df',roof:'#829fbb',window:'#f6f9fa',windowOpacity:.25,mountain:'#a5bace'},
+  sunset:{bg:'#f39b7e',fog:'#f0a184',sky:'#ffad93',hemiSky:'#ffd8c6',ground:'#6a5755',hemi:1.95,grass:'#e8dce0',sand:'#ebc28d',wet:'#d3a46d',ocean:'#4c87c2',sunColor:'#ff9855',sunLight:'#ffcb95',sun:2.45,moon:0.25,badge:'🌇 &nbsp; 석양 공연 <span>✦</span>',glow:'#ff8b66',stage:.85,building:'#c4a9c3',roof:'#8d789a',window:'#ffe8c9',windowOpacity:.27,mountain:'#bf9eb4'},
+  night:{bg:'#091326',fog:'#091326',sky:'#0f1b39',hemiSky:'#45608f',ground:'#243330',hemi:1.15,grass:'#9eafc9',sand:'#a98d67',wet:'#907558',ocean:'#1f4e86',sunColor:'#ffcf88',sunLight:'#b5c8ff',sun:0.0,moon:1.75,badge:'🌙 &nbsp; 달빛 공연 <span>✦</span>',glow:'#6d84a8',stage:1.12,building:'#586a87',roof:'#425477',window:'#ffe7b8',windowOpacity:.5,mountain:'#657eaa'},
+  dawn:{bg:'#efab8d',fog:'#efab8d',sky:'#ffb79e',hemiSky:'#ffd9cb',ground:'#655a58',hemi:1.75,grass:'#e5dfe6',sand:'#e6c08f',wet:'#cda06e',ocean:'#4a82be',sunColor:'#ff9b68',sunLight:'#ffd0a1',sun:1.65,moon:0.55,badge:'🌄 &nbsp; 새벽 석양 <span>✦</span>',glow:'#ff9d76',stage:.72,building:'#b6aabd',roof:'#897d9d',window:'#ffe7d1',windowOpacity:.3,mountain:'#b8a0b7'}
  };
  const p=themes[phase];
  skyPeriod=phase;
