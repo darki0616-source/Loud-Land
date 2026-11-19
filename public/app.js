@@ -4569,9 +4569,9 @@ const floor=cube(242,.4,134,grass,0,-.24,-25);floor.receiveShadow=true;
 // Stage/audience grass ends EXACTLY at the red boundary z=18.
 // Below it, the rest/picnic grass starts in the yellow zone.
 // Both surfaces meet edge-to-edge (not overlapping), preventing Z-fighting.
-const lawn=cube(100,.08,27,mat('#4f765f'),0,.03,4.5,false); // z -9 .. 18
+const lawn=cube(100,.08,27,grass,0,.03,4.5,false); // z -9 .. 18
 lawn.receiveShadow=true;
-const picnicLawn=cube(100,.08,32,mat('#536f5c'),0,.03,34,false); // z 18 .. 50
+const picnicLawn=cube(100,.08,32,grass,0,.03,34,false); // z 18 .. 50
 picnicLawn.receiveShadow=true;
 const sandMat=mat('#dec391',.95),wetSandMat=mat('#c9ab74',.94);
 // Retain the beach's original front/back coordinates (z=42..70), extending ONLY sideways.
