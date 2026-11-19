@@ -193,7 +193,7 @@ const POWER_DAILY_COINS=5,POWER_COUNTDOWN_MS=2400,POWER_PERIOD_MS=1500,POWER_ACT
 // Permit a short network transit time while checking the reported tap moment against server time.
 const POWER_MAX_STRIKE_LAG_MS=650,POWER_CLOCK_SKEW_MS=180;
 const powerAccounts=new Map(),powerScores=new Map();
-let powerDay=kstDate();
+let powerDay=kstDate(),pizzaGameMigration=false;
 function powerAccount(identity){
  const today=kstDate();let row=powerAccounts.get(identity);
  if(!row){row={day:today,used:0,bonus:0,session:null};powerAccounts.set(identity,row)}
@@ -218,7 +218,7 @@ function rotatePowerDay(){
  for(const person of players.values())if(syncPlayerPowerKing(person))broadcast({type:'profile',player:person});
  scheduleSave();broadcast({type:'power-state',power:publicPowerState()});
 }
-function publicPowerState(){rotatePowerDay();return {day:powerDay,leaderboard:powerRows().map(({rank,identity,at,...r},i)=>({rank:i+1,...r})),reward:powerReward&&powerReward.date===kstDate()?{title:'파워왕',name:powerReward.name,score:powerReward.score,sourceDate:powerReward.sourceDate,date:powerReward.date}:null,booth:POWER_BOOTH};}
+function publicPowerState(){rotatePowerDay();return {day:powerDay,leaderboard:powerRows().map(({rank,identity,at,...r},i)=>({rank:i+1,...r})),reward:powerReward&&powerReward.date===kstDate()?{title:'피자왕',name:powerReward.name,score:powerReward.score,sourceDate:powerReward.sourceDate,date:powerReward.date}:null,booth:POWER_BOOTH};}
 
 function rhythmAccountView(p){const row=rhythmAccount(p.badgeIdentity);return {coins:Math.max(0,RHYTHM_DAILY_COINS-row.used),used:row.used,limit:RHYTHM_DAILY_COINS,bonus:row.bonus,day:row.day}}
 
@@ -1008,10 +1008,11 @@ const SB_KEY=process.env.SUPABASE_SECRET_KEY||'';
 const useSupabase=Boolean(SB_URL&&SB_KEY);
 let restored=false;
 let saveChain=Promise.resolve();
-function stateData(){return {version:18,petSkillRefund20261119Done,petSkillTicketRefund20261119Done,combatNames:Object.fromEntries(combatNames),battleAccounts:Object.fromEntries(battleAccounts),craftAccounts:Object.fromEntries(craftAccounts),questAccounts:Object.fromEntries(questAccounts),fishingTournaments:[...fishingTournaments.values()],petRace:petRace.race,petRacePoints:Object.fromEntries(petRacePoints),mineKingDay,mineKingReward,mineKingScores:Object.fromEntries(mineKingScores),miningStats:Object.fromEntries([...miningStats].map(([id,r])=>[id,{bonus:r.bonus,counts:r.counts,lastResult:r.lastResult}])),decorationStats:Object.fromEntries(decorationStats),fishKingDay,fishKingReward,fishKingScores:Object.fromEntries(fishKingScores),fortuneStats:Object.fromEntries(fortuneStats),oneTimeCreditApplied,adminPointCredits:Object.fromEntries(adminPointCredits),adminPointLedger:Object.fromEntries(adminPointLedger),recoveryRecords:Object.fromEntries(recoveryRecords),fishingStats:Object.fromEntries([...fishingStats].map(([id,a])=>[id,{level:a.level,spent:a.spent,bonus:a.bonus,fishCounts:a.fishCounts,totalMisses:a.totalMisses,lastCastAt:a.lastCastAt,active:a.active,lastResult:a.lastResult}])),lotteryStats:Object.fromEntries([...lotteryStats].map(([identity,a])=>[identity,{day:a.day,used:a.used,spent:a.spent,bonus:a.bonus,pending:a.pending,lastResult:a.lastResult}])),petStats:Object.fromEntries([...petStats].map(([identity,record])=>[identity,{spent:record.spent,pet:record.pet,effectsOwned:record.effectsOwned||{},effectsEnabled:record.effectsEnabled||{}}])),fieldCoinLastSpawnAt,fieldCoins:fieldCoinPublic(),fieldCoinBonuses:Object.fromEntries(fieldCoinBonuses),moleDay,moleHammerRevision,moleReward,moleScores:Object.fromEntries(moleScores),moleAccounts:Object.fromEntries([...moleAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session,lastResult:v.lastResult}])),powerDay,powerReward,powerScores:Object.fromEntries(powerScores),powerAccounts:Object.fromEntries([...powerAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),rhythmAccounts:Object.fromEntries([...rhythmAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),furnitureCatalogEdits:Object.fromEntries(furnitureCatalogEdits),furnitureStats:Object.fromEntries([...furnitureStats].map(([id,v])=>[id,{spent:v.spent,owned:v.owned}])),tentStats:Object.fromEntries([...tentStats].map(([identity,t])=>[identity,storedTent(t)])),announcements:{entry:entranceNotices,ticker:tickerNotices,intervalMinutes:tickerIntervalMinutes,immediateHistory:immediateNoticeHistory},music,queue:[...queue],history:[...history],nextTrackToken,customMd:Object.fromEntries(customMd),shopStats:Object.fromEntries([...shopStats].map(([k,v])=>[k,{spent:0,refunded:v.refunded||0,owned:v.owned,equipped:v.equipped}])),badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),rhythm:{day:rhythmDay,reward:rhythmReward,scores:Object.fromEntries([...rhythmScores].map(([k,v])=>[k,{name:v.name,score:Math.max(0,Math.floor(Number(v.score)||0)),updatedAt:Number(v.updatedAt)||0}]))},savedAt:Date.now()}}
+function stateData(){return {version:18,pizzaGameMigration,petSkillRefund20261119Done,petSkillTicketRefund20261119Done,combatNames:Object.fromEntries(combatNames),battleAccounts:Object.fromEntries(battleAccounts),craftAccounts:Object.fromEntries(craftAccounts),questAccounts:Object.fromEntries(questAccounts),fishingTournaments:[...fishingTournaments.values()],petRace:petRace.race,petRacePoints:Object.fromEntries(petRacePoints),mineKingDay,mineKingReward,mineKingScores:Object.fromEntries(mineKingScores),miningStats:Object.fromEntries([...miningStats].map(([id,r])=>[id,{bonus:r.bonus,counts:r.counts,lastResult:r.lastResult}])),decorationStats:Object.fromEntries(decorationStats),fishKingDay,fishKingReward,fishKingScores:Object.fromEntries(fishKingScores),fortuneStats:Object.fromEntries(fortuneStats),oneTimeCreditApplied,adminPointCredits:Object.fromEntries(adminPointCredits),adminPointLedger:Object.fromEntries(adminPointLedger),recoveryRecords:Object.fromEntries(recoveryRecords),fishingStats:Object.fromEntries([...fishingStats].map(([id,a])=>[id,{level:a.level,spent:a.spent,bonus:a.bonus,fishCounts:a.fishCounts,totalMisses:a.totalMisses,lastCastAt:a.lastCastAt,active:a.active,lastResult:a.lastResult}])),lotteryStats:Object.fromEntries([...lotteryStats].map(([identity,a])=>[identity,{day:a.day,used:a.used,spent:a.spent,bonus:a.bonus,pending:a.pending,lastResult:a.lastResult}])),petStats:Object.fromEntries([...petStats].map(([identity,record])=>[identity,{spent:record.spent,pet:record.pet,effectsOwned:record.effectsOwned||{},effectsEnabled:record.effectsEnabled||{}}])),fieldCoinLastSpawnAt,fieldCoins:fieldCoinPublic(),fieldCoinBonuses:Object.fromEntries(fieldCoinBonuses),moleDay,moleHammerRevision,moleReward,moleScores:Object.fromEntries(moleScores),moleAccounts:Object.fromEntries([...moleAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session,lastResult:v.lastResult}])),powerDay,powerReward,powerScores:Object.fromEntries(powerScores),powerAccounts:Object.fromEntries([...powerAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session,lastResult:v.lastResult||null}])),rhythmAccounts:Object.fromEntries([...rhythmAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),furnitureCatalogEdits:Object.fromEntries(furnitureCatalogEdits),furnitureStats:Object.fromEntries([...furnitureStats].map(([id,v])=>[id,{spent:v.spent,owned:v.owned}])),tentStats:Object.fromEntries([...tentStats].map(([identity,t])=>[identity,storedTent(t)])),announcements:{entry:entranceNotices,ticker:tickerNotices,intervalMinutes:tickerIntervalMinutes,immediateHistory:immediateNoticeHistory},music,queue:[...queue],history:[...history],nextTrackToken,customMd:Object.fromEntries(customMd),shopStats:Object.fromEntries([...shopStats].map(([k,v])=>[k,{spent:0,refunded:v.refunded||0,owned:v.owned,equipped:v.equipped}])),badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),rhythm:{day:rhythmDay,reward:rhythmReward,scores:Object.fromEntries([...rhythmScores].map(([k,v])=>[k,{name:v.name,score:Math.max(0,Math.floor(Number(v.score)||0)),updatedAt:Number(v.updatedAt)||0}]))},savedAt:Date.now()}}
 function applySaved(d){
  if(d?.petRace&&['waiting','running','finished'].includes(d.petRace.phase))petRace.race=d.petRace;petRacePoints.clear();if(d?.petRacePoints&&typeof d.petRacePoints==='object')for(const [id,n] of Object.entries(d.petRacePoints))if(/^[a-zA-Z0-9_-]{20,100}$/.test(id)&&Number.isSafeInteger(n)&&Math.abs(n)<1e9)petRacePoints.set(id,n);
  if(!d||typeof d!=='object')return;
+ pizzaGameMigration=d.pizzaGameMigration===true;
  petSkillRefund20261119Done=d.petSkillRefund20261119Done===true;
  petSkillTicketRefund20261119Done=d.petSkillTicketRefund20261119Done===true;
  battleAccounts.clear();if(d.battleAccounts&&typeof d.battleAccounts==='object')for(const [id,row] of Object.entries(d.battleAccounts).slice(0,50000)){if(!/^[a-zA-Z0-9_-]{20,100}$/.test(id)||!row)continue;const b=row.active,valid=b&&/^[a-f0-9-]{36}$/.test(b.id||'')&&Number.isInteger(b.stage)&&b.stage>=1&&b.stage<=20&&['running','won','lost','abandoned'].includes(b.phase)&&Number.isSafeInteger(b.turn)&&b.turn>=0&&['playerHp','playerMax','enemyHp','enemyMax','playerPower','petPower','enemyAttack'].every(k=>Number.isFinite(b[k])&&b[k]>=0&&b[k]<100000000);battleAccounts.set(id,{highest:Math.max(0,Math.min(20,Math.floor(Number(row.highest)||0))),active:valid?b:null});}
@@ -1163,10 +1164,10 @@ function applySaved(d){
  if(typeof d.powerDay==='string' &&/^\d{4}-\d{2}-\d{2}$/.test(d.powerDay))powerDay=d.powerDay;
  if(d.powerScores&&typeof d.powerScores==='object'&&(powerDay===kstDate()||powerDay===previousKstDate()))for(const [identity,row] of Object.entries(d.powerScores).slice(0,50000)){
   if(!/^[a-zA-Z0-9_-]{20,100}$/.test(identity)||!row||typeof row!=='object')continue;
-  powerScores.set(identity,{name:clean(row.name,18)||'ROCKER',score:Math.max(0,Math.min(1000,Math.floor(Number(row.score)||0))),at:Number(row.at)||Date.now()});
+  powerScores.set(identity,{name:clean(row.name,18)||'ROCKER',score:Math.max(0,Math.min(100000,Math.floor(Number(row.score)||0))),at:Number(row.at)||Date.now()});
  }
  if(d.powerReward&&typeof d.powerReward==='object'&&typeof d.powerReward.identity==='string'&&/^[a-zA-Z0-9_-]{20,100}$/.test(d.powerReward.identity)){
-  powerReward={date:String(d.powerReward.date||''),identity:d.powerReward.identity,name:clean(d.powerReward.name,18)||'ROCKER',score:Math.max(0,Math.min(1000,Math.floor(Number(d.powerReward.score)||0))),sourceDate:String(d.powerReward.sourceDate||'')};
+  powerReward={date:String(d.powerReward.date||''),identity:d.powerReward.identity,name:clean(d.powerReward.name,18)||'ROCKER',score:Math.max(0,Math.min(100000,Math.floor(Number(d.powerReward.score)||0))),sourceDate:String(d.powerReward.sourceDate||'')};
  }
  if(d.powerAccounts&&typeof d.powerAccounts==='object')for(const [identity,row] of Object.entries(d.powerAccounts).slice(0,50000)){
   if(!/^[a-zA-Z0-9_-]{20,100}$/.test(identity)||!row||typeof row!=='object')continue;
@@ -1174,7 +1175,7 @@ function applySaved(d){
   const used=Math.max(0,Math.min(POWER_DAILY_COINS,Math.floor(Number(row.used)||0)));
   const bonus=Math.max(0,Math.min(100000000,Math.floor(Number(row.bonus)||0)));
   const v=row.session;const session=v&&typeof v.id==='string'&&/^[a-f0-9-]{36}$/.test(v.id)&&Number.isFinite(v.startedAt)?{id:v.id,startedAt:v.startedAt}:null;
-  powerAccounts.set(identity,{day,used,bonus,session:day===kstDate()?session:null});
+  const result=row.lastResult&&typeof row.lastResult.id==='string'?{id:row.lastResult.id,score:Math.max(0,Math.min(100000,Number(row.lastResult.score)||0)),prize:Math.max(0,Math.min(50,Number(row.lastResult.prize)||0))}:null;powerAccounts.set(identity,{day,used,bonus,session:day===kstDate()?session:null,lastResult:result});
  }
  if(d.rhythmAccounts&&typeof d.rhythmAccounts==='object')for(const [identity,row] of Object.entries(d.rhythmAccounts).slice(0,50000)){
   if(!/^[a-zA-Z0-9_-]{20,100}$/.test(identity)||!row||typeof row!=='object')continue;
@@ -1226,6 +1227,7 @@ async function restorePlaylist(){
   try{applySaved(JSON.parse(fs.readFileSync(STATE_PATH,'utf8')));console.log('Local playlist restored (non-durable)')}catch(err){if(err.code!=='ENOENT')console.warn('Local restore failed:',err.message)}
  }
  restored=true;
+ if(!pizzaGameMigration){powerDay=kstDate();powerScores.clear();powerReward=null;for(const a of powerAccounts.values()){a.day=powerDay;a.used=0;a.session=null;}pizzaGameMigration=true;await strictSaveAdmin();}
  if(!petSkillRefund20261119Done){
   for(const r of craftAccounts.values())for(const tier of CRAFT_TIERS){
    if(!Object.hasOwn(r.skills,tier))continue;
@@ -2496,38 +2498,23 @@ const server=http.createServer(async(req,res)=>{
       }
       if(url.pathname==='/api/power'){
         rotatePowerDay();const command=clean(d.command,20);
-        if(!p.badgeIdentity)return json(res,400,{error:'브라우저 저장소를 허용해야 게임 코인을 사용할 수 있어요.'});
-        if(!d.sessionKey||playerSessions.get(id)!==String(d.sessionKey))return json(res,403,{error:'세션 인증이 필요합니다.'});
+        if(!p.badgeIdentity||!d.sessionKey||playerSessions.get(id)!==String(d.sessionKey))return json(res,403,{error:'세션 인증이 필요합니다.'});
         const account=powerAccount(p.badgeIdentity);
         if(command==='state')return json(res,200,{power:publicPowerState(),account:powerAccountView(p),best:powerScores.get(p.badgeIdentity)?.score||0});
         if(command==='start'){
           if(p.tentRoomId||Math.hypot((p.x||0)-POWER_BOOTH.x,(p.y||0)-POWER_BOOTH.y)>POWER_BOOTH.radius)return json(res,403,{error:'게임부스 가까이에서만 플레이할 수 있어요.'});
-          if(account.used>=POWER_DAILY_COINS)return json(res,409,{error:'오늘 파워왕 코인을 모두 사용했어요. 한국시간 자정에 5개 충전됩니다.',account:powerAccountView(p)});
-          account.used++;
-          account.session={id:crypto.randomUUID(),startedAt:Date.now()};
-          await saveNow();
-          return json(res,200,{ok:true,playId:account.session.id,startedAt:account.session.startedAt,serverNow:Date.now(),countdown:POWER_COUNTDOWN_MS,activeUntil:POWER_ACTIVE_MS,account:powerAccountView(p)});
+          if(account.used>=POWER_DAILY_COINS)return json(res,409,{error:'오늘의 코인을 모두 사용했어요.'});
+          if(account.session&&Date.now()-account.session.startedAt<32000)return json(res,409,{error:'이미 진행 중인 게임이 있어요.'});
+          const events=[];for(let spawn=500;spawn<27500;spawn+=650){const roll=crypto.randomInt(100),kind=roll<17?'spoiled':roll<32?'special':'normal',duration=kind==='special'?1150:kind==='spoiled'?2400:2600;events.push({id:events.length,kind,x:(80+crypto.randomInt(841))/1000,spawn,duration});}
+          account.used++;account.session={id:crypto.randomUUID(),startedAt:Date.now(),events};await saveNow();return json(res,200,{ok:true,playId:account.session.id,startedAt:account.session.startedAt,serverNow:Date.now(),duration:30000,events,account:powerAccountView(p)});
         }
-        if(command==='strike'){
-          const session=account.session;
-          if(!session||session.id!==d.playId)return json(res,409,{error:'유효한 플레이가 아닙니다.'});
-          const elapsed=Date.now()-session.startedAt;
-          // The client sends the gauge position's timestamp at the actual tap, not after HTTP latency.
-          // Never accept a score from the client; verify the reported tap time is close to server time.
-          const reportedElapsed=Number(d.strikeElapsed);
-          const validTap=Number.isFinite(reportedElapsed)&&reportedElapsed>=0&&
-            reportedElapsed<=POWER_ACTIVE_MS+400&&
-            reportedElapsed>=elapsed-POWER_MAX_STRIKE_LAG_MS&&
-            reportedElapsed<=elapsed+POWER_CLOCK_SKEW_MS;
-          const scoreElapsed=validTap?reportedElapsed:elapsed;
-          const score=powerScore(scoreElapsed),prize=powerPrize(score);
-          account.session=null;account.bonus+=prize;
-          const best=powerScores.get(p.badgeIdentity);
-          if(!best||score>best.score)powerScores.set(p.badgeIdentity,{name:p.name,score,at:Date.now()});
-          await saveNow();broadcast({type:'power-state',power:publicPowerState()});
-          return json(res,200,{ok:true,score,prize,position:powerGauge(scoreElapsed),points:tentPointBalance(p),best:powerScores.get(p.badgeIdentity)?.score||score,account:powerAccountView(p),power:publicPowerState()});
-        }
-        return json(res,400,{error:'지원하지 않는 파워왕 명령입니다.'});
+        if(command==='finish'){
+          const game=account.session;if(account.lastResult?.id===String(d.playId||''))return json(res,200,{ok:true,score:account.lastResult.score,prize:account.lastResult.prize,points:tentPointBalance(p),best:powerScores.get(p.badgeIdentity)?.score||account.lastResult.score,account:powerAccountView(p),power:publicPowerState()});if(!game||!Array.isArray(game.events)||game.id!==String(d.playId||''))return json(res,409,{error:'진행 중인 게임을 찾을 수 없어요.'});
+          const elapsed=Date.now()-game.startedAt;if(elapsed<29500)return json(res,409,{error:'아직 게임이 진행 중이에요.'});
+          if(!Array.isArray(d.hits)||d.hits.length>game.events.length)return json(res,400,{error:'게임 기록이 올바르지 않아요.'});
+          let score=0;const seen=new Set();for(const hit of d.hits){const i=Number(hit.id),x=Number(hit.x),t=Number(hit.t);if(!Number.isInteger(i)||i<0||i>=game.events.length||seen.has(i)||!Number.isFinite(x)||!Number.isFinite(t))return json(res,400,{error:'게임 기록이 올바르지 않아요.'});const e=game.events[i],landing=e.spawn+e.duration;if(Math.abs(t-landing)>350||Math.abs(x-e.x)>.14)return json(res,400,{error:'피자를 받은 위치가 올바르지 않아요.'});seen.add(i);score=Math.max(0,score+(e.kind==='special'?300:e.kind==='spoiled'?-100:100));}
+          const prize=score>=4000?50:score>=2500?30:score>=1000?10:1;account.lastResult={id:game.id,score,prize};account.session=null;account.bonus+=prize;const best=powerScores.get(p.badgeIdentity);if(!best||score>best.score)powerScores.set(p.badgeIdentity,{name:p.name,score,at:Date.now()});await saveNow();broadcast({type:'power-state',power:publicPowerState()});return json(res,200,{ok:true,score,prize,points:tentPointBalance(p),best:powerScores.get(p.badgeIdentity)?.score||score,account:powerAccountView(p),power:publicPowerState()});
+        }return json(res,400,{error:'지원하지 않는 피자왕 명령입니다.'});
       }
       if(url.pathname==='/api/rhythm'){
         maybeRotateRhythmDay();
