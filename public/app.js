@@ -672,13 +672,13 @@ function resizeRhythmCanvas(){
  }
 }
 function refreshRhythmReactionButton(){
- for(const [id,granted] of [['beatkingAction',Boolean(state.me?.rhythmKing)],['powerkingAction',Boolean(state.me?.powerKing)],['molekingAction',Boolean(state.me?.moleKing)],['fishkingAction',Boolean(state.me?.fishKing)],['minekingAction',Boolean(state.me?.mineKing)],['battlekingAction',Boolean(state.me?.battleKing)]]){
+ for(const [id,granted] of [['beatkingAction',Boolean(state.me?.rhythmKing)],['powerkingAction',Boolean(state.me?.powerKing)],['molekingAction',Boolean(state.me?.moleKing)],['fishkingAction',Boolean(state.me?.fishKing)],['minekingAction',Boolean(state.me?.mineKing)],['battlekingAction',Boolean(state.me)]]){
   const btn=$(id);if(!btn)continue;
   btn.hidden=!granted;btn.style.display=granted?'':'none';
-  if(granted)btn.title=id==='battlekingAction'?'최고 단계 클리어 전용':id==='beatkingAction'?'전날 박자왕 1등 전용':id==='powerkingAction'?'전날 피자왕 1등 전용':id==='minekingAction'?'전날 광물왕 1등 전용':id==='fishkingAction'?'전날 낚시왕 1등 전용':'전날 두더지왕 1등 전용';
+  if(granted)btn.title=id==='battlekingAction'?'전투왕 리액션 테스트':id==='beatkingAction'?'전날 박자왕 1등 전용':id==='powerkingAction'?'전날 피자왕 1등 전용':id==='minekingAction'?'전날 광물왕 1등 전용':id==='fishkingAction'?'전날 낚시왕 1등 전용':'전날 두더지왕 1등 전용';
  }
  // Revoke any already-running reaction immediately on a profile update.
- if(state.me&&((state.action==='beatking'&&!state.me.rhythmKing)||(state.action==='powerking'&&!state.me.powerKing)||(state.action==='moleking'&&!state.me.moleKing)||(state.action==='fishking'&&!state.me.fishKing)||(state.action==='mineking'&&!state.me.mineKing)||(state.action==='battleking'&&!state.me.battleKing))){state.action='idle';state.me.action='idle';state.actionUntil=0;updateActionButtons();sendMove();}
+ if(state.me&&((state.action==='beatking'&&!state.me.rhythmKing)||(state.action==='powerking'&&!state.me.powerKing)||(state.action==='moleking'&&!state.me.moleKing)||(state.action==='fishking'&&!state.me.fishKing)||(state.action==='mineking'&&!state.me.mineKing))){state.action='idle';state.me.action='idle';state.actionUntil=0;updateActionButtons();sendMove();}
 }
 function updateRhythmLeaderboard(){
  ensureRhythmUI();
@@ -1594,7 +1594,6 @@ function react(a,glowColor=null){
  if(a==='moleking'&&!state.me.moleKing)return toast('전날 두더지왕 1등만 사용할 수 있습니다.');
  if(a==='fishking'&&!state.me.fishKing)return toast('전날 낚시왕 1등만 사용할 수 있습니다.');
  if(a==='mineking'&&!state.me.mineKing)return toast('전날 광물왕 1등만 사용할 수 있습니다.');
- if(a==='battleking'&&!state.me.battleKing)return toast('최고 단계를 클리어한 전투왕만 사용할 수 있습니다.');
  if(a==='birthday'&&!activeBirthdayEvent())return toast('생일축하 리액션은 이벤트 당일에만 사용할 수 있어요.');
  if(a==='nightfirework'&&!nightFireworkAvailable())return toast('폭죽놀이는 새벽 1시부터 4시까지만 사용할 수 있어요.');
  if(a==='marshmallow'&&!campfireReactionAvailable())return toast('모닥불이 켜진 시간(20:00~03:00)에 화덕 가까이에서 사용할 수 있어요.');
@@ -8739,8 +8738,8 @@ function animateAvatar(a,p,t){
  if(act==='mineking'&&q.mineKing&&!P.mineKingVisual)makeMineKingVisual(a.root,P);
  if(P.mineKingVisual){const active=act==='mineking'&&Boolean(q.mineKing);P.mineKingVisual.visible=active;if(active){const phase=sec%3.4,impact=(phase-1.05)/1.2;P.mineKingAura.material.rotation=sec*.35;P.mineKingAura.scale.setScalar(4.4+.18*Math.sin(sec*4));P.mineKingGem.scale.setScalar(1+.05*Math.sin(sec*3));P.mineKingStars.forEach((o,i)=>{o.visible=impact>=0&&impact<=1;if(o.visible){const angle=i*2.399963,r=(.4+impact*(2.8+(i%5)*.28));o.position.set(Math.cos(angle)*r,.6+Math.sin(impact*Math.PI)*(1.5+(i%4)*.4),2.8+Math.sin(angle)*r);o.material.opacity=1-impact;const z=.3+(i%3)*.1;o.scale.set(z,z,1);}});P.mineKingRings.forEach((o,i)=>{const v=(phase-1.05-i*.08)/1.25;o.visible=v>=0&&v<=1;if(o.visible){o.position.set(0,.08+i*.025,2.8);o.scale.setScalar(.35+v*(3+i*.18));o.material.opacity=.85*(1-v);}});}}
  if(P.battleKingTitle){P.battleKingTitle.visible=Boolean(q.battleKing);P.battleKingTitle.position.y=4.96+(q.equipped?.head==='balloon-hat'?1.4:0)+(Number(Boolean(q.rhythmKing))+Number(Boolean(q.powerKing))+Number(Boolean(q.moleKing))+Number(Boolean(q.fishKing))+Number(Boolean(q.mineKing)))*1.12;}
- if(act==='battleking'&&q.battleKing&&!P.battleKingVisual)makeBattleKingVisual(a.root,P);
- if(P.battleKingVisual){const active=act==='battleking'&&Boolean(q.battleKing);P.battleKingVisual.visible=active;if(active){if(a.lastAction!=='battleking')a.battleKingStart=t;const phase=((t-(a.battleKingStart??t))*.001)%4.5,emerge=THREE.MathUtils.smoothstep(phase,0,.7),strike=THREE.MathUtils.smoothstep(phase,1.05,1.38),out=THREE.MathUtils.smoothstep(phase,3.6,4.4);P.battleKingSword.position.y=4.8*emerge-1.8*strike-3*out;P.battleKingSword.visible=phase<4.4;P.battleKingRings.forEach((o,i)=>{const v=(phase-1.38-i*.09)/1.2;o.visible=v>=0&&v<=1;if(o.visible){o.position.set(0,.05+i*.025,3);o.scale.setScalar(.3+v*(3+i*.22));o.material.opacity=.8*(1-v);}});P.battleKingSparks.forEach((o,i)=>{const v=(phase-1.38-(i%4)*.035)/1.15;o.visible=v>=0&&v<=1;if(o.visible){const angle=i*2.4,r=.3+v*(2+(i%5)*.45);o.position.set(Math.cos(angle)*r,.12+Math.sin(v*Math.PI)*(1+(i%4)*.45),3+Math.sin(angle)*r);o.scale.setScalar(.18+(i%3)*.1);o.material.opacity=1-v;}});}}
+ if(act==='battleking'&&!P.battleKingVisual)makeBattleKingVisual(a.root,P);
+ if(P.battleKingVisual){const active=act==='battleking';P.battleKingVisual.visible=active;if(active){if(a.lastAction!=='battleking')a.battleKingStart=t;const phase=((t-(a.battleKingStart??t))*.001)%4.5,emerge=THREE.MathUtils.smoothstep(phase,0,.7),strike=THREE.MathUtils.smoothstep(phase,1.05,1.38),out=THREE.MathUtils.smoothstep(phase,3.6,4.4);P.battleKingSword.position.y=4.8*emerge-1.8*strike-3*out;P.battleKingSword.visible=phase<4.4;P.battleKingRings.forEach((o,i)=>{const v=(phase-1.38-i*.09)/1.2;o.visible=v>=0&&v<=1;if(o.visible){o.position.set(0,.05+i*.025,3);o.scale.setScalar(.3+v*(3+i*.22));o.material.opacity=.8*(1-v);}});P.battleKingSparks.forEach((o,i)=>{const v=(phase-1.38-(i%4)*.035)/1.15;o.visible=v>=0&&v<=1;if(o.visible){const angle=i*2.4,r=.3+v*(2+(i%5)*.45);o.position.set(Math.cos(angle)*r,.12+Math.sin(v*Math.PI)*(1+(i%4)*.45),3+Math.sin(angle)*r);o.scale.setScalar(.18+(i%3)*.1);o.material.opacity=1-v;}});}}
  if(P.gameBadge){const n=Number(Boolean(q.rhythmKing))+Number(Boolean(q.powerKing))+Number(Boolean(q.moleKing))+Number(Boolean(q.fishKing))+Number(Boolean(q.mineKing))+Number(Boolean(q.battleKing));P.gameBadge.visible=Boolean(q.gamePlaying);P.gameBadge.position.y=(n?6.2+(n-1)*1.12:4.7)+(q.equipped?.head==='balloon-hat'?1.4:0);}
  if(P.rhythmTitle){P.rhythmTitle.visible=Boolean(q.rhythmKing);P.rhythmTitle.position.y=4.96+(q.equipped?.head==='balloon-hat'?1.4:0)+(Number(Boolean(q.powerKing))+Number(Boolean(q.moleKing)))*1.12+Math.sin(sec*3.5)*.05;}
  if(P.powerTitle){P.powerTitle.visible=Boolean(q.powerKing);P.powerTitle.position.y=4.96+(q.equipped?.head==='balloon-hat'?1.4:0)+Number(Boolean(q.moleKing))*1.12+Math.sin(sec*3.5+1.5)*.05;}
