@@ -59,6 +59,16 @@ function announceRareFind(player,item){
  for(const [viewerId,stream] of clients){const viewer=players.get(viewerId);if(!viewer)continue;const room=viewer.tentRoomId||null;if(!rooms.has(room))rooms.set(room,[]);rooms.get(room).push(stream);}
  for(const [roomId,streams] of rooms){const entry={...base,roomId};retainChat(entry);for(const stream of streams)try{send(stream,{type:'chat',entry})}catch{}}
 }
+// Server-owned communal snowballs and snowmen. Sizes are world-space radii.
+const snowObjects=new Map(),snowRolling=new Map(),SNOW_LIMIT=120;
+function publishSnow(o){broadcast({type:'snow-object',object:o});}
+function finishSnow(id){const key=snowRolling.get(id),o=key&&snowObjects.get(key);snowRolling.delete(id);if(o){o.rolling=false;publishSnow(o);scheduleSave();}}
+function updateSnowRolling(p,oldX,oldY){
+ let key=snowRolling.get(p.id),o=key&&snowObjects.get(key);
+ if(p.action!=='snowroll'||p.tentRoomId){if(o)finishSnow(p.id);return;}
+ if(!o){if(snowObjects.size>=SNOW_LIMIT){p.action='idle';return;}o={id:crypto.randomUUID(),kind:'ball',x:0,z:0,r:.26,rolling:true};snowObjects.set(o.id,o);snowRolling.set(p.id,o.id);}
+ const dist=Math.min(3,Math.hypot(p.x-oldX,p.y-oldY)*.058);o.r=Math.min(1.45,o.r+dist*.045);const offset=.7+o.r;o.x=(p.x-600)*.058+Math.sin(p.facing)*offset;o.z=(p.y-500)*.058+8+Math.cos(p.facing)*offset;publishSnow(o);
+}
 let activeSlam=null,slamCooldownUntil=0;
 let pendingSlamImpact=null; // Last launch roster; exactly one shared first-arrival dust burst
 const SLAM_COUNTDOWN_MS=5000,SLAM_COOLDOWN_MS=15000;
@@ -1010,10 +1020,11 @@ const SB_KEY=process.env.SUPABASE_SECRET_KEY||'';
 const useSupabase=Boolean(SB_URL&&SB_KEY);
 let restored=false;
 let saveChain=Promise.resolve();
-function stateData(){return {version:18,pizzaGameMigration,petSkillRefund20261119Done,petSkillTicketRefund20261119Done,combatNames:Object.fromEntries(combatNames),battleAccounts:Object.fromEntries(battleAccounts),craftAccounts:Object.fromEntries(craftAccounts),questAccounts:Object.fromEntries(questAccounts),fishingTournaments:[...fishingTournaments.values()],petRace:petRace.race,petRacePoints:Object.fromEntries(petRacePoints),mineKingDay,mineKingReward,mineKingScores:Object.fromEntries(mineKingScores),miningStats:Object.fromEntries([...miningStats].map(([id,r])=>[id,{bonus:r.bonus,counts:r.counts,lastResult:r.lastResult}])),decorationStats:Object.fromEntries(decorationStats),fishKingDay,fishKingReward,fishKingScores:Object.fromEntries(fishKingScores),fortuneStats:Object.fromEntries(fortuneStats),oneTimeCreditApplied,adminPointCredits:Object.fromEntries(adminPointCredits),adminPointLedger:Object.fromEntries(adminPointLedger),recoveryRecords:Object.fromEntries(recoveryRecords),fishingStats:Object.fromEntries([...fishingStats].map(([id,a])=>[id,{level:a.level,spent:a.spent,bonus:a.bonus,fishCounts:a.fishCounts,totalMisses:a.totalMisses,lastCastAt:a.lastCastAt,active:a.active,lastResult:a.lastResult}])),lotteryStats:Object.fromEntries([...lotteryStats].map(([identity,a])=>[identity,{day:a.day,used:a.used,spent:a.spent,bonus:a.bonus,pending:a.pending,lastResult:a.lastResult}])),petStats:Object.fromEntries([...petStats].map(([identity,record])=>[identity,{spent:record.spent,pet:record.pet,effectsOwned:record.effectsOwned||{},effectsEnabled:record.effectsEnabled||{}}])),fieldCoinLastSpawnAt,fieldCoins:fieldCoinPublic(),fieldCoinBonuses:Object.fromEntries(fieldCoinBonuses),moleDay,moleHammerRevision,moleReward,moleScores:Object.fromEntries(moleScores),moleAccounts:Object.fromEntries([...moleAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session,lastResult:v.lastResult}])),powerDay,powerReward,powerScores:Object.fromEntries(powerScores),powerAccounts:Object.fromEntries([...powerAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session,lastResult:v.lastResult||null}])),rhythmAccounts:Object.fromEntries([...rhythmAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),furnitureCatalogEdits:Object.fromEntries(furnitureCatalogEdits),furnitureStats:Object.fromEntries([...furnitureStats].map(([id,v])=>[id,{spent:v.spent,owned:v.owned}])),tentStats:Object.fromEntries([...tentStats].map(([identity,t])=>[identity,storedTent(t)])),announcements:{entry:entranceNotices,ticker:tickerNotices,intervalMinutes:tickerIntervalMinutes,immediateHistory:immediateNoticeHistory},music,queue:[...queue],history:[...history],nextTrackToken,customMd:Object.fromEntries(customMd),shopStats:Object.fromEntries([...shopStats].map(([k,v])=>[k,{spent:0,refunded:v.refunded||0,owned:v.owned,equipped:v.equipped}])),badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),rhythm:{day:rhythmDay,reward:rhythmReward,scores:Object.fromEntries([...rhythmScores].map(([k,v])=>[k,{name:v.name,score:Math.max(0,Math.floor(Number(v.score)||0)),updatedAt:Number(v.updatedAt)||0}]))},savedAt:Date.now()}}
+function stateData(){return {version:18,snowObjects:[...snowObjects.values()].map(o=>({...o,rolling:false})),pizzaGameMigration,petSkillRefund20261119Done,petSkillTicketRefund20261119Done,combatNames:Object.fromEntries(combatNames),battleAccounts:Object.fromEntries(battleAccounts),craftAccounts:Object.fromEntries(craftAccounts),questAccounts:Object.fromEntries(questAccounts),fishingTournaments:[...fishingTournaments.values()],petRace:petRace.race,petRacePoints:Object.fromEntries(petRacePoints),mineKingDay,mineKingReward,mineKingScores:Object.fromEntries(mineKingScores),miningStats:Object.fromEntries([...miningStats].map(([id,r])=>[id,{bonus:r.bonus,counts:r.counts,lastResult:r.lastResult}])),decorationStats:Object.fromEntries(decorationStats),fishKingDay,fishKingReward,fishKingScores:Object.fromEntries(fishKingScores),fortuneStats:Object.fromEntries(fortuneStats),oneTimeCreditApplied,adminPointCredits:Object.fromEntries(adminPointCredits),adminPointLedger:Object.fromEntries(adminPointLedger),recoveryRecords:Object.fromEntries(recoveryRecords),fishingStats:Object.fromEntries([...fishingStats].map(([id,a])=>[id,{level:a.level,spent:a.spent,bonus:a.bonus,fishCounts:a.fishCounts,totalMisses:a.totalMisses,lastCastAt:a.lastCastAt,active:a.active,lastResult:a.lastResult}])),lotteryStats:Object.fromEntries([...lotteryStats].map(([identity,a])=>[identity,{day:a.day,used:a.used,spent:a.spent,bonus:a.bonus,pending:a.pending,lastResult:a.lastResult}])),petStats:Object.fromEntries([...petStats].map(([identity,record])=>[identity,{spent:record.spent,pet:record.pet,effectsOwned:record.effectsOwned||{},effectsEnabled:record.effectsEnabled||{}}])),fieldCoinLastSpawnAt,fieldCoins:fieldCoinPublic(),fieldCoinBonuses:Object.fromEntries(fieldCoinBonuses),moleDay,moleHammerRevision,moleReward,moleScores:Object.fromEntries(moleScores),moleAccounts:Object.fromEntries([...moleAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session,lastResult:v.lastResult}])),powerDay,powerReward,powerScores:Object.fromEntries(powerScores),powerAccounts:Object.fromEntries([...powerAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session,lastResult:v.lastResult||null}])),rhythmAccounts:Object.fromEntries([...rhythmAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),furnitureCatalogEdits:Object.fromEntries(furnitureCatalogEdits),furnitureStats:Object.fromEntries([...furnitureStats].map(([id,v])=>[id,{spent:v.spent,owned:v.owned}])),tentStats:Object.fromEntries([...tentStats].map(([identity,t])=>[identity,storedTent(t)])),announcements:{entry:entranceNotices,ticker:tickerNotices,intervalMinutes:tickerIntervalMinutes,immediateHistory:immediateNoticeHistory},music,queue:[...queue],history:[...history],nextTrackToken,customMd:Object.fromEntries(customMd),shopStats:Object.fromEntries([...shopStats].map(([k,v])=>[k,{spent:0,refunded:v.refunded||0,owned:v.owned,equipped:v.equipped}])),badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),rhythm:{day:rhythmDay,reward:rhythmReward,scores:Object.fromEntries([...rhythmScores].map(([k,v])=>[k,{name:v.name,score:Math.max(0,Math.floor(Number(v.score)||0)),updatedAt:Number(v.updatedAt)||0}]))},savedAt:Date.now()}}
 function applySaved(d){
  if(d?.petRace&&['waiting','running','finished'].includes(d.petRace.phase))petRace.race=d.petRace;petRacePoints.clear();if(d?.petRacePoints&&typeof d.petRacePoints==='object')for(const [id,n] of Object.entries(d.petRacePoints))if(/^[a-zA-Z0-9_-]{20,100}$/.test(id)&&Number.isSafeInteger(n)&&Math.abs(n)<1e9)petRacePoints.set(id,n);
  if(!d||typeof d!=='object')return;
+ snowObjects.clear();snowRolling.clear();if(Array.isArray(d.snowObjects))for(const o of d.snowObjects.slice(0,SNOW_LIMIT)){if(o&&typeof o.id==='string'&&/^[a-f0-9-]{36}$/.test(o.id)&&['ball','man'].includes(o.kind)&&Number.isFinite(o.x)&&Number.isFinite(o.z)&&Math.abs(o.x)<150&&Math.abs(o.z)<150&&Number.isFinite(o.r)&&o.r>=.2&&o.r<=1.45&&(o.kind==='ball'||Number.isFinite(o.head)&&o.head>=.2&&o.head<=o.r)){snowObjects.set(o.id,{id:o.id,kind:o.kind,x:o.x,z:o.z,r:o.r,...(o.kind==='man'?{head:o.head}:{}),rolling:false});}}
  pizzaGameMigration=d.pizzaGameMigration===true;
  petSkillRefund20261119Done=d.petSkillRefund20261119Done===true;
  petSkillTicketRefund20261119Done=d.petSkillTicketRefund20261119Done===true;
@@ -1349,10 +1360,10 @@ function endDuo(duo){if(!duo||!activeDuos.has(duo.id))return;activeDuos.delete(d
 function clearDuosFor(id){for(const duo of [...activeDuos.values()])if(duo.a===id||duo.b===id)endDuo(duo);for(const [inviteId,invite] of duoInvites)if(invite.from===id||invite.to===id){duoInvites.delete(inviteId);broadcast({type:'duo-invite-ended',id:inviteId,to:invite.to})}}
 function duoDistance(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
 setInterval(()=>{const now=Date.now();for(const duo of [...activeDuos.values()])if(duo.endAt<=now)endDuo(duo);for(const [key,invite] of duoInvites)if(invite.expiresAt<=now){duoInvites.delete(key);broadcast({type:'duo-invite-ended',id:key,to:invite.to})}},700).unref();
-const snapshot=(viewerId=null)=>({type:'snapshot',seoulWeather,tents:allPlacedTents(),announcements:publicNoticeState(),interactions:[...activeDuos.values()].filter(x=>x.endAt>Date.now()),players:[...players.values()],chatRoomId:players.get(viewerId)?.tentRoomId||null,chat:chatForRoom(players.get(viewerId)?.tentRoomId||null),...musicState(),skipVote:publicSkipVote(),skipVoteCooldownUntil,slam:publicSlam(),slamCooldownUntil,rockPlay:publicRock(),crowdSurf:activeSurfRide&&activeSurfRide.startAt+activeSurfRide.duration>Date.now()?activeSurfRide:null,rockCooldowns:{...rockCooldowns},rockRunningUntil,rhythm:publicRhythmState(),power:publicPowerState(),mole:publicMoleState(),fieldCoins:fieldCoinPublic(),count:players.size});
+const snapshot=(viewerId=null)=>({type:'snapshot',seoulWeather,snowObjects:[...snowObjects.values()],tents:allPlacedTents(),announcements:publicNoticeState(),interactions:[...activeDuos.values()].filter(x=>x.endAt>Date.now()),players:[...players.values()],chatRoomId:players.get(viewerId)?.tentRoomId||null,chat:chatForRoom(players.get(viewerId)?.tentRoomId||null),...musicState(),skipVote:publicSkipVote(),skipVoteCooldownUntil,slam:publicSlam(),slamCooldownUntil,rockPlay:publicRock(),crowdSurf:activeSurfRide&&activeSurfRide.startAt+activeSurfRide.duration>Date.now()?activeSurfRide:null,rockCooldowns:{...rockCooldowns},rockRunningUntil,rhythm:publicRhythmState(),power:publicPowerState(),mole:publicMoleState(),fieldCoins:fieldCoinPublic(),count:players.size});
 const clamp=(n,min,max)=>Math.min(max,Math.max(min,Number(n)||0));
 const SERVER_X_MIN=20,SERVER_X_MAX=1380,SERVER_Y_MIN=60,SERVER_Y_MAX=1550;
-function cleanup(){const now=Date.now();for(const [id,p] of players)if(now-p.seen>180000&&!(()=>{const a=fishingStats.get(p.badgeIdentity)?.auto;return a?.playerId===id&&(clients.has(id)||(a.disconnectedAt&&now-a.disconnectedAt<90000));})()){settleBadge(p,Math.min(now,p.seen+45000));settleBadge(p);clearDuosFor(id);clearMiningPlayer(p);players.delete(id);forgetSession(id);voterLeaves(id);if(activeSlam?.participants.delete(id))slamUpdate();rockMemberLeaves(id);pauseForEmpty();const r=clients.get(id);if(r){r.end();clients.delete(id)}broadcast({type:'leave',id,count:players.size});sendTentUpdate()}}
+function cleanup(){const now=Date.now();for(const [id,p] of players)if(now-p.seen>180000&&!(()=>{const a=fishingStats.get(p.badgeIdentity)?.auto;return a?.playerId===id&&(clients.has(id)||(a.disconnectedAt&&now-a.disconnectedAt<90000));})()){settleBadge(p,Math.min(now,p.seen+45000));settleBadge(p);clearDuosFor(id);clearMiningPlayer(p);finishSnow(id);players.delete(id);forgetSession(id);voterLeaves(id);if(activeSlam?.participants.delete(id))slamUpdate();rockMemberLeaves(id);pauseForEmpty();const r=clients.get(id);if(r){r.end();clients.delete(id)}broadcast({type:'leave',id,count:players.size});sendTentUpdate()}}
 setInterval(cleanup,7000).unref();
 // Check connected, fresh players even while standing still; each coin has one winner.
 setInterval(()=>{
@@ -2053,7 +2064,7 @@ const server=http.createServer(async(req,res)=>{
           // An indoor player cannot participate in outdoor two-player interactions.
           // Cancel old invitations and paired animations before entering.
           clearDuosFor(p.id);
-          p.tentRoomId=selected.id;p.tentRoomX=0;p.tentRoomZ=2;p.tentRoomFacing=0;
+          finishSnow(p.id);p.tentRoomId=selected.id;p.tentRoomX=0;p.tentRoomZ=2;p.tentRoomFacing=0;
           p.action='idle';p.pose='stand';broadcast({type:'tent-room',playerId:p.id,roomId:p.tentRoomId,x:0,z:2,action:'idle',pose:'stand'});
           sendTentUpdate();
           return json(res,200,{ok:true,room:publicTent(selected),furnitureCatalog:TENT_FURNITURE_CATALOG,canDecorate:record?.id===selected.id,tents:allPlacedTents(),chatRoomId:selected.id,chat:chatForRoom(selected.id)});
@@ -2265,11 +2276,18 @@ const server=http.createServer(async(req,res)=>{
         }
         return json(res,400,{error:'지원하지 않는 상호작용 명령입니다.'});
       }
+      if(url.pathname==='/api/snowman'){
+       if(!playerSessions.get(id)||playerSessions.get(id)!==String(d.sessionKey||''))return json(res,403,{error:'본인 세션에서 이용해 주세요.'});
+       if(p.tentRoomId)return json(res,400,{error:'맵 밖에서 만들 수 있어요.'});
+       const a=snowObjects.get(String(d.a||'')),b=snowObjects.get(String(d.b||'')),px=(p.x-600)*.058,pz=(p.y-500)*.058+8;
+       if(!a||!b||a===b||a.kind!=='ball'||b.kind!=='ball'||a.rolling||b.rolling||Math.hypot(a.x-px,a.z-pz)>6||Math.hypot(b.x-px,b.z-pz)>6||Math.hypot(a.x-b.x,a.z-b.z)>6)return json(res,400,{error:'가까운 곳에 완성된 눈덩이 두 개가 필요해요.'});
+       const base=a.r>=b.r?a:b,head=base===a?b:a,man={id:crypto.randomUUID(),kind:'man',x:base.x,z:base.z,r:base.r,head:head.r,rolling:false};snowObjects.delete(a.id);snowObjects.delete(b.id);snowObjects.set(man.id,man);broadcast({type:'snow-remove',ids:[a.id,b.id]});publishSnow(man);await saveNow();return json(res,200,{ok:true});
+      }
       if(url.pathname==='/api/move'&&p.tentRoomId)return json(res,200,{ok:true,indoor:true});
       if(url.pathname==='/api/move'){
         // Ignore stale movement packets while server-authoritative paired poses play.
         if(duoFor(id))return json(res,200,{ok:true,paired:true});
-        const previousAction=p.action;
+        const previousAction=p.action,oldSnowX=p.x,oldSnowY=p.y;
         p.x=clamp(d.x,SERVER_X_MIN,SERVER_X_MAX);p.y=clamp(d.y,SERVER_Y_MIN,SERVER_Y_MAX);p.facing=clamp(d.facing,-Math.PI,Math.PI);
         p.pose=['stand','sit','lie'].includes(d.pose)?d.pose:'stand';
         p.glowEnabled=d.glowEnabled===true;
@@ -2293,9 +2311,11 @@ const server=http.createServer(async(req,res)=>{
           const kstHour=Number(new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Seoul',hour:'2-digit',hourCycle:'h23'}).format(new Date()));
           if(kstHour<1||kstHour>=4)d.action='idle';
         }
+        if(d.action==='snowroll'&&(!playerSessions.get(id)||playerSessions.get(id)!==String(d.sessionKey||'')))d.action='idle';
         if(d.action==='fishing'&&(!fishingNearSea(p)||!fishingAccount(p.badgeIdentity).active))d.action='idle';
         if(d.action==='mining'&&(!p.badgeIdentity||miningAccount(p.badgeIdentity).active?.playerId!==p.id))d.action='idle';
-        p.action=['idle','walk','peace','jump','run','wave','clap','sit','lie','drink','snack','headbang','buriburi','groove','dougie','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','powerking','moleking','fishking','mineking','battleking','marshmallow','putyourhandsup','nightfirework','birthday','fishing','mining','heartbow','drum','electricguitar','bassguitar','vocal','mosh-charge','slam-charge','slam-retreat','slam-celebrate','circle-run','train-run','row-paddle','toast-clink','surf-rider','surf-support','shoulder-headbang','rock-skank'].includes(d.action)?d.action:'idle';
+        p.action=['idle','walk','peace','jump','run','wave','clap','sit','lie','drink','snack','headbang','buriburi','groove','dougie','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','powerking','moleking','fishking','mineking','battleking','snowroll','marshmallow','putyourhandsup','nightfirework','birthday','fishing','mining','heartbow','drum','electricguitar','bassguitar','vocal','mosh-charge','slam-charge','slam-retreat','slam-celebrate','circle-run','train-run','row-paddle','toast-clink','surf-rider','surf-support','shoulder-headbang','rock-skank'].includes(d.action)?d.action:'idle';
+        updateSnowRolling(p,oldSnowX,oldSnowY);
         broadcast({type:'move',player:p});
         // Only a movement packet from this player's private session may
         // award coins; publicly visible avatar IDs are not authentication.
@@ -2556,7 +2576,7 @@ const server=http.createServer(async(req,res)=>{
         // A late pagehide beacon from a previous page must not kick the newer page.
         const owner=pageOwners.get(id);
         if(owner&&d.pageId!==owner)return json(res,200,{ok:true,ignored:'stale-page'});
-        settleBadge(p);clearDuosFor(id);clearMiningPlayer(p);players.delete(id);forgetSession(id);voterLeaves(id);
+        settleBadge(p);clearDuosFor(id);clearMiningPlayer(p);finishSnow(id);players.delete(id);forgetSession(id);voterLeaves(id);
         if(activeSlam?.participants.delete(id))slamUpdate();rockMemberLeaves(id);pauseForEmpty();
         clients.get(id)?.end();clients.delete(id);broadcast({type:'leave',id,count:players.size});sendTentUpdate();return json(res,200,{ok:true})
       }
