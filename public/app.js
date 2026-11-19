@@ -299,7 +299,7 @@ async function openPowerGame(){
  ensurePowerUI();powerGame.open=true;powerUi.overlay.classList.add('show');powerUi.start.hidden=false;powerUi.strike.hidden=true;powerUi.message.textContent='아래 버튼을 누르면 바가 움직입니다.';
  try{const r=await post('power',{id:state.id,sessionKey,command:'state'});powerGame.coins=r.account.coins;powerGame.day=r.account.day;powerGame.best=r.best;applyPowerState(r.power);}catch(e){toast(e.message)}
 }
-function closePowerGame(){if(perfMobile)renderer.renderLists?.dispose();powerGame.open=false;powerUi?.overlay.classList.remove('show');updateRhythmBoothButton();if(powerGame.running){powerGame.running=false;powerGame.playId=null;toast('진행 중인 게임을 닫았습니다. 사용한 코인은 반환되지 않아요.');}}
+function closePowerGame(){renderer.renderLists?.dispose();powerGame.open=false;powerUi?.overlay.classList.remove('show');updateRhythmBoothButton();if(powerGame.running){powerGame.running=false;powerGame.playId=null;toast('진행 중인 게임을 닫았습니다. 사용한 코인은 반환되지 않아요.');}}
 async function startPowerGame(){
  if(powerGame.pending||powerGame.running||!nearPowerBooth())return;
  powerGame.pending=true;powerUi.start.disabled=true;
@@ -400,7 +400,7 @@ function renderMoleUI(){if(!moleUi)return;moleUi.coins.textContent=`🎟️ 코�
  moleUi.reward.textContent=moleGame.reward?`👑 어제 두더지왕: ${moleGame.reward.name} · ${moleGame.reward.score}점`:'👑 어제 두더지왕: 기록 없음';}
 async function openMoleGame(){if(!nearRhythmBooth())return toast('게임부스 근처에서 플레이하세요.');ensureMoleUI();moleGame.open=true;moleUi.el.classList.add('show');moleUi.start.hidden=Boolean(moleGame.playId);moleUi.retry.hidden=!moleGame.playId;moleUi.msg.textContent=moleGame.playId?'이전 게임 결과를 저장해 주세요.':'30초 동안 나타나는 두더지를 빠르게 터치하세요!';
  try{const r=await post('mole',{id:state.id,sessionKey,command:'state'});moleGame.coins=r.account.coins;moleGame.best=r.best;applyMoleState(r.mole);}catch(e){toast(e.message)}renderMoleUI();}
-function closeMoleGame(){if(perfMobile)renderer.renderLists?.dispose();moleGame.open=false;moleUi?.el.classList.remove('show');if(moleGame.running){
+function closeMoleGame(){renderer.renderLists?.dispose();moleGame.open=false;moleUi?.el.classList.remove('show');if(moleGame.running){
  const elapsed=Date.now()+moleGame.offset-moleGame.startedAt-moleGame.delay;
  if(elapsed>=moleGame.duration){void finishMoleGame();}
  else{const playId=moleGame.playId;moleGame.running=false;moleGame.playId=null;
@@ -765,7 +765,7 @@ function openRhythmGame(){
  resizeRhythmCanvas();
  drawRhythmGame();
 }
-function closeRhythmGame(){if(perfMobile)renderer.renderLists?.dispose();
+function closeRhythmGame(){renderer.renderLists?.dispose();
  // Closing a started game forfeits that day's coin; the server already consumed it.
  rhythmGame.running=false;
  rhythmStopAudio();
@@ -2273,7 +2273,7 @@ function syncTents(tents){
  if(!Array.isArray(tents))return;
  tentList=tents;
  if(tentRoomActive){const current=tents.find(t=>t.id===tentRoomActive.id);if(!current)leaveTentInterior(false);else{tentRoomActive={...tentRoomActive,...current};applyTentRoomSize(tentRoomActive);syncRoomCaption();applyTentRoomColors(current);applyTentRoomLighting(current);syncTentFurniturePlaced(tentRoomActive)}}
- if(tentRoomActive&&perfMobile){tentWorldRefreshPending=true;}else{updateTentModels();refreshPeperoInstances();tentWorldRefreshPending=false;} // Defer rebuilding outdoor meshes while inside on mobile.
+ if(tentRoomActive){tentWorldRefreshPending=true;}else{updateTentModels();refreshPeperoInstances();tentWorldRefreshPending=false;} // Defer rebuilding outdoor meshes while inside on mobile.
 }
 async function refreshTentStatus(){
  if(!state.id)return;
@@ -3808,7 +3808,7 @@ function clearTentFurniturePlaced(){
  tentFurniturePlaced.clear();tentFurnitureCurrentSignature='';
 }
 function releaseMobileFurnitureCache(){
- if(!perfMobile)return;const cached=[...tentFurnitureModels.values()];tentFurnitureModels.clear();
+ const cached=[...tentFurnitureModels.values()];tentFurnitureModels.clear();
  for(const promise of cached)Promise.resolve(promise).then(root=>{const geometries=new Set(),materials=new Set(),textures=new Set();root.traverse(obj=>{if(obj.geometry)geometries.add(obj.geometry);for(const mat of (Array.isArray(obj.material)?obj.material:[obj.material]))if(mat){materials.add(mat);for(const key of ['map','normalMap','roughnessMap','metalnessMap','emissiveMap','aoMap'])if(mat[key]&&mat[key]!==furnitureWoodTexture)textures.add(mat[key]);}});for(const tex of textures)tex.dispose();for(const mat of materials)mat.dispose();for(const geo of geometries)geo.dispose();}).catch(()=>{});
 }
 function syncTentFurniturePlaced(room){
@@ -4294,13 +4294,13 @@ async function enterTent(tentId){
   const data=await tentRequest('enter',{tentId});
   if(tentRoomActive)leaveTentInterior(false);
   state.action='idle';state.pose='stand';state.actionUntil=0;if(state.me){state.me.action='idle';state.me.pose='stand'}
-  if(perfMobile){
-   // Indoor avatars are rebuilt below, so release outdoor copies before allocating them.
+  {
+   // Release outdoor copies on both PC and mobile before entering.
    for(const avatar of avatars.values())disposeAvatar(avatar.root);avatars.clear();for(const entry of foxPetNodes.values())foxPetDispose(entry);foxPetNodes.clear();renderer.renderLists?.dispose();
-   renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,performanceRatio(),.75));
+   if(perfMobile)renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,performanceRatio(),.75));
    if(stageForeground)stageForeground.setSize(1,1,false);
   }
-  tentRoomActive={...data.room,furnitureCatalog:data.furnitureCatalog||{}};if(perfMobile)suspendMobileBooths();tentCanDecorate=Boolean(data.canDecorate);tentPaintWall=data.room.wallColor||'default';tentPaintFloor=data.room.floorColor||'default';
+  tentRoomActive={...data.room,furnitureCatalog:data.furnitureCatalog||{}};suspendMobileBooths();tentCanDecorate=Boolean(data.canDecorate);tentPaintWall=data.room.wallColor||'default';tentPaintFloor=data.room.floorColor||'default';
   tentRoomWalkTarget=null;tentRoomLocal={x:0,z:2,facing:0};tentRoomLastSend=0;tentRoomWasMoving=false;tentRoomMoveQueued=null;
   applyTentRoomSize(tentRoomActive);applyTentRoomColors(data.room);applyTentRoomLighting(tentRoomActive);closeTentDecorate();closeFurnitureShop();cancelTentFurniturePlacement();syncTents(data.tents);renderRoomChat(data.room.id,data.chat);selectBottomMenu('reaction');
   tentRoomSavedCamera={position:camera.position.clone(),target:controls.target.clone(),minDistance:controls.minDistance,maxDistance:controls.maxDistance,enabled:controls.enabled};
@@ -4329,7 +4329,7 @@ function leaveTentInterior(send=true){
  document.body.classList.remove('tent-interior-open');$('tentRoomOverlay').classList.add('hidden');
  cssRenderer.domElement.style.visibility='';
  if(stageForeground)stageForeground.domElement.style.display='';
- if(perfMobile){renderer.renderLists?.dispose();renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,performanceRatio()));if(tentWorldRefreshPending){updateTentModels();refreshPeperoInstances();tentWorldRefreshPending=false;}resize();}
+ {renderer.renderLists?.dispose();renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,performanceRatio()));if(tentWorldRefreshPending){updateTentModels();refreshPeperoInstances();tentWorldRefreshPending=false;}resize();}
  const player=state.players.get(state.id);if(player){player.tentRoomId=null;player.tentRoomX=0;player.tentRoomZ=0;}
  if(send&&state.id)tentRequest('exit').then(data=>{if(!tentRoomActive&&Array.isArray(data.chat))renderRoomChat(null,data.chat)}).catch(error=>toast(error.message));
  void endSceneLoading(loadToken,true);
@@ -5106,7 +5106,7 @@ async function openFortune(){
  fortuneUi.message.textContent='별빛을 불러오는 중…';fortuneUi.cards.replaceChildren();fortuneUi.result.hidden=true;
  try{const r=await post('fortune',{id:state.id,sessionKey,command:'state'});fortuneData=r.fortune;renderFortune();}catch(e){fortuneUi.message.textContent=e.message||'운세를 불러오지 못했어요.';}
 }
-function closeFortune(){if(perfMobile)renderer.renderLists?.dispose();if(fortuneUi)fortuneUi.overlay.hidden=true;state.keys.clear()}
+function closeFortune(){renderer.renderLists?.dispose();if(fortuneUi)fortuneUi.overlay.hidden=true;state.keys.clear()}
 function renderFortune(){
  const ui=fortuneUi,result=fortuneData?.result;ui.cards.replaceChildren();ui.result.hidden=!result;
  ui.instructions.textContent=result?'오늘 뽑은 카드':'마음에 드는 카드 한 장을 골라주세요';
@@ -5364,10 +5364,10 @@ const questSign=new THREE.Mesh(new THREE.PlaneGeometry(2.8,.8),label('QUEST',54,
 // Keep the simple booths as a fallback until each uploaded model has loaded.
 const mobileBoothModels=[];
 function disposeOwnedBooth(root){const geo=new Set(),materials=new Set(),textures=new Set();root.traverse(o=>{if(o.geometry)geo.add(o.geometry);for(const m of (Array.isArray(o.material)?o.material:[o.material]))if(m){materials.add(m);for(const value of Object.values(m))if(value?.isTexture)textures.add(value);}});for(const g of geo)g.dispose();for(const m of materials)m.dispose();for(const t of textures)t.dispose();root.parent?.remove(root);}
-function loadBoothModel(item){if(item.loading||item.model)return;item.loading=true;new GLTFLoader().load(item.url,gltf=>{item.loading=false;const model=gltf.scene;if(perfMobile&&!item.wanted){disposeOwnedBooth(model);return;}model.updateMatrixWorld(true);let bounds=new THREE.Box3().setFromObject(model);if(bounds.isEmpty()){disposeOwnedBooth(model);return;}const size=bounds.getSize(new THREE.Vector3()),scale=item.maxWidth/Math.max(size.x,size.z);model.scale.setScalar(scale);model.updateMatrixWorld(true);bounds=new THREE.Box3().setFromObject(model);const center=bounds.getCenter(new THREE.Vector3());model.position.set(-center.x,-bounds.min.y,-center.z);model.traverse(o=>{if(o.isMesh){o.castShadow=false;o.receiveShadow=true;}});for(const child of [...item.booth.children])item.booth.remove(child);item.booth.add(model);item.model=model;},undefined,error=>{item.loading=false;console.warn('부스 모델 로드 실패:',error);});}
-function replaceBoothModel(booth,url,maxWidth){const item={booth,url,maxWidth,model:null,loading:false,wanted:!perfMobile,lastNear:0};mobileBoothModels.push(item);if(!perfMobile)loadBoothModel(item);}
-function suspendMobileBooths(){if(!perfMobile)return;for(const item of mobileBoothModels){item.wanted=false;item.booth.visible=false;if(item.model){disposeOwnedBooth(item.model);item.model=null;}}}
-function updateMobileBoothModels(t){if(!perfMobile||t-(updateMobileBoothModels.last||0)<1000)return;updateMobileBoothModels.last=t;const at=state.me&&!tentRoomActive?toWorld(state.me):null;for(const item of mobileBoothModels){const distance=at?Math.hypot(at.x-item.booth.position.x,at.z-item.booth.position.z):Infinity;if(distance<55){item.wanted=true;item.lastNear=t;item.booth.visible=true;loadBoothModel(item);}else if(distance>70){item.wanted=false;item.booth.visible=false;if(item.model&&t-item.lastNear>5000){disposeOwnedBooth(item.model);item.model=null;}}}}
+function loadBoothModel(item){if(item.loading||item.model)return;item.loading=true;new GLTFLoader().load(item.url,gltf=>{item.loading=false;const model=gltf.scene;if(!item.wanted){disposeOwnedBooth(model);return;}model.updateMatrixWorld(true);let bounds=new THREE.Box3().setFromObject(model);if(bounds.isEmpty()){disposeOwnedBooth(model);return;}const size=bounds.getSize(new THREE.Vector3()),scale=item.maxWidth/Math.max(size.x,size.z);model.scale.setScalar(scale);model.updateMatrixWorld(true);bounds=new THREE.Box3().setFromObject(model);const center=bounds.getCenter(new THREE.Vector3());model.position.set(-center.x,-bounds.min.y,-center.z);model.traverse(o=>{if(o.isMesh){o.castShadow=false;o.receiveShadow=true;}});for(const child of [...item.booth.children])item.booth.remove(child);item.booth.add(model);item.model=model;},undefined,error=>{item.loading=false;console.warn('부스 모델 로드 실패:',error);});}
+function replaceBoothModel(booth,url,maxWidth){const item={booth,url,maxWidth,model:null,loading:false,wanted:false,lastNear:0};mobileBoothModels.push(item);}
+function suspendMobileBooths(){for(const item of mobileBoothModels){item.wanted=false;item.booth.visible=false;if(item.model){disposeOwnedBooth(item.model);item.model=null;}}}
+function updateMobileBoothModels(t){if(t-(updateMobileBoothModels.last||0)<1000)return;updateMobileBoothModels.last=t;const at=state.me&&!tentRoomActive?toWorld(state.me):null;for(const item of mobileBoothModels){const distance=at?Math.hypot(at.x-item.booth.position.x,at.z-item.booth.position.z):Infinity;if(distance<55){item.wanted=true;item.lastNear=t;item.booth.visible=true;loadBoothModel(item);}else if(distance>70){item.wanted=false;item.booth.visible=false;if(item.model&&t-item.lastNear>5000){disposeOwnedBooth(item.model);item.model=null;}}}}
 
 replaceBoothModel(questBooth,'/assets/rpg/booths/craft_booth.glb',8.4);
 const questStyle=document.createElement('style');questStyle.textContent=`#questNear{position:fixed;left:50%;bottom:calc(160px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:160;background:#fff0b3;border:1px solid #fff;border-radius:22px;color:#31435d;padding:11px 18px;font-weight:900}#questNear[hidden],#questOverlay[hidden]{display:none!important}#questOverlay{position:fixed;inset:0;z-index:8000;display:grid;place-items:center;background:#071326dc;padding:16px;color:white}#questCard{width:min(420px,100%);box-sizing:border-box;border:2px solid #ddc98a;border-radius:20px;background:linear-gradient(145deg,#234963,#15213e);padding:20px;box-shadow:0 12px 45px #0008}#questCard h2{margin:0;color:#ffe3a1}#questCard p{line-height:1.6}#questCard button{border:1px solid #fff4c9;border-radius:10px;background:#f5d58a;color:#29374d;font-weight:900;padding:10px 14px;margin:4px}#questCard button:disabled{opacity:.5}`;document.head.append(questStyle);
@@ -5481,7 +5481,7 @@ function startBattleScene(){
  if(battleSceneActive||!state.me)return;
  const area=battleOverlay.querySelector('#battleArena'),canvas=renderer.domElement;
  try{
-  battleCanvasHome=canvas.parentNode;battleCanvasNext=canvas.nextSibling;battleCanvasStyle=canvas.style.cssText;battleSceneActive=true;if(perfMobile){suspendMobileBooths();for(const avatar of avatars.values())disposeAvatar(avatar.root);avatars.clear();for(const entry of foxPetNodes.values())foxPetDispose(entry);foxPetNodes.clear();renderer.renderLists?.dispose();}
+  battleCanvasHome=canvas.parentNode;battleCanvasNext=canvas.nextSibling;battleCanvasStyle=canvas.style.cssText;battleSceneActive=true;{suspendMobileBooths();for(const avatar of avatars.values())disposeAvatar(avatar.root);avatars.clear();for(const entry of foxPetNodes.values())foxPetDispose(entry);foxPetNodes.clear();renderer.renderLists?.dispose();}
   area.prepend(canvas);canvas.style.cssText='position:absolute;inset:0;width:100%;height:100%;z-index:1;pointer-events:none';area.classList.add('battle-3d');
   if(stageForeground)stageForeground.domElement.style.display='none';
   renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,perfMobile?.75:1.5));
@@ -5505,7 +5505,7 @@ function startBattleScene(){
  }catch(error){console.warn('Battle 3D preview:',error);stopBattleScene();}
 }
 function stopBattleScene(){
- if(!battleSceneActive)return;battleSceneActive=false;cancelAnimationFrame(battleSceneRaf);if(perfMobile)renderer.renderLists?.dispose();battleSceneRaf=0;
+ if(!battleSceneActive)return;battleSceneActive=false;cancelAnimationFrame(battleSceneRaf);renderer.renderLists?.dispose();battleSceneRaf=0;
  disposeBattleSkillEffects();
  if(battleAvatar){disposeAvatar(battleAvatar.root);battleAvatar=null;}
  if(battlePetEntry){foxPetDispose(battlePetEntry);battlePetEntry=null;}
@@ -9914,7 +9914,7 @@ function tick(t){
  if(!perfLastFrameTime)perfLastFrameTime=t-perfTargetFrame;
  const elapsed=t-perfLastFrameTime;
  if(document.hidden){perfLastFrameTime=t;tick.lastFrame=t;return}
- if((petRaceMobileDevice&&petRaceOpen)||battleSceneActive){perfLastFrameTime=t;tick.lastFrame=t;return;}
+ if((petRaceMobileMode&&petRaceOpen)||battleSceneActive){perfLastFrameTime=t;tick.lastFrame=t;return;}
  // A small indoor room needs far less work than the festival exterior.
  // Render its movement at >=45fps when hardware permits, even in eco mode.
  const targetFrame=tentRoomActive?Math.min(perfTargetFrame,1000/45):perfTargetFrame;
@@ -10156,7 +10156,7 @@ function tick(t){
    ?{...serverPlayer,hairStyle:chosenHairStyle,hairColor:chosenHairColor}
    :serverPlayer;
   const current=avatars.get(id);
-  if(perfMobile&&id!==state.id&&state.me){const pos=toWorld(p),me=toWorld(state.me),dist=Math.hypot(pos.x-me.x,pos.z-me.z),limit=current?80:65;if(dist>limit){if(current){disposeAvatar(current.root);avatars.delete(id);}const pet=foxPetNodes.get(id);if(pet){foxPetDispose(pet);foxPetNodes.delete(id);}continue;}}
+  if(id!==state.id&&state.me){const pos=toWorld(p),me=toWorld(state.me),dist=Math.hypot(pos.x-me.x,pos.z-me.z),limit=perfMobile?(current?80:65):(current?110:95);if(dist>limit){if(current){disposeAvatar(current.root);avatars.delete(id);}const pet=foxPetNodes.get(id);if(pet){foxPetDispose(pet);foxPetNodes.delete(id);}continue;}}
   if(current&&(current.characterPower!==(p.characterPower||0)||current.battleStage!==(p.battleStage||0)||current.characterLevel!==(p.characterLevel||1)||current.weaponTier!==(p.weaponTier||null)||current.weaponVisible!==Boolean(p.weaponVisible)||current.color!==p.color||current.name!==p.name||current.badgeTier!==(p.badgeTier||'bronze')||current.gender!==p.gender||current.pattern!==(p.pattern||'solid')||current.sash!==(p.sash||'none')||current.hairStyle!==(p.hairStyle||'short')||current.hairColor!==(p.hairColor||'#4b3932')||current.flagText!==(p.flagText||'')||current.flagImage!==(p.flagImage||'')||Boolean(current.rhythmKing)!==Boolean(p.rhythmKing)||Boolean(current.powerKing)!==Boolean(p.powerKing)||Boolean(current.moleKing)!==Boolean(p.moleKing)||Boolean(current.fishKing)!==Boolean(p.fishKing)||Boolean(current.mineKing)!==Boolean(p.mineKing)||Boolean(current.battleKing)!==Boolean(p.battleKing)||JSON.stringify(current.equipped||{})!==JSON.stringify(p.equipped||{}))){
    disposeAvatar(current.root);avatars.delete(id);
   }
@@ -10433,7 +10433,7 @@ async function openLotteryShop(){
  try{const r=await post('lottery',{id:state.id,sessionKey,command:'state'});lotteryData=r.lottery;lotteryRender();}
  catch(e){lotteryUi.message.textContent=e.message;}
 }
-function closeLotteryShop(){if(perfMobile)renderer.renderLists?.dispose();if(!lotteryUi)return;lotteryUi.overlay.hidden=true;state.keys.clear();lotteryScratching=false;}
+function closeLotteryShop(){renderer.renderLists?.dispose();if(!lotteryUi)return;lotteryUi.overlay.hidden=true;state.keys.clear();lotteryScratching=false;}
 function lotterySetSymbols(symbols){
  const list=Array.isArray(symbols)&&symbols.length===3?symbols:['star','coin','diamond'];
  lotteryUi.symbols.replaceChildren();
@@ -10617,7 +10617,7 @@ async function openFishingUi(){
 }
 function fishingStopAvatar(){if(state.me?.action==='fishing'){state.action='idle';state.me.action='idle';state.actionUntil=0;sendMove()}}
 function fishingStartAvatar(){if(!state.me)return;state.action='fishing';state.me.action='fishing';state.me.pose='stand';state.actionUntil=performance.now()+31000;sendMove()}
-function closeFishingUi(){if(perfMobile)renderer.renderLists?.dispose();
+function closeFishingUi(){renderer.renderLists?.dispose();
  if(fishingData?.auto&&state.id){fishingData.auto=null;void post('fishing',{id:state.id,sessionKey,command:'auto-stop'}).catch(()=>{});}
  if(!fishingUi)return;fishHolding=false;setFishingChatOpen(false);
  fishingUi.overlay.classList.remove('show');state.keys.clear();fishingViewTab='play';fishingUpdateShoreButton();
@@ -10951,14 +10951,14 @@ function petRaceSyncChat(){const source=$('chatMessages'),target=raceGet('#petRa
 new MutationObserver(()=>{if(petRaceOpen)petRaceSyncChat()}).observe($('chatMessages'),{childList:true,subtree:true,characterData:true});
 raceGet('#petRaceChat form').onsubmit=async e=>{e.preventDefault();const input=e.currentTarget.querySelector('input');if(await sendChatMessage(input.value))input.value='';};
 async function petRaceAction(command,extra={}){if(petRaceBusy)return;petRaceBusy=true;try{const result=await petRaceRequest(command,extra);if(petRaceState?.phase==='running'&&result.race?.phase==='finished')petRaceBet=500;petRaceState=result.race;petRaceClockOffset=(petRaceState?.serverNow||Date.now())-Date.now();petRaceRole=petRaceState?.participants?.some(p=>p.isMe)?'participant':petRaceState?.viewer?'viewer':'';renderPetRace();return result;}catch(e){toast(e.message||'경주 요청 실패');}finally{petRaceBusy=false;}}
-function enterMobilePetRace(){if(!petRaceMobileDevice||petRaceMobileMode)return;petRaceMobileMode=true;suspendMobileBooths();for(const avatar of avatars.values())disposeAvatar(avatar.root);avatars.clear();for(const entry of foxPetNodes.values())foxPetDispose(entry);foxPetNodes.clear();renderer.renderLists?.dispose();if(stageForeground){stageForeground.setSize(1,1,false);stageForeground.domElement.style.display='none';}}
+function enterMobilePetRace(){if(petRaceMobileMode)return;petRaceMobileMode=true;suspendMobileBooths();for(const avatar of avatars.values())disposeAvatar(avatar.root);avatars.clear();for(const entry of foxPetNodes.values())foxPetDispose(entry);foxPetNodes.clear();renderer.renderLists?.dispose();if(stageForeground){stageForeground.setSize(1,1,false);stageForeground.domElement.style.display='none';}}
 function exitMobilePetRace(){if(!petRaceMobileMode)return;petRaceMobileMode=false;if(stageForeground)stageForeground.domElement.style.display='';renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,performanceRatio()));resize();}
 petRaceNear.onclick=async()=>{petRaceOpen=true;enterMobilePetRace();petRaceOverlay.hidden=false;petRaceNear.hidden=true;petRaceSyncChat();await petRaceAction('state');clearInterval(petRacePoll);petRacePoll=setInterval(()=>{if(petRaceOpen&&!petRaceBusy)void petRaceAction('state')},2000);};
 raceButton('close').onclick=()=>{if(petRaceState?.phase==='waiting'&&petRaceRole)void petRaceAction('leave');petRaceOpen=false;petRaceOverlay.hidden=true;clearInterval(petRacePoll);petRaceStopRenderer();exitMobilePetRace();petRaceRole='';};
 raceButton('500').onclick=()=>{petRaceBet=500;renderPetRace()};raceButton('1000').onclick=()=>{petRaceBet=1000;renderPetRace()};
 raceButton('join').onclick=()=>void petRaceAction('join',{stake:petRaceBet});raceButton('watch').onclick=()=>void petRaceAction('watch');raceButton('start').onclick=()=>void petRaceAction('start');raceButton('leave').onclick=()=>void petRaceAction('leave');
 function renderPetRace(){const r=petRaceState,waiting=!r||r.phase==='waiting'||r.phase==='finished',track=raceGet('#petRaceTrack');raceButton('500').classList.toggle('selected',petRaceBet===500);raceButton('1000').classList.toggle('selected',petRaceBet===1000);for(const name of ['500','1000','join','watch'])raceButton(name).hidden=!waiting;raceButton('start').hidden=!waiting||!r?.host;raceButton('leave').hidden=!waiting||!petRaceRole;raceGet('#petRaceText').textContent=!r?'500P 또는 1,000P를 선택하고 참가하세요.':r.phase==='waiting'?`대기 중 ${r.participants.length}/5 · 3명 이상 · 참가비가 모두 같아야 시작 · 결과는 무작위` :r.phase==='running'?'경주 진행 중 · 펫 이펙트는 적용되지 않습니다.':'경주 종료 · 참가비의 10%를 제외하고 순위별 지급';const list=raceGet('#petRaceList');list.replaceChildren();for(const p of r?.participants||[]){const el=document.createElement('span');el.textContent=`${p.name}${p.isMe?' (나)':''} · ${p.stake.toLocaleString()}P`;list.append(el)}track.hidden=!(r&&r.phase==='running');if(r?.phase==='running'){const key=String(r.startAt);if(petRaceVisualId!==key){petRaceVisualId=key;petRaceStartRenderer();}}else petRaceStopRenderer();raceGet('#petRaceResult').textContent=r?.phase==='finished'?r.awards.slice(0,3).map(a=>`${a.rank}위 ${a.name} · ${a.amount.toLocaleString()}P`).join('\n'):'';}
-function petRaceStopRenderer(){if(perfMobile&&petRaceScene)renderer.renderLists?.dispose();cancelAnimationFrame(petRaceRaf);petRaceRaf=0;if(petRaceRenderer){if(petRaceUsingMain){const canvas=petRaceRenderer.domElement;petRaceUsingMain=false;if(petRaceCanvasHome){if(petRaceCanvasNext?.parentNode===petRaceCanvasHome)petRaceCanvasHome.insertBefore(canvas,petRaceCanvasNext);else petRaceCanvasHome.appendChild(canvas);}canvas.style.cssText=petRaceCanvasStyle;petRaceCanvasHome=null;petRaceCanvasNext=null;renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,performanceRatio()));resize();}else{petRaceRenderer.dispose();petRaceRenderer.forceContextLoss?.();petRaceRenderer.domElement.remove();}petRaceRenderer=null;}if(petRaceBackdrop){petRaceBackdrop.texture?.dispose();petRaceBackdrop.mesh.geometry.dispose();petRaceBackdrop.mesh.material.dispose();petRaceBackdrop=null;}for(const entry of petRaceModels){if(entry?.model)entry.model.traverse(o=>{if(o.isMesh)for(const m of (Array.isArray(o.material)?o.material:[o.material]))m?.dispose?.();});}petRaceModels=[];for(const p of petRaceParticles){p.mesh.geometry.dispose();p.mesh.material.dispose();}petRaceParticles=[];petRaceScene?.traverse(o=>{if(o.userData?.petRaceMarker){o.geometry?.dispose();o.material?.map?.dispose();o.material?.dispose();}});petRaceScene=null;petRaceVisualId='';raceGet('#petRaceNames').replaceChildren();}
+function petRaceStopRenderer(){if(petRaceScene)renderer.renderLists?.dispose();cancelAnimationFrame(petRaceRaf);petRaceRaf=0;if(petRaceRenderer){if(petRaceUsingMain){const canvas=petRaceRenderer.domElement;petRaceUsingMain=false;if(petRaceCanvasHome){if(petRaceCanvasNext?.parentNode===petRaceCanvasHome)petRaceCanvasHome.insertBefore(canvas,petRaceCanvasNext);else petRaceCanvasHome.appendChild(canvas);}canvas.style.cssText=petRaceCanvasStyle;petRaceCanvasHome=null;petRaceCanvasNext=null;renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,performanceRatio()));resize();}else{petRaceRenderer.dispose();petRaceRenderer.forceContextLoss?.();petRaceRenderer.domElement.remove();}petRaceRenderer=null;}if(petRaceBackdrop){petRaceBackdrop.texture?.dispose();petRaceBackdrop.mesh.geometry.dispose();petRaceBackdrop.mesh.material.dispose();petRaceBackdrop=null;}for(const entry of petRaceModels){if(entry?.model)entry.model.traverse(o=>{if(o.isMesh)for(const m of (Array.isArray(o.material)?o.material:[o.material]))m?.dispose?.();});}petRaceModels=[];for(const p of petRaceParticles){p.mesh.geometry.dispose();p.mesh.material.dispose();}petRaceParticles=[];petRaceScene?.traverse(o=>{if(o.userData?.petRaceMarker){o.geometry?.dispose();o.material?.map?.dispose();o.material?.dispose();}});petRaceScene=null;petRaceVisualId='';raceGet('#petRaceNames').replaceChildren();}
 function petRaceStartRenderer(){
  petRaceStopRenderer();if(!petRaceState||petRaceState.phase!=='running')return;petRaceVisualId=String(petRaceState.startAt);const track=raceGet('#petRaceTrack');
  try{
