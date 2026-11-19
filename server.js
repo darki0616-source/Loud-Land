@@ -62,11 +62,11 @@ function announceRareFind(player,item){
 // Server-owned communal snowballs and snowmen. Sizes are world-space radii.
 const snowObjects=new Map(),snowRolling=new Map(),SNOW_LIMIT=120;
 function publishSnow(o){broadcast({type:'snow-object',object:o});}
-function finishSnow(id){const key=snowRolling.get(id),o=key&&snowObjects.get(key);snowRolling.delete(id);if(o){o.rolling=false;publishSnow(o);scheduleSave();}}
+function finishSnow(id){const key=snowRolling.get(id),o=key&&snowObjects.get(key);snowRolling.delete(id);if(o){o.rolling=false;delete o.ownerId;publishSnow(o);scheduleSave();}}
 function updateSnowRolling(p,oldX,oldY){
  let key=snowRolling.get(p.id),o=key&&snowObjects.get(key);
  if(p.action!=='snowroll'||p.tentRoomId){if(o)finishSnow(p.id);return;}
- if(!o){if(snowObjects.size>=SNOW_LIMIT){p.action='idle';return;}o={id:crypto.randomUUID(),kind:'ball',x:0,z:0,r:.26,rolling:true};snowObjects.set(o.id,o);snowRolling.set(p.id,o.id);}
+ if(!o){if(snowObjects.size>=SNOW_LIMIT){p.action='idle';return;}o={id:crypto.randomUUID(),kind:'ball',x:0,z:0,r:.26,rolling:true,ownerId:p.id};snowObjects.set(o.id,o);snowRolling.set(p.id,o.id);}
  const dist=Math.min(3,Math.hypot(p.x-oldX,p.y-oldY)*.058);o.r=Math.min(1.45,o.r+dist*.045);const offset=.7+o.r;o.x=(p.x-600)*.058+Math.sin(p.facing)*offset;o.z=(p.y-500)*.058+8+Math.cos(p.facing)*offset;publishSnow(o);
 }
 let activeSlam=null,slamCooldownUntil=0;
