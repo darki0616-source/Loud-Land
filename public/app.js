@@ -2689,13 +2689,6 @@ const perfPresets={eco:{fps:20,pixel:.40,foreground:.36,shadows:false},balanced:
 function effectivePerfPreset(){return perfMode==='eco'?perfPresets.eco:perfMode==='high'?perfPresets.high:(perfWeakDevice?perfPresets.eco:perfPresets.balanced)}
 function performanceRatio(){return Math.max(.32,Math.min(perfMobile?.75:1.45,effectivePerfPreset().pixel*perfAutoScale))}
 
-// Mobile: serialize model decoding so multiple large GLBs do not peak together.
-if(perfMobile){
- const originalGltfLoad=GLTFLoader.prototype.load,mobileGltfQueue=[];let mobileGltfBusy=false;
- const pumpMobileGltf=()=>{if(mobileGltfBusy||!mobileGltfQueue.length)return;mobileGltfBusy=true;const job=mobileGltfQueue.shift();let finished=false;const done=()=>{if(finished)return;finished=true;mobileGltfBusy=false;queueMicrotask(pumpMobileGltf);};try{originalGltfLoad.call(job.loader,job.url,value=>{try{job.onLoad?.(value);}finally{done();}},job.onProgress,error=>{try{if(job.onError)job.onError(error);else console.warn('모델 로드 실패:',error);}finally{done();}});}catch(error){try{if(job.onError)job.onError(error);else console.warn('모델 로드 실패:',error);}finally{done();}}};
- GLTFLoader.prototype.load=function(url,onLoad,onProgress,onError){mobileGltfQueue.push({loader:this,url,onLoad,onProgress,onError});pumpMobileGltf();};
-}
-
 // v269: lightweight fox pet panel, with all state validated by the server.
 const petUIStyle=document.createElement('style');petUIStyle.textContent=`
 #petMenuButton{border:1px solid rgba(255,255,255,.23);background:rgba(19,22,43,.8);color:#fff;border-radius:12px;padding:8px 12px;font-weight:800;cursor:pointer}
