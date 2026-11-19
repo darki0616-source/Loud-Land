@@ -555,6 +555,8 @@ function craftAct(p,d){const id=p.badgeIdentity,r=craftAccount(id),type=String(d
 }
 
 const battleAccounts=new Map();
+let battleKingStage=0;
+function playerIsBattleKing(p){return !!(p?.badgeIdentity&&battleKingStage>0&&(battleAccounts.get(p.badgeIdentity)?.highest||0)===battleKingStage);}
 function battleAccount(id){if(!battleAccounts.has(id))battleAccounts.set(id,{highest:0,active:null});return battleAccounts.get(id);}
 function battlePublic(p){const r=battleAccount(p.badgeIdentity),pet=petStats.get(p.badgeIdentity)?.pet;return {highest:r.highest,active:r.active,charPower:characterCombatPower(p.badgeIdentity),petPower:pet&&Date.now()>=pet.hatchAt?petEquippedCombatPower(p.badgeIdentity,petLevel(pet.xp)):0};}
 function battleAction(p,d){const id=p.badgeIdentity,r=battleAccount(id),command=String(d.command||'state');if(command==='state')return null;
@@ -570,7 +572,7 @@ function battleAction(p,d){const id=p.badgeIdentity,r=battleAccount(id),command=
   const b=r.active;if(!b||b.id!==String(d.battleId||''))throw Error('전투 기록을 찾을 수 없어요.');const turn=Number(d.turn);if(!Number.isInteger(turn))throw Error('전투 순서가 올바르지 않아요.');if(turn<b.turn)return;if(b.phase!=='running'||turn!==b.turn)throw Error('전투 순서가 올바르지 않아요.');
   const actor=['character','monster','pet','monster'][b.turn%4],power=actor==='character'?b.playerPower:actor==='pet'?b.petPower:b.enemyAttack,amount=Math.max(1,Math.round(power*(.9+crypto.randomInt(21)/100)));
   if(actor==='monster')b.playerHp=Math.max(0,b.playerHp-amount);else b.enemyHp=Math.max(0,b.enemyHp-amount);b.last={actor,damage:amount};b.turn++;
-  if(b.enemyHp===0){b.phase='won';r.highest=Math.max(r.highest,b.stage);}else if(b.playerHp===0)b.phase='lost';return;
+  if(b.enemyHp===0){b.phase='won';r.highest=Math.max(r.highest,b.stage);battleKingStage=Math.max(battleKingStage,r.highest);}else if(b.playerHp===0)b.phase='lost';return;
  }throw Error('지원하지 않는 전투 요청입니다.');
 }
 
@@ -980,7 +982,7 @@ function getShopView(p,now=Date.now()){
  return {points:tentPointBalance(p),earned,spent:(tentOwnedBy(p.badgeIdentity)?TENT_COST:0)+(furnitureStats.get(p.badgeIdentity)?.spent||0)+(petStats.get(p.badgeIdentity)?.spent||0)+(tentOwnedBy(p.badgeIdentity)?.outdoorDecorSpent||0),refunded:record.refunded||0,testing:true,owned:Object.keys(publicMdItems()),equipped:{...record.equipped},items:publicMdItems()};
 }
 function setShopAppearance(p){
- p.equipped=p.badgeIdentity?{...shopRecord(p.badgeIdentity).equipped}:{};p.weaponTier=p.badgeIdentity?(craftAccounts.get(p.badgeIdentity)?.equippedWeapon||null):null;p.weaponVisible=p.badgeIdentity?(craftAccounts.get(p.badgeIdentity)?.weaponVisible===true):false;p.battleStage=p.badgeIdentity?(battleAccounts.get(p.badgeIdentity)?.highest||0):0;p.characterLevel=p.badgeIdentity?questLevel(questAccounts.get(p.badgeIdentity)?.xp||0):1;p.characterPower=p.badgeIdentity?characterCombatPower(p.badgeIdentity):0;
+ p.battleKing=playerIsBattleKing(p);if(!p.battleKing&&p.action==='battleking')p.action='idle';p.equipped=p.badgeIdentity?{...shopRecord(p.badgeIdentity).equipped}:{};p.weaponTier=p.badgeIdentity?(craftAccounts.get(p.badgeIdentity)?.equippedWeapon||null):null;p.weaponVisible=p.badgeIdentity?(craftAccounts.get(p.badgeIdentity)?.weaponVisible===true):false;p.battleStage=p.badgeIdentity?(battleAccounts.get(p.badgeIdentity)?.highest||0):0;p.characterLevel=p.badgeIdentity?questLevel(questAccounts.get(p.badgeIdentity)?.xp||0):1;p.characterPower=p.badgeIdentity?characterCombatPower(p.badgeIdentity):0;
 }
 
 const BADGE_LEVELS=[['bronze',0],['silver',3600],['gold',18000],['platinum',54000],['diamond',144000],['crown',360000]];
@@ -1015,7 +1017,7 @@ function applySaved(d){
  pizzaGameMigration=d.pizzaGameMigration===true;
  petSkillRefund20261119Done=d.petSkillRefund20261119Done===true;
  petSkillTicketRefund20261119Done=d.petSkillTicketRefund20261119Done===true;
- battleAccounts.clear();if(d.battleAccounts&&typeof d.battleAccounts==='object')for(const [id,row] of Object.entries(d.battleAccounts).slice(0,50000)){if(!/^[a-zA-Z0-9_-]{20,100}$/.test(id)||!row)continue;const b=row.active,valid=b&&/^[a-f0-9-]{36}$/.test(b.id||'')&&Number.isInteger(b.stage)&&b.stage>=1&&b.stage<=20&&['running','won','lost','abandoned'].includes(b.phase)&&Number.isSafeInteger(b.turn)&&b.turn>=0&&['playerHp','playerMax','enemyHp','enemyMax','playerPower','petPower','enemyAttack'].every(k=>Number.isFinite(b[k])&&b[k]>=0&&b[k]<100000000);battleAccounts.set(id,{highest:Math.max(0,Math.min(20,Math.floor(Number(row.highest)||0))),active:valid?b:null});}
+ battleAccounts.clear();battleKingStage=0;if(d.battleAccounts&&typeof d.battleAccounts==='object')for(const [id,row] of Object.entries(d.battleAccounts).slice(0,50000)){if(!/^[a-zA-Z0-9_-]{20,100}$/.test(id)||!row)continue;const b=row.active,valid=b&&/^[a-f0-9-]{36}$/.test(b.id||'')&&Number.isInteger(b.stage)&&b.stage>=1&&b.stage<=20&&['running','won','lost','abandoned'].includes(b.phase)&&Number.isSafeInteger(b.turn)&&b.turn>=0&&['playerHp','playerMax','enemyHp','enemyMax','playerPower','petPower','enemyAttack'].every(k=>Number.isFinite(b[k])&&b[k]>=0&&b[k]<100000000);battleAccounts.set(id,{highest:Math.max(0,Math.min(20,Math.floor(Number(row.highest)||0))),active:valid?b:null});battleKingStage=Math.max(battleKingStage,battleAccounts.get(id).highest);}
  combatNames.clear();if(d.combatNames&&typeof d.combatNames==='object')for(const [id,name] of Object.entries(d.combatNames).slice(0,50000))if(/^[a-zA-Z0-9_-]{20,100}$/.test(id))combatNames.set(id,clean(name,18)||'ROCKER');
  craftAccounts.clear();if(d.craftAccounts&&typeof d.craftAccounts==='object')for(const [id,row] of Object.entries(d.craftAccounts).slice(0,50000)){if(!/^[a-zA-Z0-9_-]{20,100}$/.test(id)||!row)continue;const r={spentOre:{},spentFish:{},weapons:{},skills:{},equippedWeapon:null,equippedSkill:null,weaponVisible:false,awakening:{weapon:row.awakening?.weapon===true,skill:row.awakening?.skill===true},tickets:{weapon:row.tickets?.weapon===1?1:0,skill:row.tickets?.skill===1?1:0},upgradeTickets:{weapon:{},skill:{}},awakened:{weapon:CRAFT_TIERS.includes(row.awakened?.weapon)?row.awakened.weapon:null,skill:CRAFT_TIERS.includes(row.awakened?.skill)?row.awakened.skill:null}};for(const tier of CRAFT_TIERS){for(const key of ['spentOre','spentFish'])r[key][tier]=Math.max(0,Math.min(1000000000,Math.floor(Number(row[key]?.[tier])||0)));for(const kind of ['weapon','skill'])r.upgradeTickets[kind][tier]=Math.max(0,Math.min(100000,Math.floor(Number(row.upgradeTickets?.[kind]?.[tier])||0)));for(const key of ['weapons','skills'])if(Number.isInteger(row[key]?.[tier])&&row[key][tier]>=0&&row[key][tier]<=20)r[key][tier]=row[key][tier];}r.weaponVisible=row.weaponVisible===true;if(Object.hasOwn(r.weapons,row.equippedWeapon))r.equippedWeapon=row.equippedWeapon;if(Object.hasOwn(r.skills,row.equippedSkill))r.equippedSkill=row.equippedSkill;craftAccounts.set(id,r);}
  questAccounts.clear();if(d.questAccounts&&typeof d.questAccounts==='object')for(const [id,row] of Object.entries(d.questAccounts).slice(0,50000)){if(!/^[a-zA-Z0-9_-]{20,100}$/.test(id)||!row)continue;const valid=QUEST_CATALOG.find(x=>x.kind===row.active?.kind&&x.rarity===row.active?.rarity&&x.goal===row.active?.goal&&x.xp===row.active?.xp);const m=valid?{...valid,progress:Math.max(0,Math.min(valid.goal,Math.floor(Number(row.active.progress)||0))),done:false}:null;if(m){if(m.rarity==='epic')m.progress=m.goal;m.done=m.progress>=m.goal;}questAccounts.set(id,{day:/^\d{4}-\d{2}-\d{2}$/.test(row.day)?row.day:kstDate(),used:Math.max(0,Math.min(10,Math.floor(Number(row.used)||0))),spent:Math.max(0,Math.min(1000000000,Math.floor(Number(row.spent)||0))),xp:Math.max(0,Math.min(1000000,Math.floor(Number(row.xp)||0))),active:m});}
@@ -1688,7 +1690,7 @@ const server=http.createServer(async(req,res)=>{
           if(existing){
             maybeRotateRhythmDay();
             existing.seen=Date.now();
-            syncPlayerRhythmKing(existing);syncPlayerPowerKing(existing);syncPlayerMoleKing(existing);syncPlayerFishKing(existing);rotateMineKingDay();syncPlayerMineKing(existing);syncDecoration(existing);existing.pet=petPublic(petStats.get(existing.badgeIdentity)?.pet,petStats.get(existing.badgeIdentity),existing.badgeIdentity);
+            syncPlayerRhythmKing(existing);syncPlayerPowerKing(existing);syncPlayerMoleKing(existing);syncPlayerFishKing(existing);rotateMineKingDay();syncPlayerMineKing(existing);syncDecoration(existing);setShopAppearance(existing);existing.pet=petPublic(petStats.get(existing.badgeIdentity)?.pet,petStats.get(existing.badgeIdentity),existing.badgeIdentity);
             if(pageId)pageOwners.set(existingId,pageId);
             return json(res,200,{id:existingId,reused:true,...snapshot(existingId)});
           }
@@ -1705,7 +1707,7 @@ const server=http.createServer(async(req,res)=>{
       if(url.pathname==='/api/combat-ranking'){if(!p.badgeIdentity||playerSessions.get(id)!==String(d.sessionKey||''))return json(res,403,{error:'본인 세션에서 이용해 주세요.'});const ids=new Set([...questAccounts.keys(),...craftAccounts.keys(),...combatNames.keys()]);for(const person of players.values())if(person.badgeIdentity){ids.add(person.badgeIdentity);combatNames.set(person.badgeIdentity,person.name);}const rows=[...ids].map(identity=>({name:combatNames.get(identity)||recoveryRecords.get(identity)?.profile?.name||'이름 미등록',power:characterCombatPower(identity),level:questLevel(questAccounts.get(identity)?.xp||0)})).sort((a,b)=>b.power-a.power||b.level-a.level||a.name.localeCompare(b.name,'ko-KR')).slice(0,50).map((row,i)=>({...row,rank:i+1}));return json(res,200,{ok:true,rows});}
       if(url.pathname==='/api/battle'){
        if(!p.badgeIdentity||playerSessions.get(id)!==String(d.sessionKey||''))return json(res,403,{error:'본인 세션에서만 전투할 수 있어요.'});
-       try{const previous=battleAccount(p.badgeIdentity).highest;battleAction(p,d);if(d.command!=='state')await saveNow();if(battleAccount(p.badgeIdentity).highest!==previous)for(const person of players.values())if(person.badgeIdentity===p.badgeIdentity){setShopAppearance(person);broadcast({type:'profile',player:person});}return json(res,200,{ok:true,battle:battlePublic(p)});}catch(error){return json(res,400,{error:error.message});}
+       try{const previous=battleAccount(p.badgeIdentity).highest;battleAction(p,d);if(d.command!=='state')await saveNow();if(battleAccount(p.badgeIdentity).highest!==previous)for(const person of players.values()){const was=Boolean(person.battleKing);if(person.badgeIdentity===p.badgeIdentity||was!==playerIsBattleKing(person)){setShopAppearance(person);broadcast({type:'profile',player:person});}}return json(res,200,{ok:true,battle:battlePublic(p)});}catch(error){return json(res,400,{error:error.message});}
       }
       if(url.pathname==='/api/craft'){
        if(!p.badgeIdentity||playerSessions.get(id)!==String(d.sessionKey||''))return json(res,403,{error:'본인 세션에서 이용해 주세요.'});
@@ -2071,9 +2073,9 @@ const server=http.createServer(async(req,res)=>{
         }
         if(command==='room-action'){
           if(!p.tentRoomId)return json(res,400,{error:'먼저 텐트에 입장해 주세요.'});
-          const allowed=['idle','peace','jump','run','wave','clap','sit','lie','drink','snack','headbang','buriburi','groove','dougie','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','powerking','moleking','fishking','mineking','putyourhandsup','birthday','heartbow','drum','electricguitar','bassguitar','vocal'];
+          const allowed=['idle','peace','jump','run','wave','clap','sit','lie','drink','snack','headbang','buriburi','groove','dougie','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','powerking','moleking','fishking','mineking','battleking','putyourhandsup','birthday','heartbow','drum','electricguitar','bassguitar','vocal'];
           const action=String(d.action||'idle');
-          p.action=allowed.includes(action)&&!(action==='birthday'&&!birthdayActive())&&!(action==='beatking'&&!playerIsRhythmKing(p))&&!(action==='powerking'&&!playerIsPowerKing(p))&&!(action==='moleking'&&!playerIsMoleKing(p))&&!(action==='fishking'&&!playerIsFishKing(p))&&!(action==='mineking'&&!playerIsMineKing(p))?action:'idle';
+          p.action=allowed.includes(action)&&!(action==='birthday'&&!birthdayActive())&&!(action==='beatking'&&!playerIsRhythmKing(p))&&!(action==='powerking'&&!playerIsPowerKing(p))&&!(action==='moleking'&&!playerIsMoleKing(p))&&!(action==='fishking'&&!playerIsFishKing(p))&&!(action==='mineking'&&!playerIsMineKing(p))&&!(action==='battleking'&&!playerIsBattleKing(p))?action:'idle';
           p.pose=['stand','sit','lie'].includes(d.pose)?d.pose:'stand';
           p.headbangBpm=clamp(d.headbangBpm||120,40,240);
           const beatAt=Number(d.headbangBeatAt);p.headbangBeatAt=Number.isFinite(beatAt)&&Math.abs(beatAt-Date.now())<86400000?beatAt:Date.now();
@@ -2277,7 +2279,7 @@ const server=http.createServer(async(req,res)=>{
         const beatAt=Number(d.headbangBeatAt);
         p.headbangBeatAt=Number.isFinite(beatAt)&&Math.abs(beatAt-Date.now())<86400000?beatAt:Date.now();
         if(d.action==='beatking'&&!playerIsRhythmKing(p))d.action='idle';
-        if(d.action==='powerking'&&!playerIsPowerKing(p))d.action='idle';if(d.action==='moleking'&&!playerIsMoleKing(p))d.action='idle';if(d.action==='fishking'&&!playerIsFishKing(p))d.action='idle';if(d.action==='mineking'&&!playerIsMineKing(p))d.action='idle';
+        if(d.action==='powerking'&&!playerIsPowerKing(p))d.action='idle';if(d.action==='moleking'&&!playerIsMoleKing(p))d.action='idle';if(d.action==='fishking'&&!playerIsFishKing(p))d.action='idle';if(d.action==='mineking'&&!playerIsMineKing(p))d.action='idle';if(d.action==='battleking'&&!playerIsBattleKing(p))d.action='idle';
         // Validate campfire-only reaction server-side so remote spectators cannot see it outside the zone.
         if(d.action==='marshmallow'){
           const kstHour=Number(new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Seoul',hour:'2-digit',hourCycle:'h23'}).format(new Date()));
@@ -2293,7 +2295,7 @@ const server=http.createServer(async(req,res)=>{
         }
         if(d.action==='fishing'&&(!fishingNearSea(p)||!fishingAccount(p.badgeIdentity).active))d.action='idle';
         if(d.action==='mining'&&(!p.badgeIdentity||miningAccount(p.badgeIdentity).active?.playerId!==p.id))d.action='idle';
-        p.action=['idle','walk','peace','jump','run','wave','clap','sit','lie','drink','snack','headbang','buriburi','groove','dougie','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','powerking','moleking','fishking','mineking','marshmallow','putyourhandsup','nightfirework','birthday','fishing','mining','heartbow','drum','electricguitar','bassguitar','vocal','mosh-charge','slam-charge','slam-retreat','slam-celebrate','circle-run','train-run','row-paddle','toast-clink','surf-rider','surf-support','shoulder-headbang','rock-skank'].includes(d.action)?d.action:'idle';
+        p.action=['idle','walk','peace','jump','run','wave','clap','sit','lie','drink','snack','headbang','buriburi','groove','dougie','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','powerking','moleking','fishking','mineking','battleking','marshmallow','putyourhandsup','nightfirework','birthday','fishing','mining','heartbow','drum','electricguitar','bassguitar','vocal','mosh-charge','slam-charge','slam-retreat','slam-celebrate','circle-run','train-run','row-paddle','toast-clink','surf-rider','surf-support','shoulder-headbang','rock-skank'].includes(d.action)?d.action:'idle';
         broadcast({type:'move',player:p});
         // Only a movement packet from this player's private session may
         // award coins; publicly visible avatar IDs are not authentication.
