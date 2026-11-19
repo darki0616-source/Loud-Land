@@ -2681,13 +2681,20 @@ const petRaceMobileDevice=perfMobile||/Android|iPhone|iPad|iPod/i.test(navigator
 let petRaceUsingMain=false,petRaceCanvasHome=null,petRaceCanvasNext=null,petRaceCanvasStyle='',petRaceBackdrop=null,petRaceMobileMode=false;
 const perfWeakDevice=perfMobile||((navigator.deviceMemory||8)<=4)||((navigator.hardwareConcurrency||8)<=4);
 // High-quality is the first-visit default. Persisted manual choices take precedence.
-let perfMode='high';try{const saved=localStorage.getItem(PERF_KEY);if(['auto','eco','high'].includes(saved))perfMode=saved}catch{}
+let perfMode=perfMobile?'auto':'high';try{const saved=localStorage.getItem(PERF_KEY);if(['auto','eco','high'].includes(saved))perfMode=saved}catch{}
 let perfAutoScale=1;
 // v107: aggressive low-power mode for older tablets. A 0.40 pixel ratio
 // uses roughly 31% as many pixels as the previous eco 0.72 setting.
 const perfPresets={eco:{fps:20,pixel:.40,foreground:.36,shadows:false},balanced:{fps:45,pixel:1,foreground:.85,shadows:false},high:{fps:60,pixel:1.45,foreground:1.08,shadows:true}};
 function effectivePerfPreset(){return perfMode==='eco'?perfPresets.eco:perfMode==='high'?perfPresets.high:(perfWeakDevice?perfPresets.eco:perfPresets.balanced)}
-function performanceRatio(){return Math.max(.32,Math.min(1.45,effectivePerfPreset().pixel*perfAutoScale))}
+function performanceRatio(){return Math.max(.32,Math.min(perfMobile?.75:1.45,effectivePerfPreset().pixel*perfAutoScale))}
+
+// Mobile: serialize model decoding so multiple large GLBs do not peak together.
+if(perfMobile){
+ const originalGltfLoad=GLTFLoader.prototype.load,mobileGltfQueue=[];let mobileGltfBusy=false;
+ const pumpMobileGltf=()=>{if(mobileGltfBusy||!mobileGltfQueue.length)return;mobileGltfBusy=true;const job=mobileGltfQueue.shift();let finished=false;const done=()=>{if(finished)return;finished=true;mobileGltfBusy=false;queueMicrotask(pumpMobileGltf);};try{originalGltfLoad.call(job.loader,job.url,value=>{try{job.onLoad?.(value);}finally{done();}},job.onProgress,error=>{try{if(job.onError)job.onError(error);else console.warn('모델 로드 실패:',error);}finally{done();}});}catch(error){try{if(job.onError)job.onError(error);else console.warn('모델 로드 실패:',error);}finally{done();}}};
+ GLTFLoader.prototype.load=function(url,onLoad,onProgress,onError){mobileGltfQueue.push({loader:this,url,onLoad,onProgress,onError});pumpMobileGltf();};
+}
 
 // v269: lightweight fox pet panel, with all state validated by the server.
 const petUIStyle=document.createElement('style');petUIStyle.textContent=`
@@ -2804,6 +2811,8 @@ function clickedFieldCoin(ray){
 }
 
 const renderer=new THREE.WebGLRenderer({antialias:!perfWeakDevice,powerPreference:perfWeakDevice?'low-power':'high-performance'});renderer.setPixelRatio(Math.min(devicePixelRatio,performanceRatio()));renderer.shadowMap.enabled=effectivePerfPreset().shadows&&!perfMobile;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.outputColorSpace=THREE.SRGBColorSpace;host.appendChild(renderer.domElement);
+renderer.domElement.addEventListener('webglcontextlost',event=>{event.preventDefault();console.warn('게임 그래픽 연결이 끊겨 복구를 기다립니다.');});
+renderer.domElement.addEventListener('webglcontextrestored',()=>{console.info('게임 그래픽 연결이 복구됐습니다.');renderer.renderLists?.dispose();resize();});
 const cssRenderer=new CSS3DRenderer();cssRenderer.domElement.className='css-world';host.appendChild(cssRenderer.domElement);
 const stageVideo=document.querySelector('#youtubeScreen');stageVideo.classList.add('onstage');
 const stageWebObject=new CSS3DObject(stageVideo);stageWebObject.position.set(0,6.3,-29.12);stageWebObject.scale.set(.015,.015,.015);scene.add(stageWebObject);
@@ -2834,7 +2843,7 @@ for(const type of ['gesturestart','gesturechange','gestureend']){
 let stageForeground=null;
 try{
  stageForeground=new THREE.WebGLRenderer({alpha:true,antialias:false,powerPreference:'low-power'});
- stageForeground.setPixelRatio(Math.min(window.devicePixelRatio||1,effectivePerfPreset().foreground*perfAutoScale));
+ stageForeground.setPixelRatio(Math.min(window.devicePixelRatio||1,perfMobile?.65:Infinity,effectivePerfPreset().foreground*perfAutoScale));
  stageForeground.outputColorSpace=THREE.SRGBColorSpace;
  stageForeground.setClearColor(0x000000,0);
  stageForeground.domElement.className='stage-avatar-foreground';
@@ -2855,7 +2864,7 @@ function applyPerformancePreset(){
  const preset=effectivePerfPreset();perfTargetFrame=1000/preset.fps;
  renderer.setPixelRatio(Math.min(devicePixelRatio,performanceRatio(),perfMobile&&tentRoomActive?.75:Infinity));
  renderer.shadowMap.enabled=preset.shadows&&!perfMobile;
- if(stageForeground)stageForeground.setPixelRatio(Math.min(devicePixelRatio,Math.max(.30,preset.foreground*perfAutoScale)));
+ if(stageForeground)stageForeground.setPixelRatio(Math.min(devicePixelRatio,perfMobile?.65:Infinity,Math.max(.30,preset.foreground*perfAutoScale)));
  // Keep lightweight sky/lighting selections in sync when the user changes modes.
  if(typeof updateEnvironment==='function')updateEnvironment(true);
  if(typeof resize==='function')resize();
@@ -3927,7 +3936,7 @@ function initTentFurniturePreview(){
  const canvas=$('tentFurniturePreview');
  try{
   tentFurniturePreviewRenderer=new THREE.WebGLRenderer({canvas,alpha:true,antialias:true,preserveDrawingBuffer:true});
-  tentFurniturePreviewRenderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.5));
+  tentFurniturePreviewRenderer.setPixelRatio(Math.min(window.devicePixelRatio||1,perfMobile?1:1.5));
   tentFurniturePreviewRenderer.setSize(240,176,false);
   tentFurniturePreviewRenderer.outputColorSpace=THREE.SRGBColorSpace;
   tentFurniturePreviewScene=new THREE.Scene();
@@ -5454,7 +5463,7 @@ function startBattleScene(){
   battleCanvasHome=canvas.parentNode;battleCanvasNext=canvas.nextSibling;battleCanvasStyle=canvas.style.cssText;battleSceneActive=true;if(perfMobile){suspendMobileBooths();for(const avatar of avatars.values())disposeAvatar(avatar.root);avatars.clear();for(const entry of foxPetNodes.values())foxPetDispose(entry);foxPetNodes.clear();renderer.renderLists?.dispose();}
   area.prepend(canvas);canvas.style.cssText='position:absolute;inset:0;width:100%;height:100%;z-index:1;pointer-events:none';area.classList.add('battle-3d');
   if(stageForeground)stageForeground.domElement.style.display='none';
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,perfMobile?1:1.5));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,perfMobile?.75:1.5));
   battleScene=new THREE.Scene();battleScene.add(new THREE.HemisphereLight('#ffffff','#687080',2.4));const sun=new THREE.DirectionalLight('#fff5df',2);sun.position.set(0,7,9);battleScene.add(sun);
   battleCamera=new THREE.OrthographicCamera(-6,6,3.4,-3.4,.1,100);battleCamera.position.set(0,4.3,12);battleCamera.lookAt(0,1.5,0);battleCamera.layers.enable(1);battleScene.add(battleCamera);
   const bgTexture=new THREE.TextureLoader().load('/assets/rpg/battle-arena.png');bgTexture.colorSpace=THREE.SRGBColorSpace;const bgMesh=new THREE.Mesh(new THREE.PlaneGeometry(1,1),new THREE.MeshBasicMaterial({map:bgTexture,depthTest:false,depthWrite:false}));bgMesh.position.z=-80;bgMesh.renderOrder=-1000;battleCamera.add(bgMesh);battleBg={mesh:bgMesh,texture:bgTexture};
@@ -9580,7 +9589,7 @@ function petPreviewInit(){
  const canvas=petOverlay.querySelector('#petPreviewCanvas');
  try{petPreviewRenderer=new THREE.WebGLRenderer({canvas,alpha:true,antialias:!perfWeakDevice,powerPreference:'low-power'});}
  catch(error){console.warn('Pet preview renderer unavailable',error);petPreviewLoading.textContent='3D 미리보기를 표시할 수 없어요.';return;}
- petPreviewRenderer.setPixelRatio(Math.min(1.5,window.devicePixelRatio||1));
+ petPreviewRenderer.setPixelRatio(Math.min(perfMobile?1:1.5,window.devicePixelRatio||1));
  petPreviewRenderer.outputColorSpace=THREE.SRGBColorSpace;
  petPreviewScene=new THREE.Scene();
  petPreviewScene.add(new THREE.HemisphereLight(0xffffff,0x6d6889,2.4));
@@ -10874,7 +10883,7 @@ function petRaceStartRenderer(){
  try{
   if(petRaceMobileDevice){petRaceCanvasHome=renderer.domElement.parentNode;petRaceCanvasNext=renderer.domElement.nextSibling;petRaceCanvasStyle=renderer.domElement.style.cssText;petRaceUsingMain=true;petRaceRenderer=renderer;}
   else petRaceRenderer=new THREE.WebGLRenderer({alpha:true,antialias:true,powerPreference:'low-power'});
-  petRaceRenderer.setPixelRatio(Math.min(devicePixelRatio||1,petRaceMobileDevice?1.25:1.5));petRaceRenderer.setSize(track.clientWidth,track.clientHeight,false);track.prepend(petRaceRenderer.domElement);
+  petRaceRenderer.setPixelRatio(Math.min(devicePixelRatio||1,petRaceMobileDevice?.75:1.5));petRaceRenderer.setSize(track.clientWidth,track.clientHeight,false);track.prepend(petRaceRenderer.domElement);
   petRaceScene=new THREE.Scene();petRaceScene.add(new THREE.HemisphereLight('#ffffff','#9f8a88',2.6));const light=new THREE.DirectionalLight('#fff2cf',2);light.position.set(0,10,8);petRaceScene.add(light);
   petRaceCamera=new THREE.OrthographicCamera(-7.4,7.4,4,-4,.1,90);petRaceCamera.position.set(0,8,14);petRaceCamera.lookAt(0,2,0);
   if(petRaceUsingMain){const texture=new THREE.TextureLoader().load('/assets/pet-race/track-ultrawide.png?v=378');texture.colorSpace=THREE.SRGBColorSpace;texture.wrapS=texture.wrapT=THREE.ClampToEdgeWrapping;const mesh=new THREE.Mesh(new THREE.PlaneGeometry(1,1),new THREE.MeshBasicMaterial({map:texture,depthTest:false,depthWrite:false}));mesh.position.set(0,0,-80);mesh.renderOrder=-1000;petRaceCamera.add(mesh);petRaceScene.add(petRaceCamera);petRaceBackdrop={mesh,texture};}
