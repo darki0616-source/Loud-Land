@@ -5511,7 +5511,7 @@ battleNear.onclick=()=>{battleOverlay.hidden=false;startBattleScene();void battl
 // trees, lanterns, food stalls
 const importedMapleLoader=new GLTFLoader();
 const sideTreePlacements=[[-46,-9],[-46,9],[-46,23],[48,-9],[48,9],[48,23]];
-importedMapleLoader.load('/assets/world/maple_tree.glb?v=203',gltf=>{
+importedMapleLoader.load('/assets/world/christmas_tree.glb?v=442',gltf=>{
  const source=gltf.scene;
  const baseBounds=new THREE.Box3().setFromObject(source);
  const baseSize=baseBounds.getSize(new THREE.Vector3());
