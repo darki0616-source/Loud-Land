@@ -535,6 +535,17 @@ function craftView(p){const r=craftAccount(p.badgeIdentity),available={weapon:{}
 function craftAct(p,d){const id=p.badgeIdentity,r=craftAccount(id),type=String(d.kind||''),tier=String(d.tier||''),command=String(d.command||'state');if(command==='state')return null;if(command==='weapon-visibility'){if(typeof d.visible!=='boolean')throw Error('표시 설정이 올바르지 않아요.');if(d.visible&&!r.equippedWeapon)throw Error('먼저 무기를 착용해 주세요.');r.weaponVisible=d.visible;return {message:d.visible?'무기 표시':'무기 숨김'};}if(!['weapon','skill'].includes(type))throw Error('종류를 선택해 주세요.');const owned=type==='weapon'?r.weapons:r.skills,spent=type==='weapon'?r.spentOre:r.spentFish;
  if(command==='awakening'){const complete=(type==='weapon'?MINING_CATALOG:FISH_CATALOG).every(x=>((type==='weapon'?miningStats.get(id)?.counts:fishingStats.get(id)?.fishCounts)?.[x.id]||0)>0);if(!complete)throw Error('해당 도감을 모두 채워 주세요.');if(r.awakening[type])throw Error('이미 각성권을 받았어요.');r.awakening[type]=true;r.tickets[type]++;return {message:'각성권을 받았어요.'};}
  if(!CRAFT_TIERS.includes(tier))throw Error('등급을 선택해 주세요.');
+ if(command==='synthesize'){
+  const index=CRAFT_TIERS.indexOf(tier),attempts=Number(d.attempts),chance=[100,80,50,20][index];
+  if(index<0||index>=4)throw Error('전설 등급은 합성할 수 없어요.');
+  if(!Number.isInteger(attempts)||attempts<1||attempts>10)throw Error('합성은 1~10회까지 할 수 있어요.');
+  const required=attempts*10;if(craftAvailable(id,type,tier)<required)throw Error('합성할 재료가 부족해요.');
+  const pool=(type==='weapon'?MINING_CATALOG:FISH_CATALOG).filter(item=>item.rarity===CRAFT_TIERS[index+1]);if(!pool.length)throw Error('결과 목록이 없습니다.');
+  const counts=type==='weapon'?miningAccount(id).counts:fishingAccount(id).fishCounts,results=[];
+  for(let i=0;i<attempts;i++){if(crypto.randomInt(100)<chance){const item=pool[crypto.randomInt(pool.length)];results.push({success:true,id:item.id,name:item.name});}else results.push({success:false});}
+  spent[tier]=(spent[tier]||0)+required;for(const result of results)if(result.success)counts[result.id]=(counts[result.id]||0)+1;
+  const success=results.filter(x=>x.success).length;return {message:`합성 ${attempts}회 중 ${success}회 성공!`,synthesis:{kind:type,tier,nextTier:CRAFT_TIERS[index+1],attempts,success,spent:required,chance,results}};
+ }
  if(command==='exchange'){if(craftAvailable(id,type,tier)<10)throw Error('같은 등급 재료 10개가 필요해요.');spent[tier]=(spent[tier]||0)+10;r.upgradeTickets[type][tier]=(r.upgradeTickets[type][tier]||0)+1;return {message:'강화권을 교환했어요.'};}
  if(command==='awaken'){if(!Object.hasOwn(owned,tier))throw Error('먼저 제작해 주세요.');if(r.awakened[type])throw Error('이미 해당 종류의 각성권을 사용했어요.');if(!r.tickets[type])throw Error('각성권이 필요해요.');r.tickets[type]--;r.awakened[type]=tier;return {message:'각성 완료! 장비 전투력이 20% 증가했어요.'};}
  if(command==='craft'){if(Object.hasOwn(owned,tier))throw Error('이미 제작했어요.');const cost=type==='weapon'?(tier==='legendary'?50:100):(tier==='legendary'?10:tier==='epic'?50:100);if(craftAvailable(id,type,tier)<cost)throw Error('재료가 부족해요.');spent[tier]=(spent[tier]||0)+cost;owned[tier]=0;return {message:'제작 완료!'};}
