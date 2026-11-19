@@ -2505,7 +2505,7 @@ const server=http.createServer(async(req,res)=>{
           if(p.tentRoomId||Math.hypot((p.x||0)-POWER_BOOTH.x,(p.y||0)-POWER_BOOTH.y)>POWER_BOOTH.radius)return json(res,403,{error:'게임부스 가까이에서만 플레이할 수 있어요.'});
           if(account.used>=POWER_DAILY_COINS)return json(res,409,{error:'오늘의 코인을 모두 사용했어요.'});
           if(account.session&&Date.now()-account.session.startedAt<32000)return json(res,409,{error:'이미 진행 중인 게임이 있어요.'});
-          const events=[];for(let spawn=500;spawn<27500;spawn+=650){const roll=crypto.randomInt(100),kind=roll<17?'spoiled':roll<32?'special':'normal',duration=kind==='special'?1150:kind==='spoiled'?2400:2600;events.push({id:events.length,kind,x:(80+crypto.randomInt(841))/1000,spawn,duration});}
+          const events=[];for(let spawn=500;spawn<28000;spawn+=450){const roll=crypto.randomInt(100),kind=roll<17?'spoiled':roll<32?'special':'normal',duration=kind==='special'?700:kind==='spoiled'?1350:1500;events.push({id:events.length,kind,x:(80+crypto.randomInt(841))/1000,spawn,duration});}
           account.used++;account.session={id:crypto.randomUUID(),startedAt:Date.now(),events};await saveNow();return json(res,200,{ok:true,playId:account.session.id,startedAt:account.session.startedAt,serverNow:Date.now(),duration:30000,events,account:powerAccountView(p)});
         }
         if(command==='finish'){
