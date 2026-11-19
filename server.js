@@ -992,7 +992,7 @@ function getShopView(p,now=Date.now()){
  return {points:tentPointBalance(p),earned,spent:(tentOwnedBy(p.badgeIdentity)?TENT_COST:0)+(furnitureStats.get(p.badgeIdentity)?.spent||0)+(petStats.get(p.badgeIdentity)?.spent||0)+(tentOwnedBy(p.badgeIdentity)?.outdoorDecorSpent||0),refunded:record.refunded||0,testing:true,owned:Object.keys(publicMdItems()),equipped:{...record.equipped},items:publicMdItems()};
 }
 function setShopAppearance(p){
- p.battleKing=playerIsBattleKing(p);p.equipped=p.badgeIdentity?{...shopRecord(p.badgeIdentity).equipped}:{};p.weaponTier=p.badgeIdentity?(craftAccounts.get(p.badgeIdentity)?.equippedWeapon||null):null;p.weaponVisible=p.badgeIdentity?(craftAccounts.get(p.badgeIdentity)?.weaponVisible===true):false;p.battleStage=p.badgeIdentity?(battleAccounts.get(p.badgeIdentity)?.highest||0):0;p.characterLevel=p.badgeIdentity?questLevel(questAccounts.get(p.badgeIdentity)?.xp||0):1;p.characterPower=p.badgeIdentity?characterCombatPower(p.badgeIdentity):0;
+ p.battleKing=playerIsBattleKing(p);if(!p.battleKing&&p.action==='battleking')p.action='idle';p.equipped=p.badgeIdentity?{...shopRecord(p.badgeIdentity).equipped}:{};p.weaponTier=p.badgeIdentity?(craftAccounts.get(p.badgeIdentity)?.equippedWeapon||null):null;p.weaponVisible=p.badgeIdentity?(craftAccounts.get(p.badgeIdentity)?.weaponVisible===true):false;p.battleStage=p.badgeIdentity?(battleAccounts.get(p.badgeIdentity)?.highest||0):0;p.characterLevel=p.badgeIdentity?questLevel(questAccounts.get(p.badgeIdentity)?.xp||0):1;p.characterPower=p.badgeIdentity?characterCombatPower(p.badgeIdentity):0;
 }
 
 const BADGE_LEVELS=[['bronze',0],['silver',3600],['gold',18000],['platinum',54000],['diamond',144000],['crown',360000]];
@@ -2086,7 +2086,7 @@ const server=http.createServer(async(req,res)=>{
           if(!p.tentRoomId)return json(res,400,{error:'먼저 텐트에 입장해 주세요.'});
           const allowed=['idle','peace','jump','run','wave','clap','sit','lie','drink','snack','headbang','buriburi','groove','dougie','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','powerking','moleking','fishking','mineking','battleking','putyourhandsup','birthday','heartbow','drum','electricguitar','bassguitar','vocal'];
           const action=String(d.action||'idle');
-          p.action=allowed.includes(action)&&!(action==='birthday'&&!birthdayActive())&&!(action==='beatking'&&!playerIsRhythmKing(p))&&!(action==='powerking'&&!playerIsPowerKing(p))&&!(action==='moleking'&&!playerIsMoleKing(p))&&!(action==='fishking'&&!playerIsFishKing(p))&&!(action==='mineking'&&!playerIsMineKing(p))?action:'idle';
+          p.action=allowed.includes(action)&&!(action==='birthday'&&!birthdayActive())&&!(action==='beatking'&&!playerIsRhythmKing(p))&&!(action==='powerking'&&!playerIsPowerKing(p))&&!(action==='moleking'&&!playerIsMoleKing(p))&&!(action==='fishking'&&!playerIsFishKing(p))&&!(action==='mineking'&&!playerIsMineKing(p))&&!(action==='battleking'&&!playerIsBattleKing(p))?action:'idle';
           p.pose=['stand','sit','lie'].includes(d.pose)?d.pose:'stand';
           p.headbangBpm=clamp(d.headbangBpm||120,40,240);
           const beatAt=Number(d.headbangBeatAt);p.headbangBeatAt=Number.isFinite(beatAt)&&Math.abs(beatAt-Date.now())<86400000?beatAt:Date.now();
@@ -2297,7 +2297,7 @@ const server=http.createServer(async(req,res)=>{
         const beatAt=Number(d.headbangBeatAt);
         p.headbangBeatAt=Number.isFinite(beatAt)&&Math.abs(beatAt-Date.now())<86400000?beatAt:Date.now();
         if(d.action==='beatking'&&!playerIsRhythmKing(p))d.action='idle';
-        if(d.action==='powerking'&&!playerIsPowerKing(p))d.action='idle';if(d.action==='moleking'&&!playerIsMoleKing(p))d.action='idle';if(d.action==='fishking'&&!playerIsFishKing(p))d.action='idle';if(d.action==='mineking'&&!playerIsMineKing(p))d.action='idle';
+        if(d.action==='powerking'&&!playerIsPowerKing(p))d.action='idle';if(d.action==='moleking'&&!playerIsMoleKing(p))d.action='idle';if(d.action==='fishking'&&!playerIsFishKing(p))d.action='idle';if(d.action==='mineking'&&!playerIsMineKing(p))d.action='idle';if(d.action==='battleking'&&!playerIsBattleKing(p))d.action='idle';
         // Validate campfire-only reaction server-side so remote spectators cannot see it outside the zone.
         if(d.action==='marshmallow'){
           const kstHour=Number(new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Seoul',hour:'2-digit',hourCycle:'h23'}).format(new Date()));
