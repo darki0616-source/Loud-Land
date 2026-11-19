@@ -10763,7 +10763,7 @@ for(const [i,rock] of miningRockDefs.entries()){
  const n=2+i%3;
  for(let j=0;j<n;j++){const stone=new THREE.Mesh(miningStoneGeo,miningStoneMat);const size=.9+((i*3+j*7)%8)*.13;stone.scale.set(size,size*.75,size);stone.position.set(j===0?0:Math.cos(j*2.4+i)*1.15,size*.43,j===0?0:Math.sin(j*2.4+i)*.9);stone.rotation.y=i+j;stone.userData.miningRockId=rock.id;group.add(stone);miningRockMeshes.push(stone);}
 }
-new GLTFLoader().load('/assets/mining/amethyst_rock.glb?v=357',g=>{
+new GLTFLoader().load('/assets/mining/amethyst_rock.glb?v=441',g=>{
  const box=new THREE.Box3().setFromObject(g.scene),size=box.getSize(new THREE.Vector3()),center=box.getCenter(new THREE.Vector3());const max=Math.max(size.x,size.y,size.z);if(!Number.isFinite(max)||max<=0)return;
  g.scene.traverse(o=>{if(o.isMesh){o.castShadow=false;o.receiveShadow=true;}});
  for(const [i,rock] of miningRockDefs.entries()){
@@ -10774,6 +10774,17 @@ new GLTFLoader().load('/assets/mining/amethyst_rock.glb?v=357',g=>{
    outer.position.set(j===0?0:Math.cos(j*2.4+i)*1.15,0,j===0?0:Math.sin(j*2.4+i)*.9);outer.rotation.y=(i*1.2+j*1.9);group.add(outer);
    model.traverse(o=>{if(o.isMesh){o.userData.miningRockId=rock.id;miningRockMeshes.push(o);}});
   }
+ }
+ // All rocks use the same static mesh and material. Batch them into one
+ // instanced draw while preserving the exact world transforms and positions.
+ if(miningRockMeshes.length&&miningRockMeshes.every(o=>o.geometry===miningRockMeshes[0].geometry&&o.material===miningRockMeshes[0].material)){
+  scene.updateMatrixWorld(true);const source=miningRockMeshes[0];
+  const instances=new THREE.InstancedMesh(source.geometry,source.material,miningRockMeshes.length);
+  instances.castShadow=false;instances.receiveShadow=true;
+  miningRockMeshes.forEach((mesh,index)=>instances.setMatrixAt(index,mesh.matrixWorld));
+  instances.instanceMatrix.needsUpdate=true;instances.computeBoundingSphere();
+  for(const group of miningRockGroups.values())group.clear();
+  miningRockMeshes.length=0;miningRockMeshes.push(instances);scene.add(instances);
  }
 },undefined,e=>console.warn('광맥 모델을 불러오지 못했어요:',e));
 const miningCss=document.createElement('link');miningCss.rel='stylesheet';miningCss.href='/mining.css?v=357';document.head.append(miningCss);
