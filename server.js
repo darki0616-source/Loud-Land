@@ -912,6 +912,14 @@ function tentIsValidPlace(x,z,ignoreId){
 }
 function sendTentUpdate(){broadcast({type:'tent-update',tents:allPlacedTents()});}
 const PUNK_ITEMS={
+ 'puffer-yellow':{name:'패딩 · 노랑',slot:'shirt',cost:0},
+ 'puffer-purple':{name:'패딩 · 보라',slot:'shirt',cost:0},
+ 'puffer-blue':{name:'패딩 · 파랑',slot:'shirt',cost:0},
+ 'puffer-pink':{name:'패딩 · 핑크',slot:'shirt',cost:0},
+ 'puffer-mint':{name:'패딩 · 민트',slot:'shirt',cost:0},
+ 'puffer-red':{name:'패딩 · 레드',slot:'shirt',cost:0},
+ 'puffer-black':{name:'패딩 · 블랙',slot:'shirt',cost:0},
+ 'puffer-white':{name:'패딩 · 화이트',slot:'shirt',cost:0},
  'tee-skull':{name:'스컬 프린트 티셔츠',slot:'shirt',cost:30},
  'tee-lightning':{name:'번개 펑크 티셔츠',slot:'shirt',cost:45},
  'tee-anarchy':{name:'언더그라운드 티셔츠',slot:'shirt',cost:65},

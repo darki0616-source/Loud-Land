@@ -2954,7 +2954,7 @@ function mdPreviewSignature(id,slot){
 }
 function mdPreviewTarget(id,slot,emoji,name){
  const visual=document.createElement('div');visual.className='md-model-preview';
- if(slot==='shirt'){
+ if(slot==='shirt'&&!isPufferItem(id)){
   visual.classList.add('md-flat-preview');
   if(mdCatalog[id]?.imageUrl){
    const img=document.createElement('img');img.src=mdCatalog[id].imageUrl;img.alt=name+' 업로드 이미지';img.loading='lazy';visual.append(img);
@@ -2982,6 +2982,7 @@ function mdPreviewTarget(id,slot,emoji,name){
    const p=state.me||{};
    const hairStyle=normalizeHairStyle(p.hairStyle||chosenHairStyle||'basic-short');
    if(!['basic-short','basic-bob'].includes(hairStyle))await getHairAsset(hairStyle).catch(()=>{});
+   if(isPufferItem(id))await loadPufferAssets(id).catch(()=>{});
    if(id==='angel-wings')await getAngelWingsModel().catch(()=>{});
    if(id==='butterfly-wings')await getImportedWingModel('fairy').catch(()=>{});
    if(id==='balloon-hat')await Promise.race([getBalloonHatModel().catch(()=>{}),new Promise(resolve=>setTimeout(resolve,1000))]);
@@ -3007,6 +3008,7 @@ function mdPreviewTarget(id,slot,emoji,name){
    mdPreviewScene.add(root);
    // Give cached imported-hair assets a microtask to attach before capture.
    await Promise.resolve(); // moves the root out of the live game scene
+   if(avatar.parts?.pufferReady)await avatar.parts.pufferReady.catch(()=>{});
    const tag=avatar.parts?.tag;if(tag)tag.visible=false;
    if(avatar.parts?.flagGroup)avatar.parts.flagGroup.visible=false;
    root.rotation.set(0,0,0);
@@ -3056,7 +3058,7 @@ function drawMdWardrobe(){
   const card=document.createElement('div');card.className='md-wardrobe-entry';
   const visual=mdPreviewTarget(id,slot,emoji,name);
   const title=document.createElement('strong');title.textContent=emoji+' '+name;
-  const line=document.createElement('small');line.textContent=({'shirt':'티셔츠 위에 표시','head':'머리 장식','neck':'목 장식','eyes':'안경','back':'등 장식','tail':'꼬리 장식','ears':'헤드셋'}[slot]||'장식');
+  const line=document.createElement('small');line.textContent=isPufferItem(id)?'3D 패딩 착용':({'shirt':'티셔츠 위에 표시','head':'머리 장식','neck':'목 장식','eyes':'안경','back':'등 장식','tail':'꼬리 장식','ears':'헤드셋'}[slot]||'장식');
   const btn=document.createElement('button');btn.type='button';btn.textContent=wearing?'벗기':'입기';btn.disabled=punkShopBusy;
   btn.onclick=async()=>{if(punkShopBusy||!state.id)return;punkShopBusy=true;drawMdWardrobe();
    try{const d=await post('shop',{id:state.id,command:wearing?'unequip':'equip',item:id});punkWallet=d.shop;
@@ -6757,6 +6759,20 @@ function attachRpgWeapon(parts,root,tier){if(!tier||!parts.rightElbow)return;con
  }).catch(e=>console.warn('무기 모델 로드 실패:',e));
 }
 
+// One jacket model is shared by all variants; textures are loaded by colour.
+const pufferColorIds=new Set(['yellow','purple','blue','pink','mint','red','black','white']);
+function isPufferItem(id){return typeof id==='string'&&id.startsWith('puffer-')&&pufferColorIds.has(id.slice(7));}
+let pufferModelPromise=null;const pufferTexturePromises=new Map();
+function loadPufferAssets(id){
+ const colour=id.slice(7);if(!isPufferItem(id))return Promise.reject(Error('패딩 색상 오류'));
+ if(!pufferModelPromise){pufferModelPromise=new Promise((resolve,reject)=>new GLTFLoader().load('/assets/md/puffer/jacket.glb?v=457',g=>{g.scene.traverse(o=>{if(!o.isMesh)return;if(o.geometry)sharedWingResources.add(o.geometry);for(const m of (Array.isArray(o.material)?o.material:[o.material]))if(m){sharedWingResources.add(m);for(const x of Object.values(m))if(x?.isTexture)sharedWingResources.add(x);}});resolve(g.scene);},undefined,reject));pufferModelPromise.catch(()=>{pufferModelPromise=null;});}
+ if(!pufferTexturePromises.has(colour)){const promise=new Promise((resolve,reject)=>new THREE.TextureLoader().load('/assets/md/puffer/'+colour+'.jpg?v=457',t=>{t.colorSpace=THREE.SRGBColorSpace;t.flipY=false;t.needsUpdate=true;sharedWingResources.add(t);resolve(t);},undefined,reject));pufferTexturePromises.set(colour,promise);promise.catch(()=>pufferTexturePromises.delete(colour));}
+ return Promise.all([pufferModelPromise,pufferTexturePromises.get(colour)]);
+}
+function attachPufferJacket(upper,root,parts,id){
+ const mount=new THREE.Group();upper.add(mount);parts.pufferMount=mount;
+ parts.pufferReady=loadPufferAssets(id).then(([template,texture])=>{if(!root.parent||!mount.parent)return;const model=template.clone(true);model.traverse(o=>{if(!o.isMesh)return;o.geometry=o.geometry.clone();o.material=Array.isArray(o.material)?o.material.map(m=>m.clone()):o.material.clone();for(const m of (Array.isArray(o.material)?o.material:[o.material])){m.map=texture;m.color?.set('#ffffff');m.needsUpdate=true;}o.castShadow=true;});const box=new THREE.Box3().setFromObject(model),size=box.getSize(new THREE.Vector3()),center=box.getCenter(new THREE.Vector3());if(!Number.isFinite(size.y)||size.y<=0)return;const scale=1.20/size.y;model.scale.multiplyScalar(scale);model.position.set(-center.x*scale,.43-center.y*scale,-center.z*scale);mount.add(model);if(stageForeground)addForegroundLayer(model);}).catch(err=>{console.warn('패딩 로딩 실패:',err);throw err;});parts.pufferReady.catch(()=>{});
+}
 function makeAvatar(p){
  const root=new THREE.Group();scene.add(root);
  const parts={}, female=p.gender==='female';
@@ -6772,6 +6788,7 @@ function makeAvatar(p){
  // The torso is one continuous capsule: color on the lower vertices suggests clothes,
  // without bolted-on pants or skirt geometry.
  const upper=new THREE.Group();upper.position.y=1.03;root.add(upper);parts.upper=upper;
+ if(isPufferItem(look.shirt))attachPufferJacket(upper,root,parts,look.shirt);
  const bodyGeo=new THREE.CapsuleGeometry(.45,.46,8,16);
  const pa=bodyGeo.attributes.position,colors=[];
  const topColor=new THREE.Color(activeShirtColor),bottom=new THREE.Color(bottomColor);
