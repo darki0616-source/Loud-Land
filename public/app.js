@@ -6773,7 +6773,7 @@ function attachPufferJacket(upper,root,parts,id){
  const mount=new THREE.Group();upper.add(mount);parts.pufferMount=mount;
  parts.pufferReady=loadPufferAssets(id).then(([template,texture])=>{
   if(!root.parent||!mount.parent)return;
-  const model=template.clone(true),meshes=[];model.traverse(o=>{if(o.isMesh)meshes.push(o);});parts.pufferSleeveRigs=[];
+  const model=template.clone(true),meshes=[];model.updateMatrixWorld(true);const restBox=new THREE.Box3().setFromObject(model),restSize=restBox.getSize(new THREE.Vector3()),restCenter=restBox.getCenter(new THREE.Vector3());model.traverse(o=>{if(o.isMesh)meshes.push(o);});parts.pufferSleeveRigs=[];
   for(const original of meshes){
    // Assign the original jacket's vertices smoothly to torso and shoulder bones.
    // One continuous skinned mesh preserves UVs and avoids cracks at the seams.
@@ -6790,14 +6790,14 @@ function attachPufferJacket(upper,root,parts,id){
    for(const m of (Array.isArray(material)?material:[material])){m.map=texture;m.color?.set('#ffffff');m.needsUpdate=true;}
    const skinned=new THREE.SkinnedMesh(geometry,material);skinned.name=original.name;skinned.position.copy(original.position);skinned.quaternion.copy(original.quaternion);skinned.scale.copy(original.scale);skinned.castShadow=true;skinned.frustumCulled=false;
    const torsoBone=new THREE.Bone(),leftBone=new THREE.Bone(),rightBone=new THREE.Bone(),leftElbow=new THREE.Bone(),rightElbow=new THREE.Bone();
-   leftBone.position.set(centerX-halfWidth*.46,box.min.y+(box.max.y-box.min.y)*.67,0);rightBone.position.set(centerX+halfWidth*.46,leftBone.position.y,0);
-   leftElbow.position.set(-halfWidth*.28,-(box.max.y-box.min.y)*.17,0);rightElbow.position.set(halfWidth*.28,leftElbow.position.y,0);leftBone.add(leftElbow);rightBone.add(rightElbow);
+   leftBone.position.set(centerX-halfWidth*.60,box.min.y+(box.max.y-box.min.y)*.74,0);rightBone.position.set(centerX+halfWidth*.60,leftBone.position.y,0);
+   leftElbow.position.set(-halfWidth*.28,-(box.max.y-box.min.y)*.23,0);rightElbow.position.set(halfWidth*.28,leftElbow.position.y,0);leftBone.add(leftElbow);rightBone.add(rightElbow);
    torsoBone.add(leftBone,rightBone);skinned.add(torsoBone);skinned.updateMatrixWorld(true);skinned.bind(new THREE.Skeleton([torsoBone,leftBone,rightBone,leftElbow,rightElbow]));
-   leftBone.rotation.z=.25;rightBone.rotation.z=-.25;parts.pufferSleeveRigs.push({leftBone,rightBone,leftElbow,rightElbow});
+   leftBone.rotation.z=.65;rightBone.rotation.z=-.65;parts.pufferSleeveRigs.push({leftBone,rightBone,leftElbow,rightElbow});
    const parent=original.parent;parent.add(skinned);parent.remove(original);
   }
-  const box=new THREE.Box3().setFromObject(model),size=box.getSize(new THREE.Vector3()),center=box.getCenter(new THREE.Vector3());if(!Number.isFinite(size.y)||size.y<=0)return;
-  const scale=1.20/size.y;model.scale.multiplyScalar(scale);model.position.set(-center.x*scale,.43-center.y*scale,-center.z*scale);mount.add(model);if(stageForeground)addForegroundLayer(model);
+  if(!Number.isFinite(restSize.y)||restSize.y<=0)return;
+  const scale=1.35/restSize.y,depthScale=scale*1.30;model.scale.set(scale,scale,depthScale);model.position.set(-restCenter.x*scale,.40-restCenter.y*scale,.025-restCenter.z*depthScale);mount.add(model);if(stageForeground)addForegroundLayer(model);
  }).catch(err=>{console.warn('패딩 로딩 실패:',err);throw err;});parts.pufferReady.catch(()=>{});
 }
 function makeAvatar(p){
@@ -7301,7 +7301,7 @@ function makeAvatar(p){
  function arm(side){
    const direction=side==='left'?-1:1;
    const shoulder=new THREE.Group();shoulder.position.set(direction*.57,.72,0);upper.add(shoulder);parts[side+'Shoulder']=shoulder;
-   child(shoulder,new THREE.CapsuleGeometry(.137,.22,5,10),shirtMat,[0,-.19,0]);
+   const sleeve=child(shoulder,new THREE.CapsuleGeometry(.137,.22,5,10),shirtMat,[0,-.19,0]);if(isPufferItem(look.shirt))sleeve.visible=false;
    const elbow=new THREE.Group();elbow.position.y=-.40;shoulder.add(elbow);parts[side+'Elbow']=elbow;
    child(elbow,new THREE.CapsuleGeometry(.106,.18,5,10),skinMat,[0,-.18,0]);
    const hand=child(elbow,new THREE.SphereGeometry(.133,12,10),skinMat,[0,-.39,.018],[.97,.96,.88]);parts[side+'Hand']=hand;
@@ -8965,8 +8965,8 @@ function animateAvatar(a,p,t){
  }
  // Follow the final shoulder rotations, including IK-driven reactions.
  if(P.pufferSleeveRigs)for(const rig of P.pufferSleeveRigs){
-  rig.leftBone.rotation.copy(P.leftShoulder.rotation);rig.leftBone.rotation.z+=.25;
-  rig.rightBone.rotation.copy(P.rightShoulder.rotation);rig.rightBone.rotation.z-=.25;
+  rig.leftBone.rotation.copy(P.leftShoulder.rotation);rig.leftBone.rotation.z+=.65;
+  rig.rightBone.rotation.copy(P.rightShoulder.rotation);rig.rightBone.rotation.z-=.65;
   rig.leftElbow.rotation.copy(P.leftElbow.rotation);rig.rightElbow.rotation.copy(P.rightElbow.rotation);
  }
  a.lastAction=act;
