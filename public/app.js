@@ -6775,26 +6775,23 @@ function attachPufferJacket(upper,root,parts,id){
   if(!root.parent||!mount.parent)return;
   const model=template.clone(true),meshes=[];model.updateMatrixWorld(true);const restBox=new THREE.Box3().setFromObject(model),restSize=restBox.getSize(new THREE.Vector3()),restCenter=restBox.getCenter(new THREE.Vector3());model.traverse(o=>{if(o.isMesh)meshes.push(o);});parts.pufferSleeveRigs=[];
   for(const original of meshes){
-   // Assign the original jacket's vertices smoothly to torso and shoulder bones.
-   // One continuous skinned mesh preserves UVs and avoids cracks at the seams.
-   const geometry=original.geometry.clone(),position=geometry.attributes.position;geometry.computeBoundingBox();
+   // Keep only the imported jacket's torso. Its original sleeves are fused
+   // to the side and stretch like a web when the arm moves. The articulated
+   // sleeves are built on the avatar's actual shoulder and elbow below.
+   const geometry=original.geometry.clone(),position=geometry.attributes.position;
+   geometry.computeBoundingBox();
    const box=geometry.boundingBox,centerX=(box.min.x+box.max.x)/2,halfWidth=(box.max.x-box.min.x)/2;
-   const ids=new Uint16Array(position.count*4),weights=new Float32Array(position.count*4);
-   for(let i=0;i<position.count;i++){
-    const x=(position.getX(i)-centerX)/halfWidth,side=x<0?1:2;
-    const w=THREE.MathUtils.smoothstep(Math.abs(x),.41,.70),fore=w*THREE.MathUtils.smoothstep(Math.abs(x),.70,.93),k=i*4;
-    ids[k]=0;ids[k+1]=side;ids[k+2]=side===1?3:4;weights[k]=1-w;weights[k+1]=w-fore;weights[k+2]=fore;
+   const source=geometry.index,triangles=source?source.count:position.count,kept=[];
+   for(let i=0;i+2<triangles;i+=3){
+    const a=source?source.getX(i):i,b=source?source.getX(i+1):i+1,c=source?source.getX(i+2):i+2;
+    const middle=(position.getX(a)+position.getX(b)+position.getX(c))/3;
+    if(Math.abs(middle-centerX)<=halfWidth*.55)kept.push(a,b,c);
    }
-   geometry.setAttribute('skinIndex',new THREE.Uint16BufferAttribute(ids,4));geometry.setAttribute('skinWeight',new THREE.Float32BufferAttribute(weights,4));
+   geometry.setIndex(kept);geometry.clearGroups();geometry.computeBoundingBox();geometry.computeBoundingSphere();
    const material=Array.isArray(original.material)?original.material.map(m=>m.clone()):original.material.clone();
    for(const m of (Array.isArray(material)?material:[material])){m.map=texture;m.color?.set('#ffffff');m.needsUpdate=true;}
-   const skinned=new THREE.SkinnedMesh(geometry,material);skinned.name=original.name;skinned.position.copy(original.position);skinned.quaternion.copy(original.quaternion);skinned.scale.copy(original.scale);skinned.castShadow=true;skinned.frustumCulled=false;
-   const torsoBone=new THREE.Bone(),leftBone=new THREE.Bone(),rightBone=new THREE.Bone(),leftElbow=new THREE.Bone(),rightElbow=new THREE.Bone();
-   leftBone.position.set(centerX-halfWidth*.60,box.min.y+(box.max.y-box.min.y)*.74,0);rightBone.position.set(centerX+halfWidth*.60,leftBone.position.y,0);
-   leftElbow.position.set(-halfWidth*.28,-(box.max.y-box.min.y)*.23,0);rightElbow.position.set(halfWidth*.28,leftElbow.position.y,0);leftBone.add(leftElbow);rightBone.add(rightElbow);
-   torsoBone.add(leftBone,rightBone);skinned.add(torsoBone);skinned.updateMatrixWorld(true);skinned.bind(new THREE.Skeleton([torsoBone,leftBone,rightBone,leftElbow,rightElbow]));
-   leftBone.rotation.z=.65;rightBone.rotation.z=-.65;parts.pufferSleeveRigs.push({leftBone,rightBone,leftElbow,rightElbow});
-   const parent=original.parent;parent.add(skinned);parent.remove(original);
+   const torso=new THREE.Mesh(geometry,material);torso.name=original.name;torso.position.copy(original.position);torso.quaternion.copy(original.quaternion);torso.scale.copy(original.scale);torso.castShadow=true;
+   const parent=original.parent;parent.add(torso);parent.remove(original);
   }
   if(!Number.isFinite(restSize.y)||restSize.y<=0)return;
   const scale=1.35/restSize.y,depthScale=scale*1.30;model.scale.set(scale,scale,depthScale);model.position.set(-restCenter.x*scale,.40-restCenter.y*scale,.025-restCenter.z*depthScale);mount.add(model);if(stageForeground)addForegroundLayer(model);
@@ -7300,7 +7297,7 @@ function makeAvatar(p){
  // Minimal articulated limbs: smooth joints tucked inside sleeve/leg, not exposed balls.
  function arm(side){
    const direction=side==='left'?-1:1;
-   const shoulder=new THREE.Group();shoulder.position.set(direction*.57,.72,0);upper.add(shoulder);parts[side+'Shoulder']=shoulder;
+   const shoulder=new THREE.Group();shoulder.position.set(direction*(isPufferItem(look.shirt)?.70:.57),.72,0);upper.add(shoulder);parts[side+'Shoulder']=shoulder;
    const sleeve=child(shoulder,new THREE.CapsuleGeometry(.137,.22,5,10),shirtMat,[0,-.19,0]);if(isPufferItem(look.shirt))sleeve.visible=false;
    const elbow=new THREE.Group();elbow.position.y=-.40;shoulder.add(elbow);parts[side+'Elbow']=elbow;
    const forearm=child(elbow,new THREE.CapsuleGeometry(.106,.18,5,10),skinMat,[0,-.18,0]);
