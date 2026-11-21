@@ -7303,7 +7303,23 @@ function makeAvatar(p){
    const shoulder=new THREE.Group();shoulder.position.set(direction*.57,.72,0);upper.add(shoulder);parts[side+'Shoulder']=shoulder;
    const sleeve=child(shoulder,new THREE.CapsuleGeometry(.137,.22,5,10),shirtMat,[0,-.19,0]);if(isPufferItem(look.shirt))sleeve.visible=false;
    const elbow=new THREE.Group();elbow.position.y=-.40;shoulder.add(elbow);parts[side+'Elbow']=elbow;
-   child(elbow,new THREE.CapsuleGeometry(.106,.18,5,10),skinMat,[0,-.18,0]);
+   const forearm=child(elbow,new THREE.CapsuleGeometry(.106,.18,5,10),skinMat,[0,-.18,0]);
+   if(isPufferItem(look.shirt)){
+    // Jacket sleeves are attached directly to the avatar's animated arm joints.
+    // The imported jacket's arms do not share this skeleton, so its deformation
+    // alone cannot reliably cover the arms in every pose.
+    forearm.visible=false;
+    const colors={yellow:'#e9ae00',purple:'#9700ce',blue:'#1600c9',pink:'#ed35a3',mint:'#00cbb3',red:'#e00021',black:'#191919',white:'#e3e3e3'};
+    const color=colors[look.shirt.slice(7)]||colors.red;
+    const jacketSleeveMat=new THREE.MeshStandardMaterial({color,roughness:.78,metalness:.02});
+    const seamMat=new THREE.MeshStandardMaterial({color:new THREE.Color(color).multiplyScalar(.65),roughness:.85});
+    child(shoulder,new THREE.CapsuleGeometry(.185,.23,6,12),jacketSleeveMat,[0,-.18,0],[1,1,1.04]);
+    child(elbow,new THREE.CapsuleGeometry(.158,.19,6,12),jacketSleeveMat,[0,-.16,0],[1,1,1.04]);
+    for(const [joint,y,r] of [[shoulder,-.20,.186],[elbow,-.16,.159]]){
+     const seam=child(joint,new THREE.TorusGeometry(r,.009,5,16),seamMat,[0,y,0]);seam.rotation.x=Math.PI/2;
+    }
+    const cuff=child(elbow,new THREE.TorusGeometry(.148,.027,6,16),mat('#17191e',.85),[0,-.32,0]);cuff.rotation.x=Math.PI/2;
+   }
    const hand=child(elbow,new THREE.SphereGeometry(.133,12,10),skinMat,[0,-.39,.018],[.97,.96,.88]);parts[side+'Hand']=hand;
  }
  function leg(side){
