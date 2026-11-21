@@ -6794,7 +6794,13 @@ function attachPufferJacket(upper,root,parts,id){
    const parent=original.parent;parent.add(torso);parent.remove(original);
   }
   if(!Number.isFinite(restSize.y)||restSize.y<=0)return;
-  const scale=1.35/restSize.y,depthScale=scale*1.30;model.scale.set(scale,scale,depthScale);model.position.set(-restCenter.x*scale,.40-restCenter.y*scale,.025-restCenter.z*depthScale);mount.add(model);if(stageForeground)addForegroundLayer(model);
+  const scale=1.35/restSize.y,depthScale=scale*1.30;model.scale.set(scale,scale,depthScale);model.position.set(-restCenter.x*scale,.40-restCenter.y*scale,.025-restCenter.z*depthScale);mount.add(model);
+  // Fill the torso inside the trimmed original mesh. Its rounded, closed sides
+  // cover the cut underarms without reconnecting them to the moving sleeves.
+  const colors={yellow:'#e9ae00',purple:'#9700ce',blue:'#1600c9',pink:'#ed35a3',mint:'#00cbb3',red:'#e00021',black:'#191919',white:'#e3e3e3'};
+  const lining=new THREE.Mesh(new THREE.CylinderGeometry(.505,.49,1.10,24,1,false),new THREE.MeshStandardMaterial({color:colors[id.slice(7)]||colors.red,roughness:.82,metalness:.02}));
+  lining.position.set(0,.40,.025);lining.scale.z=.91;lining.castShadow=true;mount.add(lining);
+  if(stageForeground)addForegroundLayer(mount);
  }).catch(err=>{console.warn('패딩 로딩 실패:',err);throw err;});parts.pufferReady.catch(()=>{});
 }
 function makeAvatar(p){
