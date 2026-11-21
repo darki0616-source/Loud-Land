@@ -6771,7 +6771,34 @@ function loadPufferAssets(id){
 }
 function attachPufferJacket(upper,root,parts,id){
  const mount=new THREE.Group();upper.add(mount);parts.pufferMount=mount;
- parts.pufferReady=loadPufferAssets(id).then(([template,texture])=>{if(!root.parent||!mount.parent)return;const model=template.clone(true);model.traverse(o=>{if(!o.isMesh)return;o.geometry=o.geometry.clone();o.material=Array.isArray(o.material)?o.material.map(m=>m.clone()):o.material.clone();for(const m of (Array.isArray(o.material)?o.material:[o.material])){m.map=texture;m.color?.set('#ffffff');m.needsUpdate=true;}o.castShadow=true;});const box=new THREE.Box3().setFromObject(model),size=box.getSize(new THREE.Vector3()),center=box.getCenter(new THREE.Vector3());if(!Number.isFinite(size.y)||size.y<=0)return;const scale=1.20/size.y;model.scale.multiplyScalar(scale);model.position.set(-center.x*scale,.43-center.y*scale,-center.z*scale);mount.add(model);if(stageForeground)addForegroundLayer(model);}).catch(err=>{console.warn('패딩 로딩 실패:',err);throw err;});parts.pufferReady.catch(()=>{});
+ parts.pufferReady=loadPufferAssets(id).then(([template,texture])=>{
+  if(!root.parent||!mount.parent)return;
+  const model=template.clone(true),meshes=[];model.traverse(o=>{if(o.isMesh)meshes.push(o);});parts.pufferSleeveRigs=[];
+  for(const original of meshes){
+   // Assign the original jacket's vertices smoothly to torso and shoulder bones.
+   // One continuous skinned mesh preserves UVs and avoids cracks at the seams.
+   const geometry=original.geometry.clone(),position=geometry.attributes.position;geometry.computeBoundingBox();
+   const box=geometry.boundingBox,centerX=(box.min.x+box.max.x)/2,halfWidth=(box.max.x-box.min.x)/2;
+   const ids=new Uint16Array(position.count*4),weights=new Float32Array(position.count*4);
+   for(let i=0;i<position.count;i++){
+    const x=(position.getX(i)-centerX)/halfWidth,side=x<0?1:2;
+    const w=THREE.MathUtils.smoothstep(Math.abs(x),.41,.70),fore=w*THREE.MathUtils.smoothstep(Math.abs(x),.70,.93),k=i*4;
+    ids[k]=0;ids[k+1]=side;ids[k+2]=side===1?3:4;weights[k]=1-w;weights[k+1]=w-fore;weights[k+2]=fore;
+   }
+   geometry.setAttribute('skinIndex',new THREE.Uint16BufferAttribute(ids,4));geometry.setAttribute('skinWeight',new THREE.Float32BufferAttribute(weights,4));
+   const material=Array.isArray(original.material)?original.material.map(m=>m.clone()):original.material.clone();
+   for(const m of (Array.isArray(material)?material:[material])){m.map=texture;m.color?.set('#ffffff');m.needsUpdate=true;}
+   const skinned=new THREE.SkinnedMesh(geometry,material);skinned.name=original.name;skinned.position.copy(original.position);skinned.quaternion.copy(original.quaternion);skinned.scale.copy(original.scale);skinned.castShadow=true;skinned.frustumCulled=false;
+   const torsoBone=new THREE.Bone(),leftBone=new THREE.Bone(),rightBone=new THREE.Bone(),leftElbow=new THREE.Bone(),rightElbow=new THREE.Bone();
+   leftBone.position.set(centerX-halfWidth*.46,box.min.y+(box.max.y-box.min.y)*.67,0);rightBone.position.set(centerX+halfWidth*.46,leftBone.position.y,0);
+   leftElbow.position.set(-halfWidth*.28,-(box.max.y-box.min.y)*.17,0);rightElbow.position.set(halfWidth*.28,leftElbow.position.y,0);leftBone.add(leftElbow);rightBone.add(rightElbow);
+   torsoBone.add(leftBone,rightBone);skinned.add(torsoBone);skinned.updateMatrixWorld(true);skinned.bind(new THREE.Skeleton([torsoBone,leftBone,rightBone,leftElbow,rightElbow]));
+   leftBone.rotation.z=.25;rightBone.rotation.z=-.25;parts.pufferSleeveRigs.push({leftBone,rightBone,leftElbow,rightElbow});
+   const parent=original.parent;parent.add(skinned);parent.remove(original);
+  }
+  const box=new THREE.Box3().setFromObject(model),size=box.getSize(new THREE.Vector3()),center=box.getCenter(new THREE.Vector3());if(!Number.isFinite(size.y)||size.y<=0)return;
+  const scale=1.20/size.y;model.scale.multiplyScalar(scale);model.position.set(-center.x*scale,.43-center.y*scale,-center.z*scale);mount.add(model);if(stageForeground)addForegroundLayer(model);
+ }).catch(err=>{console.warn('패딩 로딩 실패:',err);throw err;});parts.pufferReady.catch(()=>{});
 }
 function makeAvatar(p){
  const root=new THREE.Group();scene.add(root);
@@ -8936,6 +8963,12 @@ function animateAvatar(a,p,t){
  }else if(surfView){
   a.root.rotation.x=0;a.root.rotation.z=0;
  }
+ // Follow the final shoulder rotations, including IK-driven reactions.
+ if(P.pufferSleeveRigs)for(const rig of P.pufferSleeveRigs){
+  rig.leftBone.rotation.copy(P.leftShoulder.rotation);rig.leftBone.rotation.z+=.25;
+  rig.rightBone.rotation.copy(P.rightShoulder.rotation);rig.rightBone.rotation.z-=.25;
+  rig.leftElbow.rotation.copy(P.leftElbow.rotation);rig.rightElbow.rotation.copy(P.rightElbow.rotation);
+ }
  a.lastAction=act;
 }
 // Click or tap the ground to walk; dragging continues to orbit the camera.
@@ -9198,6 +9231,7 @@ function disposeAvatar(root){
  root.parent?.remove(root);
  const geometries=new Set(),materials=new Set(),textures=new Set();
  root.traverse(object=>{
+  if(object.isSkinnedMesh)object.skeleton?.dispose();
   if(object.geometry)geometries.add(object.geometry);
   for(const material of (Array.isArray(object.material)?object.material:[object.material])){
    if(!material)continue;
