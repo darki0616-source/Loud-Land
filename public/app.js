@@ -6798,8 +6798,13 @@ function attachPufferJacket(upper,root,parts,id){
   // Fill the torso inside the trimmed original mesh. Its rounded, closed sides
   // cover the cut underarms without reconnecting them to the moving sleeves.
   const colors={yellow:'#e9ae00',purple:'#9700ce',blue:'#1600c9',pink:'#ed35a3',mint:'#00cbb3',red:'#e00021',black:'#191919',white:'#e3e3e3'};
-  const lining=new THREE.Mesh(new THREE.CylinderGeometry(.505,.49,1.10,24,1,false),new THREE.MeshStandardMaterial({color:colors[id.slice(7)]||colors.red,roughness:.82,metalness:.02}));
-  lining.position.set(0,.40,.025);lining.scale.z=.91;lining.castShadow=true;mount.add(lining);
+  // Narrow side-only fills leave the original front and its black/logo texture
+  // uncovered. The previous full cylinder hid those details from the camera.
+  const liningMat=new THREE.MeshStandardMaterial({color:colors[id.slice(7)]||colors.red,roughness:.82,metalness:.02});
+  for(const side of [-1,1]){
+   const lining=new THREE.Mesh(new THREE.SphereGeometry(1,16,12),liningMat);
+   lining.position.set(side*.47,.40,.025);lining.scale.set(.085,.57,.36);lining.castShadow=true;mount.add(lining);
+  }
   if(stageForeground)addForegroundLayer(mount);
  }).catch(err=>{console.warn('패딩 로딩 실패:',err);throw err;});parts.pufferReady.catch(()=>{});
 }
