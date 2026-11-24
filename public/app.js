@@ -5400,7 +5400,7 @@ const questOverlay=document.createElement('section');questOverlay.id='questOverl
 let questBusy=false,questData=null;
 const questHud=document.createElement('div');questHud.id='questHud';questHud.hidden=true;questHud.setAttribute('role','status');document.body.append(questHud);
 const questHudStyle=document.createElement('style');questHudStyle.textContent=`#questHud{position:fixed;left:50%;transform:translateX(-50%);z-index:150;max-width:calc(100vw - 24px);box-sizing:border-box;padding:7px 13px;border:1px solid #e9d398;border-radius:13px;background:linear-gradient(135deg,#182d49ed,#233f59ed);box-shadow:0 4px 15px #0007;color:#fff3cc;font-size:13px;font-weight:800;line-height:1.35;text-align:center;pointer-events:none;transition:bottom .25s ease}#questHud[hidden]{display:none!important}#questHud .questProgress{color:#a4f3cc;white-space:nowrap}`;document.head.append(questHudStyle);
-function positionQuestHud(){questHud.style.top='calc(72px + env(safe-area-inset-top))';questHud.style.bottom='auto';}
+function positionQuestHud(){const dock=dockBar?.getBoundingClientRect(),ticker=bottomFestivalTicker&&!bottomFestivalTicker.hidden?bottomFestivalTicker.getBoundingClientRect():null;let edge=dock&&dock.height&&dock.top<innerHeight?dock.top:innerHeight-8;if(ticker&&ticker.width&&ticker.height&&ticker.bottom>0&&ticker.top<innerHeight)edge=Math.min(edge,ticker.top);questHud.style.top='auto';questHud.style.bottom=Math.ceil(Math.max(8,innerHeight-edge+8))+'px';}
 
 function renderQuestHud(m){const fishQuest=document.getElementById('fishQuestHud');if(!m||!state.id){questHud.hidden=true;if(fishQuest)fishQuest.hidden=true;return;}const rarity={common:'일반',uncommon:'고급',rare:'희귀',epic:'영웅'}[m.rarity]||m.rarity;const label=document.createElement('span');label.textContent=`📜 ${rarity} ${m.kind==='fish'?'물고기 잡기':'광물 캐기'} · `;const count=document.createElement('span');count.className='questProgress';count.textContent=`${m.progress}/${m.goal}${m.done?' 완료 · 보상 수령 가능':''}`;questHud.replaceChildren(label,count);questHud.hidden=false;positionQuestHud();if(fishQuest){fishQuest.textContent=label.textContent+count.textContent;fishQuest.hidden=false;}}
 window.addEventListener('resize',positionQuestHud);
@@ -11203,13 +11203,12 @@ interactionLayoutStyle.textContent=`
 #worldInteractionButtons>button{position:relative!important;inset:auto!important;transform:none!important;box-sizing:border-box!important;width:100%!important;min-width:0!important;height:40px!important;min-height:40px!important;max-height:40px!important;margin:0!important;padding:4px 6px!important;font:900 12px system-ui,sans-serif!important;line-height:1.15!important;white-space:nowrap!important;border-radius:18px!important;flex:none!important}
 #worldInteractionButtons>button[hidden]{display:none!important}
 #worldInteractionButtons>button img{width:18px!important;height:18px!important;vertical-align:middle}
-#questHud{left:max(8px,env(safe-area-inset-left))!important;right:auto!important;transform:none!important;text-align:left!important;max-width:min(48vw,240px)!important;transition:none!important}
-#questNear{left:max(8px,env(safe-area-inset-left))!important;right:auto!important;top:calc(112px + env(safe-area-inset-top))!important;bottom:auto!important;transform:none!important}
+#questHud{left:max(8px,env(safe-area-inset-left))!important;right:auto!important;transform:none!important;text-align:left!important;max-width:min(calc(56vw - 24px),240px)!important;transition:none!important}
 `;
 document.head.append(interactionLayoutStyle);
 const worldInteractionButtons=document.createElement('div');worldInteractionButtons.id='worldInteractionButtons';worldInteractionButtons.setAttribute('aria-label','주변 상호작용');document.body.append(worldInteractionButtons);
 function layoutWorldInteractions(){
- const selectors=['#rhythmBoothButton','#fishShoreBtn','#miningNear','#craftNear','#battleNear','#petRaceNear','.lottery-near-button','.fortune-near'];
+ const selectors=['#rhythmBoothButton','#fishShoreBtn','#miningNear','#questNear','#craftNear','#battleNear','#petRaceNear','.lottery-near-button','.fortune-near'];
  const buttons=[snowBreakButton,snowThrowButton,snowmanButton,...selectors.map(selector=>document.querySelector(selector)).filter(Boolean)];
  for(const button of buttons)if(button.parentElement!==worldInteractionButtons)worldInteractionButtons.append(button);
  const dock=dockBar?.getBoundingClientRect(),ticker=bottomFestivalTicker&&!bottomFestivalTicker.hidden?bottomFestivalTicker.getBoundingClientRect():null;
