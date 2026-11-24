@@ -912,6 +912,16 @@ function tentIsValidPlace(x,z,ignoreId){
 }
 function sendTentUpdate(){broadcast({type:'tent-update',tents:allPlacedTents()});}
 const PUNK_ITEMS={
+ 'winter-earmuffs-brown':{name:'포근 귀마개 · 갈색',slot:'ears',cost:0},
+ 'winter-scarf-brown':{name:'니트 목도리 · 갈색',slot:'neck',cost:0},
+ 'winter-earmuffs-black':{name:'포근 귀마개 · 검은색',slot:'ears',cost:0},
+ 'winter-scarf-black':{name:'니트 목도리 · 검은색',slot:'neck',cost:0},
+ 'winter-earmuffs-charcoal':{name:'포근 귀마개 · 차콜',slot:'ears',cost:0},
+ 'winter-scarf-charcoal':{name:'니트 목도리 · 차콜',slot:'neck',cost:0},
+ 'winter-earmuffs-red':{name:'포근 귀마개 · 빨강',slot:'ears',cost:0},
+ 'winter-scarf-red':{name:'니트 목도리 · 빨강',slot:'neck',cost:0},
+ 'winter-earmuffs-green':{name:'포근 귀마개 · 초록',slot:'ears',cost:0},
+ 'winter-scarf-green':{name:'니트 목도리 · 초록',slot:'neck',cost:0},
  'puffer-yellow':{name:'패딩 · 노랑',slot:'shirt',cost:0},
  'puffer-purple':{name:'패딩 · 보라',slot:'shirt',cost:0},
  'puffer-blue':{name:'패딩 · 파랑',slot:'shirt',cost:0},
