@@ -1060,12 +1060,12 @@ async function restoreSession(){
   try{
    const r=await fetch('/api/join',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sessionKey,pageId,badgeIdentity,flagText:currentFlagText,flagImage:currentFlagImageData,name:state.me?.name||$('nick').value||'ROCKER',color:state.me?.color||chosenColor,gender:state.me?.gender||chosenGender,pattern:state.me?.pattern||chosenPattern,sash:state.me?.sash||chosenSash,hairStyle:state.me?.hairStyle||chosenHairStyle,hairColor:state.me?.hairColor||chosenHairColor})});
    if(!r.ok)throw Error('재접속 실패');const d=await r.json();
-   const old=state.me;state.id=d.id;state.me=d.players.find(x=>x.id===d.id);currentFlagImageId=state.me?.flagImage||'';
+   const old=state.me;state.id=d.id;state.me=d.players.find(x=>x.id===d.id);currentFlagImageId=state.me?.flagImage||'';if(['fishing','mining'].includes(state.me?.action)){state.action=state.me.action;state.pose='stand';state.actionUntil=Infinity;}
    if(old&&!['fishing','mining'].includes(state.me?.action)){state.me.x=old.x;state.me.y=old.y;state.me.facing=old.facing;state.me.action=old.action;state.me.pose=old.pose;}
    state.players=new Map(d.players.map(x=>[x.id,x]));refreshProfilePreview();renderOnlinePlayers();syncTents(d.tents);setFieldCoins(d.fieldCoins);listen();refreshTentStatus();refreshPetStatus();
    applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);
    applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);applyPowerState(d.power);if(d.crowdSurf)syncCrowdSurf(d.crowdSurf);
-   sendMove();await restoreAutoActivities();toast('서버 연결이 자동 복구됐어요');
+   await restoreAutoActivities();sendMove();toast('서버 연결이 자동 복구됐어요');
   }catch(err){console.warn('Automatic rejoin:',err)}
  })().finally(()=>{rejoining=null});return rejoining;
 }
@@ -1385,7 +1385,7 @@ function updateSkipVoteUI(){
 async function castSkipVote(choice){const vote=state.skipVote;if(!vote||!state.id)return;try{await post('music',{id:state.id,command:'vote-cast',voteId:vote.id,choice})}catch(e){toast(e.message)}}
 function showSkipVoteResult(d){applySkipVote(null,state.skipVoteCooldownUntil);let msg=d.passed?'✅ 과반수 찬성! 요청한 곡으로 이동합니다':d.reason==='timeout'?'투표 시간이 종료되어 현재 곡을 유지합니다':'투표가 부결되어 현재 곡을 유지합니다';notice(msg)}
 setInterval(()=>{updateSkipVoteUI();updateSharedMusicButtons()},500);
-let joining=false;async function join(options={}){const auto=Boolean(options?.auto);if(editingProfile)return updateProfile();if(joining)return;joining=true;let loadSuccess=false;manualExit=false;try{let d=await post('join',{sessionKey,pageId,badgeIdentity,flagText:currentFlagText,flagImage:currentFlagImageData,name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender,pattern:chosenPattern,sash:chosenSash,hairStyle:chosenHairStyle,hairColor:chosenHairColor});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);applyHeadbangToSelf();currentFlagImageId=state.me?.flagImage||'';state.pose=state.me?.pose||'stand';cameraFollowInitialized=false;state.players=new Map(d.players.map(p=>[p.id,p]));renderOnlinePlayers();refreshPunkShop();$('joinModal').classList.add('hidden');$('reopenJoin').hidden=true;$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='페스티벌 참가 중';$('avatarPreview').querySelector('b').style.background=chosenColor;saveProfile(state.me);applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);applyPowerState(d.power);if(d.crowdSurf)syncCrowdSurf(d.crowdSurf);syncTents(d.tents);listen();refreshTentStatus();refreshPetStatus();void ensureRecoveryCode();$('audioModal').classList.add('hidden');setPersonalAudio(true);showMovementGuide();showEntryAnnouncements(d.announcements?.entry);if(!auto)toast('ONEseason에 오신 것을 환영합니다!');hasEnteredFestivalOnce=true;loadSuccess=true;void restoreAutoActivities();}catch(e){if(auto)$('joinModal').classList.remove('hidden');$('joinError').textContent='입장 실패: '+(e?.message||'연결을 확인해주세요');console.error('ONEseason join error:',e)}finally{joining=false;}}
+let joining=false;async function join(options={}){const auto=Boolean(options?.auto);if(editingProfile)return updateProfile();if(joining)return;joining=true;let loadSuccess=false;manualExit=false;try{let d=await post('join',{sessionKey,pageId,badgeIdentity,flagText:currentFlagText,flagImage:currentFlagImageData,name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender,pattern:chosenPattern,sash:chosenSash,hairStyle:chosenHairStyle,hairColor:chosenHairColor});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);if(['fishing','mining'].includes(state.me?.action)){state.action=state.me.action;state.pose='stand';state.actionUntil=Infinity;}applyHeadbangToSelf();currentFlagImageId=state.me?.flagImage||'';state.pose=state.me?.pose||'stand';cameraFollowInitialized=false;state.players=new Map(d.players.map(p=>[p.id,p]));renderOnlinePlayers();refreshPunkShop();$('joinModal').classList.add('hidden');$('reopenJoin').hidden=true;$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='페스티벌 참가 중';$('avatarPreview').querySelector('b').style.background=chosenColor;saveProfile(state.me);applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);applyPowerState(d.power);if(d.crowdSurf)syncCrowdSurf(d.crowdSurf);syncTents(d.tents);listen();refreshTentStatus();refreshPetStatus();void ensureRecoveryCode();$('audioModal').classList.add('hidden');setPersonalAudio(true);showMovementGuide();showEntryAnnouncements(d.announcements?.entry);if(!auto)toast('ONEseason에 오신 것을 환영합니다!');hasEnteredFestivalOnce=true;loadSuccess=true;void restoreAutoActivities();}catch(e){if(auto)$('joinModal').classList.remove('hidden');$('joinError').textContent='입장 실패: '+(e?.message||'연결을 확인해주세요');console.error('ONEseason join error:',e)}finally{joining=false;}}
 $('audioYes').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(true);toast(state.music.id?'음악 재생을 허용했어요':'음악이 등록되면 바로 재생돼요')};$('audioNo').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(false);toast('내 소리를 끈 상태로 입장했어요')};// First tap must save even if the nickname field currently has keyboard focus.
 // A pointerdown listener runs BEFORE Safari's keyboard dismissal can consume
 // the subsequent click. De-duplicate that click and block duplicate requests.
@@ -10770,7 +10770,7 @@ async function openFishingUi(){
  await fishingRefresh();void fishingTournamentRequest();
 }
 function fishingStopAvatar(){if(state.me?.action==='fishing'){state.action='idle';state.me.action='idle';state.actionUntil=0;sendMove()}}
-function fishingStartAvatar(){if(!state.me)return;state.action='fishing';state.me.action='fishing';state.me.pose='stand';state.actionUntil=performance.now()+31000;sendMove()}
+function fishingStartAvatar(){if(!state.me)return;state.action='fishing';state.me.action='fishing';state.me.pose='stand';state.pose='stand';state.actionUntil=fishingData?.auto?Infinity:performance.now()+31000;sendMove()}
 function closeFishingUi(){renderer.renderLists?.dispose();
  if(fishingData?.auto&&state.id){fishingData.auto=null;void post('fishing',{id:state.id,sessionKey,command:'auto-stop'}).catch(()=>{});}
  if(!fishingUi)return;fishHolding=false;setFishingChatOpen(false);
@@ -10779,7 +10779,7 @@ function closeFishingUi(){renderer.renderLists?.dispose();
  fishingStopAvatar();
 }
 async function fishingRefresh(){
- try{const r=await post('fishing',{id:state.id,sessionKey,command:'state'});fishingSetData(r.fishing);fishingLastExpireCheck='';renderFishingUi();if(r.fishing.session)fishingStartAvatar();}
+ try{const r=await post('fishing',{id:state.id,sessionKey,command:'state'});fishingSetData(r.fishing);fishingLastExpireCheck='';renderFishingUi();if(r.fishing.session||r.fishing.auto)fishingStartAvatar();}
  catch(e){if(fishingUi)fishingUi.message.textContent=e.message;}
 }
 function fishingGuideRows(){const d=fishingData;if(!d)return '';return Array.from({length:5},(_,i)=>{const level=i+1,p=d.prices[level],owned=d.level>=level;return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 8px;border-bottom:1px solid #ffffff22;${owned?'color:#8fffdb;':''}"><div><b>Lv.${level} · ${['나무','실버','골드','플래티넘','레인보우'][i]} 낚싯대</b><div style="font-size:12px;color:#cee9fc">${i===0?'기본 낚시':`릴 속도와 줄 안정성 증가`}</div></div><b>${owned?'✓ 보유':p.toLocaleString()+'P'}</b></div>`;}).join('')}
@@ -10943,7 +10943,7 @@ let gamePresenceLastId=null,gamePresenceAck=null,gamePresenceSending=false;
 async function syncGamePresence(){
  if(!state.id||!state.me||gamePresenceSending)return;
  if(gamePresenceLastId!==state.id){gamePresenceLastId=state.id;gamePresenceAck=null;}
- const playing=Boolean(rhythmGame.running||powerGame.running||pizzaGame.running||moleGame.running||(fishingUi?.overlay.classList.contains('show')&&fishingData?.session)||(lotteryUi&&!lotteryUi.overlay.hidden&&lotteryData?.ticket)||miningActive);
+ const playing=Boolean(rhythmGame.running||fireworksGame.running||powerGame.running||pizzaGame.running||moleGame.running||(fishingUi?.overlay.classList.contains('show')&&(fishingData?.session||fishingData?.auto))||(lotteryUi&&!lotteryUi.overlay.hidden&&lotteryData?.ticket)||miningActive||state.me?.action==='mining'||state.me?.action==='fishing');
  if(gamePresenceAck===playing)return;
  const requestId=state.id;gamePresenceSending=true;
  try{await post('game-presence',{id:requestId,sessionKey,playing});if(state.id===requestId)gamePresenceAck=playing;}
@@ -11023,7 +11023,7 @@ async function restoreAutoActivities(){
    if(r.fishing.auto){fishingUi.overlay.classList.add('show');setFishingChatOpen(true);fishingSetData(r.fishing);fishingStartAvatar();renderFishingUi();}
   }else if(state.me.action==='mining'){
    const r=await miningRequest('state');miningData=r.mining;
-   if(miningData.active?.auto){miningActive=true;state.action='mining';state.me.action='mining';state.pose='stand';state.actionUntil=Infinity;miningHud.hidden=false;miningNearButton.hidden=true;renderMiningHud();setMiningAuto(true,false);}
+   if(miningData.active?.auto){miningActive=true;state.action='mining';state.me.action='mining';state.me.pose='stand';state.pose='stand';state.actionUntil=Infinity;miningHud.hidden=false;miningNearButton.hidden=true;renderMiningHud();setMiningAuto(true,false);sendMove();}
   }
  }catch(e){console.warn('자동 활동 복구 실패:',e.message);}
 }
