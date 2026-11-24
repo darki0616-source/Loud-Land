@@ -10508,7 +10508,7 @@ function startLotteryWinFireworks(tier){
 // v302 scratch lottery overlay is independent of the game UI; CSS/assets are local.
 
 const lotteryCss=document.createElement('link');lotteryCss.rel='stylesheet';lotteryCss.href='/lottery.css?v=304';document.head.append(lotteryCss);
-let lotteryUi=null,lotteryData=null,lotteryBusy=false,lotteryWalkToBooth=false;
+let lotteryUi=null,lotteryData=null,lotteryBusy=false,lotteryWalkToBooth=false,lotteryAutoRequest=null;
 let lotteryMaskTicketId='',lotteryScratching=false,lotteryRevealing=false,lotteryLastPoint=null,lotteryCoverageAt=0;
 const lotteryNames={miss:'꽝',small:'소액 당첨',normal:'일반 당첨',high:'고액 당첨',ultra:'초고액 당첨',jackpot:'대박 당첨'};
 const lotteryIcons=new Set(['star','coin','diamond','gem','crown','broken']);
@@ -10528,9 +10528,10 @@ function ensureLotteryUi(){
   <aside class="lottery-side"><div class="lottery-info"><h3>✦ 당첨 확률과 보상</h3><table class="lottery-odds"><tbody><tr><td>✕ 꽝</td><td>30%</td><td>0P</td></tr><tr><td>🪙 소액</td><td>25%</td><td>50P</td></tr><tr><td>⭐ 일반</td><td>25%</td><td>100P</td></tr><tr><td>💎 고액</td><td>15%</td><td>300P</td></tr><tr><td>✨ 초고액</td><td>4%</td><td>1,000P</td></tr><tr><td>👑 대박</td><td>1%</td><td>5,000P</td></tr></tbody></table></div>
   <div class="lottery-info lottery-guide"><h3>✦ 이용 방법</h3><strong>PC는 마우스로, 모바일은 손가락으로</strong> 은색 부분을 문질러 긁으세요.<br>1장 100P · 하루 10장 · 한국시간 자정 초기화</div>
   <div class="lottery-message" id="lotteryMessage" aria-live="polite">복권을 구매하면 긁을 수 있어요.</div><button class="lottery-reveal-button" id="lotteryReveal" type="button">🎁 당첨 결과 확인</button><button class="lottery-action" id="lotteryBuy" type="button">100P로 복권 구매하기</button></aside></div>
-  <div class="lottery-note">게임 내 포인트 전용 · 현금 교환 불가 · 당첨 결과는 서버에서 무작위로 결정됩니다.</div></section>`;
+  <div class="lottery-auto" style="margin:12px 0;padding:12px;border:1px solid #c4a4ff88;border-radius:14px;background:#172447;color:#fff"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><label for="lotteryAutoCount">자동긁기 장수</label><select id="lotteryAutoCount" aria-label="자동긁기 장수" style="padding:8px;border-radius:8px"></select><button type="button" id="lotteryAutoButton" class="lottery-action" style="width:auto;flex:1;margin:0">✨ 자동긁기</button></div><div id="lotteryAutoResults" role="status" style="margin-top:8px;line-height:1.6;font-size:13px"></div></div><div class="lottery-note">게임 내 포인트 전용 · 현금 교환 불가 · 당첨 결과는 서버에서 무작위로 결정됩니다.</div></section>`;
  document.body.append(overlay);
  const ui={overlay,btn,window:overlay.querySelector('.lottery-window'),close:overlay.querySelector('.lottery-close'),wallet:overlay.querySelector('#lotteryWallet'),remaining:overlay.querySelector('#lotteryRemaining'),field:overlay.querySelector('#lotteryScratchField'),symbols:overlay.querySelector('#lotterySymbols'),canvas:overlay.querySelector('#lotteryScratchCanvas'),prize:overlay.querySelector('#lotteryPrizeTag'),message:overlay.querySelector('#lotteryMessage'),buy:overlay.querySelector('#lotteryBuy'),reveal:overlay.querySelector('#lotteryReveal')};
+ ui.autoCount=overlay.querySelector('#lotteryAutoCount');ui.autoButton=overlay.querySelector('#lotteryAutoButton');ui.autoResults=overlay.querySelector('#lotteryAutoResults');ui.autoButton.onclick=()=>void lotteryAutoScratch();
  lotteryUi=ui;
  ui.close.onclick=closeLotteryShop;overlay.addEventListener('click',e=>{if(e.target===overlay)closeLotteryShop()});
  ui.buy.onclick=buyLotteryTicket;ui.reveal.onclick=revealLotteryTicket;
@@ -10554,7 +10555,7 @@ async function openLotteryShop(){
  ensureLotteryUi();lotteryWalkToBooth=false;state.walkTarget=null;state.keys.clear();
  lotteryUi.overlay.hidden=false;lotteryUi.btn.classList.remove('show');
  lotteryUi.message.textContent='복권 정보를 불러오는 중…';
- try{const r=await post('lottery',{id:state.id,sessionKey,command:'state'});lotteryData=r.lottery;lotteryRender();}
+ try{const r=await post('lottery',{id:state.id,sessionKey,command:'state'});lotteryData=r.lottery;if(lotteryAutoRequest&&lotteryData.lastBatch?.requestId===lotteryAutoRequest.requestId)lotteryAutoRequest=null;lotteryRender();}
  catch(e){lotteryUi.message.textContent=e.message;}
 }
 function closeLotteryShop(){renderer.renderLists?.dispose();if(!lotteryUi)return;lotteryUi.overlay.hidden=true;state.keys.clear();lotteryScratching=false;}
@@ -10568,6 +10569,10 @@ function lotteryRender(){
  const ui=lotteryUi,d=lotteryData;if(!ui||!d)return;
  ui.wallet.textContent='🪙 보유 '+Number(d.points||0).toLocaleString()+'P';
  ui.remaining.textContent='오늘 남은 복권 '+d.remaining+' / '+d.limit;
+ const previous=Number(ui.autoCount.value)||1;ui.autoCount.replaceChildren();
+ for(let i=1;i<=d.remaining;i++){const o=document.createElement('option');o.value=String(i);o.textContent=i+'장 · '+(i*d.price).toLocaleString()+'P';ui.autoCount.append(o);}if(d.remaining)ui.autoCount.value=String(Math.min(previous,d.remaining));
+ ui.autoCount.disabled=lotteryBusy||lotteryRevealing||!!lotteryAutoRequest||!!d.ticket||d.remaining<=0;ui.autoButton.disabled=lotteryBusy||lotteryRevealing||(!lotteryAutoRequest&&(!!d.ticket||d.remaining<=0));ui.autoButton.textContent=lotteryBusy?'처리 중…':lotteryAutoRequest?'결과 다시 확인':'✨ 자동긁기';
+ if(d.lastBatch)lotteryRenderBatch(d.lastBatch);
  const ticket=d.ticket,won=d.lastResult;
  ui.window.classList.toggle('jackpot',!ticket&&won?.tier==='jackpot');
  ui.window.classList.toggle('ultra',!ticket&&won?.tier==='ultra');
@@ -10585,8 +10590,25 @@ function lotteryRender(){
   if(won){ui.prize.textContent=(lotteryNames[won.tier]||'당첨 결과')+' · '+Number(won.prize).toLocaleString()+'P';ui.message.textContent=won.prize?'🎉 '+won.prize.toLocaleString()+'P가 지급됐어요!':'다음 복권에는 행운이 함께하길!';}
   else{ui.prize.textContent='🎟️ 100P · 행운을 긁어보세요';ui.message.textContent='복권을 구매하면 긁을 수 있어요.';}
   ui.buy.disabled=lotteryBusy||d.remaining<=0||d.points<d.price;
-  ui.buy.textContent=d.remaining<=0?'오늘 5장 모두 구매했어요':d.points<d.price?'포인트가 부족해요':`🎟️ 복권 1장 구매 · ${d.price}P`;
+  ui.buy.textContent=d.remaining<=0?`오늘 ${d.limit}장 모두 구매했어요`:d.points<d.price?'포인트가 부족해요':`🎟️ 복권 1장 구매 · ${d.price}P`;
  }
+}
+function lotteryRenderBatch(batch){
+ if(!lotteryUi||!batch||!Array.isArray(batch.results))return;const box=lotteryUi.autoResults;box.replaceChildren();
+ const title=document.createElement('strong');title.textContent=`최근 자동긁기 ${batch.results.length}장 · 당첨 ${Number(batch.total).toLocaleString()}P · 구매 ${Number(batch.cost).toLocaleString()}P`;box.append(title);
+ batch.results.forEach((result,i)=>{const row=document.createElement('div');row.textContent=`${i+1}장: ${lotteryNames[result.tier]||'당첨 결과'} · ${Number(result.prize).toLocaleString()}P`;box.append(row);});
+}
+async function lotteryAutoScratch(){
+ if(!state.id||!lotteryData||lotteryBusy||lotteryRevealing||lotteryData.ticket)return;
+ const count=lotteryAutoRequest?.count||Number(lotteryUi.autoCount.value);if(!Number.isInteger(count)||count<1||(!lotteryAutoRequest&&count>lotteryData.remaining))return;
+ if(!nearLotteryBooth())return toast('복권샵 가까이에서 이용해 주세요.');
+ if(!lotteryAutoRequest&&lotteryData.points<count*lotteryData.price){lotteryUi.message.textContent='선택한 장수를 구매할 포인트가 부족해요.';return;}
+ lotteryBusy=true;if(!lotteryAutoRequest)lotteryAutoRequest={requestId:crypto.randomUUID(),count};lotteryRender();lotteryUi.message.textContent=`${count}장의 결과를 확인하는 중…`;
+ try{
+  let response,error;for(let i=0;i<2;i++){try{response=await post('lottery',{id:state.id,sessionKey,command:'auto-scratch',...lotteryAutoRequest});break;}catch(e){error=e;if(i===0)await new Promise(resolve=>setTimeout(resolve,500));}}
+  if(!response)throw error;lotteryData=response.lottery;lotteryRenderBatch(response.batch);lotteryUi.message.textContent=`${count}장 당첨금 합계 ${Number(response.batch.total).toLocaleString()}P`;lotteryAutoRequest=null;void refreshTentStatus();
+ }catch(e){lotteryUi.message.textContent='결과 확인이 지연되고 있어요. 복권창을 다시 열어 최근 결과를 확인해 주세요.';console.warn('자동긁기 확인 실패:',e);}
+ finally{lotteryBusy=false;lotteryRender();}
 }
 async function buyLotteryTicket(){
  if(lotteryBusy||lotteryData?.ticket||!state.id)return;
