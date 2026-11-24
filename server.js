@@ -60,7 +60,7 @@ function announceRareFind(player,item){
  for(const [roomId,streams] of rooms){const entry={...base,roomId};retainChat(entry);for(const stream of streams)try{send(stream,{type:'chat',entry})}catch{}}
 }
 // Server-owned communal snowballs and snowmen. Sizes are world-space radii.
-const snowObjects=new Map(),snowRolling=new Map(),SNOW_LIMIT=120;
+const snowObjects=new Map(),snowRolling=new Map(),snowThrowBlocks=new Map(),SNOW_LIMIT=120;
 function publishSnow(o){broadcast({type:'snow-object',object:o});}
 function finishSnow(id){const key=snowRolling.get(id),o=key&&snowObjects.get(key);snowRolling.delete(id);if(o){o.rolling=false;delete o.ownerId;publishSnow(o);scheduleSave();}}
 function updateSnowRolling(p,oldX,oldY){
@@ -2342,11 +2342,23 @@ const server=http.createServer(async(req,res)=>{
         }
         return json(res,400,{error:'지원하지 않는 상호작용 명령입니다.'});
       }
+      if(url.pathname==='/api/snow-throw'){
+       if(!playerSessions.get(id)||playerSessions.get(id)!==String(d.sessionKey||''))return json(res,403,{error:'본인 세션에서만 던질 수 있어요.'});
+       if(p.tentRoomId||p.action!=='snowroll')return json(res,409,{error:'눈덩이를 굴리는 중에 던질 수 있어요.'});
+       const key=snowRolling.get(id),o=key&&snowObjects.get(key);if(!o||!o.rolling||o.ownerId!==id)return json(res,409,{error:'굴리고 있는 눈덩이가 없어요.'});
+       const startX=o.x,startZ=o.z,angle=Number.isFinite(p.facing)?p.facing:0,distance=8,duration=1050,now=Date.now();
+       o.x=clamp(startX+Math.sin(angle)*distance,(SERVER_X_MIN-600)*.058,(SERVER_X_MAX-600)*.058);
+       o.z=clamp(startZ+Math.cos(angle)*distance,(SERVER_Y_MIN-500)*.058+8,(SERVER_Y_MAX-500)*.058+8);
+       o.rolling=false;delete o.ownerId;o.flight={startX,startZ,startedAt:now,duration};snowRolling.delete(id);snowThrowBlocks.set(id,now+1000);p.action='idle';p.pose='stand';
+       publishSnow(o);broadcast({type:'move',player:p});await saveNow();
+       setTimeout(()=>{const current=snowObjects.get(key);if(current===o&&current.flight?.startedAt===now){delete current.flight;publishSnow(current);scheduleSave();}snowThrowBlocks.delete(id);},duration).unref();
+       return json(res,200,{ok:true,object:o});
+      }
       if(url.pathname==='/api/snow-break'){
        if(!playerSessions.get(id)||playerSessions.get(id)!==String(d.sessionKey||''))return json(res,403,{error:'본인 세션에서 이용해 주세요.'});
        if(p.tentRoomId)return json(res,400,{error:'맵에서만 부술 수 있어요.'});
        const o=snowObjects.get(String(d.objectId||'')),px=(p.x-600)*.058,pz=(p.y-500)*.058+8;
-       if(!o||Math.hypot(o.x-px,o.z-pz)>4.5+o.r)return json(res,400,{error:'눈덩이나 눈사람 가까이 이동해 주세요.'});
+       if(!o||o.flight||Math.hypot(o.x-px,o.z-pz)>4.5+o.r)return json(res,400,{error:'눈덩이나 눈사람 가까이 이동해 주세요.'});
        snowObjects.delete(o.id);if(o.rolling&&o.ownerId){snowRolling.delete(o.ownerId);const roller=players.get(o.ownerId);if(roller&&roller.action==='snowroll'){roller.action='idle';broadcast({type:'move',player:roller});}}
        broadcast({type:'snow-break',object:{id:o.id,x:o.x,z:o.z,r:o.r,kind:o.kind,head:o.head,ownerId:o.ownerId||null}});await saveNow();return json(res,200,{ok:true});
       }
@@ -2354,7 +2366,7 @@ const server=http.createServer(async(req,res)=>{
        if(!playerSessions.get(id)||playerSessions.get(id)!==String(d.sessionKey||''))return json(res,403,{error:'본인 세션에서 이용해 주세요.'});
        if(p.tentRoomId)return json(res,400,{error:'맵 밖에서 만들 수 있어요.'});
        const a=snowObjects.get(String(d.a||'')),b=snowObjects.get(String(d.b||'')),px=(p.x-600)*.058,pz=(p.y-500)*.058+8;
-       if(!a||!b||a===b||a.kind!=='ball'||b.kind!=='ball'||a.rolling||b.rolling||Math.hypot(a.x-px,a.z-pz)>6||Math.hypot(b.x-px,b.z-pz)>6||Math.hypot(a.x-b.x,a.z-b.z)>6)return json(res,400,{error:'가까운 곳에 완성된 눈덩이 두 개가 필요해요.'});
+       if(!a||!b||a===b||a.kind!=='ball'||b.kind!=='ball'||a.rolling||b.rolling||a.flight||b.flight||Math.hypot(a.x-px,a.z-pz)>6||Math.hypot(b.x-px,b.z-pz)>6||Math.hypot(a.x-b.x,a.z-b.z)>6)return json(res,400,{error:'가까운 곳에 완성된 눈덩이 두 개가 필요해요.'});
        const base=a.r>=b.r?a:b,head=base===a?b:a,man={id:crypto.randomUUID(),kind:'man',x:base.x,z:base.z,r:base.r,head:head.r,rolling:false};snowObjects.delete(a.id);snowObjects.delete(b.id);snowObjects.set(man.id,man);broadcast({type:'snow-remove',ids:[a.id,b.id]});publishSnow(man);await saveNow();return json(res,200,{ok:true});
       }
       if(url.pathname==='/api/move'&&p.tentRoomId)return json(res,200,{ok:true,indoor:true});
@@ -2385,7 +2397,7 @@ const server=http.createServer(async(req,res)=>{
           const kstHour=Number(new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Seoul',hour:'2-digit',hourCycle:'h23'}).format(new Date()));
           if(kstHour<1||kstHour>=4)d.action='idle';
         }
-        if(d.action==='snowroll'&&(!playerSessions.get(id)||playerSessions.get(id)!==String(d.sessionKey||'')))d.action='idle';
+        if(d.action==='snowroll'&&(!playerSessions.get(id)||playerSessions.get(id)!==String(d.sessionKey||'')||(snowThrowBlocks.get(id)||0)>Date.now()))d.action='idle';
         if(d.action==='fishing'&&(!fishingNearSea(p)||!fishingAccount(p.badgeIdentity).active))d.action='idle';
         if(d.action==='mining'&&(!p.badgeIdentity||miningAccount(p.badgeIdentity).active?.playerId!==p.id))d.action='idle';
         p.action=['idle','walk','peace','jump','run','wave','clap','sit','lie','drink','snack','headbang','buriburi','groove','dougie','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','powerking','moleking','fishking','mineking','battleking','snowroll','marshmallow','putyourhandsup','nightfirework','birthday','fishing','mining','heartbow','drum','electricguitar','bassguitar','vocal','mosh-charge','slam-charge','slam-retreat','slam-celebrate','circle-run','train-run','row-paddle','toast-clink','surf-rider','surf-support','shoulder-headbang','rock-skank'].includes(d.action)?d.action:'idle';
