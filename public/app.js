@@ -1039,11 +1039,11 @@ async function restoreSession(){
    const r=await fetch('/api/join',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sessionKey,pageId,badgeIdentity,flagText:currentFlagText,flagImage:currentFlagImageData,name:state.me?.name||$('nick').value||'ROCKER',color:state.me?.color||chosenColor,gender:state.me?.gender||chosenGender,pattern:state.me?.pattern||chosenPattern,sash:state.me?.sash||chosenSash,hairStyle:state.me?.hairStyle||chosenHairStyle,hairColor:state.me?.hairColor||chosenHairColor})});
    if(!r.ok)throw Error('재접속 실패');const d=await r.json();
    const old=state.me;state.id=d.id;state.me=d.players.find(x=>x.id===d.id);currentFlagImageId=state.me?.flagImage||'';
-   if(old){state.me.x=old.x;state.me.y=old.y;state.me.facing=old.facing;state.me.action=old.action;state.me.pose=old.pose;}
+   if(old&&!['fishing','mining'].includes(state.me?.action)){state.me.x=old.x;state.me.y=old.y;state.me.facing=old.facing;state.me.action=old.action;state.me.pose=old.pose;}
    state.players=new Map(d.players.map(x=>[x.id,x]));refreshProfilePreview();renderOnlinePlayers();syncTents(d.tents);setFieldCoins(d.fieldCoins);listen();refreshTentStatus();refreshPetStatus();
    applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);
    applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);applyPowerState(d.power);if(d.crowdSurf)syncCrowdSurf(d.crowdSurf);
-   sendMove();toast('서버 연결이 자동 복구됐어요');
+   sendMove();await restoreAutoActivities();toast('서버 연결이 자동 복구됐어요');
   }catch(err){console.warn('Automatic rejoin:',err)}
  })().finally(()=>{rejoining=null});return rejoining;
 }
@@ -1363,7 +1363,7 @@ function updateSkipVoteUI(){
 async function castSkipVote(choice){const vote=state.skipVote;if(!vote||!state.id)return;try{await post('music',{id:state.id,command:'vote-cast',voteId:vote.id,choice})}catch(e){toast(e.message)}}
 function showSkipVoteResult(d){applySkipVote(null,state.skipVoteCooldownUntil);let msg=d.passed?'✅ 과반수 찬성! 요청한 곡으로 이동합니다':d.reason==='timeout'?'투표 시간이 종료되어 현재 곡을 유지합니다':'투표가 부결되어 현재 곡을 유지합니다';notice(msg)}
 setInterval(()=>{updateSkipVoteUI();updateSharedMusicButtons()},500);
-let joining=false;async function join(options={}){const auto=Boolean(options?.auto);if(editingProfile)return updateProfile();if(joining)return;joining=true;let loadSuccess=false;manualExit=false;try{let d=await post('join',{sessionKey,pageId,badgeIdentity,flagText:currentFlagText,flagImage:currentFlagImageData,name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender,pattern:chosenPattern,sash:chosenSash,hairStyle:chosenHairStyle,hairColor:chosenHairColor});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);applyHeadbangToSelf();currentFlagImageId=state.me?.flagImage||'';state.pose=state.me?.pose||'stand';cameraFollowInitialized=false;state.players=new Map(d.players.map(p=>[p.id,p]));renderOnlinePlayers();refreshPunkShop();$('joinModal').classList.add('hidden');$('reopenJoin').hidden=true;$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='페스티벌 참가 중';$('avatarPreview').querySelector('b').style.background=chosenColor;saveProfile(state.me);applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);applyPowerState(d.power);if(d.crowdSurf)syncCrowdSurf(d.crowdSurf);syncTents(d.tents);listen();refreshTentStatus();refreshPetStatus();void ensureRecoveryCode();$('audioModal').classList.add('hidden');setPersonalAudio(true);showMovementGuide();showEntryAnnouncements(d.announcements?.entry);if(!auto)toast('ONEseason에 오신 것을 환영합니다!');hasEnteredFestivalOnce=true;loadSuccess=true;}catch(e){if(auto)$('joinModal').classList.remove('hidden');$('joinError').textContent='입장 실패: '+(e?.message||'연결을 확인해주세요');console.error('ONEseason join error:',e)}finally{joining=false;}}
+let joining=false;async function join(options={}){const auto=Boolean(options?.auto);if(editingProfile)return updateProfile();if(joining)return;joining=true;let loadSuccess=false;manualExit=false;try{let d=await post('join',{sessionKey,pageId,badgeIdentity,flagText:currentFlagText,flagImage:currentFlagImageData,name:$('nick').value.trim()||'ROCKER',color:chosenColor,gender:chosenGender,pattern:chosenPattern,sash:chosenSash,hairStyle:chosenHairStyle,hairColor:chosenHairColor});state.id=d.id;state.me=d.players.find(p=>p.id===d.id);applyHeadbangToSelf();currentFlagImageId=state.me?.flagImage||'';state.pose=state.me?.pose||'stand';cameraFollowInitialized=false;state.players=new Map(d.players.map(p=>[p.id,p]));renderOnlinePlayers();refreshPunkShop();$('joinModal').classList.add('hidden');$('reopenJoin').hidden=true;$('online').textContent=d.count;$('profileName').textContent=state.me.name;$('profileStatus').textContent='페스티벌 참가 중';$('avatarPreview').querySelector('b').style.background=chosenColor;saveProfile(state.me);applyMusic(d.music,d.serverNow,d.queue,d.history);applySkipVote(d.skipVote,d.skipVoteCooldownUntil);applySlam(d.slam,d.slamCooldownUntil);applyRockPlay(d.rockPlay,d.rockCooldowns,d.rockRunningUntil);applyRhythmState(d.rhythm);applyPowerState(d.power);if(d.crowdSurf)syncCrowdSurf(d.crowdSurf);syncTents(d.tents);listen();refreshTentStatus();refreshPetStatus();void ensureRecoveryCode();$('audioModal').classList.add('hidden');setPersonalAudio(true);showMovementGuide();showEntryAnnouncements(d.announcements?.entry);if(!auto)toast('ONEseason에 오신 것을 환영합니다!');hasEnteredFestivalOnce=true;loadSuccess=true;void restoreAutoActivities();}catch(e){if(auto)$('joinModal').classList.remove('hidden');$('joinError').textContent='입장 실패: '+(e?.message||'연결을 확인해주세요');console.error('ONEseason join error:',e)}finally{joining=false;}}
 $('audioYes').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(true);toast(state.music.id?'음악 재생을 허용했어요':'음악이 등록되면 바로 재생돼요')};$('audioNo').onclick=()=>{$('audioModal').classList.add('hidden');setPersonalAudio(false);toast('내 소리를 끈 상태로 입장했어요')};// First tap must save even if the nickname field currently has keyboard focus.
 // A pointerdown listener runs BEFORE Safari's keyboard dismissal can consume
 // the subsequent click. De-duplicate that click and block duplicate requests.
@@ -10953,14 +10953,26 @@ async function stopMining(){
  if(state.me?.action==='mining'){state.action='idle';state.me.action='idle';state.actionUntil=0;sendMove();}
  try{const r=await miningRequest('stop');miningData=r.mining;}catch(e){console.warn('광질 종료:',e.message);}
 }
-function setMiningAuto(enabled){
- miningAuto=Boolean(enabled&&miningActive);clearInterval(miningAutoTimer);miningAutoTimer=0;
+function setMiningAuto(enabled,remote=true){
+ miningAuto=Boolean(enabled&&miningActive);clearInterval(miningAutoTimer);miningAutoTimer=0;if(remote&&miningActive)void miningRequest('auto-set',{enabled:miningAuto}).then(r=>{miningData=r.mining;renderMiningHud();}).catch(e=>{if(miningAuto){setMiningAuto(false,false);toast(e.message||'자동 광질 설정을 저장하지 못했어요.');}});
  const button=miningHud.querySelector('[data-mining="auto"]');button.setAttribute('aria-pressed',String(miningAuto));button.textContent=miningAuto?'⛏ 자동 채굴 ON':'⛏ 자동 채굴 OFF';
  miningStatusUntil=0;miningHud.querySelector('.mining-status').textContent=miningAuto?'자동으로 광물을 캐고 있어요!':'동그라미를 터치해 광물을 캐세요!';
  if(miningAuto)miningAutoTimer=setInterval(()=>{if(miningActive&&miningAuto)void miningHit(true);},2000);
 }
 miningHud.querySelector('[data-mining="auto"]').onclick=()=>setMiningAuto(!miningAuto);
 miningNearButton.onclick=startMining;miningHud.querySelector('[data-mining="stop"]').onclick=stopMining;
+async function restoreAutoActivities(){
+ if(!state.id||!state.me)return;
+ try{
+  if(state.me.action==='fishing'){
+   ensureFishingUi();const r=await post('fishing',{id:state.id,sessionKey,command:'state'});
+   if(r.fishing.auto){fishingUi.overlay.classList.add('show');setFishingChatOpen(true);fishingSetData(r.fishing);fishingStartAvatar();renderFishingUi();}
+  }else if(state.me.action==='mining'){
+   const r=await miningRequest('state');miningData=r.mining;
+   if(miningData.active?.auto){miningActive=true;state.action='mining';state.me.action='mining';state.pose='stand';state.actionUntil=Infinity;miningHud.hidden=false;miningNearButton.hidden=true;renderMiningHud();setMiningAuto(true,false);}
+  }
+ }catch(e){console.warn('자동 활동 복구 실패:',e.message);}
+}
 async function openMiningPanel(mode){miningPanelMode=mode;miningBook.hidden=false;miningBook.setAttribute('aria-label',mode==='ranking'?'광물왕 순위':'광물 도감');miningBook.querySelector('h2').textContent=mode==='ranking'?'🏆 오늘의 광물왕 순위':'💎 광물 도감';if(miningData)renderMiningBook();try{const r=await miningRequest('state');miningData=r.mining;renderMiningBook();}catch(e){toast(e.message||'정보를 불러오지 못했어요.')}}
 miningHud.querySelector('[data-mining="book"]').onclick=()=>openMiningPanel('book');
 miningHud.querySelector('[data-mining="ranking"]').onclick=()=>openMiningPanel('ranking');
