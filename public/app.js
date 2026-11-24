@@ -485,12 +485,12 @@ function ensureGamePicker(){
  #gamePickerBeat{border-color:#c2a2ff;background:linear-gradient(100deg,#503b9caa,#66366d88)}
  #gamePickerMole{border-color:#b9ff6c;background:linear-gradient(100deg,#336b42aa,#336b2588)}
  `;document.head.append(css);
- const overlay=document.createElement('div');overlay.id='gamePicker';overlay.innerHTML=`<div id="gamePickerCard" role="dialog" aria-modal="true" aria-labelledby="gamePickerTitle"><div id="gamePickerHead"><h2 id="gamePickerTitle">🎮 게임 선택</h2><button id="gamePickerClose" type="button">닫기</button></div><p id="gamePickerDesc">플레이할 게임을 선택하세요. 각 게임은 하루 5판씩 별도로 플레이할 수 있습니다.</p><button type="button" id="gamePickerBeat" class="gamePickerChoice"><span class="gamePickerIcon">🥁</span><span>박자왕<small id="gamePickerBeatCoins">리듬 게임 · 하루 5코인</small></span></button><button type="button" id="gamePickerPower" class="gamePickerChoice"><span class="gamePickerIcon">🍕</span><span>피자 배달왕<small id="gamePickerPowerCoins">피자 받기 · 하루 5코인</small></span></button><button type="button" id="gamePickerMole" class="gamePickerChoice"><span class="gamePickerIcon">🐹</span><span>두더지왕<small id="gamePickerMoleCoins">순발력 게임 · 하루 5코인</small></span></button></div>`;
+ const overlay=document.createElement('div');overlay.id='gamePicker';overlay.innerHTML=`<div id="gamePickerCard" role="dialog" aria-modal="true" aria-labelledby="gamePickerTitle"><div id="gamePickerHead"><h2 id="gamePickerTitle">🎮 게임 선택</h2><button id="gamePickerClose" type="button">닫기</button></div><p id="gamePickerDesc">플레이할 게임을 선택하세요. 각 게임은 하루 5판씩 별도로 플레이할 수 있습니다.</p><button type="button" id="gamePickerBeat" class="gamePickerChoice"><span class="gamePickerIcon">🎆</span><span>불꽃왕<small id="gamePickerBeatCoins">불꽃 터뜨리기 · 하루 5코인</small></span></button><button type="button" id="gamePickerPower" class="gamePickerChoice"><span class="gamePickerIcon">🍕</span><span>피자 배달왕<small id="gamePickerPowerCoins">피자 받기 · 하루 5코인</small></span></button><button type="button" id="gamePickerMole" class="gamePickerChoice"><span class="gamePickerIcon">🐹</span><span>두더지왕<small id="gamePickerMoleCoins">순발력 게임 · 하루 5코인</small></span></button></div>`;
  document.body.append(overlay);
  const close=()=>overlay.classList.remove('show');
  overlay.querySelector('#gamePickerClose').onclick=close;
  overlay.addEventListener('pointerdown',e=>{if(e.target===overlay)close();});
- overlay.querySelector('#gamePickerBeat').onclick=()=>{close();openRhythmGame();};
+ overlay.querySelector('#gamePickerBeat').onclick=()=>{close();fireworksOpen();};
  overlay.querySelector('#gamePickerPower').onclick=()=>{close();void openPizzaGame();};
  overlay.querySelector('#gamePickerMole').onclick=()=>{close();void openMoleGame();};
  gamePickerUi={overlay,beat:overlay.querySelector('#gamePickerBeatCoins'),power:overlay.querySelector('#gamePickerPowerCoins'),mole:overlay.querySelector('#gamePickerMoleCoins')};
@@ -498,8 +498,8 @@ function ensureGamePicker(){
 }
 function openGamePicker(){
  if(!nearRhythmBooth())return toast('게임부스 근처에서만 열 수 있어요');
- if(rhythmGame.open||powerGame.open||moleGame.open)return;
- const ui=ensureGamePicker();ui.beat.textContent=`리듬 게임 · 남은 코인 ${Number.isFinite(state.rhythmCoins)?state.rhythmCoins:5}/5`;
+ if(rhythmGame.open||fireworksGame.open||powerGame.open||moleGame.open)return;
+ const ui=ensureGamePicker();ui.beat.textContent=`불꽃 게임 · 남은 코인 ${Number.isFinite(state.rhythmCoins)?state.rhythmCoins:5}/5`;
  ui.power.textContent=`피자 받기 · 남은 코인 ${powerGame.coins}/5`;ui.mole.textContent=`두더지 게임 · 남은 코인 ${moleGame.coins}/5`;
  ui.overlay.classList.add('show');
  void refreshRhythmAccount();
@@ -507,6 +507,27 @@ function openGamePicker(){
  if(state.id)post('mole',{id:state.id,sessionKey,command:'state'}).then(r=>{moleGame.coins=r.account.coins;applyMoleState(r.mole);if(gamePickerUi?.overlay.classList.contains('show'))gamePickerUi.mole.textContent=`두더지 게임 · 남은 코인 ${moleGame.coins}/5`;}).catch(()=>{});
 }
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&gamePickerUi?.overlay.classList.contains('show')){gamePickerUi.overlay.classList.remove('show');e.preventDefault();e.stopImmediatePropagation();}},true);
+
+// Fireworks game replaces the old beat circle in the same festival booth.
+let fireworksUI=null;
+const fireworksGame={open:false,running:false,events:[],hits:[],score:0,combo:0,start:0,playId:null,frame:0,particles:[]};
+function fireworksOpen(){
+ if(!nearRhythmBooth())return toast('게임부스 근처에서 플레이하세요.');
+ if(!fireworksUI){
+  const css=document.createElement('style');css.textContent=`#fireworksOverlay{position:fixed;inset:0;z-index:9000;background:#050b1bea;display:none;place-items:center;padding:8px;box-sizing:border-box;color:white;font-family:system-ui}#fireworksOverlay.show{display:grid}#fireworksCard{width:min(94vw,530px);max-height:96dvh;overflow:auto;border:2px solid #a28cec;border-radius:22px;background:#101c3a;padding:12px;box-sizing:border-box;box-shadow:0 0 35px #8d64ee88}#fireworksHead{display:flex;justify-content:space-between;align-items:center;gap:10px}#fireworksHead h2{margin:4px 0;color:#ffde82}#fireworksOverlay button{border:1px solid #ffc987;border-radius:12px;background:#674492;color:white;padding:9px 13px;font-weight:900}#fireworksHud{display:flex;justify-content:space-between;margin:8px 0;font-weight:800}#fireworksField{position:relative;width:100%;height:min(55dvh,510px);min-height:260px;border-radius:16px;overflow:hidden;background:#080f38 url('/assets/fireworks/game-bg.jpg') center/cover}#fireworksField canvas{width:100%;height:100%;display:block;touch-action:none}#fireworksMessage{position:absolute;left:7%;right:7%;top:43%;text-align:center;pointer-events:none;text-shadow:0 2px 6px #000;font-weight:900}#fireworksStart{display:block;width:100%;margin:9px 0;background:linear-gradient(90deg,#d95792,#795fe2)!important}#fireworksRanks{display:flex;gap:6px;flex-wrap:wrap;font-size:12px;color:#fff0bc}#fireworksGuide{font-size:12px;line-height:1.5;color:#c9d5ee;margin:7px 0}`;document.head.append(css);
+  const el=document.createElement('div');el.id='fireworksOverlay';el.innerHTML=`<div id="fireworksCard"><div id="fireworksHead"><h2>🎆 불꽃 축제왕</h2><button id="fireworksClose">닫기</button></div><div id="fireworksHud"><span id="fireworksScore">0점</span><span id="fireworksCombo">콤보 0</span><span id="fireworksTime">45초</span></div><div id="fireworksField"><canvas width="480" height="650"></canvas><div id="fireworksMessage">빛나는 원에 불꽃이 도착하면 터치!</div></div><button id="fireworksStart">게임 시작 · 코인 1개</button><div id="fireworksRanks"></div><p id="fireworksGuide">45초 · 하루 5판 · 황금 불꽃은 3배 점수<br>2,000점 10P · 5,000점 30P · 8,000점 50P · 그 외 1P</p></div>`;document.body.append(el);
+  const canvas=el.querySelector('canvas');fireworksUI={el,canvas,ctx:canvas.getContext('2d'),score:el.querySelector('#fireworksScore'),combo:el.querySelector('#fireworksCombo'),time:el.querySelector('#fireworksTime'),message:el.querySelector('#fireworksMessage'),ranks:el.querySelector('#fireworksRanks'),start:el.querySelector('#fireworksStart')};
+  el.querySelector('#fireworksClose').onclick=()=>{if(fireworksGame.running)toast('진행 중인 게임이 종료됩니다. 코인은 반환되지 않아요.');fireworksGame.running=false;fireworksGame.open=false;cancelAnimationFrame(fireworksGame.frame);el.classList.remove('show');updateRhythmBoothButton();};
+  fireworksUI.start.onclick=()=>void fireworksStart();canvas.addEventListener('pointerdown',fireworksTap);
+ }
+ fireworksGame.open=true;fireworksUI.el.classList.add('show');updateRhythmBoothButton();fireworksUI.start.disabled=false;fireworksUI.start.hidden=false;fireworksUI.message.textContent='빛나는 원에 불꽃이 도착하면 터치!';fireworksRank();void refreshRhythmAccount().then(fireworksRank);
+}
+function fireworksRank(){if(!fireworksUI)return;fireworksUI.ranks.replaceChildren();const ranks=state.rhythm?.leaderboard||[];for(let i=0;i<5;i++){const el=document.createElement('span'),r=ranks[i];el.textContent=r?`${i+1}위 ${r.name} ${Number(r.score).toLocaleString()}점`:`${i+1}위 —`;fireworksUI.ranks.append(el);}}
+async function fireworksStart(){if(fireworksGame.running||!fireworksGame.open)return;fireworksUI.start.disabled=true;try{const r=await post('rhythm',{id:state.id,sessionKey,command:'start'});if(!fireworksGame.open)return;Object.assign(fireworksGame,{running:true,events:r.events,hits:[],score:0,combo:0,start:performance.now(),playId:r.playId,particles:[]});state.rhythmCoins=r.account.coins;fireworksUI.start.hidden=true;fireworksUI.message.textContent='';fireworksLoop();}catch(e){toast(e.message||'게임을 시작하지 못했어요.');}finally{fireworksUI.start.disabled=false;}}
+function fireworksTap(ev){if(!fireworksGame.running)return;ev.preventDefault();const g=fireworksGame,t=performance.now()-g.start,rect=fireworksUI.canvas.getBoundingClientRect(),x=(ev.clientX-rect.left)/rect.width,y=(ev.clientY-rect.top)/rect.height;let best=null,dist=Infinity;for(const e of g.events){const age=t-e.at,cy=.38-age/1900*.58;if(Math.abs(age)>500||g.hits.some(h=>h.id===e.id))continue;const d=Math.hypot((x-e.x)*.74,y-cy);if(d<.11&&d<dist){best=e;dist=d;}}if(!best){g.combo=0;return;}g.hits.push({id:best.id,t:Math.round(t)});g.combo++;g.score+=(Math.abs(t-best.at)<180?200:100)*(best.gold?3:1);for(let i=0;i<30;i++){const a=i*Math.PI*2/30;g.particles.push({x:best.x,y:.38,vx:Math.cos(a)*(.15+Math.random()*.15),vy:Math.sin(a)*(.12+Math.random()*.12),start:t,color:best.gold?'#ffe57c':['#ff83bd','#8fefff','#fff4b0','#be9dff'][i%4]});}}
+const fireworksRocket=new Image();fireworksRocket.src='/assets/fireworks/rocket.png';
+function fireworksLoop(){const g=fireworksGame,u=fireworksUI;if(!g.running||!g.open)return;const t=performance.now()-g.start,c=u.ctx,w=u.canvas.width,h=u.canvas.height;c.clearRect(0,0,w,h);u.score.textContent=g.score.toLocaleString()+'점';u.combo.textContent='콤보 '+g.combo;u.time.textContent=Math.max(0,Math.ceil((45000-t)/1000))+'초';for(const e of g.events){const age=t-e.at;if(age< -1900||age>500||g.hits.some(h=>h.id===e.id))continue;const x=e.x*w,y=(.38-age/1900*.58)*h;if(y>h+50||y<0)continue;c.beginPath();c.arc(x,h*.38,32,0,Math.PI*2);c.strokeStyle=e.gold?'#ffe37b99':'#a6efff88';c.lineWidth=3;c.stroke();c.shadowBlur=16;c.shadowColor=e.gold?'#ffe450':'#ff7be4';if(fireworksRocket.complete&&fireworksRocket.naturalWidth)c.drawImage(fireworksRocket,x-24,y-30,48,60);else{c.fillStyle=e.gold?'#ffd857':'#ff83c7';c.beginPath();c.arc(x,y,14,0,Math.PI*2);c.fill();}c.shadowBlur=0;}g.particles=g.particles.filter(p=>t-p.start<700);for(const p of g.particles){const dt=(t-p.start)/1000;c.globalAlpha=1-dt/.7;c.fillStyle=p.color;c.beginPath();c.arc((p.x+p.vx*dt)*w,(p.y+p.vy*dt+dt*dt*.10)*h,4,0,Math.PI*2);c.fill();}c.globalAlpha=1;if(t>=45000){g.running=false;void fireworksFinish();return;}g.frame=requestAnimationFrame(fireworksLoop);}
+async function fireworksFinish(){const g=fireworksGame,u=fireworksUI;u.message.textContent='결과를 저장하고 있어요…';try{const r=await post('rhythm',{id:state.id,sessionKey,command:'submit',playId:g.playId,hits:g.hits});applyRhythmState(r.rhythm);state.rhythmCoins=r.account.coins;u.message.textContent=`${g.score.toLocaleString()}점 · +${r.prize}P 획득!`;fireworksRank();void refreshTentStatus();}catch(e){u.message.textContent=e.message||'결과 저장에 실패했어요.';}u.start.hidden=false;}
 
 function ensureRhythmUI(){
  if(rhythmUi)return rhythmUi;
@@ -676,7 +697,7 @@ function refreshRhythmReactionButton(){
  for(const [id,granted] of [['beatkingAction',Boolean(state.me?.rhythmKing)],['powerkingAction',Boolean(state.me?.powerKing)],['molekingAction',Boolean(state.me?.moleKing)],['fishkingAction',Boolean(state.me?.fishKing)],['minekingAction',Boolean(state.me?.mineKing)],['battlekingAction',Boolean(state.me?.battleKing)]]){
   const btn=$(id);if(!btn)continue;
   btn.hidden=!granted;btn.classList.toggle('king-reaction-locked',!granted);if(granted)btn.style.removeProperty('display');else btn.style.setProperty('display','none','important');
-  if(granted)btn.title=id==='battlekingAction'?'최고 단계 클리어 전용':id==='beatkingAction'?'전날 박자왕 1등 전용':id==='powerkingAction'?'전날 피자왕 1등 전용':id==='minekingAction'?'전날 광물왕 1등 전용':id==='fishkingAction'?'전날 낚시왕 1등 전용':'전날 두더지왕 1등 전용';
+  if(granted)btn.title=id==='battlekingAction'?'최고 단계 클리어 전용':id==='beatkingAction'?'전날 불꽃왕 1등 전용':id==='powerkingAction'?'전날 피자왕 1등 전용':id==='minekingAction'?'전날 광물왕 1등 전용':id==='fishkingAction'?'전날 낚시왕 1등 전용':'전날 두더지왕 1등 전용';
  }
  // Revoke any already-running reaction immediately on a profile update.
  if(state.me&&((state.action==='beatking'&&!state.me.rhythmKing)||(state.action==='powerking'&&!state.me.powerKing)||(state.action==='moleking'&&!state.me.moleKing)||(state.action==='fishking'&&!state.me.fishKing)||(state.action==='mineking'&&!state.me.mineKing)||(state.action==='battleking'&&!state.me.battleKing))){state.action='idle';state.me.action='idle';state.actionUntil=0;updateActionButtons();sendMove();}
@@ -702,13 +723,14 @@ function updateRhythmLeaderboard(){
 function applyRhythmState(rhythm){
  if(!rhythm)return;
  state.rhythm={...state.rhythm,...rhythm};
+ if(fireworksUI?.el.classList.contains('show'))fireworksRank();
  updateRhythmLeaderboard();
  updateRhythmBoothButton();
 }
 function updateRhythmBoothButton(){
  ensureRhythmUI();
  const near=nearRhythmBooth();
- rhythmUi.boothButton.classList.toggle('show',Boolean(state.id&&near&&!rhythmGame.open&&!powerGame.open&&!moleGame.open&&!gamePickerUi?.overlay.classList.contains('show')));
+ rhythmUi.boothButton.classList.toggle('show',Boolean(state.id&&near&&!rhythmGame.open&&!fireworksGame.open&&!powerGame.open&&!moleGame.open&&!gamePickerUi?.overlay.classList.contains('show')));
  rhythmUi.boothButton.disabled=!near;
  rhythmUi.boothButton.textContent='🎮 게임플레이';
  rhythmUi.hint.classList.remove('show');
@@ -776,7 +798,7 @@ function closeRhythmGame(){renderer.renderLists?.dispose();
 }
 async function refreshRhythmAccount(){
  if(!state.id)return;
- try{const r=await post('rhythm',{id:state.id,sessionKey,command:'state'});state.rhythmCoins=r.account.coins;state.rhythmAccountDay=r.account.day;state.rhythmBest=Number(r.best)||0;applyRhythmState(r.rhythm);if(gamePickerUi?.overlay.classList.contains('show'))gamePickerUi.beat.textContent=`리듬 게임 · 남은 코인 ${state.rhythmCoins}/5`}catch(e){console.warn('Rhythm account:',e.message)}
+ try{const r=await post('rhythm',{id:state.id,sessionKey,command:'state'});state.rhythmCoins=r.account.coins;state.rhythmAccountDay=r.account.day;state.rhythmBest=Number(r.best)||0;applyRhythmState(r.rhythm);if(gamePickerUi?.overlay.classList.contains('show'))gamePickerUi.beat.textContent=`불꽃 게임 · 남은 코인 ${state.rhythmCoins}/5`}catch(e){console.warn('Rhythm account:',e.message)}
 }
 async function startRhythmGame(){
  ensureRhythmUI();
@@ -1592,7 +1614,7 @@ function react(a,glowColor=null){
  if(a==='snowroll'&&tentRoomActive)return toast('맵에서 눈을 굴릴 수 있어요.');
  if(a==='glowstick'&&glowColor===null){openGlowstickPicker();return;}
  if(a==='glowstick'){if(glowColor==='pepero'&&!peperoEventActive())return toast('빼빼로데이 이벤트가 종료됐어요.');state.me.glowColor=glowstickColors[glowColor]?glowColor:'rainbow';state.me.glowEnabled=true;updateActionButtons();sendMove();return;}
- if(a==='beatking'&&!state.me.rhythmKing)return toast('전날 박자왕 1등만 사용할 수 있습니다.');
+ if(a==='beatking'&&!state.me.rhythmKing)return toast('전날 불꽃왕 1등만 사용할 수 있습니다.');
  if(a==='powerking'&&!state.me.powerKing)return toast('전날 피자왕 1등만 사용할 수 있습니다.');
  if(a==='moleking'&&!state.me.moleKing)return toast('전날 두더지왕 1등만 사용할 수 있습니다.');
  if(a==='fishking'&&!state.me.fishKing)return toast('전날 낚시왕 1등만 사용할 수 있습니다.');
@@ -1699,7 +1721,7 @@ glowstickStyle.textContent=`
 @media(max-width:420px){.glowstick-colors{grid-template-columns:repeat(3,minmax(0,1fr))}}
 `;
 document.head.append(glowstickStyle);
-const beatKingButton=document.createElement('button');beatKingButton.id='beatkingAction';beatKingButton.dataset.action='beatking';beatKingButton.hidden=true;beatKingButton.style.display='none';beatKingButton.innerHTML='👑 <span>박자왕</span><em>Y</em>';beatKingButton.onclick=()=>react('beatking');$('reactionActions').append(beatKingButton);
+const beatKingButton=document.createElement('button');beatKingButton.id='beatkingAction';beatKingButton.dataset.action='beatking';beatKingButton.hidden=true;beatKingButton.style.display='none';beatKingButton.innerHTML='👑 <span>불꽃왕</span><em>Y</em>';beatKingButton.onclick=()=>react('beatking');$('reactionActions').append(beatKingButton);
 const mineKingButton=document.createElement('button');mineKingButton.id='minekingAction';mineKingButton.dataset.action='mineking';mineKingButton.hidden=true;mineKingButton.style.display='none';mineKingButton.innerHTML='💎 <span>광물왕</span>';mineKingButton.onclick=()=>react('mineking');$('reactionActions').append(mineKingButton);
 const fishKingButton=document.createElement('button');fishKingButton.id='fishkingAction';fishKingButton.dataset.action='fishking';fishKingButton.hidden=true;fishKingButton.style.display='none';fishKingButton.innerHTML='🐋 <span>낚시왕</span>';fishKingButton.onclick=()=>react('fishking');$('reactionActions').append(fishKingButton);
 const powerKingButton=document.createElement('button');powerKingButton.id='powerkingAction';powerKingButton.dataset.action='powerking';powerKingButton.hidden=true;powerKingButton.style.display='none';powerKingButton.innerHTML='🍕 <span>피자왕</span>';powerKingButton.onclick=()=>react('powerking');$('reactionActions').append(powerKingButton);const moleKingButton=document.createElement('button');moleKingButton.id='molekingAction';moleKingButton.dataset.action='moleking';moleKingButton.hidden=true;moleKingButton.style.display='none';moleKingButton.innerHTML='🔨 <span>두더지왕</span>';moleKingButton.onclick=()=>react('moleking');$('reactionActions').append(moleKingButton);const battleKingButton=document.createElement('button');battleKingButton.id='battlekingAction';battleKingButton.dataset.action='battleking';battleKingButton.hidden=true;battleKingButton.style.display='none';battleKingButton.innerHTML='⚔️ <span>전투왕</span>';battleKingButton.onclick=()=>react('battleking');$('reactionActions').append(battleKingButton);refreshRhythmReactionButton();
@@ -7670,7 +7692,7 @@ function makeAvatar(p){
  const texture=new THREE.CanvasTexture(cv);
  const tag=new THREE.Sprite(new THREE.SpriteMaterial({map:texture,transparent:true,depthTest:false}));tag.scale.set(6,1.04,1);tag.position.y=look.head==='balloon-hat'?5.06:3.66;root.add(tag);parts.tag=tag;
  const gameBadge=new THREE.Sprite(new THREE.SpriteMaterial({map:getGamePresenceTexture(),transparent:true,depthTest:false,depthWrite:false}));gameBadge.scale.set(3.1,1.09,1);gameBadge.visible=Boolean(p.gamePlaying);gameBadge.renderOrder=145;root.add(gameBadge);parts.gameBadge=gameBadge;
- const kingCanvas=document.createElement('canvas');kingCanvas.width=960;kingCanvas.height=160;const kctx=kingCanvas.getContext('2d');const kingGrad=kctx.createLinearGradient(80,0,880,0);kingGrad.addColorStop(0,'#ff6eb7');kingGrad.addColorStop(.25,'#ffcf6a');kingGrad.addColorStop(.5,'#7bf0ff');kingGrad.addColorStop(.75,'#9c83ff');kingGrad.addColorStop(1,'#7dff99');kctx.font='900 86px Arial, sans-serif';kctx.textAlign='center';kctx.textBaseline='middle';kctx.strokeStyle='rgba(25,13,45,.92)';kctx.lineWidth=18;kctx.strokeText('내가 박자왕',480,82);kctx.fillStyle=kingGrad;kctx.fillText('내가 박자왕',480,82);const kingTexture=new THREE.CanvasTexture(kingCanvas);kingTexture.colorSpace=THREE.SRGBColorSpace;const kingTitle=new THREE.Sprite(new THREE.SpriteMaterial({map:kingTexture,transparent:true,depthTest:false}));kingTitle.scale.set(7.4,1.24,1);kingTitle.position.y=4.96;kingTitle.visible=Boolean(p.rhythmKing);root.add(kingTitle);parts.rhythmTitle=kingTitle;
+ const kingCanvas=document.createElement('canvas');kingCanvas.width=960;kingCanvas.height=160;const kctx=kingCanvas.getContext('2d');const kingGrad=kctx.createLinearGradient(80,0,880,0);kingGrad.addColorStop(0,'#ff6eb7');kingGrad.addColorStop(.25,'#ffcf6a');kingGrad.addColorStop(.5,'#7bf0ff');kingGrad.addColorStop(.75,'#9c83ff');kingGrad.addColorStop(1,'#7dff99');kctx.font='900 86px Arial, sans-serif';kctx.textAlign='center';kctx.textBaseline='middle';kctx.strokeStyle='rgba(25,13,45,.92)';kctx.lineWidth=18;kctx.strokeText('내가 불꽃왕',480,82);kctx.fillStyle=kingGrad;kctx.fillText('내가 불꽃왕',480,82);const kingTexture=new THREE.CanvasTexture(kingCanvas);kingTexture.colorSpace=THREE.SRGBColorSpace;const kingTitle=new THREE.Sprite(new THREE.SpriteMaterial({map:kingTexture,transparent:true,depthTest:false}));kingTitle.scale.set(7.4,1.24,1);kingTitle.position.y=4.96;kingTitle.visible=Boolean(p.rhythmKing);root.add(kingTitle);parts.rhythmTitle=kingTitle;
  // v255: red, luminous Power King crown. When both prizes belong to one player, stack titles.
  const powerCanvas=document.createElement('canvas');powerCanvas.width=960;powerCanvas.height=160;
  const powerCtx=powerCanvas.getContext('2d');powerCtx.font='900 86px Arial, sans-serif';powerCtx.textAlign='center';powerCtx.textBaseline='middle';
@@ -8866,6 +8888,8 @@ function animateAvatar(a,p,t){
  }
  if(P.moleHammer)P.moleHammer.visible=act==='moleking'&&Boolean(q.moleKing);
  if(P.moleRainbow)P.moleRainbow.forEach((ring,i)=>{const phase=sec%2.3-.99,active=act==='moleking'&&q.moleKing&&phase>0&&phase<.9;ring.visible=Boolean(active);if(active){const spread=phase/.9;ring.position.set(0,.09+i*.012,1.2+spread*.8);ring.scale.setScalar(.28+spread*(2.4+i*.18));ring.material.opacity=.8*(1-spread);}});
+ if(act==='beatking'&&q.rhythmKing&&!P.fireworksKing){const geo=new THREE.BufferGeometry(),n=144,pos=new Float32Array(n*3),colors=new Float32Array(n*3),palette=['#ff65c5','#ffd75a','#8efcff','#b991ff','#ff775e','#a4ff99'];for(let i=0;i<n;i++){const c=new THREE.Color(palette[Math.floor(i/24)%6]);colors[i*3]=c.r;colors[i*3+1]=c.g;colors[i*3+2]=c.b;}geo.setAttribute('position',new THREE.BufferAttribute(pos,3));geo.setAttribute('color',new THREE.BufferAttribute(colors,3));const obj=new THREE.Points(geo,new THREE.PointsMaterial({size:perfMobile?.16:.22,map:petEffectTexture('sparkle'),vertexColors:true,transparent:true,opacity:.95,depthWrite:false,blending:THREE.AdditiveBlending}));obj.frustumCulled=false;a.root.add(obj);P.fireworksKing=obj;}
+ if(P.fireworksKing){P.fireworksKing.visible=act==='beatking'&&!!q.rhythmKing;if(P.fireworksKing.visible){const positions=P.fireworksKing.geometry.attributes.position;for(let i=0;i<144;i++){const group=Math.floor(i/24),point=i%24,phase=(sec*.72+group/6)%1,az=point*2.39996,up=1-2*(point+.5)/24,side=Math.sqrt(1-up*up),theta=group*2.39996,radius=phase*2.4,base=1.4+(group%3)*.38;positions.setXYZ(i,Math.cos(theta)*base+Math.cos(az)*side*radius,1.8+(group%3)*.8+up*radius,Math.sin(theta)*base+Math.sin(az)*side*radius);}positions.needsUpdate=true;}}
  if(P.rhythmSparkles){P.rhythmSparkles.forEach((spark,i)=>{if(!((act==='beatking'&&q.rhythmKing)||(act==='powerking'&&q.powerKing))){spark.visible=false;return}const phase=(sec*1.8+i/5)%1;const angle=phase*Math.PI*2+i*.7;const band=(i%2?1:-1);spark.visible=true;spark.position.set(Math.cos(angle)*(1.1+phase*.5),1.1+Math.sin(phase*Math.PI*2+band)*1.1+phase*.9,.45+Math.sin(angle*1.4)*.7);const sc=.55+.35*Math.sin(phase*Math.PI);spark.scale.setScalar(sc);spark.rotation.x=sec*2.2+i;spark.rotation.y=sec*3.1+i;});}
  if(P.glowsticks){
   const enabled=Boolean(q.glowEnabled)&&(q.glowColor!=='pepero'||peperoEventActive());
