@@ -2344,8 +2344,13 @@ const server=http.createServer(async(req,res)=>{
       }
       if(url.pathname==='/api/snow-throw'){
        if(!playerSessions.get(id)||playerSessions.get(id)!==String(d.sessionKey||''))return json(res,403,{error:'본인 세션에서만 던질 수 있어요.'});
-       if(p.tentRoomId||p.action!=='snowroll')return json(res,409,{error:'눈덩이를 굴리는 중에 던질 수 있어요.'});
-       const key=snowRolling.get(id),o=key&&snowObjects.get(key);if(!o||!o.rolling||o.ownerId!==id)return json(res,409,{error:'굴리고 있는 눈덩이가 없어요.'});
+       if(p.tentRoomId)return json(res,409,{error:'맵에서만 눈덩이를 던질 수 있어요.'});
+       const groundId=String(d.objectId||'');
+       const key=groundId||snowRolling.get(id),o=key&&snowObjects.get(key);
+       if(groundId){
+        const px=(p.x-600)*.058,pz=(p.y-500)*.058+8;
+        if(p.action==='snowroll'||!o||o.kind!=='ball'||o.rolling||o.flight||Math.hypot(o.x-px,o.z-pz)>4.5+o.r)return json(res,409,{error:'가까이에 놓인 눈덩이를 선택해 주세요.'});
+       }else if(p.action!=='snowroll'||!o||o.kind!=='ball'||!o.rolling||o.ownerId!==id)return json(res,409,{error:'굴리고 있는 눈덩이가 없어요.'});
        const startX=o.x,startZ=o.z,angle=Number.isFinite(p.facing)?p.facing:0,distance=8,duration=1050,now=Date.now();
        o.x=clamp(startX+Math.sin(angle)*distance,(SERVER_X_MIN-600)*.058,(SERVER_X_MAX-600)*.058);
        o.z=clamp(startZ+Math.cos(angle)*distance,(SERVER_Y_MIN-500)*.058+8,(SERVER_Y_MAX-500)*.058+8);
