@@ -11181,3 +11181,14 @@ function petRaceStartRenderer(){
 }
 function spawnPetRaceEvent(event,at){const actor=petRaceModels[event.actor]?.root.position,target=petRaceModels[event.target]?.root.position;if(!actor||!target||!petRaceScene)return;const projectile=event.kind==='stone'||event.kind==='missile';if(projectile){const geo=event.kind==='stone'?new THREE.DodecahedronGeometry(.18,0):new THREE.ConeGeometry(.12,.45,6),mat=new THREE.MeshBasicMaterial({color:event.kind==='stone'?'#7d6e60':'#ff6248'}),mesh=new THREE.Mesh(geo,mat);petRaceScene.add(mesh);petRaceParticles.push({mesh,at,life:1100,actor:event.actor,target:event.target});}
  const colors={stumble:'#e6c59a',stone:'#d6b997',missile:'#ffb068',shock:'#8ddaff',boost:'#ffc85a'};for(let i=0;i<7;i++){const mesh=new THREE.Mesh(new THREE.SphereGeometry(.08+(i%3)*.04,5,4),new THREE.MeshBasicMaterial({color:colors[event.kind]||'#fff',transparent:true,opacity:.9}));petRaceScene.add(mesh);const angle=i*2.399;petRaceParticles.push({mesh,at:at+((event.kind==='stone'||event.kind==='missile')?1000:0),life:900,followIndex:event.kind==='boost'?event.actor:event.target,origin:(event.kind==='boost'?actor:target).clone(),velocity:new THREE.Vector3(Math.cos(angle)*.7,.4+(i%3)*.3,Math.sin(angle)*.7)});}}
+
+// Keep fast taps in the game from turning into browser zoom, image drag or
+// text selection. Pan/scroll and the game's pointer-driven camera stay intact.
+{
+ const style=document.createElement('style');
+ style.textContent=`html,body{touch-action:manipulation!important;-webkit-tap-highlight-color:transparent}body{-webkit-user-select:none;user-select:none}button,img,canvas,svg{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-user-drag:none}input,textarea,[contenteditable="true"]{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}.recovery-code{-webkit-user-select:all;user-select:all;-webkit-touch-callout:default}`;
+ document.head.append(style);
+ const editable=target=>target instanceof Element&&Boolean(target.closest('input,textarea,select,[contenteditable="true"],.recovery-code'));
+ document.addEventListener('dragstart',event=>{if(!editable(event.target))event.preventDefault();},true);
+ document.addEventListener('dblclick',event=>{if(!editable(event.target)&&event.cancelable)event.preventDefault();},true);
+}
