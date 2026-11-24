@@ -2637,7 +2637,10 @@ const server=http.createServer(async(req,res)=>{
           if(Math.hypot((p.x||0)-RHYTHM_BOOTH.x,(p.y||0)-RHYTHM_BOOTH.y)>RHYTHM_BOOTH.radius)return json(res,403,{error:'게임부스 근처에서만 플레이할 수 있어요.'});
           if(account.used>=RHYTHM_DAILY_COINS)return json(res,409,{error:'오늘 게임 코인 5개를 모두 사용했어요. 내일 0시(KST)에 충전됩니다.',account:rhythmAccountView(p)});
           account.used++;
-          const events=[];let at=1800;while(at<44000){const gold=crypto.randomInt(6)===0,y=(25+crypto.randomInt(34))/100,speed=.34+.46*Math.min(1,at/45000),duration=Math.round((1.05-y)/speed*1000);events.push({id:events.length,at,x:(14+crypto.randomInt(73))/100,y,speed,duration,gold});at+=Math.max(480,940-Math.floor(at/90000*650))+crypto.randomInt(180);}
+          const events=[];let at=1800;while(at<44000){const y=(25+crypto.randomInt(34))/100,speed=.34+1.36*Math.min(1,at/45000),duration=Math.round((1.05-y)/speed*1000);events.push({id:events.length,at,x:(14+crypto.randomInt(73))/100,y,speed,duration,gold:false});at+=Math.max(480,940-Math.floor(at/90000*650))+crypto.randomInt(180);}
+          // Exactly eight gold fireworks, spread across the round with a random
+          // position in each segment; every player gets the same opportunity.
+          for(let bucket=0;bucket<8;bucket++){const lo=Math.floor(bucket*events.length/8),hi=Math.floor((bucket+1)*events.length/8);events[lo+crypto.randomInt(hi-lo)].gold=true;}
           account.session={id:crypto.randomUUID(),startedAt:Date.now(),events};
           await saveNow();
           return json(res,200,{ok:true,playId:account.session.id,startedAt:account.session.startedAt,events,account:rhythmAccountView(p)});
@@ -2649,7 +2652,7 @@ const server=http.createServer(async(req,res)=>{
           if(elapsed<35000||elapsed>600000)return json(res,409,{error:'게임 플레이 시간이 올바르지 않아 점수와 포인트를 지급하지 않았어요.'});
           if(!Array.isArray(session.events)||!Array.isArray(d.hits)||d.hits.length>session.events.length)return json(res,400,{error:'게임 기록을 확인할 수 없어요.'});
           let score=0;const seen=new Set();
-          for(const hit of d.hits){const n=Number(hit.id),t=Number(hit.t);if(!Number.isInteger(n)||n<0||n>=session.events.length||seen.has(n)||!Number.isFinite(t))return json(res,400,{error:'게임 기록이 올바르지 않아요.'});const e=session.events[n],gap=Math.abs(t-e.at);if(gap>Math.min(500,130/e.speed)||t>elapsed+250)return json(res,400,{error:'불꽃 터치 시간이 올바르지 않아요.'});seen.add(n);score+=(gap<180?200:100)*(e.gold?3:1);}
+          for(const hit of d.hits){const n=Number(hit.id),t=Number(hit.t);if(!Number.isInteger(n)||n<0||n>=session.events.length||seen.has(n)||!Number.isFinite(t))return json(res,400,{error:'게임 기록이 올바르지 않아요.'});const e=session.events[n],gap=Math.abs(t-e.at);if(gap>Math.min(500,130/e.speed)||t>elapsed+250)return json(res,400,{error:'불꽃 터치 시간이 올바르지 않아요.'});seen.add(n);score+=(gap<Math.min(180,65/e.speed)?200:100)*(e.gold?3:1);}
           const prize=score>=8000?50:score>=5000?30:score>=2000?10:1;
           account.session=null; // consume before awaiting storage to prevent replay awards
           account.bonus+=prize;
