@@ -519,7 +519,7 @@ const MINING_HITS=20,MINING_HIT_MS=200;
 const miningStats=new Map();
 function miningAccount(identity){if(!miningStats.has(identity))miningStats.set(identity,{bonus:0,counts:{},active:null,lastResult:null});const a=miningStats.get(identity);if(a.active&&!a.active.auto&&Date.now()-a.active.lastAt>90000)a.active=null;return a;}
 function miningDistance(p,rock){return p&&!p.tentRoomId?Math.hypot((p.x-600)*.058-rock.x,(p.y-500)*.058+8-rock.z):Infinity;}
-function miningView(p){const a=miningAccount(p.badgeIdentity);return {catalog:MINING_CATALOG,counts:a.counts,points:tentPointBalance(p),king:mineKingPublic(),required:MINING_HITS,active:a.active&&a.active.playerId===p.id?{id:a.active.id,rockId:a.active.rockId,hits:a.active.hits,auto:!!a.active.auto}:null,lastResult:a.lastResult};}
+function miningView(p){const a=miningAccount(p.badgeIdentity);return {serverNow:Date.now(),catalog:MINING_CATALOG,counts:a.counts,points:tentPointBalance(p),king:mineKingPublic(),required:MINING_HITS,active:a.active&&a.active.playerId===p.id?{id:a.active.id,rockId:a.active.rockId,hits:a.active.hits,auto:!!a.active.auto}:null,lastResult:a.lastResult};}
 function clearMiningPlayer(p){if(!p?.badgeIdentity)return;const a=miningStats.get(p.badgeIdentity);if(a?.active?.playerId===p.id){a.active=null;a.resumeAuto=null;scheduleSave();}}
 function miningDraw(){const n=crypto.randomInt(10000);let sum=0;for(const item of MINING_CATALOG){sum+=item.weight;if(n<sum)return item;}return MINING_CATALOG[MINING_CATALOG.length-1];}
 
@@ -606,9 +606,12 @@ function processAutoMining(now=Date.now()){
   for(let i=0;i<steps;i++){
    session.hits++;
    if(session.hits<MINING_HITS)continue;
-   const ore=miningDraw();a.bonus+=ore.points;a.counts[ore.id]=(a.counts[ore.id]||0)+1;recordMiningPoints(p,ore.points);questProgress(p,'ore',ore.rarity);
-   a.lastResult={id:session.id,oreId:ore.id,at:now};session.id=crypto.randomUUID();session.hits=0;session.lastHit=0;result=ore;
-   broadcast({type:'mining-find',playerId:p.id,oreId:ore.id,rarity:ore.rarity,rockId:rock.id,name:ore.name,points:ore.points});announceRareFind(p,ore);
+   const ore=miningDraw(),completedId=session.id;
+   // Finish the cycle before optional notifications so they cannot trap the next ore at 20 hits.
+   a.bonus+=ore.points;a.counts[ore.id]=(a.counts[ore.id]||0)+1;
+   a.lastResult={id:completedId,oreId:ore.id,at:now};session.id=crypto.randomUUID();session.hits=0;session.lastHit=0;result=ore;
+   try{recordMiningPoints(p,ore.points);questProgress(p,'ore',ore.rarity);}catch(error){console.error('Auto mining progress update failed:',error.message);}
+   try{broadcast({type:'mining-find',playerId:p.id,oreId:ore.id,rarity:ore.rarity,rockId:rock.id,name:ore.name,points:ore.points});announceRareFind(p,ore);}catch(error){console.error('Auto mining notice failed:',error.message);}
   }
   if(result||session.hits%5===0)scheduleSave();
   const connection=clients.get(p.id);if(connection)try{send(connection,{type:'auto-mining-update',mining:miningView(p),result});}catch{}
