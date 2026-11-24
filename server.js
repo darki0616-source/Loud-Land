@@ -1053,8 +1053,8 @@ function resumeAutoForPlayer(p,key){
   const r=account?.resumeAuto;
   if(!r||r.kind!==kind||r.sessionHash!==hash||!Number.isFinite(r.savedAt)||now-r.savedAt>600000||now<r.savedAt||!Number.isFinite(r.x)||!Number.isFinite(r.y))continue;
   p.x=clamp(r.x,SERVER_X_MIN,SERVER_X_MAX);p.y=clamp(r.y,SERVER_Y_MIN,SERVER_Y_MAX);p.facing=Number(r.facing)||0;
-  if(kind==='fishing'&&account.level&&!account.auto&&fishingNearSea(p)&&!miningAccount(p.badgeIdentity).active){account.auto={playerId:p.id,nextAt:now+Math.max(0,Math.min(180000,Number(r.remaining)||0)),disconnectedAt:0};p.action='fishing';}
-  if(kind==='mining'&&!account.active&&!fishingAccount(p.badgeIdentity).auto){const rock=MINING_ROCKS.find(x=>x.id===r.rockId);if(rock&&miningDistance(p,rock)<=4){account.active={id:crypto.randomUUID(),playerId:p.id,rockId:rock.id,hits:Math.max(0,Math.min(19,Math.floor(Number(r.hits)||0))),lastHit:0,lastAt:now,auto:true};p.action='mining';}}
+  if(kind==='fishing'&&account.level&&!account.auto&&fishingNearSea(p)&&!miningAccount(p.badgeIdentity).active){account.auto={playerId:p.id,nextAt:now+Math.max(0,Math.min(180000,Number(r.remaining)||0)),disconnectedAt:0};p.action='fishing';p.gamePlaying=true;}
+  if(kind==='mining'&&!account.active&&!fishingAccount(p.badgeIdentity).auto){const rock=MINING_ROCKS.find(x=>x.id===r.rockId);if(rock&&miningDistance(p,rock)<=4){account.active={id:crypto.randomUUID(),playerId:p.id,rockId:rock.id,hits:Math.max(0,Math.min(19,Math.floor(Number(r.hits)||0))),lastHit:0,lastAt:now,auto:true};p.action='mining';p.gamePlaying=true;}}
   account.resumeAuto=null;scheduleSave();break;
  }
 }
@@ -2398,7 +2398,7 @@ const server=http.createServer(async(req,res)=>{
           if(kstHour<1||kstHour>=4)d.action='idle';
         }
         if(d.action==='snowroll'&&(!playerSessions.get(id)||playerSessions.get(id)!==String(d.sessionKey||'')||(snowThrowBlocks.get(id)||0)>Date.now()))d.action='idle';
-        if(d.action==='fishing'&&(!fishingNearSea(p)||!fishingAccount(p.badgeIdentity).active))d.action='idle';
+        if(d.action==='fishing'){const a=p.badgeIdentity?fishingAccount(p.badgeIdentity):null;if(!fishingNearSea(p)||!a||(!a.active&&a.auto?.playerId!==p.id))d.action='idle';}
         if(d.action==='mining'&&(!p.badgeIdentity||miningAccount(p.badgeIdentity).active?.playerId!==p.id))d.action='idle';
         p.action=['idle','walk','peace','jump','run','wave','clap','sit','lie','drink','snack','headbang','buriburi','groove','dougie','windmill','skanking','airguitar','headspin','cheer','smoke','bubblegun','freestyle','beatking','powerking','moleking','fishking','mineking','battleking','snowroll','marshmallow','putyourhandsup','nightfirework','birthday','fishing','mining','heartbow','drum','electricguitar','bassguitar','vocal','mosh-charge','slam-charge','slam-retreat','slam-celebrate','circle-run','train-run','row-paddle','toast-clink','surf-rider','surf-support','shoulder-headbang','rock-skank'].includes(d.action)?d.action:'idle';
         updateSnowRolling(p,oldSnowX,oldSnowY);
