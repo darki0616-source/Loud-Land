@@ -517,7 +517,7 @@ const MINING_BY_ID=new Map(MINING_CATALOG.map(x=>[x.id,x]));
 const MINING_ROCKS=[{id:'rock1',x:-28,z:48},{id:'rock2',x:-19,z:54},{id:'rock3',x:-9,z:48},{id:'rock4',x:2,z:54},{id:'rock5',x:13,z:48},{id:'rock6',x:24,z:54},{id:'rock7',x:35,z:48},{id:'rock8',x:42,z:54}];
 const MINING_HITS=20,MINING_HIT_MS=200;
 const miningStats=new Map();
-function miningAccount(identity){if(!miningStats.has(identity))miningStats.set(identity,{bonus:0,counts:{},active:null,lastResult:null});const a=miningStats.get(identity);if(a.active&&Date.now()-a.active.lastAt>90000)a.active=null;return a;}
+function miningAccount(identity){if(!miningStats.has(identity))miningStats.set(identity,{bonus:0,counts:{},active:null,lastResult:null});const a=miningStats.get(identity);if(a.active&&!a.active.auto&&Date.now()-a.active.lastAt>90000)a.active=null;return a;}
 function miningDistance(p,rock){return p&&!p.tentRoomId?Math.hypot((p.x-600)*.058-rock.x,(p.y-500)*.058+8-rock.z):Infinity;}
 function miningView(p){const a=miningAccount(p.badgeIdentity);return {catalog:MINING_CATALOG,counts:a.counts,points:tentPointBalance(p),king:mineKingPublic(),required:MINING_HITS,active:a.active&&a.active.playerId===p.id?{id:a.active.id,rockId:a.active.rockId,hits:a.active.hits,auto:!!a.active.auto}:null,lastResult:a.lastResult};}
 function clearMiningPlayer(p){if(!p?.badgeIdentity)return;const a=miningStats.get(p.badgeIdentity);if(a?.active?.playerId===p.id){a.active=null;a.resumeAuto=null;scheduleSave();}}
@@ -592,6 +592,30 @@ function fishingNearSea(p){
  const wx=(p.x-600)*.058,wz=(p.y-500)*.058+8;
  return Math.abs(wx)<=51&&wz>=60&&wz<=69.5;
 }
+// Auto mining runs on the server, even while a browser is backgrounded.
+function processAutoMining(now=Date.now()){
+ if(!restored)return;
+ for(const [identity,a] of miningStats){
+  const session=a.active;if(!session?.auto)continue;
+  const p=players.get(session.playerId),rock=MINING_ROCKS.find(r=>r.id===session.rockId);
+  if(!p||p.badgeIdentity!==identity||!playerSessions.has(p.id)||!rock||miningDistance(p,rock)>4.5){a.active=null;a.resumeAuto=null;scheduleSave();continue;}
+  if(!Number.isFinite(session.nextAutoAt))session.nextAutoAt=now+2000;
+  if(now<session.nextAutoAt)continue;
+  const steps=Math.min(1000,Math.floor((now-session.nextAutoAt)/2000)+1);session.nextAutoAt+=steps*2000;session.lastAt=now;
+  let result=null;
+  for(let i=0;i<steps;i++){
+   session.hits++;
+   if(session.hits<MINING_HITS)continue;
+   const ore=miningDraw();a.bonus+=ore.points;a.counts[ore.id]=(a.counts[ore.id]||0)+1;recordMiningPoints(p,ore.points);questProgress(p,'ore',ore.rarity);
+   a.lastResult={id:session.id,oreId:ore.id,at:now};session.id=crypto.randomUUID();session.hits=0;session.lastHit=0;result=ore;
+   broadcast({type:'mining-find',playerId:p.id,oreId:ore.id,rarity:ore.rarity,rockId:rock.id,name:ore.name,points:ore.points});announceRareFind(p,ore);
+  }
+  if(result||session.hits%5===0)scheduleSave();
+  const connection=clients.get(p.id);if(connection)try{send(connection,{type:'auto-mining-update',mining:miningView(p),result});}catch{}
+ }
+}
+setInterval(processAutoMining,1000).unref();
+
 function fishingAccount(identity){
  let a=fishingStats.get(identity);
  if(a?.auto&&!players.has(a.auto.playerId))a.auto=null;
@@ -1409,7 +1433,7 @@ setInterval(()=>{const now=Date.now();for(const duo of [...activeDuos.values()])
 const snapshot=(viewerId=null)=>({type:'snapshot',seoulWeather,snowObjects:[...snowObjects.values()],tents:allPlacedTents(),announcements:publicNoticeState(),interactions:[...activeDuos.values()].filter(x=>x.endAt>Date.now()),players:[...players.values()],chatRoomId:players.get(viewerId)?.tentRoomId||null,chat:chatForRoom(players.get(viewerId)?.tentRoomId||null),...musicState(),skipVote:publicSkipVote(),skipVoteCooldownUntil,slam:publicSlam(),slamCooldownUntil,rockPlay:publicRock(),crowdSurf:activeSurfRide&&activeSurfRide.startAt+activeSurfRide.duration>Date.now()?activeSurfRide:null,rockCooldowns:{...rockCooldowns},rockRunningUntil,rhythm:publicRhythmState(),power:publicPowerState(),mole:publicMoleState(),fieldCoins:fieldCoinPublic(),count:players.size});
 const clamp=(n,min,max)=>Math.min(max,Math.max(min,Number(n)||0));
 const SERVER_X_MIN=20,SERVER_X_MAX=1380,SERVER_Y_MIN=60,SERVER_Y_MAX=1550;
-function cleanup(){const now=Date.now();for(const [id,p] of players)if(now-p.seen>180000&&!(()=>{const a=fishingStats.get(p.badgeIdentity)?.auto;return a?.playerId===id&&(clients.has(id)||(a.disconnectedAt&&now-a.disconnectedAt<90000));})()){settleBadge(p,Math.min(now,p.seen+45000));settleBadge(p);clearDuosFor(id);clearMiningPlayer(p);finishSnow(id);players.delete(id);forgetSession(id);voterLeaves(id);if(activeSlam?.participants.delete(id))slamUpdate();rockMemberLeaves(id);pauseForEmpty();const r=clients.get(id);if(r){r.end();clients.delete(id)}broadcast({type:'leave',id,count:players.size});sendTentUpdate()}}
+function cleanup(){const now=Date.now();for(const [id,p] of players)if(now-p.seen>180000&&!(miningStats.get(p.badgeIdentity)?.active?.auto&&miningStats.get(p.badgeIdentity)?.active?.playerId===id)&&!(()=>{const a=fishingStats.get(p.badgeIdentity)?.auto;return a?.playerId===id&&(clients.has(id)||(a.disconnectedAt&&now-a.disconnectedAt<90000));})()){settleBadge(p,Math.min(now,p.seen+45000));settleBadge(p);clearDuosFor(id);clearMiningPlayer(p);finishSnow(id);players.delete(id);forgetSession(id);voterLeaves(id);if(activeSlam?.participants.delete(id))slamUpdate();rockMemberLeaves(id);pauseForEmpty();const r=clients.get(id);if(r){r.end();clients.delete(id)}broadcast({type:'leave',id,count:players.size});sendTentUpdate()}}
 setInterval(cleanup,7000).unref();
 // Check connected, fresh players even while standing still; each coin has one winner.
 setInterval(()=>{
@@ -1939,12 +1963,13 @@ const server=http.createServer(async(req,res)=>{
        if(command==='auto-set'){
         if(!a.active||a.active.playerId!==p.id)return json(res,409,{error:'먼저 광질을 시작해 주세요.'});
         if(typeof d.enabled!=='boolean')return json(res,400,{error:'자동 광질 설정이 올바르지 않아요.'});
-        a.active.auto=d.enabled;a.active.lastAt=now;a.resumeAuto=null;await saveNow();return json(res,200,{ok:true,mining:miningView(p)});
+        a.active.auto=d.enabled;a.active.lastAt=now;if(d.enabled)a.active.nextAutoAt=now+2000;else delete a.active.nextAutoAt;a.resumeAuto=null;await saveNow();return json(res,200,{ok:true,mining:miningView(p)});
        }
        if(command==='hit'){
         const session=a.active,sessionId=String(d.sessionId||'');
         if(a.lastResult?.id===sessionId){const item=MINING_BY_ID.get(a.lastResult.oreId);return json(res,200,{ok:true,result:item,mining:miningView(p)});}
         if(!session||session.playerId!==p.id||session.id!==sessionId)return json(res,409,{error:'광질을 다시 시작해 주세요.',mining:miningView(p)});
+        if(session.auto)return json(res,409,{error:'자동 광질 중에는 수동으로 캘 수 없어요.',mining:miningView(p)});
         const rock=MINING_ROCKS.find(x=>x.id===session.rockId);
         if(!rock||miningDistance(p,rock)>4.5){a.active=null;if(p.action==='mining'){p.action='idle';broadcast({type:'move',player:p});}return json(res,403,{error:'광맥에서 너무 멀어졌어요.',mining:miningView(p)});}
         const seq=Number(d.seq);if(!Number.isInteger(seq)||seq<1||seq>MINING_HITS)return json(res,400,{error:'올바르지 않은 채광 요청이에요.'});
