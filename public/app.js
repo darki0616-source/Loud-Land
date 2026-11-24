@@ -10031,11 +10031,11 @@ function updateSnowBreakEffects(t){for(let i=snowBreakEffects.length-1;i>=0;i--)
 const snowBreakButton=document.createElement('button');snowBreakButton.type='button';snowBreakButton.textContent='💥 눈 부수기';snowBreakButton.hidden=true;snowBreakButton.style.cssText='position:fixed;left:50%;bottom:calc(170px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:150;background:#f9e5ed;color:#5a2a3e;border:2px solid #ffb5ca;border-radius:22px;padding:11px 18px;font-weight:900;box-shadow:0 4px 12px #0005';document.body.append(snowBreakButton);
 function nearbySnowObject(){if(!state.me||tentRoomActive)return null;const p=toWorld(state.me);let best=null,dist=Infinity;for(const v of snowViews.values()){const o=v.data;if(!o||o.flight)continue;const d=Math.hypot(o.x-p.x,o.z-p.z);if(d<=4.5+o.r&&d<dist){dist=d;best=o;}}return best;}
 const snowThrowButton=document.createElement('button');snowThrowButton.type='button';snowThrowButton.textContent='❄️ 눈덩이 던지기';snowThrowButton.hidden=true;snowThrowButton.style.cssText='position:fixed;left:50%;bottom:calc(170px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:150;background:#d9f5ff;color:#183b62;border:2px solid #82c9ef;border-radius:22px;padding:11px 18px;font-weight:900;box-shadow:0 4px 12px #0005';document.body.append(snowThrowButton);
+function nearbyGroundSnowball(){if(!state.me||tentRoomActive||state.action==='snowroll')return null;const p=toWorld(state.me);let best=null,dist=Infinity;for(const v of snowViews.values()){const o=v.data;if(!o||o.kind!=='ball'||o.rolling||o.flight)continue;const d=Math.hypot(o.x-p.x,o.z-p.z);if(d<=4.5+o.r&&d<dist){dist=d;best=o;}}return best;}
 let snowThrowBusy=false;
-snowThrowButton.onclick=async()=>{if(!state.id||snowThrowBusy||state.action!=='snowroll')return;snowThrowBusy=true;snowThrowButton.disabled=true;
- // Drop unsent rolling packets so they cannot start a second ball after the throw.
- outdoorMoveQueue=outdoorMoveQueue.filter(item=>item.data?.action!=='snowroll');state.action='idle';state.actionUntil=0;if(state.me)state.me.action='idle';updateActionButtons();
- try{await post('snow-throw',{id:state.id,sessionKey});sendMove();}catch(e){toast(e.message||'눈덩이를 던지지 못했어요.');state.action='snowroll';if(state.me)state.me.action='snowroll';state.actionUntil=Infinity;sendMove();}
+snowThrowButton.onclick=async()=>{if(!state.id||snowThrowBusy)return;const rolling=state.action==='snowroll',ball=rolling?null:nearbyGroundSnowball();if(!rolling&&!ball)return;snowThrowBusy=true;snowThrowButton.disabled=true;
+ if(rolling){outdoorMoveQueue=outdoorMoveQueue.filter(item=>item.data?.action!=='snowroll');state.action='idle';state.actionUntil=0;if(state.me)state.me.action='idle';updateActionButtons();}
+ try{await post('snow-throw',{id:state.id,sessionKey,...(ball?{objectId:ball.id}:{})});if(rolling)sendMove();}catch(e){toast(e.message||'눈덩이를 던지지 못했어요.');if(rolling){state.action='snowroll';if(state.me)state.me.action='snowroll';state.actionUntil=Infinity;sendMove();}}
  finally{snowThrowBusy=false;snowThrowButton.disabled=false;}
 };
 let snowBreakBusy=false;snowBreakButton.onclick=async()=>{const o=nearbySnowObject();if(!o||snowBreakBusy)return;snowBreakBusy=true;try{await post('snow-break',{id:state.id,sessionKey,objectId:o.id});}catch(e){toast(e.message||'눈을 부수지 못했어요.');}finally{snowBreakBusy=false;}};
@@ -10054,7 +10054,7 @@ function tick(t){
  perfLastFrameTime=t;
  const frameDelta=Math.min(50,Math.max(0,t-(tick.lastFrame??t)));tick.lastFrame=t;
  animateCharacterTrails(t);
- snowmanButton.hidden=!state.id||!nearbySnowPair();snowBreakButton.hidden=!state.id||!nearbySnowObject();snowThrowButton.hidden=!state.id||!!tentRoomActive||state.action!=='snowroll'||![...snowViews.values()].some(v=>v.data?.rolling&&v.data.ownerId===state.id);const snowOther=!snowmanButton.hidden||!snowThrowButton.hidden;snowmanButton.style.left=!snowmanButton.hidden&&!snowBreakButton.hidden?'30%':'50%';snowThrowButton.style.left=!snowThrowButton.hidden&&!snowBreakButton.hidden?'30%':'50%';snowBreakButton.style.left=!snowBreakButton.hidden&&snowOther?'70%':'50%';updateSnowBreakEffects(t);
+ snowmanButton.hidden=!state.id||!nearbySnowPair();snowBreakButton.hidden=!state.id||!nearbySnowObject();snowThrowButton.hidden=!state.id||!!tentRoomActive||!(state.action==='snowroll'?[...snowViews.values()].some(v=>v.data?.rolling&&v.data.ownerId===state.id):nearbyGroundSnowball());const snowButtons=[snowmanButton,snowThrowButton,snowBreakButton].filter(b=>!b.hidden);snowButtons.forEach((b,i)=>{b.style.left='50%';b.style.bottom=`calc(${170+i*48}px + env(safe-area-inset-bottom))`;});updateSnowBreakEffects(t);
  weatherCredit.style.display=tentRoomActive?'none':'';
  if(tentRoomActive){
   updateTentInterior(frameDelta,t);
