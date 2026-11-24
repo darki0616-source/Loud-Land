@@ -519,8 +519,8 @@ const MINING_HITS=20,MINING_HIT_MS=200;
 const miningStats=new Map();
 function miningAccount(identity){if(!miningStats.has(identity))miningStats.set(identity,{bonus:0,counts:{},active:null,lastResult:null});const a=miningStats.get(identity);if(a.active&&Date.now()-a.active.lastAt>90000)a.active=null;return a;}
 function miningDistance(p,rock){return p&&!p.tentRoomId?Math.hypot((p.x-600)*.058-rock.x,(p.y-500)*.058+8-rock.z):Infinity;}
-function miningView(p){const a=miningAccount(p.badgeIdentity);return {catalog:MINING_CATALOG,counts:a.counts,points:tentPointBalance(p),king:mineKingPublic(),required:MINING_HITS,active:a.active&&a.active.playerId===p.id?{id:a.active.id,rockId:a.active.rockId,hits:a.active.hits}:null,lastResult:a.lastResult};}
-function clearMiningPlayer(p){if(!p?.badgeIdentity)return;const a=miningStats.get(p.badgeIdentity);if(a?.active?.playerId===p.id)a.active=null;}
+function miningView(p){const a=miningAccount(p.badgeIdentity);return {catalog:MINING_CATALOG,counts:a.counts,points:tentPointBalance(p),king:mineKingPublic(),required:MINING_HITS,active:a.active&&a.active.playerId===p.id?{id:a.active.id,rockId:a.active.rockId,hits:a.active.hits,auto:!!a.active.auto}:null,lastResult:a.lastResult};}
+function clearMiningPlayer(p){if(!p?.badgeIdentity)return;const a=miningStats.get(p.badgeIdentity);if(a?.active?.playerId===p.id){a.active=null;a.resumeAuto=null;scheduleSave();}}
 function miningDraw(){const n=crypto.randomInt(10000);let sum=0;for(const item of MINING_CATALOG){sum+=item.weight;if(n<sum)return item;}return MINING_CATALOG[MINING_CATALOG.length-1];}
 
 // Mission account and character XP are separate from lifetime collection counts.
@@ -612,9 +612,11 @@ async function settleAutoFish(p,a,now=Date.now()){
 }
 function processAutoFishing(now=Date.now()){
  if(!restored)return;
- for(const [identity,a] of fishingStats){const auto=a.auto;if(!auto)continue;const p=players.get(auto.playerId);if(!p||p.badgeIdentity!==identity||!playerSessions.has(p.id)||!fishingNearSea(p)||miningAccount(identity).active){a.auto=null;continue;}if(!clients.has(p.id)){if(!auto.disconnectedAt)auto.disconnectedAt=now;if(now-auto.disconnectedAt>=90000)a.auto=null;continue;}auto.disconnectedAt=0;if(now<auto.nextAt)continue;void settleAutoFish(p,a,now).catch(error=>console.error('Auto fishing save failed:',error.message));}
+ for(const [identity,a] of fishingStats){const auto=a.auto;if(!auto)continue;const p=players.get(auto.playerId);if(!p||p.badgeIdentity!==identity||!playerSessions.has(p.id)||!fishingNearSea(p)||miningAccount(identity).active){a.auto=null;a.resumeAuto=null;scheduleSave();continue;}if(!clients.has(p.id)){if(!auto.disconnectedAt)auto.disconnectedAt=now;if(now-auto.disconnectedAt>=90000){a.auto=null;a.resumeAuto=null;scheduleSave();}continue;}auto.disconnectedAt=0;if(now<auto.nextAt)continue;void settleAutoFish(p,a,now).catch(error=>console.error('Auto fishing save failed:',error.message));}
 }
 setInterval(processAutoFishing,1000).unref();
+// Bound lost waiting time after an unexpected restart without saving every tick.
+setInterval(()=>{if(restored&&[...fishingStats.values()].some(a=>a.auto&&players.has(a.auto.playerId)))scheduleSave();},15000).unref();
 function fishPosition(session,at){return .5+.5*Math.sin((at-session.startAt)/1000*session.speed+session.phase);}
 // Deterministic resistance phases are shared by the server and the display.
 function fishStrugglePhase(s,at){
@@ -1038,7 +1040,25 @@ const SB_KEY=process.env.SUPABASE_SECRET_KEY||'';
 const useSupabase=Boolean(SB_URL&&SB_KEY);
 let restored=false;
 let saveChain=Promise.resolve();
-function stateData(){return {version:18,snowObjects:[...snowObjects.values()].map(o=>({...o,rolling:false})),pizzaGameMigration,petSkillRefund20261119Done,petSkillTicketRefund20261119Done,combatNames:Object.fromEntries(combatNames),battleAccounts:Object.fromEntries(battleAccounts),craftAccounts:Object.fromEntries(craftAccounts),questAccounts:Object.fromEntries(questAccounts),fishingTournaments:[...fishingTournaments.values()],petRace:petRace.race,petRacePoints:Object.fromEntries(petRacePoints),mineKingDay,mineKingReward,mineKingScores:Object.fromEntries(mineKingScores),miningStats:Object.fromEntries([...miningStats].map(([id,r])=>[id,{bonus:r.bonus,counts:r.counts,lastResult:r.lastResult}])),decorationStats:Object.fromEntries(decorationStats),fishKingDay,fishKingReward,fishKingScores:Object.fromEntries(fishKingScores),fortuneStats:Object.fromEntries(fortuneStats),oneTimeCreditApplied,adminPointCredits:Object.fromEntries(adminPointCredits),adminPointLedger:Object.fromEntries(adminPointLedger),recoveryRecords:Object.fromEntries(recoveryRecords),fishingStats:Object.fromEntries([...fishingStats].map(([id,a])=>[id,{level:a.level,spent:a.spent,bonus:a.bonus,fishCounts:a.fishCounts,totalMisses:a.totalMisses,lastCastAt:a.lastCastAt,active:a.active,lastResult:a.lastResult}])),lotteryStats:Object.fromEntries([...lotteryStats].map(([identity,a])=>[identity,{day:a.day,used:a.used,spent:a.spent,bonus:a.bonus,pending:a.pending,lastResult:a.lastResult}])),petStats:Object.fromEntries([...petStats].map(([identity,record])=>[identity,{spent:record.spent,pet:record.pet,effectsOwned:record.effectsOwned||{},effectsEnabled:record.effectsEnabled||{}}])),fieldCoinLastSpawnAt,fieldCoins:fieldCoinPublic(),fieldCoinBonuses:Object.fromEntries(fieldCoinBonuses),moleDay,moleHammerRevision,moleReward,moleScores:Object.fromEntries(moleScores),moleAccounts:Object.fromEntries([...moleAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session,lastResult:v.lastResult}])),powerDay,powerReward,powerScores:Object.fromEntries(powerScores),powerAccounts:Object.fromEntries([...powerAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session,lastResult:v.lastResult||null}])),rhythmAccounts:Object.fromEntries([...rhythmAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),furnitureCatalogEdits:Object.fromEntries(furnitureCatalogEdits),furnitureStats:Object.fromEntries([...furnitureStats].map(([id,v])=>[id,{spent:v.spent,owned:v.owned}])),tentStats:Object.fromEntries([...tentStats].map(([identity,t])=>[identity,storedTent(t)])),announcements:{entry:entranceNotices,ticker:tickerNotices,intervalMinutes:tickerIntervalMinutes,immediateHistory:immediateNoticeHistory},music,queue:[...queue],history:[...history],nextTrackToken,customMd:Object.fromEntries(customMd),shopStats:Object.fromEntries([...shopStats].map(([k,v])=>[k,{spent:0,refunded:v.refunded||0,owned:v.owned,equipped:v.equipped}])),badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),rhythm:{day:rhythmDay,reward:rhythmReward,scores:Object.fromEntries([...rhythmScores].map(([k,v])=>[k,{name:v.name,score:Math.max(0,Math.floor(Number(v.score)||0)),updatedAt:Number(v.updatedAt)||0}]))},savedAt:Date.now()}}
+function resumeSnapshot(active,kind){
+ if(!active||(kind==='mining'&&!active.auto))return null;
+ const person=players.get(active.playerId),key=person&&playerSessions.get(person.id);
+ if(!person||!key)return null;
+ return {kind,sessionHash:crypto.createHash('sha256').update(key).digest('hex'),x:person.x,y:person.y,facing:person.facing,savedAt:Date.now(),remaining:kind==='fishing'?Math.max(0,Math.min(180000,active.nextAt-Date.now())):null,rockId:kind==='mining'?active.rockId:null,hits:kind==='mining'?active.hits:0};
+}
+function resumeAutoForPlayer(p,key){
+ if(!p.badgeIdentity||!key)return;
+ const hash=crypto.createHash('sha256').update(key).digest('hex'),now=Date.now();
+ for(const [kind,account] of [['fishing',fishingStats.get(p.badgeIdentity)],['mining',miningStats.get(p.badgeIdentity)]]){
+  const r=account?.resumeAuto;
+  if(!r||r.kind!==kind||r.sessionHash!==hash||!Number.isFinite(r.savedAt)||now-r.savedAt>600000||now<r.savedAt||!Number.isFinite(r.x)||!Number.isFinite(r.y))continue;
+  p.x=clamp(r.x,SERVER_X_MIN,SERVER_X_MAX);p.y=clamp(r.y,SERVER_Y_MIN,SERVER_Y_MAX);p.facing=Number(r.facing)||0;
+  if(kind==='fishing'&&account.level&&!account.auto&&fishingNearSea(p)&&!miningAccount(p.badgeIdentity).active){account.auto={playerId:p.id,nextAt:now+Math.max(0,Math.min(180000,Number(r.remaining)||0)),disconnectedAt:0};p.action='fishing';}
+  if(kind==='mining'&&!account.active&&!fishingAccount(p.badgeIdentity).auto){const rock=MINING_ROCKS.find(x=>x.id===r.rockId);if(rock&&miningDistance(p,rock)<=4){account.active={id:crypto.randomUUID(),playerId:p.id,rockId:rock.id,hits:Math.max(0,Math.min(19,Math.floor(Number(r.hits)||0))),lastHit:0,lastAt:now,auto:true};p.action='mining';}}
+  account.resumeAuto=null;scheduleSave();break;
+ }
+}
+function stateData(){return {version:18,snowObjects:[...snowObjects.values()].map(o=>({...o,rolling:false})),pizzaGameMigration,petSkillRefund20261119Done,petSkillTicketRefund20261119Done,combatNames:Object.fromEntries(combatNames),battleAccounts:Object.fromEntries(battleAccounts),craftAccounts:Object.fromEntries(craftAccounts),questAccounts:Object.fromEntries(questAccounts),fishingTournaments:[...fishingTournaments.values()],petRace:petRace.race,petRacePoints:Object.fromEntries(petRacePoints),mineKingDay,mineKingReward,mineKingScores:Object.fromEntries(mineKingScores),miningStats:Object.fromEntries([...miningStats].map(([id,r])=>[id,{bonus:r.bonus,counts:r.counts,lastResult:r.lastResult,resumeAuto:resumeSnapshot(r.active,'mining')||r.resumeAuto||null}])),decorationStats:Object.fromEntries(decorationStats),fishKingDay,fishKingReward,fishKingScores:Object.fromEntries(fishKingScores),fortuneStats:Object.fromEntries(fortuneStats),oneTimeCreditApplied,adminPointCredits:Object.fromEntries(adminPointCredits),adminPointLedger:Object.fromEntries(adminPointLedger),recoveryRecords:Object.fromEntries(recoveryRecords),fishingStats:Object.fromEntries([...fishingStats].map(([id,a])=>[id,{level:a.level,spent:a.spent,bonus:a.bonus,fishCounts:a.fishCounts,totalMisses:a.totalMisses,lastCastAt:a.lastCastAt,active:a.active,lastResult:a.lastResult,resumeAuto:resumeSnapshot(a.auto,'fishing')||a.resumeAuto||null}])),lotteryStats:Object.fromEntries([...lotteryStats].map(([identity,a])=>[identity,{day:a.day,used:a.used,spent:a.spent,bonus:a.bonus,pending:a.pending,lastResult:a.lastResult}])),petStats:Object.fromEntries([...petStats].map(([identity,record])=>[identity,{spent:record.spent,pet:record.pet,effectsOwned:record.effectsOwned||{},effectsEnabled:record.effectsEnabled||{}}])),fieldCoinLastSpawnAt,fieldCoins:fieldCoinPublic(),fieldCoinBonuses:Object.fromEntries(fieldCoinBonuses),moleDay,moleHammerRevision,moleReward,moleScores:Object.fromEntries(moleScores),moleAccounts:Object.fromEntries([...moleAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session,lastResult:v.lastResult}])),powerDay,powerReward,powerScores:Object.fromEntries(powerScores),powerAccounts:Object.fromEntries([...powerAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session,lastResult:v.lastResult||null}])),rhythmAccounts:Object.fromEntries([...rhythmAccounts].map(([k,v])=>[k,{day:v.day,used:v.used,bonus:v.bonus,session:v.session}])),furnitureCatalogEdits:Object.fromEntries(furnitureCatalogEdits),furnitureStats:Object.fromEntries([...furnitureStats].map(([id,v])=>[id,{spent:v.spent,owned:v.owned}])),tentStats:Object.fromEntries([...tentStats].map(([identity,t])=>[identity,storedTent(t)])),announcements:{entry:entranceNotices,ticker:tickerNotices,intervalMinutes:tickerIntervalMinutes,immediateHistory:immediateNoticeHistory},music,queue:[...queue],history:[...history],nextTrackToken,customMd:Object.fromEntries(customMd),shopStats:Object.fromEntries([...shopStats].map(([k,v])=>[k,{spent:0,refunded:v.refunded||0,owned:v.owned,equipped:v.equipped}])),badgeStats:Object.fromEntries([...badgeStats].map(([k,v])=>[k,Math.floor(v.seconds||0)])),rhythm:{day:rhythmDay,reward:rhythmReward,scores:Object.fromEntries([...rhythmScores].map(([k,v])=>[k,{name:v.name,score:Math.max(0,Math.floor(Number(v.score)||0)),updatedAt:Number(v.updatedAt)||0}]))},savedAt:Date.now()}}
 function applySaved(d){
  if(d?.petRace&&['waiting','running','finished'].includes(d.petRace.phase))petRace.race=d.petRace;petRacePoints.clear();if(d?.petRacePoints&&typeof d.petRacePoints==='object')for(const [id,n] of Object.entries(d.petRacePoints))if(/^[a-zA-Z0-9_-]{20,100}$/.test(id)&&Number.isSafeInteger(n)&&Math.abs(n)<1e9)petRacePoints.set(id,n);
  if(!d||typeof d!=='object')return;
@@ -1113,12 +1133,13 @@ function applySaved(d){
   const a={bonus:Number.isSafeInteger(r.bonus)&&r.bonus>=0?Math.min(r.bonus,10000000000):0,counts:{},active:null,lastResult:null};
   if(r.counts&&typeof r.counts==='object')for(const [key,count] of Object.entries(r.counts).slice(0,MINING_CATALOG.length))if(MINING_BY_ID.has(key)&&Number.isSafeInteger(count)&&count>0&&count<100000000)a.counts[key]=count;
   if(r.lastResult&&/^[a-f0-9-]{36}$/.test(r.lastResult.id||'')&&MINING_BY_ID.has(r.lastResult.oreId))a.lastResult={id:r.lastResult.id,oreId:r.lastResult.oreId,at:Number(r.lastResult.at)||0};
+  if(r.resumeAuto&&r.resumeAuto.kind==='mining')a.resumeAuto=r.resumeAuto;
   miningStats.set(id,a);
  }
  fishingStats.clear();
  if(d.fishingStats&&typeof d.fishingStats==='object')for(const [id,a] of Object.entries(d.fishingStats).slice(0,50000)){
   if(!/^[a-zA-Z0-9_-]{20,100}$/.test(id)||!a||typeof a!=='object')continue;
-  fishingStats.set(id,fishingRestore(a));
+  const record=fishingRestore(a);if(a.resumeAuto&&a.resumeAuto.kind==='fishing')record.resumeAuto=a.resumeAuto;fishingStats.set(id,record);
  }
  if(d.fieldCoinBonuses&&typeof d.fieldCoinBonuses==='object')for(const [key,value] of Object.entries(d.fieldCoinBonuses).slice(0,50000))if(/^[a-zA-Z0-9_-]{20,100}$/.test(key)&&Number.isSafeInteger(value)&&value>=0)fieldCoinBonuses.set(key,value);
  if(Number.isFinite(Number(d.fieldCoinLastSpawnAt)))fieldCoinLastSpawnAt=Math.min(Date.now(),Math.max(0,Number(d.fieldCoinLastSpawnAt)));
@@ -1729,6 +1750,7 @@ const server=http.createServer(async(req,res)=>{
         const id=crypto.randomUUID(),p={id,badgeSince:Date.now(),badgeTier:'bronze',badgeSeconds:0,name:clean(d.name,18)||'ROCKER',flagText:cleanFlag(d.flagText),flagImage:d.flagImage?storeFlagImage(d.flagImage)||'':'',color:colors.includes(d.color)?d.color:colors[0],...apparel(d),gender:d.gender==='female'?'female':'male',x:clamp(190+Math.random()*880,SERVER_X_MIN,SERVER_X_MAX),y:clamp(390+Math.random()*420,SERVER_Y_MIN,SERVER_Y_MAX),facing:0,action:'idle',pose:'stand',glowColor:'lime',glowEnabled:false,headbangBpm:120,headbangBeatAt:Date.now(),seen:Date.now(),rhythmKing:false,powerKing:false,moleKing:false};
         Object.defineProperty(p,'badgeIdentity',{value:badgeIdentity,writable:true,enumerable:false});if(badgeIdentity){combatNames.set(badgeIdentity,p.name);scheduleSave();}updateBadge(p);syncPlayerRhythmKing(p);syncPlayerPowerKing(p);syncPlayerMoleKing(p);rotateFishKingDay();syncPlayerFishKing(p);rotateMineKingDay();syncPlayerMineKing(p);syncDecoration(p);setShopAppearance(p);p.pet=petPublic(petStats.get(p.badgeIdentity)?.pet,petStats.get(p.badgeIdentity),p.badgeIdentity);players.set(id,p);
         if(sessionKey){sessionPlayers.set(sessionKey,id);playerSessions.set(id,sessionKey)}
+        resumeAutoForPlayer(p,sessionKey);
         if(pageId)pageOwners.set(id,pageId);
         resumeForFirst();broadcast({type:'join',player:p,count:players.size});return json(res,200,{id,reused:false,...snapshot(id)});
       }
@@ -1806,14 +1828,14 @@ const server=http.createServer(async(req,res)=>{
         if(!p.badgeIdentity||playerSessions.get(id)!==String(d.sessionKey||''))return json(res,403,{error:'본인 세션에서만 낚시할 수 있어요.'});
         const command=String(d.command||'state'),a=fishingAccount(p.badgeIdentity);
         if(command==='state')return json(res,200,{ok:true,fishing:fishingView(p)});
-        if(command==='auto-stop'){if(a.auto?.playerId===p.id)a.auto=null;return json(res,200,{ok:true,fishing:fishingView(p)});}
+        if(command==='auto-stop'){if(a.auto?.playerId===p.id)a.auto=null;a.resumeAuto=null;await saveNow();return json(res,200,{ok:true,fishing:fishingView(p)});}
         if(!fishingNearSea(p))return json(res,403,{error:'바다 앞 모래사장으로 이동해 주세요.'});
         if(command==='auto-start'){
           if(!a.level)return json(res,409,{error:'낚싯대를 먼저 구매해 주세요.'});
           if(a.active)return json(res,409,{error:'현재 낚시를 마친 뒤 자동 낚시를 켜 주세요.'});
           if(miningAccount(p.badgeIdentity).active)return json(res,409,{error:'광질을 종료한 뒤 자동 낚시를 켜 주세요.'});
           if(a.auto&&a.auto.playerId!==p.id)return json(res,409,{error:'다른 창에서 자동 낚시 중이에요.'});
-          if(!a.auto)a.auto={playerId:p.id,nextAt:Date.now()+180000};
+          if(!a.auto)a.auto={playerId:p.id,nextAt:Date.now()+180000};a.resumeAuto=null;await saveNow();
           return json(res,200,{ok:true,fishing:fishingView(p)});
         }
         if(command==='auto-catch'){
@@ -1903,9 +1925,14 @@ const server=http.createServer(async(req,res)=>{
         p.action='mining';p.pose='stand';broadcast({type:'move',player:p});return json(res,200,{ok:true,mining:miningView(p)});
        }
        if(command==='stop'){
-        if(a.active?.playerId===p.id)a.active=null;
+        if(a.active?.playerId===p.id)a.active=null;a.resumeAuto=null;await saveNow();
         if(p.action==='mining'){p.action='idle';broadcast({type:'move',player:p});}
         return json(res,200,{ok:true,mining:miningView(p)});
+       }
+       if(command==='auto-set'){
+        if(!a.active||a.active.playerId!==p.id)return json(res,409,{error:'먼저 광질을 시작해 주세요.'});
+        if(typeof d.enabled!=='boolean')return json(res,400,{error:'자동 광질 설정이 올바르지 않아요.'});
+        a.active.auto=d.enabled;a.active.lastAt=now;a.resumeAuto=null;await saveNow();return json(res,200,{ok:true,mining:miningView(p)});
        }
        if(command==='hit'){
         const session=a.active,sessionId=String(d.sessionId||'');
@@ -1917,7 +1944,7 @@ const server=http.createServer(async(req,res)=>{
         if(seq<=session.hits)return json(res,200,{ok:true,mining:miningView(p)});
         if(seq!==session.hits+1)return json(res,409,{error:'다시 시도해 주세요.',mining:miningView(p)});
         if(session.lastHit&&now-session.lastHit<MINING_HIT_MS)return json(res,429,{error:'조금 천천히 두드려 주세요.',mining:miningView(p)});
-        session.hits++;session.lastHit=now;session.lastAt=now;
+        session.hits++;session.lastHit=now;session.lastAt=now;if(session.auto&&session.hits<MINING_HITS)scheduleSave();
         if(session.hits===MINING_HITS){
          const ore=miningDraw();a.bonus+=ore.points;recordMiningPoints(p,ore.points);a.counts[ore.id]=(a.counts[ore.id]||0)+1;questProgress(p,'ore',ore.rarity);
          a.lastResult={id:session.id,oreId:ore.id,at:now};session.id=crypto.randomUUID();session.hits=0;session.lastHit=0;
@@ -2602,7 +2629,7 @@ const server=http.createServer(async(req,res)=>{
         // A late pagehide beacon from a previous page must not kick the newer page.
         const owner=pageOwners.get(id);
         if(owner&&d.pageId!==owner)return json(res,200,{ok:true,ignored:'stale-page'});
-        settleBadge(p);clearDuosFor(id);clearMiningPlayer(p);finishSnow(id);players.delete(id);forgetSession(id);voterLeaves(id);
+        settleBadge(p);clearDuosFor(id);clearMiningPlayer(p);const fa=fishingStats.get(p.badgeIdentity);if(fa?.auto?.playerId===id){fa.auto=null;fa.resumeAuto=null;scheduleSave();}finishSnow(id);players.delete(id);forgetSession(id);voterLeaves(id);
         if(activeSlam?.participants.delete(id))slamUpdate();rockMemberLeaves(id);pauseForEmpty();
         clients.get(id)?.end();clients.delete(id);broadcast({type:'leave',id,count:players.size});sendTentUpdate();return json(res,200,{ok:true})
       }
