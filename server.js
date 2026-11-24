@@ -1869,7 +1869,7 @@ const server=http.createServer(async(req,res)=>{
           if(a.active)return json(res,409,{error:'현재 낚시를 마친 뒤 자동 낚시를 켜 주세요.'});
           if(miningAccount(p.badgeIdentity).active)return json(res,409,{error:'광질을 종료한 뒤 자동 낚시를 켜 주세요.'});
           if(a.auto&&a.auto.playerId!==p.id)return json(res,409,{error:'다른 창에서 자동 낚시 중이에요.'});
-          if(!a.auto)a.auto={playerId:p.id,nextAt:Date.now()+180000};a.resumeAuto=null;await saveNow();
+          if(!a.auto)a.auto={playerId:p.id,nextAt:Date.now()+180000};a.resumeAuto=null;scheduleSave();
           return json(res,200,{ok:true,fishing:fishingView(p)});
         }
         if(command==='auto-catch'){
