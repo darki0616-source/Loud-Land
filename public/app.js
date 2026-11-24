@@ -3058,7 +3058,7 @@ function drawMdWardrobe(){
   const card=document.createElement('div');card.className='md-wardrobe-entry';
   const visual=mdPreviewTarget(id,slot,emoji,name);
   const title=document.createElement('strong');title.textContent=emoji+' '+name;
-  const line=document.createElement('small');line.textContent=isPufferItem(id)?'3D 패딩 착용':({'shirt':'티셔츠 위에 표시','head':'머리 장식','neck':'목 장식','eyes':'안경','back':'등 장식','tail':'꼬리 장식','ears':'헤드셋'}[slot]||'장식');
+  const line=document.createElement('small');line.textContent=isPufferItem(id)?'3D 패딩 착용':({'shirt':'티셔츠 위에 표시','head':'머리 장식','neck':'목 장식','eyes':'안경','back':'등 장식','tail':'꼬리 장식','ears':'귀 장식'}[slot]||'장식');
   const btn=document.createElement('button');btn.type='button';btn.textContent=wearing?'벗기':'입기';btn.disabled=punkShopBusy;
   btn.onclick=async()=>{if(punkShopBusy||!state.id)return;punkShopBusy=true;drawMdWardrobe();
    try{const d=await post('shop',{id:state.id,command:wearing?'unequip':'equip',item:id});punkWallet=d.shop;
@@ -7178,6 +7178,31 @@ function makeAvatar(p){
    }
    child(neck,new THREE.BoxGeometry(.20,.06,.06),frame,[0,.18,.85]);
   }
+ }
+ // Winter MD: lightweight geometry follows the existing head and upper body joints.
+ const winterColors={brown:'#80523c',black:'#222126',charcoal:'#515259',red:'#bb2634',green:'#327454'};
+ const earmuffColor=typeof look.ears==='string'&&look.ears.startsWith('winter-earmuffs-')?winterColors[look.ears.slice(16)]:null;
+ if(earmuffColor){
+  const fabric=mat(earmuffColor,.95),rim=mat(new THREE.Color(earmuffColor).multiplyScalar(.75),.9),soft=mat(new THREE.Color(earmuffColor).lerp(new THREE.Color('#ffffff'),.18),.98);
+  const band=child(neck,new THREE.TorusGeometry(.91,.075,8,32,Math.PI),rim,[0,.20,.035]);
+  const piping=child(neck,new THREE.TorusGeometry(.91,.022,6,32,Math.PI),soft,[0,.20,.105]);
+  for(const side of [-1,1]){
+   child(neck,new THREE.SphereGeometry(.29,16,12),rim,[side*.91,.16,.065],[.60,1.08,.98]);
+   child(neck,new THREE.SphereGeometry(.255,16,12),fabric,[side*1.005,.16,.075],[.55,1.04,1]);
+   child(neck,new THREE.SphereGeometry(.16,12,10),soft,[side*1.12,.16,.075],[.25,.96,.94]);
+  }
+ }
+ const scarfColor=typeof look.neck==='string'&&look.neck.startsWith('winter-scarf-')?winterColors[look.neck.slice(13)]:null;
+ if(scarfColor){
+  const fabric=mat(scarfColor,.98),rib=mat(new THREE.Color(scarfColor).multiplyScalar(.80),.98);
+  const scarf=new THREE.Group();upper.add(scarf);
+  const wrap=child(scarf,new THREE.TorusGeometry(.48,.12,10,32),fabric,[0,.76,.02],[1,1,.85]);wrap.rotation.x=Math.PI/2;
+  const front=child(scarf,new THREE.BoxGeometry(.28,.48,.09),fabric,[.20,.49,.53]);front.rotation.z=.08;
+  const fold=child(scarf,new THREE.BoxGeometry(.31,.15,.12),fabric,[.10,.68,.54]);fold.rotation.z=-.12;
+  for(let i=0;i<4;i++){
+   const stripe=child(scarf,new THREE.BoxGeometry(.27,.012,.012),rib,[.20,.32+i*.085,.581]);stripe.rotation.z=.08;
+  }
+  for(let i=0;i<5;i++)child(scarf,new THREE.CapsuleGeometry(.012,.07,3,5),rib,[.10+i*.05,.215,.53]);
  }
  if(look.ears==='headset'){
   const shell=mat('#171922',.4),accent=mat('#ec3654',.34),padding=mat('#333743',.95);
