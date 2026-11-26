@@ -1258,6 +1258,11 @@ function renderOnlinePlayers(){
 }
 function setPlayersPanel(open){$('playersPanel').classList.toggle('hidden',!open);$('playersToggle').setAttribute('aria-expanded',String(open))}
 $('playersToggle').onclick=()=>setPlayersPanel($('playersPanel').classList.contains('hidden'));
+const openChatRoomButton=document.createElement('button');openChatRoomButton.type='button';openChatRoomButton.id='openChatRoomButton';openChatRoomButton.textContent='🎧 채팅방';openChatRoomButton.setAttribute('aria-label','음악 채팅방으로 이동');
+openChatRoomButton.style.cssText='border:1px solid rgba(255,255,255,.23);background:rgba(19,22,43,.8);color:#fff;border-radius:12px;padding:8px 10px;font-weight:800;font-size:12px;white-space:nowrap;cursor:pointer';
+$('playersToggle').insertAdjacentElement('afterend',openChatRoomButton);
+openChatRoomButton.onclick=()=>{if(confirm('채팅방으로 이동하시겠어요?'))window.location.assign('/listen.html');};
+
 $('playersClose').onclick=()=>setPlayersPanel(false);
 function showBookingNotice(name,title){
  const host=$('joinNotices');const el=document.createElement('div');el.className='music-booking-notice';
