@@ -1433,7 +1433,7 @@ function endDuo(duo){if(!duo||!activeDuos.has(duo.id))return;activeDuos.delete(d
 function clearDuosFor(id){for(const duo of [...activeDuos.values()])if(duo.a===id||duo.b===id)endDuo(duo);for(const [inviteId,invite] of duoInvites)if(invite.from===id||invite.to===id){duoInvites.delete(inviteId);broadcast({type:'duo-invite-ended',id:inviteId,to:invite.to})}}
 function duoDistance(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
 setInterval(()=>{const now=Date.now();for(const duo of [...activeDuos.values()])if(duo.endAt<=now)endDuo(duo);for(const [key,invite] of duoInvites)if(invite.expiresAt<=now){duoInvites.delete(key);broadcast({type:'duo-invite-ended',id:key,to:invite.to})}},700).unref();
-const snapshot=(viewerId=null)=>({type:'snapshot',seoulWeather,snowObjects:[...snowObjects.values()],tents:allPlacedTents(),announcements:publicNoticeState(),interactions:[...activeDuos.values()].filter(x=>x.endAt>Date.now()),players:[...players.values()],chatRoomId:players.get(viewerId)?.tentRoomId||null,chat:chatForRoom(players.get(viewerId)?.tentRoomId||null),...musicState(),skipVote:publicSkipVote(),skipVoteCooldownUntil,slam:publicSlam(),slamCooldownUntil,rockPlay:publicRock(),crowdSurf:activeSurfRide&&activeSurfRide.startAt+activeSurfRide.duration>Date.now()?activeSurfRide:null,rockCooldowns:{...rockCooldowns},rockRunningUntil,rhythm:publicRhythmState(),power:publicPowerState(),mole:publicMoleState(),fieldCoins:fieldCoinPublic(),count:players.size});
+const snapshot=(viewerId=null)=>({type:'snapshot',seoulWeather,snowObjects:[...snowObjects.values()],tents:allPlacedTents(),announcements:publicNoticeState(),interactions:[...activeDuos.values()].filter(x=>x.endAt>Date.now()),players:[...players.values()].filter(p=>!p.listenerOnly),chatRoomId:players.get(viewerId)?.tentRoomId||null,chat:chatForRoom(players.get(viewerId)?.tentRoomId||null),...musicState(),skipVote:publicSkipVote(),skipVoteCooldownUntil,slam:publicSlam(),slamCooldownUntil,rockPlay:publicRock(),crowdSurf:activeSurfRide&&activeSurfRide.startAt+activeSurfRide.duration>Date.now()?activeSurfRide:null,rockCooldowns:{...rockCooldowns},rockRunningUntil,rhythm:publicRhythmState(),power:publicPowerState(),mole:publicMoleState(),fieldCoins:fieldCoinPublic(),count:players.size});
 const clamp=(n,min,max)=>Math.min(max,Math.max(min,Number(n)||0));
 const SERVER_X_MIN=20,SERVER_X_MAX=1380,SERVER_Y_MIN=60,SERVER_Y_MAX=1550;
 function cleanup(){const now=Date.now();for(const [id,p] of players)if(now-p.seen>180000&&!(miningStats.get(p.badgeIdentity)?.active?.auto&&miningStats.get(p.badgeIdentity)?.active?.playerId===id)&&!(()=>{const a=fishingStats.get(p.badgeIdentity)?.auto;return a?.playerId===id&&(clients.has(id)||(a.disconnectedAt&&now-a.disconnectedAt<90000));})()){settleBadge(p,Math.min(now,p.seen+45000));settleBadge(p);clearDuosFor(id);clearMiningPlayer(p);finishSnow(id);players.delete(id);forgetSession(id);voterLeaves(id);if(activeSlam?.participants.delete(id))slamUpdate();rockMemberLeaves(id);pauseForEmpty();const r=clients.get(id);if(r){r.end();clients.delete(id)}broadcast({type:'leave',id,count:players.size});sendTentUpdate()}}
@@ -1764,8 +1764,9 @@ const server=http.createServer(async(req,res)=>{
         return json(res,200,{ok:true,badgeIdentity:identity,profile:record.profile});
       }
       if(url.pathname==='/api/join'){
+        const listenerOnly=d.listenerOnly===true;
         const sessionKey=typeof d.sessionKey==='string'&&/^[a-zA-Z0-9_-]{20,100}$/.test(d.sessionKey)?d.sessionKey:null;
-        const badgeIdentity=typeof d.badgeIdentity==='string'&&/^[a-zA-Z0-9_-]{20,100}$/.test(d.badgeIdentity)?d.badgeIdentity:null;
+        const badgeIdentity=!listenerOnly&&typeof d.badgeIdentity==='string'&&/^[a-zA-Z0-9_-]{20,100}$/.test(d.badgeIdentity)?d.badgeIdentity:null;
         const pageId=typeof d.pageId==='string'&&/^[a-zA-Z0-9_-]{20,100}$/.test(d.pageId)?d.pageId:null;
         // Repeated joins from reconnect/parallel timers must reuse the SAME avatar.
         if(sessionKey){
@@ -1781,12 +1782,12 @@ const server=http.createServer(async(req,res)=>{
           if(existingId)sessionPlayers.delete(sessionKey);
         }
         maybeRotateRhythmDay();
-        const id=crypto.randomUUID(),p={id,badgeSince:Date.now(),badgeTier:'bronze',badgeSeconds:0,name:clean(d.name,18)||'ROCKER',flagText:cleanFlag(d.flagText),flagImage:d.flagImage?storeFlagImage(d.flagImage)||'':'',color:colors.includes(d.color)?d.color:colors[0],...apparel(d),gender:d.gender==='female'?'female':'male',x:clamp(190+Math.random()*880,SERVER_X_MIN,SERVER_X_MAX),y:clamp(390+Math.random()*420,SERVER_Y_MIN,SERVER_Y_MAX),facing:0,action:'idle',pose:'stand',glowColor:'lime',glowEnabled:false,headbangBpm:120,headbangBeatAt:Date.now(),seen:Date.now(),rhythmKing:false,powerKing:false,moleKing:false};
+        const id=crypto.randomUUID(),p={id,listenerOnly,badgeSince:Date.now(),badgeTier:'bronze',badgeSeconds:0,name:clean(d.name,18)||'ROCKER',flagText:cleanFlag(d.flagText),flagImage:d.flagImage?storeFlagImage(d.flagImage)||'':'',color:colors.includes(d.color)?d.color:colors[0],...apparel(d),gender:d.gender==='female'?'female':'male',x:clamp(190+Math.random()*880,SERVER_X_MIN,SERVER_X_MAX),y:clamp(390+Math.random()*420,SERVER_Y_MIN,SERVER_Y_MAX),facing:0,action:'idle',pose:'stand',glowColor:'lime',glowEnabled:false,headbangBpm:120,headbangBeatAt:Date.now(),seen:Date.now(),rhythmKing:false,powerKing:false,moleKing:false};
         Object.defineProperty(p,'badgeIdentity',{value:badgeIdentity,writable:true,enumerable:false});if(badgeIdentity){combatNames.set(badgeIdentity,p.name);scheduleSave();}updateBadge(p);syncPlayerRhythmKing(p);syncPlayerPowerKing(p);syncPlayerMoleKing(p);rotateFishKingDay();syncPlayerFishKing(p);rotateMineKingDay();syncPlayerMineKing(p);syncDecoration(p);setShopAppearance(p);p.pet=petPublic(petStats.get(p.badgeIdentity)?.pet,petStats.get(p.badgeIdentity),p.badgeIdentity);players.set(id,p);
         if(sessionKey){sessionPlayers.set(sessionKey,id);playerSessions.set(id,sessionKey)}
         resumeAutoForPlayer(p,sessionKey);
         if(pageId)pageOwners.set(id,pageId);
-        resumeForFirst();broadcast({type:'join',player:p,count:players.size});return json(res,200,{id,reused:false,...snapshot(id)});
+        resumeForFirst();broadcast(listenerOnly?{type:'listener-presence',count:players.size}:{type:'join',player:p,count:players.size});return json(res,200,{id,reused:false,...snapshot(id)});
       }
       const id=clean(d.id,80),p=players.get(id);if(!p)return json(res,401,{error:'Session expired. Please rejoin.'});p.seen=Date.now();
       if(url.pathname==='/api/combat-ranking'){if(!p.badgeIdentity||playerSessions.get(id)!==String(d.sessionKey||''))return json(res,403,{error:'본인 세션에서 이용해 주세요.'});const ids=new Set([...questAccounts.keys(),...craftAccounts.keys(),...combatNames.keys()]);for(const person of players.values())if(person.badgeIdentity){ids.add(person.badgeIdentity);combatNames.set(person.badgeIdentity,person.name);}const rows=[...ids].map(identity=>({name:combatNames.get(identity)||recoveryRecords.get(identity)?.profile?.name||'이름 미등록',power:characterCombatPower(identity),level:questLevel(questAccounts.get(identity)?.xp||0)})).sort((a,b)=>b.power-a.power||b.level-a.level||a.name.localeCompare(b.name,'ko-KR')).slice(0,50).map((row,i)=>({...row,rank:i+1}));return json(res,200,{ok:true,rows});}
@@ -2124,6 +2125,7 @@ const server=http.createServer(async(req,res)=>{
         return json(res,200,{ok:true,...petView(p)});
       }
       if(url.pathname==='/api/heartbeat'){return json(res,200,{ok:true})}
+      if(p.listenerOnly&&!['/api/chat','/api/leave'].includes(url.pathname))return json(res,403,{error:'음악 채팅방에서는 사용할 수 없는 기능입니다.'});
       if(url.pathname==='/api/tent'){
         // Public player IDs are visible in snapshots. A private per-tab key is
         // mandatory for tent purchase, ownership and room access.
