@@ -2127,7 +2127,7 @@ const server=http.createServer(async(req,res)=>{
         return json(res,200,{ok:true,...petView(p)});
       }
       if(url.pathname==='/api/heartbeat'){return json(res,200,{ok:true})}
-      if(p.listenerOnly&&!['/api/chat','/api/leave'].includes(url.pathname))return json(res,403,{error:'음악 채팅방에서는 사용할 수 없는 기능입니다.'});
+      if(p.listenerOnly&&!['/api/chat','/api/leave','/api/music'].includes(url.pathname))return json(res,403,{error:'음악 채팅방에서는 사용할 수 없는 기능입니다.'});
       if(url.pathname==='/api/tent'){
         // Public player IDs are visible in snapshots. A private per-tab key is
         // mandatory for tent purchase, ownership and room access.
