@@ -485,7 +485,7 @@ function ensureGamePicker(){
  #gamePickerBeat{border-color:#c2a2ff;background:linear-gradient(100deg,#503b9caa,#66366d88)}
  #gamePickerMole{border-color:#b9ff6c;background:linear-gradient(100deg,#336b42aa,#336b2588)}
  `;document.head.append(css);
- const overlay=document.createElement('div');overlay.id='gamePicker';overlay.innerHTML=`<div id="gamePickerCard" role="dialog" aria-modal="true" aria-labelledby="gamePickerTitle"><div id="gamePickerHead"><h2 id="gamePickerTitle">🎮 게임 선택</h2><button id="gamePickerClose" type="button">닫기</button></div><p id="gamePickerDesc">플레이할 게임을 선택하세요. 각 게임은 하루 5판씩 별도로 플레이할 수 있습니다.</p><button type="button" id="gamePickerBeat" class="gamePickerChoice"><span class="gamePickerIcon">🎆</span><span>불꽃왕<small id="gamePickerBeatCoins">불꽃 터뜨리기 · 하루 5코인</small></span></button><button type="button" id="gamePickerPower" class="gamePickerChoice"><span class="gamePickerIcon">🍕</span><span>피자 배달왕<small id="gamePickerPowerCoins">피자 받기 · 하루 5코인</small></span></button><button type="button" id="gamePickerMole" class="gamePickerChoice"><span class="gamePickerIcon">🐹</span><span>두더지왕<small id="gamePickerMoleCoins">순발력 게임 · 하루 5코인</small></span></button></div>`;
+ const overlay=document.createElement('div');overlay.id='gamePicker';overlay.innerHTML=`<div id="gamePickerCard" role="dialog" aria-modal="true" aria-labelledby="gamePickerTitle"><div id="gamePickerHead"><h2 id="gamePickerTitle">🎮 게임 선택</h2><button id="gamePickerClose" type="button">닫기</button></div><p id="gamePickerDesc">플레이할 게임을 선택하세요. 각 왕 게임은 하루 5판씩이며, 다트는 자유롭게 즐길 수 있습니다.</p><button type="button" id="gamePickerBeat" class="gamePickerChoice"><span class="gamePickerIcon">🎆</span><span>불꽃왕<small id="gamePickerBeatCoins">불꽃 터뜨리기 · 하루 5코인</small></span></button><button type="button" id="gamePickerPower" class="gamePickerChoice"><span class="gamePickerIcon">🍕</span><span>피자 배달왕<small id="gamePickerPowerCoins">피자 받기 · 하루 5코인</small></span></button><button type="button" id="gamePickerMole" class="gamePickerChoice"><span class="gamePickerIcon">🐹</span><span>두더지왕<small id="gamePickerMoleCoins">순발력 게임 · 하루 5코인</small></span></button><button type="button" id="gamePickerDarts" class="gamePickerChoice"><span class="gamePickerIcon">🎯</span><span>다트 게임<small>세 번 던져 점수를 획득하세요</small></span></button></div>`;
  document.body.append(overlay);
  const close=()=>overlay.classList.remove('show');
  overlay.querySelector('#gamePickerClose').onclick=close;
@@ -493,6 +493,7 @@ function ensureGamePicker(){
  overlay.querySelector('#gamePickerBeat').onclick=()=>{close();fireworksOpen();};
  overlay.querySelector('#gamePickerPower').onclick=()=>{close();void openPizzaGame();};
  overlay.querySelector('#gamePickerMole').onclick=()=>{close();void openMoleGame();};
+ overlay.querySelector('#gamePickerDarts').onclick=()=>{close();if(window.openFestivalDarts){window.openFestivalDarts();return}const script=document.createElement('script');script.src='/darts-game.js?v=486';script.onload=()=>window.openFestivalDarts();script.onerror=()=>toast('다트 게임을 불러오지 못했어요.');document.head.append(script);};
  gamePickerUi={overlay,beat:overlay.querySelector('#gamePickerBeatCoins'),power:overlay.querySelector('#gamePickerPowerCoins'),mole:overlay.querySelector('#gamePickerMoleCoins')};
  return gamePickerUi;
 }
@@ -730,7 +731,7 @@ function applyRhythmState(rhythm){
 function updateRhythmBoothButton(){
  ensureRhythmUI();
  const near=nearRhythmBooth();
- rhythmUi.boothButton.classList.toggle('show',Boolean(state.id&&near&&!rhythmGame.open&&!fireworksGame.open&&!powerGame.open&&!moleGame.open&&!gamePickerUi?.overlay.classList.contains('show')));
+ rhythmUi.boothButton.classList.toggle('show',Boolean(state.id&&near&&!rhythmGame.open&&!fireworksGame.open&&!powerGame.open&&!moleGame.open&&!window.festivalDartsOpen?.()&&!gamePickerUi?.overlay.classList.contains('show')));
  rhythmUi.boothButton.disabled=!near;
  rhythmUi.boothButton.textContent='🎮 게임플레이';
  rhythmUi.hint.classList.remove('show');
@@ -1261,7 +1262,13 @@ $('playersToggle').onclick=()=>setPlayersPanel($('playersPanel').classList.conta
 const openChatRoomButton=document.createElement('button');openChatRoomButton.type='button';openChatRoomButton.id='openChatRoomButton';openChatRoomButton.textContent='🎧 채팅방';openChatRoomButton.setAttribute('aria-label','음악 채팅방으로 이동');
 openChatRoomButton.style.cssText='border:1px solid rgba(255,255,255,.23);background:rgba(19,22,43,.8);color:#fff;border-radius:12px;padding:8px 10px;font-weight:800;font-size:12px;white-space:nowrap;cursor:pointer';
 $('playersToggle').insertAdjacentElement('afterend',openChatRoomButton);
-openChatRoomButton.onclick=()=>{if(confirm('채팅방으로 이동하시겠어요?'))window.location.assign('/listen.html');};
+openChatRoomButton.onclick=async()=>{
+ if(!confirm('채팅방으로 이동하시겠어요?'))return;
+ openChatRoomButton.disabled=true;openChatRoomButton.textContent='이동 중…';
+ const oldId=state.id;manualExit=true;
+ if(oldId){const body=JSON.stringify({id:oldId,pageId}),controller=new AbortController(),timer=setTimeout(()=>controller.abort(),2500);let confirmed=false;try{const response=await fetch('/api/leave',{method:'POST',headers:{'content-type':'application/json'},body,signal:controller.signal,keepalive:true});confirmed=response.ok;}catch{}finally{clearTimeout(timer);}if(!confirmed)navigator.sendBeacon('/api/leave',new Blob([body],{type:'application/json'}));state.es?.close();state.id=null;}
+ window.location.assign('/listen.html');
+};
 
 $('playersClose').onclick=()=>setPlayersPanel(false);
 function showBookingNotice(name,title){
@@ -10951,7 +10958,7 @@ let gamePresenceLastId=null,gamePresenceAck=null,gamePresenceSending=false;
 async function syncGamePresence(){
  if(!state.id||!state.me||gamePresenceSending)return;
  if(gamePresenceLastId!==state.id){gamePresenceLastId=state.id;gamePresenceAck=null;}
- const playing=Boolean(rhythmGame.running||fireworksGame.running||powerGame.running||pizzaGame.running||moleGame.running||(fishingUi?.overlay.classList.contains('show')&&(fishingData?.session||fishingData?.auto))||(lotteryUi&&!lotteryUi.overlay.hidden&&lotteryData?.ticket)||miningActive||state.me?.action==='mining'||state.me?.action==='fishing');
+ const playing=Boolean(rhythmGame.running||fireworksGame.running||powerGame.running||pizzaGame.running||moleGame.running||window.festivalDartsOpen?.()||(fishingUi?.overlay.classList.contains('show')&&(fishingData?.session||fishingData?.auto))||(lotteryUi&&!lotteryUi.overlay.hidden&&lotteryData?.ticket)||miningActive||state.me?.action==='mining'||state.me?.action==='fishing');
  if(gamePresenceAck===playing)return;
  const requestId=state.id;gamePresenceSending=true;
  try{await post('game-presence',{id:requestId,sessionKey,playing});if(state.id===requestId)gamePresenceAck=playing;}
